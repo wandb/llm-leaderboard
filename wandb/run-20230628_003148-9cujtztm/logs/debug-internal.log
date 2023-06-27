@@ -1,0 +1,179 @@
+2023-06-28 00:31:48,254 INFO    StreamThr :3673994 [internal.py:wandb_internal():86] W&B internal server running at pid: 3673994, started at: 2023-06-28 00:31:48.254754
+2023-06-28 00:31:48,256 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: status
+2023-06-28 00:31:48,257 INFO    WriterThread:3673994 [datastore.py:open_for_write():85] open: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/run-9cujtztm.wandb
+2023-06-28 00:31:48,258 DEBUG   SenderThread:3673994 [sender.py:send():369] send: header
+2023-06-28 00:31:48,259 DEBUG   SenderThread:3673994 [sender.py:send():369] send: run
+2023-06-28 00:31:48,954 INFO    SenderThread:3673994 [dir_watcher.py:__init__():211] watching files in: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files
+2023-06-28 00:31:48,954 INFO    SenderThread:3673994 [sender.py:_start_run_threads():1100] run started: 9cujtztm with start time 1687879908.255418
+2023-06-28 00:31:48,954 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: summary_record
+2023-06-28 00:31:48,954 INFO    SenderThread:3673994 [sender.py:_save_file():1354] saving file wandb-summary.json with policy end
+2023-06-28 00:31:48,955 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: check_version
+2023-06-28 00:31:48,956 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: check_version
+2023-06-28 00:31:49,095 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: run_start
+2023-06-28 00:31:49,615 DEBUG   HandlerThread:3673994 [system_info.py:__init__():31] System info init
+2023-06-28 00:31:49,615 DEBUG   HandlerThread:3673994 [system_info.py:__init__():46] System info init done
+2023-06-28 00:31:49,615 INFO    HandlerThread:3673994 [system_monitor.py:start():181] Starting system monitor
+2023-06-28 00:31:49,615 INFO    SystemMonitor:3673994 [system_monitor.py:_start():145] Starting system asset monitoring threads
+2023-06-28 00:31:49,617 INFO    HandlerThread:3673994 [system_monitor.py:probe():201] Collecting system info
+2023-06-28 00:31:49,617 INFO    SystemMonitor:3673994 [interfaces.py:start():190] Started cpu monitoring
+2023-06-28 00:31:49,619 INFO    SystemMonitor:3673994 [interfaces.py:start():190] Started disk monitoring
+2023-06-28 00:31:49,622 INFO    SystemMonitor:3673994 [interfaces.py:start():190] Started gpu monitoring
+2023-06-28 00:31:49,623 INFO    SystemMonitor:3673994 [interfaces.py:start():190] Started memory monitoring
+2023-06-28 00:31:49,625 INFO    SystemMonitor:3673994 [interfaces.py:start():190] Started network monitoring
+2023-06-28 00:31:49,636 DEBUG   HandlerThread:3673994 [system_info.py:probe():195] Probing system
+2023-06-28 00:31:49,636 DEBUG   HandlerThread:3673994 [system_info.py:probe():240] Probing system done
+2023-06-28 00:31:49,636 DEBUG   HandlerThread:3673994 [system_monitor.py:probe():210] {'os': 'Linux-5.19.0-42-generic-x86_64-with-glibc2.35', 'python': '3.10.6', 'heartbeatAt': '2023-06-27T15:31:49.636273', 'startedAt': '2023-06-27T15:31:48.245664', 'docker': None, 'cuda': None, 'args': ('launch-agent', '-e', 'keisuke-kamata', '-q', 'llm-japanese-evaluation-test'), 'state': 'running', 'host': 'olachinkeigpu', 'username': 'olachinkeigpu', 'executable': '/usr/bin/python3', 'cpu_count': 24, 'cpu_count_logical': 32, 'cpu_freq': {'current': 1.83678125, 'min': 800.0, 'max': 4787.5}, 'cpu_freq_per_core': [{'current': 2.0, 'min': 800.0, 'max': 5300.0}, {'current': 2.0, 'min': 800.0, 'max': 5300.0}, {'current': 1.116, 'min': 800.0, 'max': 5300.0}, {'current': 2.0, 'min': 800.0, 'max': 5300.0}, {'current': 1.148, 'min': 800.0, 'max': 5300.0}, {'current': 2.0, 'min': 800.0, 'max': 5300.0}, {'current': 1.417, 'min': 800.0, 'max': 5300.0}, {'current': 2.0, 'min': 800.0, 'max': 5300.0}, {'current': 1.38, 'min': 800.0, 'max': 5600.0}, {'current': 2.0, 'min': 800.0, 'max': 5600.0}, {'current': 1.645, 'min': 800.0, 'max': 5600.0}, {'current': 2.0, 'min': 800.0, 'max': 5600.0}, {'current': 2.0, 'min': 800.0, 'max': 5300.0}, {'current': 1.17, 'min': 800.0, 'max': 5300.0}, {'current': 1.307, 'min': 800.0, 'max': 5300.0}, {'current': 2.0, 'min': 800.0, 'max': 5300.0}, {'current': 2.0, 'min': 800.0, 'max': 4200.0}, {'current': 2.0, 'min': 800.0, 'max': 4200.0}, {'current': 2.0, 'min': 800.0, 'max': 4200.0}, {'current': 2.0, 'min': 800.0, 'max': 4200.0}, {'current': 2.0, 'min': 800.0, 'max': 4200.0}, {'current': 2.0, 'min': 800.0, 'max': 4200.0}, {'current': 2.0, 'min': 800.0, 'max': 4200.0}, {'current': 2.0, 'min': 800.0, 'max': 4200.0}, {'current': 2.0, 'min': 800.0, 'max': 4200.0}, {'current': 2.0, 'min': 800.0, 'max': 4200.0}, {'current': 2.0, 'min': 800.0, 'max': 4200.0}, {'current': 2.0, 'min': 800.0, 'max': 4200.0}, {'current': 2.0, 'min': 800.0, 'max': 4200.0}, {'current': 2.0, 'min': 800.0, 'max': 4200.0}, {'current': 2.0, 'min': 800.0, 'max': 4200.0}, {'current': 2.0, 'min': 800.0, 'max': 4200.0}], 'disk': {'total': 915.3232879638672, 'used': 133.43183517456055}, 'gpu': 'NVIDIA GeForce RTX 4090', 'gpu_count': 1, 'gpu_devices': [{'name': 'NVIDIA GeForce RTX 4090', 'memory_total': 25757220864}], 'memory': {'total': 62.56858825683594}}
+2023-06-28 00:31:49,636 INFO    HandlerThread:3673994 [system_monitor.py:probe():211] Finished collecting system info
+2023-06-28 00:31:49,636 INFO    HandlerThread:3673994 [system_monitor.py:probe():214] Publishing system info
+2023-06-28 00:31:49,636 DEBUG   HandlerThread:3673994 [system_info.py:_save_pip():51] Saving list of pip packages installed into the current environment
+2023-06-28 00:31:49,636 DEBUG   HandlerThread:3673994 [system_info.py:_save_pip():67] Saving pip packages done
+2023-06-28 00:31:49,636 DEBUG   HandlerThread:3673994 [system_info.py:_save_code():89] Saving code
+2023-06-28 00:31:49,636 WARNING HandlerThread:3673994 [system_info.py:_save_code():91] unable to save code -- program entry not found
+2023-06-28 00:31:49,637 DEBUG   HandlerThread:3673994 [system_info.py:_save_patches():127] Saving git patches
+2023-06-28 00:31:49,649 DEBUG   HandlerThread:3673994 [system_info.py:_save_patches():169] Saving git patches done
+2023-06-28 00:31:49,650 INFO    HandlerThread:3673994 [system_monitor.py:probe():216] Finished publishing system info
+2023-06-28 00:31:49,652 DEBUG   SenderThread:3673994 [sender.py:send():369] send: files
+2023-06-28 00:31:49,652 INFO    SenderThread:3673994 [sender.py:_save_file():1354] saving file wandb-metadata.json with policy now
+2023-06-28 00:31:49,652 INFO    SenderThread:3673994 [sender.py:_save_file():1354] saving file diff.patch with policy now
+2023-06-28 00:31:49,653 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: stop_status
+2023-06-28 00:31:49,653 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: stop_status
+2023-06-28 00:31:49,834 DEBUG   SenderThread:3673994 [sender.py:send():369] send: telemetry
+2023-06-28 00:31:49,957 INFO    Thread-12 :3673994 [dir_watcher.py:_on_file_created():272] file/dir created: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/wandb-summary.json
+2023-06-28 00:31:49,957 INFO    Thread-12 :3673994 [dir_watcher.py:_on_file_created():272] file/dir created: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/diff.patch
+2023-06-28 00:31:49,958 INFO    Thread-12 :3673994 [dir_watcher.py:_on_file_created():272] file/dir created: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/output.log
+2023-06-28 00:31:49,958 INFO    Thread-12 :3673994 [dir_watcher.py:_on_file_created():272] file/dir created: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/wandb-metadata.json
+2023-06-28 00:31:49,958 INFO    Thread-12 :3673994 [dir_watcher.py:_on_file_created():272] file/dir created: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/requirements.txt
+2023-06-28 00:31:50,420 INFO    wandb-upload_0:3673994 [upload_job.py:push():133] Uploaded file /tmp/tmpage_hgr6wandb/fck3oejg-wandb-metadata.json
+2023-06-28 00:31:50,423 INFO    wandb-upload_1:3673994 [upload_job.py:push():133] Uploaded file /tmp/tmpage_hgr6wandb/slm2wnef-diff.patch
+2023-06-28 00:31:51,956 INFO    Thread-12 :3673994 [dir_watcher.py:_on_file_modified():289] file/dir modified: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/output.log
+2023-06-28 00:31:52,890 DEBUG   SenderThread:3673994 [sender.py:send():369] send: exit
+2023-06-28 00:31:52,890 INFO    SenderThread:3673994 [sender.py:send_exit():574] handling exit code: 0
+2023-06-28 00:31:52,890 INFO    SenderThread:3673994 [sender.py:send_exit():576] handling runtime: 3
+2023-06-28 00:31:52,891 INFO    SenderThread:3673994 [sender.py:_save_file():1354] saving file wandb-summary.json with policy end
+2023-06-28 00:31:52,892 INFO    SenderThread:3673994 [sender.py:send_exit():582] send defer
+2023-06-28 00:31:52,892 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: defer
+2023-06-28 00:31:52,892 INFO    HandlerThread:3673994 [handler.py:handle_request_defer():170] handle defer: 0
+2023-06-28 00:31:52,892 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: defer
+2023-06-28 00:31:52,893 INFO    SenderThread:3673994 [sender.py:send_request_defer():598] handle sender defer: 0
+2023-06-28 00:31:52,893 INFO    SenderThread:3673994 [sender.py:transition_state():602] send defer: 1
+2023-06-28 00:31:52,893 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: defer
+2023-06-28 00:31:52,893 INFO    HandlerThread:3673994 [handler.py:handle_request_defer():170] handle defer: 1
+2023-06-28 00:31:52,894 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: defer
+2023-06-28 00:31:52,894 INFO    SenderThread:3673994 [sender.py:send_request_defer():598] handle sender defer: 1
+2023-06-28 00:31:52,894 INFO    SenderThread:3673994 [sender.py:transition_state():602] send defer: 2
+2023-06-28 00:31:52,894 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: defer
+2023-06-28 00:31:52,894 INFO    HandlerThread:3673994 [handler.py:handle_request_defer():170] handle defer: 2
+2023-06-28 00:31:52,894 INFO    HandlerThread:3673994 [system_monitor.py:finish():190] Stopping system monitor
+2023-06-28 00:31:52,895 DEBUG   SystemMonitor:3673994 [system_monitor.py:_start():159] Starting system metrics aggregation loop
+2023-06-28 00:31:52,895 DEBUG   SystemMonitor:3673994 [system_monitor.py:_start():166] Finished system metrics aggregation loop
+2023-06-28 00:31:52,895 INFO    HandlerThread:3673994 [interfaces.py:finish():202] Joined cpu monitor
+2023-06-28 00:31:52,895 DEBUG   SystemMonitor:3673994 [system_monitor.py:_start():170] Publishing last batch of metrics
+2023-06-28 00:31:52,895 INFO    HandlerThread:3673994 [interfaces.py:finish():202] Joined disk monitor
+2023-06-28 00:31:52,915 INFO    HandlerThread:3673994 [interfaces.py:finish():202] Joined gpu monitor
+2023-06-28 00:31:52,915 INFO    HandlerThread:3673994 [interfaces.py:finish():202] Joined memory monitor
+2023-06-28 00:31:52,915 INFO    HandlerThread:3673994 [interfaces.py:finish():202] Joined network monitor
+2023-06-28 00:31:52,915 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: defer
+2023-06-28 00:31:52,915 INFO    SenderThread:3673994 [sender.py:send_request_defer():598] handle sender defer: 2
+2023-06-28 00:31:52,915 INFO    SenderThread:3673994 [sender.py:transition_state():602] send defer: 3
+2023-06-28 00:31:52,915 DEBUG   SenderThread:3673994 [sender.py:send():369] send: stats
+2023-06-28 00:31:52,916 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: defer
+2023-06-28 00:31:52,916 INFO    HandlerThread:3673994 [handler.py:handle_request_defer():170] handle defer: 3
+2023-06-28 00:31:52,916 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: defer
+2023-06-28 00:31:52,916 INFO    SenderThread:3673994 [sender.py:send_request_defer():598] handle sender defer: 3
+2023-06-28 00:31:52,916 INFO    SenderThread:3673994 [sender.py:transition_state():602] send defer: 4
+2023-06-28 00:31:52,916 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: defer
+2023-06-28 00:31:52,916 INFO    HandlerThread:3673994 [handler.py:handle_request_defer():170] handle defer: 4
+2023-06-28 00:31:52,916 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: defer
+2023-06-28 00:31:52,916 INFO    SenderThread:3673994 [sender.py:send_request_defer():598] handle sender defer: 4
+2023-06-28 00:31:52,916 INFO    SenderThread:3673994 [sender.py:transition_state():602] send defer: 5
+2023-06-28 00:31:52,916 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: defer
+2023-06-28 00:31:52,916 INFO    HandlerThread:3673994 [handler.py:handle_request_defer():170] handle defer: 5
+2023-06-28 00:31:52,916 DEBUG   SenderThread:3673994 [sender.py:send():369] send: summary
+2023-06-28 00:31:52,917 INFO    SenderThread:3673994 [sender.py:_save_file():1354] saving file wandb-summary.json with policy end
+2023-06-28 00:31:52,917 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: defer
+2023-06-28 00:31:52,917 INFO    SenderThread:3673994 [sender.py:send_request_defer():598] handle sender defer: 5
+2023-06-28 00:31:52,917 INFO    SenderThread:3673994 [sender.py:transition_state():602] send defer: 6
+2023-06-28 00:31:52,917 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: defer
+2023-06-28 00:31:52,917 INFO    HandlerThread:3673994 [handler.py:handle_request_defer():170] handle defer: 6
+2023-06-28 00:31:52,917 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: defer
+2023-06-28 00:31:52,917 INFO    SenderThread:3673994 [sender.py:send_request_defer():598] handle sender defer: 6
+2023-06-28 00:31:52,918 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: status_report
+2023-06-28 00:31:52,956 INFO    Thread-12 :3673994 [dir_watcher.py:_on_file_modified():289] file/dir modified: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/wandb-summary.json
+2023-06-28 00:31:53,144 INFO    SenderThread:3673994 [sender.py:transition_state():602] send defer: 7
+2023-06-28 00:31:53,145 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: defer
+2023-06-28 00:31:53,145 INFO    HandlerThread:3673994 [handler.py:handle_request_defer():170] handle defer: 7
+2023-06-28 00:31:53,145 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: defer
+2023-06-28 00:31:53,145 INFO    SenderThread:3673994 [sender.py:send_request_defer():598] handle sender defer: 7
+2023-06-28 00:31:53,848 INFO    SenderThread:3673994 [sender.py:transition_state():602] send defer: 8
+2023-06-28 00:31:53,848 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: defer
+2023-06-28 00:31:53,848 INFO    HandlerThread:3673994 [handler.py:handle_request_defer():170] handle defer: 8
+2023-06-28 00:31:53,849 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: defer
+2023-06-28 00:31:53,849 INFO    SenderThread:3673994 [sender.py:send_request_defer():598] handle sender defer: 8
+2023-06-28 00:31:53,849 INFO    SenderThread:3673994 [job_builder.py:build():232] Attempting to build job artifact
+2023-06-28 00:31:53,849 INFO    SenderThread:3673994 [job_builder.py:build():266] no source found
+2023-06-28 00:31:53,850 INFO    SenderThread:3673994 [sender.py:transition_state():602] send defer: 9
+2023-06-28 00:31:53,850 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: defer
+2023-06-28 00:31:53,850 INFO    HandlerThread:3673994 [handler.py:handle_request_defer():170] handle defer: 9
+2023-06-28 00:31:53,850 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: defer
+2023-06-28 00:31:53,851 INFO    SenderThread:3673994 [sender.py:send_request_defer():598] handle sender defer: 9
+2023-06-28 00:31:53,851 INFO    SenderThread:3673994 [dir_watcher.py:finish():359] shutting down directory watcher
+2023-06-28 00:31:53,890 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: poll_exit
+2023-06-28 00:31:53,956 INFO    Thread-12 :3673994 [dir_watcher.py:_on_file_modified():289] file/dir modified: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/config.yaml
+2023-06-28 00:31:53,957 INFO    SenderThread:3673994 [dir_watcher.py:_on_file_modified():289] file/dir modified: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/output.log
+2023-06-28 00:31:53,958 INFO    SenderThread:3673994 [dir_watcher.py:finish():389] scan: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files
+2023-06-28 00:31:53,958 INFO    SenderThread:3673994 [dir_watcher.py:finish():403] scan save: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/diff.patch diff.patch
+2023-06-28 00:31:53,958 INFO    SenderThread:3673994 [dir_watcher.py:finish():403] scan save: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/wandb-metadata.json wandb-metadata.json
+2023-06-28 00:31:53,958 INFO    SenderThread:3673994 [dir_watcher.py:finish():403] scan save: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/wandb-summary.json wandb-summary.json
+2023-06-28 00:31:53,958 INFO    SenderThread:3673994 [dir_watcher.py:finish():403] scan save: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/requirements.txt requirements.txt
+2023-06-28 00:31:53,959 INFO    SenderThread:3673994 [dir_watcher.py:finish():403] scan save: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/output.log output.log
+2023-06-28 00:31:53,959 INFO    SenderThread:3673994 [dir_watcher.py:finish():403] scan save: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/config.yaml config.yaml
+2023-06-28 00:31:53,959 INFO    SenderThread:3673994 [sender.py:transition_state():602] send defer: 10
+2023-06-28 00:31:53,959 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: poll_exit
+2023-06-28 00:31:53,973 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: defer
+2023-06-28 00:31:53,973 INFO    HandlerThread:3673994 [handler.py:handle_request_defer():170] handle defer: 10
+2023-06-28 00:31:53,978 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: defer
+2023-06-28 00:31:53,978 INFO    SenderThread:3673994 [sender.py:send_request_defer():598] handle sender defer: 10
+2023-06-28 00:31:53,978 INFO    SenderThread:3673994 [file_pusher.py:finish():159] shutting down file pusher
+2023-06-28 00:31:54,447 INFO    wandb-upload_3:3673994 [upload_job.py:push():133] Uploaded file /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/requirements.txt
+2023-06-28 00:31:54,451 INFO    wandb-upload_2:3673994 [upload_job.py:push():133] Uploaded file /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/wandb-summary.json
+2023-06-28 00:31:54,600 INFO    wandb-upload_0:3673994 [upload_job.py:push():133] Uploaded file /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/output.log
+2023-06-28 00:31:54,660 INFO    wandb-upload_1:3673994 [upload_job.py:push():133] Uploaded file /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/files/config.yaml
+2023-06-28 00:31:54,860 INFO    Thread-11 (_thread_body):3673994 [sender.py:transition_state():602] send defer: 11
+2023-06-28 00:31:54,861 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: defer
+2023-06-28 00:31:54,861 INFO    HandlerThread:3673994 [handler.py:handle_request_defer():170] handle defer: 11
+2023-06-28 00:31:54,862 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: defer
+2023-06-28 00:31:54,862 INFO    SenderThread:3673994 [sender.py:send_request_defer():598] handle sender defer: 11
+2023-06-28 00:31:54,862 INFO    SenderThread:3673994 [file_pusher.py:join():164] waiting for file pusher
+2023-06-28 00:31:54,862 INFO    SenderThread:3673994 [sender.py:transition_state():602] send defer: 12
+2023-06-28 00:31:54,862 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: defer
+2023-06-28 00:31:54,863 INFO    HandlerThread:3673994 [handler.py:handle_request_defer():170] handle defer: 12
+2023-06-28 00:31:54,863 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: defer
+2023-06-28 00:31:54,863 INFO    SenderThread:3673994 [sender.py:send_request_defer():598] handle sender defer: 12
+2023-06-28 00:31:54,891 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: poll_exit
+2023-06-28 00:31:55,242 INFO    SenderThread:3673994 [sender.py:transition_state():602] send defer: 13
+2023-06-28 00:31:55,242 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: poll_exit
+2023-06-28 00:31:55,242 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: defer
+2023-06-28 00:31:55,243 INFO    HandlerThread:3673994 [handler.py:handle_request_defer():170] handle defer: 13
+2023-06-28 00:31:55,243 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: defer
+2023-06-28 00:31:55,243 INFO    SenderThread:3673994 [sender.py:send_request_defer():598] handle sender defer: 13
+2023-06-28 00:31:55,244 INFO    SenderThread:3673994 [sender.py:transition_state():602] send defer: 14
+2023-06-28 00:31:55,244 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: defer
+2023-06-28 00:31:55,244 INFO    HandlerThread:3673994 [handler.py:handle_request_defer():170] handle defer: 14
+2023-06-28 00:31:55,245 DEBUG   SenderThread:3673994 [sender.py:send():369] send: final
+2023-06-28 00:31:55,245 DEBUG   SenderThread:3673994 [sender.py:send():369] send: footer
+2023-06-28 00:31:55,245 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: defer
+2023-06-28 00:31:55,245 INFO    SenderThread:3673994 [sender.py:send_request_defer():598] handle sender defer: 14
+2023-06-28 00:31:55,246 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: poll_exit
+2023-06-28 00:31:55,247 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: poll_exit
+2023-06-28 00:31:55,248 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: poll_exit
+2023-06-28 00:31:55,248 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: poll_exit
+2023-06-28 00:31:55,249 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: server_info
+2023-06-28 00:31:55,249 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: get_summary
+2023-06-28 00:31:55,250 DEBUG   SenderThread:3673994 [sender.py:send_request():396] send_request: server_info
+2023-06-28 00:31:55,253 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: sampled_history
+2023-06-28 00:31:55,652 DEBUG   HandlerThread:3673994 [handler.py:handle_request():144] handle_request: shutdown
+2023-06-28 00:31:55,652 INFO    HandlerThread:3673994 [handler.py:finish():854] shutting down handler
+2023-06-28 00:31:56,250 INFO    WriterThread:3673994 [datastore.py:close():298] close: /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230628_003148-9cujtztm/run-9cujtztm.wandb
+2023-06-28 00:31:56,652 INFO    SenderThread:3673994 [sender.py:finish():1526] shutting down sender
+2023-06-28 00:31:56,652 INFO    SenderThread:3673994 [file_pusher.py:finish():159] shutting down file pusher
+2023-06-28 00:31:56,652 INFO    SenderThread:3673994 [file_pusher.py:join():164] waiting for file pusher

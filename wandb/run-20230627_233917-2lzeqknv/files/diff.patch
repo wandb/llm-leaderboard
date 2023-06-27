@@ -1,0 +1,11 @@
+diff --git a/src/japanese-task-evaluation.py b/src/japanese-task-evaluation.py
+index 69acba6..ebcbde8 100644
+--- a/src/japanese-task-evaluation.py
++++ b/src/japanese-task-evaluation.py
+@@ -126,5 +126,6 @@ if __name__ == "__main__":
+         table = wandb.Table(columns=['model_name ','MARC-ja', 'JSTS-pearson', 'JSTS-spearman', 'JNLI', 'JSQuAD-EM', 'JSQuAD-F1', 'JCommonsenseQA'] ,
+                             data=table.data)
+         run.log({'result_table':table}) 
++        run.log_code()
+         run.finish()
+ 
