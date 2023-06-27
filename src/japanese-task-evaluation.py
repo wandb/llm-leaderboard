@@ -126,5 +126,6 @@ if __name__ == "__main__":
         table = wandb.Table(columns=['model_name ','MARC-ja', 'JSTS-pearson', 'JSTS-spearman', 'JNLI', 'JSQuAD-EM', 'JSQuAD-F1', 'JCommonsenseQA'] ,
                             data=table.data)
         run.log({'result_table':table}) 
+        run.log_code()
         run.finish()
 
