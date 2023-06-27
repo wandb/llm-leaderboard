@@ -1,5 +1,3 @@
-import os
-import time
 import numpy as np
 import torch
 import wandb
@@ -13,13 +11,13 @@ from langchain.chains import SequentialChain
 from huggingface_hub import HfApi, list_models
 from huggingface_hub.inference_api import InferenceApi
 from prompt_template import get_template
-from utils import eval_MARC_ja, eval_JSTS, eval_JNLI
+from utils import eval_MARC_ja, eval_JSTS, eval_JNLI, eval_JSQuAD, eval_JCommonsenseQA
 
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--wandb_project",
-        default="LLM_evaluation_Japan_fs",
+        default="LLM_evaluation_Japan_public",
         type=str,
         help="The wandb project to use for storing artifacts",
     )
@@ -59,9 +57,8 @@ if __name__ == "__main__":
         else:
             template_type = "others"
 
-
         #MRAC-ja --------------------------------------------------------
-        dataset = load_dataset("shunk031/JGLUE", name=eval_category[0], cache_dir='root/.cache/huggingface/datasets/')
+        dataset = load_dataset("shunk031/JGLUE", name=eval_category[0])
         pipe = pipeline(
             "text-generation", model=model, tokenizer=tokenizer,
             max_new_tokens=5, device=0, torch_dtype=torch.float16,
@@ -72,8 +69,7 @@ if __name__ == "__main__":
         marc_ja_score = eval_MARC_ja(dataset,llm_chain)
         table_contents.append(marc_ja_score)
         #JSTS--------------------------------------------------------
-        """
-        dataset = load_dataset("shunk031/JGLUE", name=eval_category[1], cache_dir='root/.cache/huggingface/datasets/')
+        dataset = load_dataset("shunk031/JGLUE", name=eval_category[1])
         pipe = pipeline(
             "text-generation", model=model, tokenizer=tokenizer,
             max_new_tokens=12, device=0, torch_dtype=torch.float16,
@@ -84,10 +80,8 @@ if __name__ == "__main__":
         jsts_peason, jsts_spearman= eval_JSTS(dataset,llm_chain)
         table_contents.append(jsts_peason)
         table_contents.append(jsts_spearman)
-        """
         #JNLI--------------------------------------------------------
-        """
-        dataset = load_dataset("shunk031/JGLUE", name=eval_category[2], cache_dir='root/.cache/huggingface/datasets/')
+        dataset = load_dataset("shunk031/JGLUE", name=eval_category[2])
         pipe = pipeline(
             "text-generation", model=model, tokenizer=tokenizer,
             max_new_tokens=3, device=0, torch_dtype=torch.float16,
@@ -96,25 +90,40 @@ if __name__ == "__main__":
         llm = HuggingFacePipeline(pipeline=pipe)
         llm_chain = LLMChain(llm=llm, prompt=get_template(eval_category[2], template_type), output_key="output")
         jnli_score = eval_JNLI(dataset,llm_chain)
-        #table_contents.append(jnli_score)
-        """
+        table_contents.append(jnli_score)
+
         #JSQuAD--------------------------------------------------------
-        #JSQuAD_EM = np.mean(exact_match_scores)
-        #JSQuAD_F1 = np.mean(f1_scores)
-        #table_contents.append(JSQuAD_EM)
-        #table_contents.append(JSQuAD_F1)
 
+        dataset = load_dataset("shunk031/JGLUE", name=eval_category[3])
+        pipe = pipeline(
+            "text-generation", model=model, tokenizer=tokenizer, eos_token_id=0, pad_token_id=0,
+            max_new_tokens=25, device=0, torch_dtype=torch.float16, top_p=1, top_k=0,
+            temperature=0.1, repetition_penalty=1.1,
+        )
+        llm = HuggingFacePipeline(pipeline=pipe)
+        llm_chain = LLMChain(llm=llm, prompt=get_template(eval_category[3], template_type), output_key="output")
+        JSQuAD_EM, JSQuAD_F1= eval_JSQuAD(dataset,llm_chain)
+        
+        table_contents.append(JSQuAD_EM)
+        table_contents.append(JSQuAD_F1)
+ 
         #JCommonsenseQA--------------------------------------------------------
+        dataset = load_dataset("shunk031/JGLUE", name=eval_category[4])
+        pipe = pipeline(
+            "text-generation", model=model, tokenizer=tokenizer, eos_token_id=0, pad_token_id=0,
+            max_new_tokens=5, device=0, torch_dtype=torch.float16, top_p=1, top_k=0,
+            temperature=0.1, repetition_penalty=1.1,
+            )
+        llm = HuggingFacePipeline(pipeline=pipe)
+        llm_chain = LLMChain(llm=llm, prompt=get_template(eval_category[4], template_type), output_key="output")
 
-        #table_contents.append(JCommonsenseQA)
+        JCommonsenseQA = eval_JCommonsenseQA(dataset,llm_chain)
+        table_contents.append(JCommonsenseQA)
+
         #End--------------------------------------------------------
-        #table = wandb.Table(columns=['model_name ','MARC-ja', 'JSTS-pearson', 'JSTS-spearman', 'JNLI', 'JSQuAD-EM', 'JSQuAD-F1', 'JCommonsenseQA'] ,
-        #                    data=[table_contents])
-        #table = wandb.Table(columns=['model_name ','MARC-ja', 'JSTS-pearson', 'JSTS-spearman', 'JNLI', 'JSQuAD-EM', 'JSQuAD-F1', 'JCommonsenseQA'] ,
-        #                    data=table.data)
-        table = wandb.Table(columns=['model_name ','MARC-ja'] ,
+        table = wandb.Table(columns=['model_name ','MARC-ja', 'JSTS-pearson', 'JSTS-spearman', 'JNLI', 'JSQuAD-EM', 'JSQuAD-F1', 'JCommonsenseQA'] ,
                             data=[table_contents])
-        table = wandb.Table(columns=['model_name ','MARC-ja'] ,
+        table = wandb.Table(columns=['model_name ','MARC-ja', 'JSTS-pearson', 'JSTS-spearman', 'JNLI', 'JSQuAD-EM', 'JSQuAD-F1', 'JCommonsenseQA'] ,
                             data=table.data)
         run.log({'result_table':table}) 
         run.finish()
