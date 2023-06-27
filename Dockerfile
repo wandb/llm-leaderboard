@@ -4,7 +4,6 @@ COPY requirements.txt .
 
 RUN pip install --upgrade pip
 RUN pip install --upgrade setuptools
-RUN pip install -q git+https://github.com/huggingface/peft.git
 RUN pip install --no-cache-dir -r requirements.txt
 
 
