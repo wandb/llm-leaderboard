@@ -1,1 +1,5 @@
 .env
+src/wandb/
+src/__pycache__/
+wandb/
+__pycache__/
