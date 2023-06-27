@@ -1,0 +1,7 @@
+langchain==0.0.165
+wandb==0.15.2
+jupyterlab
+huggingface_hub==0.15.1
+transformers==4.30.2
+torch==2.0.1
+datasets==2.13.1
