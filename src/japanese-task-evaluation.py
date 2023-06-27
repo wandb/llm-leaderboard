@@ -1,0 +1,121 @@
+import os
+import time
+import numpy as np
+import torch
+import wandb
+import argparse
+from datasets import load_dataset
+from wandb.integration.langchain import WandbTracer
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import DataCollatorForLanguageModeling, TrainingArguments, Trainer, TrainerCallback, pipeline
+from langchain import PromptTemplate, HuggingFaceHub, HuggingFacePipeline, LLMChain, OpenAI
+from langchain.chains import SequentialChain
+from huggingface_hub import HfApi, list_models
+from huggingface_hub.inference_api import InferenceApi
+from prompt_template import get_template
+from utils import eval_MARC_ja, eval_JSTS, eval_JNLI
+
+def get_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--wandb_project",
+        default="LLM_evaluation_Japan_fs",
+        type=str,
+        help="The wandb project to use for storing artifacts",
+    )
+    parser.add_argument(
+        "--wandb_entity",
+        default="wandb",
+        type=str,
+        help="The wandb's entity",
+    )
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        required =True,
+        help="name of model to evaluate",
+    )
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_parser()
+    args = parser.parse_args()
+    table_contents = []
+    table_contents.append(args.model_name)
+    eval_category = ['MARC-ja', 'JSTS', 'JNLI', 'JSQuAD', 'JCommonsenseQA']
+    with wandb.init(project=args.wandb_project, entity=args.wandb_entity, config=args, name=args.model_name,job_type="eval") as run:
+        args = wandb.config
+        #prepare tokenizer, model and prompts for each evaluation category
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+        model = AutoModelForCausalLM.from_pretrained(args.model_name, trust_remote_code=True)
+
+        if "rinna" in args.model_name:
+            template_type = "rinna"
+        elif "alpaca" in args.model_name:
+            template_type = "alpaca"
+        elif "pythia" in args.model_name:
+            template_type = "pythia"
+        else:
+            template_type = "others"
+
+
+        #MRAC-ja --------------------------------------------------------
+        dataset = load_dataset("shunk031/JGLUE", name=eval_category[0], cache_dir='root/.cache/huggingface/datasets/')
+        pipe = pipeline(
+            "text-generation", model=model, tokenizer=tokenizer,
+            max_new_tokens=5, device=0, torch_dtype=torch.float16,
+            temperature=0.8, repetition_penalty=1.2,
+        )
+        llm = HuggingFacePipeline(pipeline=pipe)
+        llm_chain = LLMChain(llm=llm, prompt=get_template(eval_category[0], template_type), output_key="output")
+        marc_ja_score = eval_MARC_ja(dataset,llm_chain)
+        table_contents.append(marc_ja_score)
+        #JSTS--------------------------------------------------------
+        """
+        dataset = load_dataset("shunk031/JGLUE", name=eval_category[1], cache_dir='root/.cache/huggingface/datasets/')
+        pipe = pipeline(
+            "text-generation", model=model, tokenizer=tokenizer,
+            max_new_tokens=12, device=0, torch_dtype=torch.float16,
+            temperature=0.8, repetition_penalty=1.2,
+        )
+        llm = HuggingFacePipeline(pipeline=pipe)
+        llm_chain = LLMChain(llm=llm, prompt=get_template(eval_category[1], template_type), output_key="output")
+        jsts_peason, jsts_spearman= eval_JSTS(dataset,llm_chain)
+        table_contents.append(jsts_peason)
+        table_contents.append(jsts_spearman)
+        """
+        #JNLI--------------------------------------------------------
+        """
+        dataset = load_dataset("shunk031/JGLUE", name=eval_category[2], cache_dir='root/.cache/huggingface/datasets/')
+        pipe = pipeline(
+            "text-generation", model=model, tokenizer=tokenizer,
+            max_new_tokens=3, device=0, torch_dtype=torch.float16,
+            temperature=0.8, repetition_penalty=1.2,
+        )
+        llm = HuggingFacePipeline(pipeline=pipe)
+        llm_chain = LLMChain(llm=llm, prompt=get_template(eval_category[2], template_type), output_key="output")
+        jnli_score = eval_JNLI(dataset,llm_chain)
+        #table_contents.append(jnli_score)
+        """
+        #JSQuAD--------------------------------------------------------
+        #JSQuAD_EM = np.mean(exact_match_scores)
+        #JSQuAD_F1 = np.mean(f1_scores)
+        #table_contents.append(JSQuAD_EM)
+        #table_contents.append(JSQuAD_F1)
+
+        #JCommonsenseQA--------------------------------------------------------
+
+        #table_contents.append(JCommonsenseQA)
+        #End--------------------------------------------------------
+        #table = wandb.Table(columns=['model_name ','MARC-ja', 'JSTS-pearson', 'JSTS-spearman', 'JNLI', 'JSQuAD-EM', 'JSQuAD-F1', 'JCommonsenseQA'] ,
+        #                    data=[table_contents])
+        #table = wandb.Table(columns=['model_name ','MARC-ja', 'JSTS-pearson', 'JSTS-spearman', 'JNLI', 'JSQuAD-EM', 'JSQuAD-F1', 'JCommonsenseQA'] ,
+        #                    data=table.data)
+        table = wandb.Table(columns=['model_name ','MARC-ja'] ,
+                            data=[table_contents])
+        table = wandb.Table(columns=['model_name ','MARC-ja'] ,
+                            data=table.data)
+        run.log({'result_table':table}) 
+        run.finish()
+
