@@ -13,7 +13,9 @@ from huggingface_hub.inference_api import InferenceApi
 from prompt_template import get_template
 from utils import eval_MARC_ja, eval_JSTS, eval_JNLI, eval_JSQuAD, eval_JCommonsenseQA
 import sys
-sys.setdefaultencoding("utf-8")
+sys.stdin.reconfigure(encoding="utf-8")
+sys.stdout.reconfigure(encoding="utf-8")
+
 
 def get_parser():
     parser = argparse.ArgumentParser()
