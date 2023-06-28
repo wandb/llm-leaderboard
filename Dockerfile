@@ -1,4 +1,4 @@
-FROM rapidsai/rapidsai:cuda11.8-runtime-ubuntu22.04-py3.10
+FROM rapidsai/rapidsai:cuda11.8-runtime-ubuntu20.04-py3.9
 WORKDIR /app
 COPY requirements.txt .
 
