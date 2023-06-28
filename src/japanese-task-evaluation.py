@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import wandb
 import argparse
+import sentencepiece
 from datasets import load_dataset
 from wandb.integration.langchain import WandbTracer
 from transformers import AutoModelForCausalLM, AutoTokenizer
