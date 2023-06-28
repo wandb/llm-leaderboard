@@ -33,6 +33,12 @@ def get_parser():
         required =True,
         help="name of model to evaluate",
     )
+    parser.add_argument(
+        "--prompt_type",
+        type=str,
+        required =True,
+        help="name of prompt type to use ('rinna','alpaca','pythia','others')",
+    )
     return parser
 
 
@@ -47,15 +53,7 @@ if __name__ == "__main__":
         #prepare tokenizer, model and prompts for each evaluation category
         tokenizer = AutoTokenizer.from_pretrained(args.model_name)
         model = AutoModelForCausalLM.from_pretrained(args.model_name, trust_remote_code=True)
-
-        if "rinna" in args.model_name:
-            template_type = "rinna"
-        elif "alpaca" in args.model_name:
-            template_type = "alpaca"
-        elif "pythia" in args.model_name:
-            template_type = "pythia"
-        else:
-            template_type = "others"
+        template_type = args.prompt_type
 
         #MRAC-ja --------------------------------------------------------
         dataset = load_dataset("shunk031/JGLUE", name=eval_category[0])
