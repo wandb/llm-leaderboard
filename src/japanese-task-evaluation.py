@@ -12,22 +12,19 @@ from huggingface_hub import HfApi, list_models
 from huggingface_hub.inference_api import InferenceApi
 from prompt_template import get_template
 from utils import eval_MARC_ja, eval_JSTS, eval_JNLI, eval_JSQuAD, eval_JCommonsenseQA
-import sys
-sys.stdin.reconfigure(encoding="utf-8")
-sys.stdout.reconfigure(encoding="utf-8")
 
 
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--wandb_project",
-        default="LLM_evaluation_Japan_public",
+        required =True,
         type=str,
         help="The wandb project to use for storing artifacts",
     )
     parser.add_argument(
         "--wandb_entity",
-        default="wandb",
+        required =True,
         type=str,
         help="The wandb's entity",
     )
