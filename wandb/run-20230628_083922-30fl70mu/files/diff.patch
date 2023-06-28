@@ -1,0 +1,44 @@
+diff --git a/Dockerfile b/Dockerfile
+index ee520cc..0ecc55c 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,4 +1,4 @@
+-FROM rapidsai/rapidsai:cuda11.8-runtime-ubuntu22.04-py3.10
++FROM rapidsai/rapidsai:cuda11.8-runtime-ubuntu20.04-py3.9
+ WORKDIR /app
+ COPY requirements.txt .
+ 
+diff --git a/wandb/debug-cli.olachinkeigpu.log b/wandb/debug-cli.olachinkeigpu.log
+index 92797d7..7dc174b 100644
+--- a/wandb/debug-cli.olachinkeigpu.log
++++ b/wandb/debug-cli.olachinkeigpu.log
+@@ -1 +1,2 @@
+ 2023-06-28 00:31:44 INFO === Launch-agent called with kwargs {'ctx': <click.core.Context object at 0x7f6f31d67700>, 'project': None, 'entity': 'keisuke-kamata', 'queues': ('llm-japanese-evaluation-test',), 'max_jobs': None, 'config': None, 'url': None}  CLI Version: 0.15.4 ===
++2023-06-28 08:39:20 INFO === Launch-agent called with kwargs {'ctx': <click.core.Context object at 0x7f7a39143790>, 'project': None, 'entity': 'keisuke-kamata', 'queues': ('llm-japanese-evaluation-test',), 'max_jobs': None, 'config': None, 'url': None}  CLI Version: 0.15.4 ===
+diff --git a/wandb/debug-internal.log b/wandb/debug-internal.log
+index 760f032..dcf7828 120000
+--- a/wandb/debug-internal.log
++++ b/wandb/debug-internal.log
+@@ -1 +1 @@
+-run-20230628_003148-9cujtztm/logs/debug-internal.log
+\ No newline at end of file
++run-20230628_083922-30fl70mu/logs/debug-internal.log
+\ No newline at end of file
+diff --git a/wandb/debug.log b/wandb/debug.log
+index fee4374..0d573ca 120000
+--- a/wandb/debug.log
++++ b/wandb/debug.log
+@@ -1 +1 @@
+-run-20230628_003148-9cujtztm/logs/debug.log
+\ No newline at end of file
++run-20230628_083922-30fl70mu/logs/debug.log
+\ No newline at end of file
+diff --git a/wandb/latest-run b/wandb/latest-run
+index 94c25ee..223196c 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-run-20230628_003148-9cujtztm
+\ No newline at end of file
++run-20230628_083922-30fl70mu
+\ No newline at end of file
