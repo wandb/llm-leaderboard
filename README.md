@@ -10,6 +10,8 @@ LLMの進展が激しいですが、様々なLLMに対して日本語のタス�
 
 ## Launchとは？
 W&B Launchは、ML開発者がモダンなMLワークフローを支える高スケールで専門的なハードウェアをシームレスに使用することを可能にし、学習のスケールアップやモデル評価フローの構築、推論のためのモデル読み込みなどの煩わしさを解消してくれます。
+<img width="1257" alt="image" src="https://github.com/olachinkei/llm-evaluation-japanese-task/assets/135185730/01cc695d-65ee-4736-aa9c-a2b2b3eb682a">
+
 
 詳しくは、[W＆BのDoc](https://docs.wandb.ai/ja/guides/launch#docusaurus_skipToContent_fallback)を参考にしてください！
 
@@ -24,6 +26,13 @@ W&B Launchは、ML開発者がモダンなMLワークフローを支える高ス
 3. ジョブのページから"Launch"のボタンを押し、キューを作成してください。キューを実行する際に、overridesの中のargsを変更してください。run_configの中の変数は変更する必要はありません。
     * --model_name" : Hugging Face上のモデルの名前を指定してください
     * --prompt_type (alpaca, rinna, pythia, others) : 使用するプロンプトを選択してください。プロンプトの詳細は、src/prompt_template.pyを参考にしてください。現状のversionでは下記の4つのパターンがあります。
+4. 結果の確認
+  　* 出力されるwandbのURLから、W&BのUI上で結果を確認してください
+
+
+<img width="1246" alt="image" src="https://github.com/olachinkei/llm-evaluation-japanese-task/assets/135185730/27a4ee92-4cdf-4365-9bb6-f43b57092f41">
+
+
 
 ## 注意
 Hugging Face上のすべてのモデルの実行を検証しているわけではありませんので、ご容赦ください。もしエラーがあれば、keisuke.kamata@wandb.comまで連絡してください。
