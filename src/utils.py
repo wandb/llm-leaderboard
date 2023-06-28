@@ -16,11 +16,11 @@ def eval_MARC_ja(dataset,llm_chain):
     y_trues = []
     y_preds = []
     overall_chain = SequentialChain(
-                        chains=[llm_chain], 
-                        input_variables = llm_chain.input_keys+['label'],
-                        output_variables = llm_chain.output_keys+["label"],
-                        verbose=True
-                    )
+        chains=[llm_chain], 
+        input_variables = llm_chain.input_keys+['label'],
+        output_variables = llm_chain.output_keys+["label"],
+        verbose=False
+    )
     for i in tqdm(range(len(dataset['validation']))):
         sentence = dataset['validation'][i]['sentence']
         y_true = dataset['validation'][i]['label']
@@ -49,11 +49,11 @@ def eval_MARC_ja(dataset,llm_chain):
 
 def eval_JSTS(dataset,llm_chain):
     overall_chain = SequentialChain(
-                        chains=[llm_chain], 
-                        input_variables = llm_chain.input_keys+['label'],
-                        output_variables = llm_chain.output_keys+["label"],
-                        verbose=True
-                    )
+        chains=[llm_chain], 
+        input_variables = llm_chain.input_keys+['label'],
+        output_variables = llm_chain.output_keys+["label"],
+        verbose=False
+    )
 
     y_trues = []
     y_preds = []
@@ -87,7 +87,7 @@ def eval_JNLI(dataset,llm_chain):
         chains=[llm_chain], 
         input_variables = llm_chain.input_keys+['label'],
         output_variables = llm_chain.output_keys+["label"],
-        verbose=True
+        verbose=False
     )
     y_trues = []
     y_preds = []
@@ -122,7 +122,7 @@ def eval_JSQuAD(dataset,llm_chain):
         chains=[llm_chain], 
         input_variables = llm_chain.input_keys+['label'],
         output_variables = llm_chain.output_keys+["label"],
-        verbose=True
+        verbose=False
     )
     max_new_tokens = 25
 
@@ -175,7 +175,7 @@ def eval_JCommonsenseQA(dataset,llm_chain):
         chains=[llm_chain], 
         input_variables = llm_chain.input_keys+['label'],
         output_variables = llm_chain.output_keys+["label"],
-        verbose=True
+        verbose=False
     )
     y_trues = []
     y_preds = []
