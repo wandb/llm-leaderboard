@@ -5,5 +5,5 @@ huggingface_hub==0.15.1
 torch==2.0.1
 datasets==2.13.1
 mojimoji==0.0.12
-python-Levenshtein＝＝0.21.1
+python-Levenshtein==0.21.1
 transformers==4.30.2
