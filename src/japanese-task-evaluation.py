@@ -53,11 +53,11 @@ if __name__ == "__main__":
     with wandb.init(project=args.wandb_project, entity=args.wandb_entity, config=args, name=args.model_name,job_type="eval") as run:
         args = wandb.config
         #prepare tokenizer, model and prompts for each evaluation category
-        if "rinna" in args.model_name:
-            tokenizer = AutoTokenizer.from_pretrained(args.model_name,use_fast=False)
-        else:
-            tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-            
+        #if "rinna" in args.model_name:
+        #    tokenizer = AutoTokenizer.from_pretrained(args.model_name,use_fast=False)
+        #else:
+        #    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name)
         model = AutoModelForCausalLM.from_pretrained(args.model_name, trust_remote_code=True)
         template_type = args.prompt_type
 
