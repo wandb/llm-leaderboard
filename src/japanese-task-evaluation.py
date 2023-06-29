@@ -14,31 +14,30 @@ from huggingface_hub.inference_api import InferenceApi
 from prompt_template import get_template
 from utils import eval_MARC_ja, eval_JSTS, eval_JNLI, eval_JSQuAD, eval_JCommonsenseQA
 
-
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--wandb_project",
-        required =True,
+        default = "LLM_evaluation_Japan_public",
         type=str,
         help="The wandb project to use for storing artifacts",
     )
     parser.add_argument(
         "--wandb_entity",
-        required =True,
+        default = "LLM_evaluation_Japan_public",
         type=str,
         help="The wandb's entity",
     )
     parser.add_argument(
         "--model_name",
         type=str,
-        required =True,
+        default = "cyberagent/open-calm-small",
         help="name of model to evaluate",
     )
     parser.add_argument(
         "--prompt_type",
         type=str,
-        required =True,
+        default = "others",
         help="name of prompt type to use ('rinna','alpaca','pythia','others')",
     )
     return parser
@@ -52,11 +51,6 @@ if __name__ == "__main__":
     eval_category = ['MARC-ja', 'JSTS', 'JNLI', 'JSQuAD', 'JCommonsenseQA']
     with wandb.init(project=args.wandb_project, entity=args.wandb_entity, config=args, name=args.model_name,job_type="eval") as run:
         args = wandb.config
-        #prepare tokenizer, model and prompts for each evaluation category
-        #if "rinna" in args.model_name:
-        #    tokenizer = AutoTokenizer.from_pretrained(args.model_name,use_fast=False)
-        #else:
-        #    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
         tokenizer = AutoTokenizer.from_pretrained(args.model_name)
         model = AutoModelForCausalLM.from_pretrained(args.model_name, trust_remote_code=True)
         template_type = args.prompt_type
@@ -76,7 +70,7 @@ if __name__ == "__main__":
         dataset = load_dataset("shunk031/JGLUE", name=eval_category[1])
         pipe = pipeline(
             "text-generation", model=model, tokenizer=tokenizer,
-            max_new_tokens=12, device=0, torch_dtype=torch.float16,
+            max_new_tokens=3, device=0, torch_dtype=torch.float16,
             temperature=0.8, repetition_penalty=1.2,
         )
         llm = HuggingFacePipeline(pipeline=pipe)
