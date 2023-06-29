@@ -24,20 +24,18 @@ def get_parser():
     )
     parser.add_argument(
         "--wandb_entity",
-        default = "LLM_evaluation_Japan_public",
+        default = "wandb",
         type=str,
         help="The wandb's entity",
     )
     parser.add_argument(
         "--model_name",
         type=str,
-        default = "cyberagent/open-calm-small",
         help="name of model to evaluate",
     )
     parser.add_argument(
         "--prompt_type",
         type=str,
-        default = "others",
         help="name of prompt type to use ('rinna','alpaca','pythia','others')",
     )
     return parser
@@ -51,7 +49,12 @@ if __name__ == "__main__":
     eval_category = ['MARC-ja', 'JSTS', 'JNLI', 'JSQuAD', 'JCommonsenseQA']
     with wandb.init(project=args.wandb_project, entity=args.wandb_entity, config=args, name=args.model_name,job_type="eval") as run:
         args = wandb.config
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+
+        if "rinna" in args.model_name:
+            tokenizer = AutoTokenizer.from_pretrained(args.model_name,use_fast=False)
+        else:
+            tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+            
         model = AutoModelForCausalLM.from_pretrained(args.model_name, trust_remote_code=True)
         template_type = args.prompt_type
 
