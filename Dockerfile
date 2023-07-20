@@ -6,7 +6,7 @@ COPY src/japanese-task-evaluation.py ./
 RUN pip install --upgrade pip
 RUN pip install --upgrade setuptools
 RUN pip install --no-cache-dir -r requirements.txt
-RUN huggingface-cli login --token $HUGGINGFACE_TOKEN
+
 
 CMD ["python", "japanese-task-evaluation.py"]
 
