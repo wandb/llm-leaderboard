@@ -1,0 +1,128 @@
+2023-07-03 17:36:36,792 INFO    MainThread:3856401 [wandb_setup.py:_flush():76] Current SDK version is 0.15.4
+2023-07-03 17:36:36,792 INFO    MainThread:3856401 [wandb_setup.py:_flush():76] Configure stats pid to 3856401
+2023-07-03 17:36:36,792 INFO    MainThread:3856401 [wandb_setup.py:_flush():76] Loading settings from /home/olachinkeigpu/.config/wandb/settings
+2023-07-03 17:36:36,792 INFO    MainThread:3856401 [wandb_setup.py:_flush():76] Loading settings from /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/settings
+2023-07-03 17:36:36,792 INFO    MainThread:3856401 [wandb_setup.py:_flush():76] Loading settings from environment variables: {}
+2023-07-03 17:36:36,792 INFO    MainThread:3856401 [wandb_setup.py:_flush():76] Applying setup settings: {'_cli_only_mode': True}
+2023-07-03 17:36:36,792 INFO    MainThread:3856401 [wandb_init.py:_log_setup():507] Logging user logs to /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230703_173636-r8812f8v/logs/debug.log
+2023-07-03 17:36:36,792 INFO    MainThread:3856401 [wandb_init.py:_log_setup():508] Logging internal logs to /home/olachinkeigpu/Project/llm-evaluation-japanese-task/wandb/run-20230703_173636-r8812f8v/logs/debug-internal.log
+2023-07-03 17:36:36,792 INFO    MainThread:3856401 [wandb_init.py:init():547] calling init triggers
+2023-07-03 17:36:36,792 INFO    MainThread:3856401 [wandb_init.py:init():554] wandb.init called with sweep_config: {}
+config: {}
+2023-07-03 17:36:36,792 INFO    MainThread:3856401 [wandb_init.py:init():596] starting backend
+2023-07-03 17:36:36,792 INFO    MainThread:3856401 [wandb_init.py:init():600] setting up manager
+2023-07-03 17:36:36,793 INFO    MainThread:3856401 [backend.py:_multiprocessing_setup():106] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2023-07-03 17:36:36,795 INFO    MainThread:3856401 [wandb_init.py:init():606] backend started and connected
+2023-07-03 17:36:36,796 INFO    MainThread:3856401 [wandb_init.py:init():703] updated telemetry
+2023-07-03 17:36:36,796 INFO    MainThread:3856401 [wandb_init.py:init():736] communicating run to backend with 60.0 second timeout
+2023-07-03 17:36:37,321 INFO    MainThread:3856401 [wandb_run.py:_on_init():2176] communicating current version
+2023-07-03 17:36:37,496 INFO    MainThread:3856401 [wandb_run.py:_on_init():2185] got version response 
+2023-07-03 17:36:37,496 INFO    MainThread:3856401 [wandb_init.py:init():787] starting run threads in backend
+2023-07-03 17:36:37,517 INFO    MainThread:3856401 [wandb_run.py:_console_start():2155] atexit reg
+2023-07-03 17:36:37,517 INFO    MainThread:3856401 [wandb_run.py:_redirect():2010] redirect: SettingsConsole.WRAP_RAW
+2023-07-03 17:36:37,517 INFO    MainThread:3856401 [wandb_run.py:_redirect():2075] Wrapping output streams.
+2023-07-03 17:36:37,517 INFO    MainThread:3856401 [wandb_run.py:_redirect():2100] Redirects installed.
+2023-07-03 17:36:37,517 INFO    MainThread:3856401 [wandb_init.py:init():828] run started, returning control to user process
+2023-07-03 17:36:37,518 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:36:48,501 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:37:09,512 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:37:30,498 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:37:51,512 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:38:12,511 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:38:33,581 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:38:54,581 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:39:15,621 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:39:36,632 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:39:57,621 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:40:18,628 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:40:39,609 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:41:00,610 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:41:21,622 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:41:42,627 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:42:03,630 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:42:24,634 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:42:45,646 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:43:06,593 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:43:27,620 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:43:48,580 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:44:09,510 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:44:30,474 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:44:51,477 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:45:12,531 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:45:33,624 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:45:54,647 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:46:15,720 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:46:36,758 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:46:57,741 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:47:18,719 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:47:39,751 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:48:00,769 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:48:21,777 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:48:42,776 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:49:03,804 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:49:24,795 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:49:45,771 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:50:06,743 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:50:27,754 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:50:48,782 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:51:09,813 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:51:30,794 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:51:51,805 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:52:12,806 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:52:33,785 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v polling on queues llm-jap-evaluation-kei-gpu, running 0 out of a maximum of 1 jobs
+2023-07-03 17:52:44,228 INFO    MainThread:3856401 [agent.py:run_job():333] [35mlaunch:[0m Launch agent received job:
+{'runQueueItemId': 'UnVuUXVldWVJdGVtOjM3OTYxMTE3MQ==',
+ 'runSpec': {'_wandb_job_collection_id': 'QXJ0aWZhY3RDb2xsZWN0aW9uOjc5NDQ3NjMx',
+             'author': 'keisuke-kamata',
+             'entity': 'wandb',
+             'job': 'wandb/LLM_evaluation_Japan_public/job-source-LLM_evaluation_Japan_public-japanese-task-evaluation.py:latest',
+             'overrides': {'args': ['--wandb_project',
+                                    'LLM_evaluation_Japan_public',
+                                    '--wandb_entity',
+                                    'wandb',
+                                    '--model_name',
+                                    'rinna/japanese-gpt-neox-3.6b-instruction-ppo',
+                                    '--prompt_type',
+                                    'rinna'],
+                           'entry_point': [],
+                           'run_config': {'model_name': 'rinna/japanese-gpt-neox-3.6b-instruction-ppo',
+                                          'prompt_type': 'rinna',
+                                          'wandb_entity': 'wandb',
+                                          'wandb_project': 'LLM_evaluation_Japan_public'}},
+             'project': 'LLM_evaluation_Japan_public',
+             'resource': 'local-container',
+             'resource_args': {'local-container': {'env': 'LANG=ja_JP.UTF-8',
+                                                   'gpus': 'all'}}}}
+
+2023-07-03 17:52:44,455 INFO    MainThread:3856401 [agent.py:run_job():338] Parsing launch spec
+2023-07-03 17:52:44,456 INFO    Thread-1 (worker):3856401 [agent.py:_thread_run_job():486] Fetching and validating project...
+2023-07-03 17:52:46,015 INFO    Thread-1 (worker):3856401 [agent.py:_thread_run_job():488] Fetching resource...
+2023-07-03 17:52:46,015 INFO    Thread-1 (worker):3856401 [agent.py:_thread_run_job():493] Loading backend
+2023-07-03 17:52:46,015 INFO    Thread-1 (worker):3856401 [docker_builder.py:login():105] [35mlaunch:[0m No registry configured, skipping login.
+2023-07-03 17:52:46,016 INFO    Thread-1 (worker):3856401 [agent.py:_thread_run_job():506] Backend loaded...
+2023-07-03 17:52:46,238 INFO    Thread-1 (worker):3856401 [local_container.py:run():129] Building docker image...
+2023-07-03 17:52:46,283 INFO    Thread-1 (worker):3856401 [utils.py:docker_image_exists():636] Checking if base image exists...
+2023-07-03 17:52:46,289 INFO    Thread-1 (worker):3856401 [local_container.py:run():136] Docker image built with uri wandb__llm_evaluation_japan_public__job-source-llm_evaluation_japan_public-japanese-task-evaluation.py:4bb19ec2
+2023-07-03 17:52:54,893 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:53:15,547 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:53:36,805 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:53:57,430 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:54:18,064 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:54:38,752 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:54:59,408 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:55:20,002 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:55:40,628 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:56:01,277 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:56:21,883 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:56:42,506 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:57:03,163 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:57:23,906 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:57:44,548 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:58:05,150 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:58:25,765 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:58:46,479 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:59:07,195 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:59:27,927 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:59:48,664 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 17:59:49,314 INFO    MainThread:3856401 [agent.py:print_status():260] agent r8812f8v running 1 out of a maximum of 1 jobs: 140711888152128
+2023-07-03 18:00:01,969 WARNING MsgRouterThr:3856401 [router.py:message_loop():77] message_loop has been closed
