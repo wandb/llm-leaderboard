@@ -10,8 +10,10 @@ from langchain import PromptTemplate, HuggingFaceHub, HuggingFacePipeline, LLMCh
 from langchain.chains import SequentialChain
 from huggingface_hub import HfApi, list_models
 from huggingface_hub.inference_api import InferenceApi
+from huggingface_hub import login
 from prompt_template import get_template
 from utils import eval_MARC_ja, eval_JSTS, eval_JNLI, eval_JSQuAD, eval_JCommonsenseQA
+
 
 "can be changed in W&B Launch"
 config = dict(
@@ -20,6 +22,8 @@ config = dict(
     model_name="cyberagent/open-calm-small",
     prompt_type="other",
     )
+
+login(os.environ['HUGGINGFACE_TOKEN'])
 
 if __name__ == "__main__":
     table_contents = []
