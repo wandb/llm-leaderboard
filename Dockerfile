@@ -11,5 +11,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 EXPOSE 8888
 
 # SSHおよびJupyterLabの実行コマンド
-CMD huggingface-cli login --token $HUGGINGFACE_TOKEN
 CMD jupyter-lab --ip 0.0.0.0 --allow-root -b localhost
