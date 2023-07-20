@@ -8,7 +8,5 @@ RUN pip install --upgrade setuptools
 RUN pip install --no-cache-dir -r requirements.txt
 RUN huggingface-cli login --token $HUGGINGFACE_TOKEN
 
-
-# SSHおよびJupyterLabの実行コマンド
 CMD ["python", "japanese-task-evaluation.py"]
 
