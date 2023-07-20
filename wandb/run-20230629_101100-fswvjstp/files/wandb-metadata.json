@@ -1,0 +1,203 @@
+{
+    "os": "Linux-5.19.0-42-generic-x86_64-with-glibc2.35",
+    "python": "3.10.6",
+    "heartbeatAt": "2023-06-29T01:11:01.101792",
+    "startedAt": "2023-06-29T01:11:00.133467",
+    "docker": null,
+    "cuda": null,
+    "args": [
+        "launch-agent",
+        "-e",
+        "keisuke-kamata",
+        "-q",
+        "llm-jap-evaluation-kei-gpu"
+    ],
+    "state": "running",
+    "host": "olachinkeigpu",
+    "username": "olachinkeigpu",
+    "executable": "/usr/bin/python3",
+    "cpu_count": 24,
+    "cpu_count_logical": 32,
+    "cpu_freq": {
+        "current": 3.7534062499999994,
+        "min": 800.0,
+        "max": 4787.5
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 5.3,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 5.3,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 5.3,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 5.3,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 5.3,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 5.3,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 5.3,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 5.283,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 5.3,
+            "min": 800.0,
+            "max": 5600.0
+        },
+        {
+            "current": 2.0,
+            "min": 800.0,
+            "max": 5600.0
+        },
+        {
+            "current": 5.3,
+            "min": 800.0,
+            "max": 5600.0
+        },
+        {
+            "current": 5.286,
+            "min": 800.0,
+            "max": 5600.0
+        },
+        {
+            "current": 5.3,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 2.0,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 5.242,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 2.0,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 4.233,
+            "min": 800.0,
+            "max": 4200.0
+        },
+        {
+            "current": 2.0,
+            "min": 800.0,
+            "max": 4200.0
+        },
+        {
+            "current": 4.199,
+            "min": 800.0,
+            "max": 4200.0
+        },
+        {
+            "current": 4.195,
+            "min": 800.0,
+            "max": 4200.0
+        },
+        {
+            "current": 2.0,
+            "min": 800.0,
+            "max": 4200.0
+        },
+        {
+            "current": 4.23,
+            "min": 800.0,
+            "max": 4200.0
+        },
+        {
+            "current": 4.214,
+            "min": 800.0,
+            "max": 4200.0
+        },
+        {
+            "current": 2.0,
+            "min": 800.0,
+            "max": 4200.0
+        },
+        {
+            "current": 2.0,
+            "min": 800.0,
+            "max": 4200.0
+        },
+        {
+            "current": 2.0,
+            "min": 800.0,
+            "max": 4200.0
+        },
+        {
+            "current": 4.205,
+            "min": 800.0,
+            "max": 4200.0
+        },
+        {
+            "current": 2.0,
+            "min": 800.0,
+            "max": 4200.0
+        },
+        {
+            "current": 2.0,
+            "min": 800.0,
+            "max": 4200.0
+        },
+        {
+            "current": 2.0,
+            "min": 800.0,
+            "max": 4200.0
+        },
+        {
+            "current": 2.0,
+            "min": 800.0,
+            "max": 4200.0
+        },
+        {
+            "current": 2.0,
+            "min": 800.0,
+            "max": 4200.0
+        }
+    ],
+    "disk": {
+        "total": 915.3232879638672,
+        "used": 158.55863189697266
+    },
+    "gpu": "NVIDIA GeForce RTX 4090",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "NVIDIA GeForce RTX 4090",
+            "memory_total": 25757220864
+        }
+    ],
+    "memory": {
+        "total": 62.56858825683594
+    }
+}
