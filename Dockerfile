@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.0.0-runtime-ubuntu22.04
+FROM rapidsai/rapidsai:cuda11.8-base-ubuntu22.04-py3.10
 WORKDIR /app
 COPY requirements.txt .
 COPY src/japanese-task-evaluation.py ./
