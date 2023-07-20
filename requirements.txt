@@ -4,7 +4,7 @@ jupyterlab
 huggingface_hub==0.15.1
 torch==2.0.1
 datasets==2.13.1
-transformers==4.30.2
+transformers==4.31.0
 chardet==5.1.0
 fuzzywuzzy==0.18.0
 sentencepiece==0.1.99
