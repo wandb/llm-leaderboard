@@ -132,11 +132,11 @@ def rinna(instruction):
 def pythia(instruction):
     return f"<|prompter|>{instruction}<|endoftext|><|assistant|> "
 
-def others(instruction):
+def other(instruction):
     return instruction
 
 
-temp_dict = {'alpaca':alpaca, 'rinna':rinna, 'pythia':pythia, 'others': others}
+temp_dict = {'alpaca':alpaca, 'rinna':rinna, 'pythia':pythia, 'other': other}
 prompt_dict = {}
 instructions = [marc_ja_inst, jsts_insct, jnli_inst, jsquad_inst, jcqa_inst]
 eval_dict = {}
