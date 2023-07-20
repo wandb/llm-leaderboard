@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 import wandb
-import argparse
 import sentencepiece
 from datasets import load_dataset
 from wandb.integration.langchain import WandbTracer
@@ -14,49 +13,28 @@ from huggingface_hub.inference_api import InferenceApi
 from prompt_template import get_template
 from utils import eval_MARC_ja, eval_JSTS, eval_JNLI, eval_JSQuAD, eval_JCommonsenseQA
 
-def get_parser():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--wandb_project",
-        default = "LLM_evaluation_Japan_public",
-        type=str,
-        help="The wandb project to use for storing artifacts",
+"can be changed in W&B Launch"
+config = dict(
+    wandb_project="LLM_evaluation_Japan_public",
+    wandb_entity="wandb",
+    model_name="cyberagent/open-calm-small",
+    prompt_type="other",
     )
-    parser.add_argument(
-        "--wandb_entity",
-        default = "wandb",
-        type=str,
-        help="The wandb's entity",
-    )
-    parser.add_argument(
-        "--model_name",
-        type=str,
-        help="name of model to evaluate",
-    )
-    parser.add_argument(
-        "--prompt_type",
-        type=str,
-        help="name of prompt type to use ('rinna','alpaca','pythia','others')",
-    )
-    return parser
-
 
 if __name__ == "__main__":
-    parser = get_parser()
-    args = parser.parse_args()
     table_contents = []
-    table_contents.append(args.model_name)
+    table_contents.append(config.model_name)
     eval_category = ['MARC-ja', 'JSTS', 'JNLI', 'JSQuAD', 'JCommonsenseQA']
-    with wandb.init(project=args.wandb_project, entity=args.wandb_entity, config=args, name=args.model_name,job_type="eval") as run:
-        args = wandb.config
+    with wandb.init(project=config.wandb_project, entity=config.wandb_entity, config=config, name=config.model_name,job_type="eval") as run:
+        config = wandb.config
 
-        if "rinna" in args.model_name:
-            tokenizer = AutoTokenizer.from_pretrained(args.model_name,use_fast=False)
+        if "rinna" in config.model_name:
+            tokenizer = AutoTokenizer.from_pretrained(config.model_name,use_fast=False)
         else:
-            tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+            tokenizer = AutoTokenizer.from_pretrained(config.model_name)
             
-        model = AutoModelForCausalLM.from_pretrained(args.model_name, trust_remote_code=True)
-        template_type = args.prompt_type
+        model = AutoModelForCausalLM.from_pretrained(config.model_name, trust_remote_code=True)
+        template_type = config.prompt_type
 
         #MRAC-ja --------------------------------------------------------
         dataset = load_dataset("shunk031/JGLUE", name=eval_category[0])
@@ -128,5 +106,4 @@ if __name__ == "__main__":
                             data=table.data)
         run.log({'result_table':table}) 
         run.log_code()
-        run.finish()
 
