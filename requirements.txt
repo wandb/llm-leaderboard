@@ -7,5 +7,6 @@ transformers==4.31.0
 chardet==5.1.0
 fuzzywuzzy==0.18.0
 sentencepiece==0.1.99
+python-Levenshtein==0.21.1
 #mojimoji==0.0.12
 #python-Levenshtein==0.21.1

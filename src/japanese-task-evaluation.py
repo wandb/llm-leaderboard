@@ -16,7 +16,7 @@ from prompt_template import get_template
 from utils import eval_MARC_ja, eval_JSTS, eval_JNLI, eval_JSQuAD, eval_JCommonsenseQA
 
 
-"can be changed in W&B Launch"
+"can be changed in W&B Launch's setting"
 config = dict(
     wandb_project="LLM_evaluation_Japan_public",
     wandb_entity="wandb",
@@ -28,7 +28,7 @@ login(os.environ['HUGGINGFACE_TOKEN'])
 
 if __name__ == "__main__":
     table_contents = []
-    table_contents.append(config.model_name)
+    table_contents.append(config["model_name"])
     eval_category = ['MARC-ja', 'JSTS', 'JNLI', 'JSQuAD', 'JCommonsenseQA']
     with wandb.init(project=config.wandb_project, entity=config.wandb_entity, config=config, name=config.model_name,job_type="eval") as run:
         config = wandb.config
