@@ -26,6 +26,7 @@ config = dict(
 
 login(os.environ['HUGGINGFACE_TOKEN'])
 
+
 if __name__ == "__main__":
     table_contents = []
     table_contents.append(config["model_name"])
