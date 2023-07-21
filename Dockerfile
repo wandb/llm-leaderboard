@@ -2,6 +2,8 @@ FROM rapidsai/rapidsai:cuda11.8-base-ubuntu22.04-py3.10
 WORKDIR /app
 COPY requirements.txt .
 COPY src/japanese-task-evaluation.py ./
+COPY src/utils.py ./
+COPY src/prompt_template.py ./
 
 RUN pip install --upgrade pip
 RUN pip install --upgrade setuptools
