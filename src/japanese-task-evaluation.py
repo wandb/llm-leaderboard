@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import wandb
 import sentencepiece
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 from wandb.integration.langchain import WandbTracer
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers import DataCollatorForLanguageModeling, TrainingArguments, Trainer, TrainerCallback, pipeline
@@ -22,10 +22,10 @@ config = dict(
     wandb_entity="wandb",
     model_name="cyberagent/open-calm-small",
     prompt_type="other",
+    use_artifact = False
     )
 
 login(os.environ['HUGGINGFACE_TOKEN'])
-
 
 if __name__ == "__main__":
     table_contents = []
@@ -43,7 +43,12 @@ if __name__ == "__main__":
         template_type = config.prompt_type
 
         #MRAC-ja --------------------------------------------------------
-        dataset = load_dataset("shunk031/JGLUE", name=eval_category[0])
+        if config.use_artifact:
+            artifact = run.use_artifact('wandb/LLM_evaluation_Japan/shunk031-JGLUE-MRAC-ja:v0', type='dataset')
+            artifact_dir = artifact.download()
+            dataset = load_from_disk(artifact_dir)
+        else:
+            dataset = load_dataset("shunk031/JGLUE", name=eval_category[0])
         pipe = pipeline(
             "text-generation", model=model, tokenizer=tokenizer,
             max_new_tokens=5, device=0, torch_dtype=torch.float16,
@@ -54,7 +59,12 @@ if __name__ == "__main__":
         marc_ja_score = eval_MARC_ja(dataset,llm_chain)
         table_contents.append(marc_ja_score)
         #JSTS--------------------------------------------------------
-        dataset = load_dataset("shunk031/JGLUE", name=eval_category[1])
+        if config.use_artifact:
+            artifact = run.use_artifact('wandb/LLM_evaluation_Japan/shunk031-JGLUE-JSTS:v0', type='dataset')
+            artifact_dir = artifact.download()
+            dataset = load_from_disk(artifact_dir)
+        else:
+            dataset = load_dataset("shunk031/JGLUE", name=eval_category[1])
         pipe = pipeline(
             "text-generation", model=model, tokenizer=tokenizer,
             max_new_tokens=3, device=0, torch_dtype=torch.float16,
@@ -66,7 +76,12 @@ if __name__ == "__main__":
         table_contents.append(jsts_peason)
         table_contents.append(jsts_spearman)
         #JNLI--------------------------------------------------------
-        dataset = load_dataset("shunk031/JGLUE", name=eval_category[2])
+        if config.use_artifact:
+            artifact = run.use_artifact('wandb/LLM_evaluation_Japan/shunk031-JGLUE-JNLI:v0', type='dataset')
+            artifact_dir = artifact.download()
+            dataset = load_from_disk(artifact_dir)
+        else:
+            dataset = load_dataset("shunk031/JGLUE", name=eval_category[2])
         pipe = pipeline(
             "text-generation", model=model, tokenizer=tokenizer,
             max_new_tokens=3, device=0, torch_dtype=torch.float16,
@@ -78,8 +93,12 @@ if __name__ == "__main__":
         table_contents.append(jnli_score)
 
         #JSQuAD--------------------------------------------------------
-
-        dataset = load_dataset("shunk031/JGLUE", name=eval_category[3])
+        if config.use_artifact:
+            artifact = run.use_artifact('wandb/LLM_evaluation_Japan/shunk031-JGLUE-JSQuAD:v0', type='dataset')
+            artifact_dir = artifact.download()
+            dataset = load_from_disk(artifact_dir)
+        else:
+            dataset = load_dataset("shunk031/JGLUE", name=eval_category[3])
         pipe = pipeline(
             "text-generation", model=model, tokenizer=tokenizer, eos_token_id=0, pad_token_id=0,
             max_new_tokens=25, device=0, torch_dtype=torch.float16, top_p=1, top_k=0,
@@ -93,7 +112,12 @@ if __name__ == "__main__":
         table_contents.append(JSQuAD_F1)
  
         #JCommonsenseQA--------------------------------------------------------
-        dataset = load_dataset("shunk031/JGLUE", name=eval_category[4])
+        if config.use_artifact:
+            artifact = run.use_artifact('wandb/LLM_evaluation_Japan/shunk031-JGLUE-JCommonsenseQA:v0', type='dataset')
+            artifact_dir = artifact.download()
+            dataset = load_from_disk(artifact_dir)
+        else:
+            dataset = load_dataset("shunk031/JGLUE", name=eval_category[4])
         pipe = pipeline(
             "text-generation", model=model, tokenizer=tokenizer, eos_token_id=0, pad_token_id=0,
             max_new_tokens=5, device=0, torch_dtype=torch.float16, top_p=1, top_k=0,
