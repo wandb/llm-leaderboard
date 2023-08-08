@@ -1,5 +1,5 @@
 langchain==0.0.257
-wandb==0.15.2
+wandb==0.15.8
 huggingface_hub==0.16.3
 torch==2.0.1
 datasets==2.13.1
