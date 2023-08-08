@@ -3,7 +3,7 @@ apturl==0.5.2
 attrs==21.2.0
 blinker==1.4
 brlapi==0.8.3
-certifi==2020.6.20
+certifi==2023.7.22
 chardet==5.1.0
 charset-normalizer==3.1.0
 click==8.0.3
