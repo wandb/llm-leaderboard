@@ -48,7 +48,7 @@ psutil==5.9.0
 ptyprocess==0.7.0
 pycairo==1.20.1
 pycups==2.0.1
-pygments==2.11.2
+pygments==2.15.0
 pygobject==3.42.1
 pyjwt==2.3.0
 pymacaroons==0.13.0
