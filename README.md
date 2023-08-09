@@ -18,7 +18,7 @@ W&B Launchは、ML開発者がモダンなMLワークフローを支える高ス
 
 
 # 実行のステップ
-実行のプロセスは、W&BのReport "[W&B Launchを使ってHugging Face上のLLMを日本語タスクJGLEUに対して評価してみましょう！](https://wandb.ai/wandb/LLM_evaluation_Japan_public/reports/W-B-Launch-Hugging-Face-LLM-JGLEU---Vmlldzo0NzU2MzIz)"にて解説をしているので、そちらを参照して下さい。
+実行のプロセスは、W&BのReport "[W&B Launchを使ってHuggingFace上のLLMを日本語タスクJGLEUで評価](https://wandb.ai/wandb/LLM_evaluation_Japan_public/reports/W-B-Launch-Hugging-Face-LLM-JGLEU---Vmlldzo0NzU2MzIz)"にて解説をしているので、そちらを参照して下さい。
 
 # 注意
 Hugging Face上のすべてのモデルの実行を検証しているわけではありませんので、ご容赦ください。
