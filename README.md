@@ -6,7 +6,7 @@ LLMの進展が激しいですが、様々なLLMに対して日本語のタス�
 
 [W&B REPORT: LLMのJGLUEによる日本語タスクベンチマーク](https://wandb.ai/wandb/LLM_evaluation_Japan/reports/LLM-JGLUE---Vmlldzo0NTUzMDE2 "LLMのJGLUEによる日本語タスクベンチマーク")
 
-そしてW&BのLaucnhを用いて、この評価が誰でも自身の環境で、上記のレポート内で行った評価を行うことができるようにプロジェクトを公開しました！
+そしてW&BのLaucnhを用いて、この評価が誰でも自身の環境で、上記のレポート内で行った評価を行うことができるようにプロジェクトも公開しました
 
 
 # Launchとは？
