@@ -44,7 +44,7 @@ if __name__ == "__main__":
 
         #MRAC-ja --------------------------------------------------------
         if config.use_artifact:
-            artifact = run.use_artifact('wandb/LLM_evaluation_Japan/shunk031-JGLUE-MRAC-ja:v0', type='dataset')
+            artifact = run.use_artifact('wandb/LLM_evaluation_Japan/JGLUE-MRAC-ja:v0', type='dataset')
             artifact_dir = artifact.download()
             dataset = load_from_disk(artifact_dir)
         else:
@@ -60,7 +60,7 @@ if __name__ == "__main__":
         table_contents.append(marc_ja_score)
         #JSTS--------------------------------------------------------
         if config.use_artifact:
-            artifact = run.use_artifact('wandb/LLM_evaluation_Japan/shunk031-JGLUE-JSTS:v0', type='dataset')
+            artifact = run.use_artifact('wandb/LLM_evaluation_Japan/JGLUE-JSTS:v0', type='dataset')
             artifact_dir = artifact.download()
             dataset = load_from_disk(artifact_dir)
         else:
@@ -77,7 +77,7 @@ if __name__ == "__main__":
         table_contents.append(jsts_spearman)
         #JNLI--------------------------------------------------------
         if config.use_artifact:
-            artifact = run.use_artifact('wandb/LLM_evaluation_Japan/shunk031-JGLUE-JNLI:v0', type='dataset')
+            artifact = run.use_artifact('wandb/LLM_evaluation_Japan/JGLUE-JNLI:v0', type='dataset')
             artifact_dir = artifact.download()
             dataset = load_from_disk(artifact_dir)
         else:
@@ -94,7 +94,7 @@ if __name__ == "__main__":
 
         #JSQuAD--------------------------------------------------------
         if config.use_artifact:
-            artifact = run.use_artifact('wandb/LLM_evaluation_Japan/shunk031-JGLUE-JSQuAD:v0', type='dataset')
+            artifact = run.use_artifact('wandb/LLM_evaluation_Japan/JGLUE-JSQuAD:v0', type='dataset')
             artifact_dir = artifact.download()
             dataset = load_from_disk(artifact_dir)
         else:
@@ -113,7 +113,7 @@ if __name__ == "__main__":
  
         #JCommonsenseQA--------------------------------------------------------
         if config.use_artifact:
-            artifact = run.use_artifact('wandb/LLM_evaluation_Japan/shunk031-JGLUE-JCommonsenseQA:v0', type='dataset')
+            artifact = run.use_artifact('wandb/LLM_evaluation_Japan/JGLUE-JCommonsenseQA:v0', type='dataset')
             artifact_dir = artifact.download()
             dataset = load_from_disk(artifact_dir)
         else:
