@@ -4,7 +4,8 @@ import torch
 import wandb
 import sentencepiece
 from datasets import load_dataset, load_from_disk
-from wandb.integration.langchain import WandbTracer
+#from wandb.integration.langchain import WandbTracer
+from langchain.callbacks.tracers import WandbTracer
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers import DataCollatorForLanguageModeling, TrainingArguments, Trainer, TrainerCallback, pipeline
 from langchain import PromptTemplate, HuggingFaceHub, HuggingFacePipeline, LLMChain, OpenAI
