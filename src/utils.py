@@ -71,6 +71,8 @@ def eval_JSTS(dataset,llm_chain):
     y_preds = np.nan_to_num(y_preds, nan=2)
     jsts_peason = pearsonr(y_trues, np.array(y_preds).astype(float).clip(0,5))[0]
     jsts_spearman = spearmanr(y_trues, np.array(y_preds).astype(float).clip(0,5))[0]
+    jsts_peason=np.nan_to_num(jsts_peason, nan=0)
+    jsts_spearman=np.nan_to_num(jsts_spearman, nan=0)
     return jsts_peason, jsts_spearman
 
 def parse_float(input_str):
