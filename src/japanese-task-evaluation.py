@@ -34,7 +34,7 @@ if __name__ == "__main__":
         config = wandb.config
         table_contents = []
         table_contents.append(config["model_name"])
-        result = 'one' if test == 1 else 'other'
+        
         if "rinna" in config.model_name:
             tokenizer = AutoTokenizer.from_pretrained(config.model_name,use_fast=False)
         else:
