@@ -34,12 +34,15 @@ if __name__ == "__main__":
         config = wandb.config
         table_contents = []
         table_contents.append(config["model_name"])
-
+        result = 'one' if test == 1 else 'other'
         if "rinna" in config.model_name:
             tokenizer = AutoTokenizer.from_pretrained(config.model_name,use_fast=False)
         else:
             tokenizer = AutoTokenizer.from_pretrained(config.model_name)
-            
+        if "llama2" in config.model_name:
+            temperature = 1e-9
+        else:
+            temperature = 0
         model = AutoModelForCausalLM.from_pretrained(config.model_name, trust_remote_code=True)
         template_type = config.prompt_type
 
@@ -52,7 +55,7 @@ if __name__ == "__main__":
             dataset = load_dataset("shunk031/JGLUE", name=eval_category[0])
         pipe = pipeline(
             "text-generation", model=model, tokenizer=tokenizer, eos_token_id=tokenizer.eos_token_id, pad_token_id=tokenizer.pad_token_id,
-            max_new_tokens=5, device=0, torch_dtype=torch.float16, temperature=0.0, 
+            max_new_tokens=5, device=0, torch_dtype=torch.float16, temperature=temperature, 
         )
         llm = HuggingFacePipeline(pipeline=pipe)
         llm_chain = LLMChain(llm=llm, prompt=get_template(eval_category[0], template_type), output_key="output")
@@ -67,7 +70,7 @@ if __name__ == "__main__":
             dataset = load_dataset("shunk031/JGLUE", name=eval_category[1])
         pipe = pipeline(
             "text-generation", model=model, tokenizer=tokenizer, eos_token_id=tokenizer.eos_token_id, pad_token_id=tokenizer.pad_token_id,
-            max_new_tokens=3, device=0, torch_dtype=torch.float16, temperature=0.0,
+            max_new_tokens=3, device=0, torch_dtype=torch.float16, temperature=temperature,
         )
         llm = HuggingFacePipeline(pipeline=pipe)
         llm_chain = LLMChain(llm=llm, prompt=get_template(eval_category[1], template_type), output_key="output")
@@ -83,7 +86,7 @@ if __name__ == "__main__":
             dataset = load_dataset("shunk031/JGLUE", name=eval_category[2])
         pipe = pipeline(
             "text-generation", model=model, tokenizer=tokenizer, eos_token_id=tokenizer.eos_token_id, pad_token_id=tokenizer.pad_token_id,
-            max_new_tokens=3, device=0, torch_dtype=torch.float16, temperature=0.0,
+            max_new_tokens=3, device=0, torch_dtype=torch.float16, temperature=temperature,
         )
         llm = HuggingFacePipeline(pipeline=pipe)
         llm_chain = LLMChain(llm=llm, prompt=get_template(eval_category[2], template_type), output_key="output")
@@ -99,7 +102,7 @@ if __name__ == "__main__":
             dataset = load_dataset("shunk031/JGLUE", name=eval_category[3])
         pipe = pipeline(
             "text-generation", model=model, tokenizer=tokenizer, eos_token_id=tokenizer.eos_token_id, pad_token_id=tokenizer.pad_token_id,
-            max_new_tokens=25, device=0, torch_dtype=torch.float16, temperature=0.0,
+            max_new_tokens=25, device=0, torch_dtype=torch.float16, temperature=temperature,
         )
         llm = HuggingFacePipeline(pipeline=pipe)
         llm_chain = LLMChain(llm=llm, prompt=get_template(eval_category[3], template_type), output_key="output")
@@ -117,7 +120,7 @@ if __name__ == "__main__":
             dataset = load_dataset("shunk031/JGLUE", name=eval_category[4])
         pipe = pipeline(
             "text-generation", model=model, tokenizer=tokenizer, eos_token_id=tokenizer.eos_token_id, pad_token_id=tokenizer.pad_token_id,
-            max_new_tokens=5, device=0, torch_dtype=torch.float16, temperature=0.0,
+            max_new_tokens=5, device=0, torch_dtype=torch.float16, temperature=temperature,
             )
         llm = HuggingFacePipeline(pipeline=pipe)
         llm_chain = LLMChain(llm=llm, prompt=get_template(eval_category[4], template_type), output_key="output")
