@@ -20,11 +20,15 @@ def rinna(instruction):
 def pythia(instruction):
     return f"<|prompter|>{instruction}<|endoftext|><|assistant|> "
 
+def llama2(instruction):
+    system_message = "You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe. Please ensure that your responses are socially unbiased and positive in nature. If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information."
+    return f"<s>[INST] <<SYS>>\n{system_message}\n<</SYS>>\n\n{instruction} [/INST]"
+
 def other(instruction):
     return instruction
 
 
-temp_dict = {'alpaca':alpaca, 'rinna':rinna, 'pythia':pythia, 'other': other}
+temp_dict = {'alpaca':alpaca, 'rinna':rinna, 'pythia':pythia,'llama2':llama2, 'other': other}
 prompt_dict = {}
 instructions = [marc_ja_inst, jsts_insct, jnli_inst, jsquad_inst, jcqa_inst]
 eval_dict = {}
