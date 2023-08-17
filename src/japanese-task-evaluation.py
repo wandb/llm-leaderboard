@@ -39,7 +39,7 @@ if __name__ == "__main__":
             tokenizer = AutoTokenizer.from_pretrained(config.model_name,use_fast=False)
         else:
             tokenizer = AutoTokenizer.from_pretrained(config.model_name)
-        if "llama2" in config.model_name:
+        if "Llama-2" in config.model_name:
             temperature = 1e-9
         else:
             temperature = 0
