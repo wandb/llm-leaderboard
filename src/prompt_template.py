@@ -28,8 +28,7 @@ def elyza(instruction):
     B_INST, E_INST = "[INST]", "[/INST]"
     B_SYS, E_SYS = "<<SYS>>\n", "\n<</SYS>>\n\n"
     DEFAULT_SYSTEM_PROMPT = "あなたは誠実で優秀な日本人のアシスタントです。"
-    prompt = "{bos_token}{b_inst} {system}{prompt}{e_inst} ".format(
-        bos_token=tokenizer.bos_token,
+    prompt = "{b_inst} {system}{prompt}{e_inst} ".format(
         b_inst=B_INST,
         system=f"{B_SYS}{DEFAULT_SYSTEM_PROMPT}{E_SYS}",
         prompt=instruction,
