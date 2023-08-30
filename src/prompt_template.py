@@ -23,6 +23,20 @@ def pythia(instruction):
 def llama2(instruction):
     system_message = "You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe. Please ensure that your responses are socially unbiased and positive in nature. If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information."
     return f"<s>[INST] <<SYS>>\n{system_message}\n<</SYS>>\n\n{instruction} [/INST]"
+    
+def elyza(instruction):
+    B_INST, E_INST = "[INST]", "[/INST]"
+    B_SYS, E_SYS = "<<SYS>>\n", "\n<</SYS>>\n\n"
+    DEFAULT_SYSTEM_PROMPT = "あなたは誠実で優秀な日本人のアシスタントです。"
+    prompt = "{bos_token}{b_inst} {system}{prompt}{e_inst} ".format(
+        bos_token=tokenizer.bos_token,
+        b_inst=B_INST,
+        system=f"{B_SYS}{DEFAULT_SYSTEM_PROMPT}{E_SYS}",
+        prompt=instruction,
+        e_inst=E_INST,
+    )
+    return prompt
+
 
 def other(instruction):
     return instruction
