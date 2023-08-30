@@ -42,7 +42,7 @@ def other(instruction):
     return instruction
 
 
-temp_dict = {'alpaca':alpaca, 'rinna':rinna, 'pythia':pythia,'llama2':llama2, 'other': other}
+temp_dict = {'alpaca':alpaca, 'rinna':rinna, 'pythia':pythia,'llama2':llama2, 'elyza':elyza,'other': other}
 prompt_dict = {}
 instructions = [marc_ja_inst, jsts_insct, jnli_inst, jsquad_inst, jcqa_inst]
 eval_dict = {}
