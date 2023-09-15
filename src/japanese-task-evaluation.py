@@ -43,7 +43,7 @@ if __name__ == "__main__":
             temperature = 1e-9
         else:
             temperature = 0
-        model = AutoModelForCausalLM.from_pretrained(config.model_name, trust_remote_code=True)
+        model = AutoModelForCausalLM.from_pretrained(config.model_name, trust_remote_code=True,torch_dtype=torch.float16)
         template_type = config.prompt_type
 
         #MRAC-ja --------------------------------------------------------
