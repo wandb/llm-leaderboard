@@ -5,7 +5,7 @@ jsts_insct = '日本語の文ペアの意味がどのくらい近いかを判定
 jnli_inst = "前提と仮説の関係をentailment、contradiction、neutralの中から回答してください。 それ以外には何も含めないことを厳守してください。\n\n制約：\n- 前提から仮説が、論理的知識や常識的知識を用いて導出可能である場合はentailmentと出力\n- 前提と仮説が両立しえない場合はcontradictionと出力\n- そのいずれでもない場合はneutralと出力 \n前提:{premise}\n仮説:{hypothesis}"
 jsquad_inst = "質問に対する回答を文章から一言で抽出してください。回答は名詞で答えてください。 それ以外には何も含めないことを厳守してください。\n\n文章:{context}\n質問:{question}"
 jcqa_inst = "質問と回答の選択肢を入力として受け取り、選択肢から回答を選択してください。なお、回答は選択肢の番号（例：0）でするものとします。 回答となる数値をint型で返し、他には何も含めないことを厳守してください。\n\n質問:{question}\n選択肢:{choices}"
-
+jcola_inst = "与えられた日本語の文章の文法が正しければ1と答え、間違っている場合は0と答えてください。それ以外には何も含めないことを厳守してください。\n文章:{sentence}"
 
 def alpaca(instruction):
     return f"""Below is an instruction that describes a task. Write a response that appropriately completes the request.
@@ -43,9 +43,9 @@ def other(instruction):
 
 temp_dict = {'alpaca':alpaca, 'rinna':rinna, 'pythia':pythia,'llama2':llama2, 'elyza':elyza,'other': other}
 prompt_dict = {}
-instructions = [marc_ja_inst, jsts_insct, jnli_inst, jsquad_inst, jcqa_inst]
+instructions = [marc_ja_inst, jsts_insct, jnli_inst, jsquad_inst, jcqa_inst,jcola_inst]
 eval_dict = {}
-for e, i in zip(['MARC-ja', 'JSTS', 'JNLI', 'JSQuAD', 'JCommonsenseQA'], instructions):
+for e, i in zip(['MARC-ja', 'JSTS', 'JNLI', 'JSQuAD', 'JCommonsenseQA','JCoLA'], instructions):
     eval_dict[e] = i
 
 def get_template(eval_category, template_type):
@@ -81,6 +81,10 @@ def get_template(eval_category, template_type):
             input_variables=["question", "choices"],
             template=inst_template(inst_sentence)
         )
-        
+    if eval_category=='JCoLA':
+        prompt_template = PromptTemplate(
+            input_variables=["sentence"],
+            template=inst_template(inst_sentence)
+        )
     return prompt_template
 
