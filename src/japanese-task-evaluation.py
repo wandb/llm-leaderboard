@@ -14,7 +14,7 @@ from huggingface_hub import HfApi, list_models
 from huggingface_hub.inference_api import InferenceApi
 from huggingface_hub import login
 from prompt_template import get_template
-from utils import eval_MARC_ja, eval_JSTS, eval_JNLI, eval_JSQuAD, eval_JCommonsenseQA
+from utils import eval_MARC_ja, eval_JSTS, eval_JNLI, eval_JSQuAD, eval_JCommonsenseQA, eval_JCoLA
 
 
 "can be changed in W&B Launch's setting"
@@ -29,7 +29,7 @@ config = dict(
 login(os.environ['HUGGINGFACE_TOKEN'])
 
 if __name__ == "__main__":
-    eval_category = ['MARC-ja', 'JSTS', 'JNLI', 'JSQuAD', 'JCommonsenseQA']
+    eval_category = ['MARC-ja', 'JSTS', 'JNLI', 'JSQuAD', 'JCommonsenseQA','JCoLA']
     with wandb.init(project=config["wandb_project"], entity=config["wandb_entity"], config=config, job_type="eval") as run:
         config = wandb.config
         table_contents = []
@@ -128,10 +128,28 @@ if __name__ == "__main__":
         JCommonsenseQA = eval_JCommonsenseQA(dataset,llm_chain)
         table_contents.append(JCommonsenseQA)
 
+        #JCoLA--------------------------------------------------------
+        if config.use_artifact:
+            artifact = run.use_artifact('wandb/LLM_evaluation_Japan/JGLUE-JCoLA:v0', type='dataset')
+            artifact_dir = artifact.download()
+            dataset = load_from_disk(artifact_dir)
+        else:
+            dataset = load_dataset("shunk031/JGLUE", name=eval_category[5])
+        pipe = pipeline(
+            "text-generation", model=model, tokenizer=tokenizer, eos_token_id=tokenizer.eos_token_id, pad_token_id=tokenizer.pad_token_id,
+            max_new_tokens=5, device=0, torch_dtype=torch.float16, temperature=temperature,
+            )
+        llm = HuggingFacePipeline(pipeline=pipe)
+        llm_chain = LLMChain(llm=llm, prompt=get_template(eval_category[5], template_type), output_key="output")
+
+        JCoLA_score, JCoLA_balanced_score = eval_JCoLA(dataset,llm_chain)
+        table_contents.append(JCoLA_score)
+        table_contents.append(JCoLA_balanced_score)
+
         #End--------------------------------------------------------
-        table = wandb.Table(columns=['model_name ','MARC-ja', 'JSTS-pearson', 'JSTS-spearman', 'JNLI', 'JSQuAD-EM', 'JSQuAD-F1', 'JCommonsenseQA'] ,
+        table = wandb.Table(columns=['model_name ','MARC-ja', 'JSTS-pearson', 'JSTS-spearman', 'JNLI', 'JSQuAD-EM', 'JSQuAD-F1', 'JCommonsenseQA','JCoLA','JCoLA-balanced'] ,
                             data=[table_contents])
-        table = wandb.Table(columns=['model_name ','MARC-ja', 'JSTS-pearson', 'JSTS-spearman', 'JNLI', 'JSQuAD-EM', 'JSQuAD-F1', 'JCommonsenseQA'] ,
+        table = wandb.Table(columns=['model_name ','MARC-ja', 'JSTS-pearson', 'JSTS-spearman', 'JNLI', 'JSQuAD-EM', 'JSQuAD-F1', 'JCommonsenseQA','JCoLA','JCoLA-balanced'] ,
                             data=table.data)
         run.log({'result_table':table}) 
         run.log_code()
