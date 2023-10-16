@@ -231,9 +231,11 @@ def eval_JCoLA(dataset,llm_chain):
 
     y_trues=np.array(y_trues)
     y_preds=np.array(y_preds)
+    vec_extract_first_number = np.vectorize(extract_first_number)
+    y_preds = vec_extract_first_number(y_preds)
     y_preds = np.nan_to_num(y_preds, nan=2)
-    y_trues = [str(label) for label in y_trues]
-    y_preds = [str(label) for label in y_preds]
+    y_trues = [int(label) for label in y_trues if str(label).isdigit()]
+    y_preds = [int(label) for label in y_preds if str(label).isdigit()]
     jcola_score = accuracy_score(y_trues, y_preds)
     jcola_balanced_score = balanced_accuracy_score(y_trues, y_preds)
 
