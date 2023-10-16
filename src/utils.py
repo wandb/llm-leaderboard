@@ -4,7 +4,7 @@ import wandb
 from wandb.integration.langchain import WandbTracer
 import torch
 from langchain.chains import SequentialChain
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, balanced_accuracy_score
 from scipy.stats import pearsonr, spearmanr
 import re
 from fuzzywuzzy import fuzz
@@ -207,3 +207,36 @@ def extract_first_number(s):
     match = re.match(r"(\d+)", s)
     return int(match.group(1)) if match else 0
 
+def eval_JCoLA(dataset,llm_chain):
+    overall_chain = SequentialChain(
+        chains=[llm_chain], 
+        input_variables = llm_chain.input_keys+['label'],
+        output_variables = llm_chain.output_keys+["label"],
+        verbose=False
+    )
+    y_trues = []
+    y_preds = []
+    
+    for i in tqdm(range(len(dataset['validation']))):
+        sentence = dataset['validation'][i]['sentence']
+        y_true = dataset['validation'][i]['label']
+        label = str(y_true)  + ["acceptable", "unacceptable"][y_true]
+        y_pred = overall_chain({'sentence':sentence, 'label':label},callbacks=[WandbTracer()])['output']
+        y_pred = y_pred.strip().lower()
+        
+        y_trues.append(y_true)
+        y_preds.append(y_pred)
+        torch.cuda.empty_cache()
+
+
+    y_trues=np.array(y_trues)
+    y_preds=np.array(y_preds)
+    vec_extract_first_number = np.vectorize(extract_first_number)
+    y_preds = vec_extract_first_number(y_preds)
+    y_preds = np.nan_to_num(y_preds, nan=2)
+    y_trues = [int(label) for label in y_trues if str(label).isdigit()]
+    y_preds = [int(label) for label in y_preds if str(label).isdigit()]
+    jcola_score = accuracy_score(y_trues, y_preds)
+    jcola_balanced_score = balanced_accuracy_score(y_trues, y_preds)
+
+    return jcola_score, jcola_balanced_score
