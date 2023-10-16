@@ -220,7 +220,7 @@ def eval_JCoLA(dataset,llm_chain):
     for i in tqdm(range(len(dataset['validation']))):
         sentence = dataset['validation'][i]['sentence']
         y_true = dataset['validation'][i]['label']
-        label = str(y_true)  + ["acceptable", "unacceptable"][y_true]
+        label = str(y_true)  + ["acceptable: ", "unacceptable: "][y_true]
         y_pred = overall_chain({'sentence':sentence, 'label':label},callbacks=[WandbTracer()])['output']
         y_pred = y_pred.strip().lower()
         
