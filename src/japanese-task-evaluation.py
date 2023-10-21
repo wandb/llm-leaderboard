@@ -151,6 +151,6 @@ if __name__ == "__main__":
                             data=[table_contents])
         table = wandb.Table(columns=['model_name ','MARC-ja','MARC-ja-balanced', 'JSTS-pearson', 'JSTS-spearman', 'JNLI', 'JNLI-balanced','JSQuAD-EM', 'JSQuAD-F1', 'JCommonsenseQA','JCoLA','JCoLA-balanced'] ,
                             data=table.data)
-        run.log({'result_table':table}) 
+        run.log({'result_table_balanced':table}) 
         run.log_code()
 
