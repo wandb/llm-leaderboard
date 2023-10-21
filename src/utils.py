@@ -45,7 +45,7 @@ def eval_MARC_ja(dataset,llm_chain):
     
     marc_ja_score = accuracy_score(y_trues, y_preds)
     marc_ja_balanced_score = balanced_accuracy_score(y_trues, y_preds)
-    return marc_ja_balanced_score
+    return marc_ja_score, marc_ja_balanced_score
 
 
 def eval_JSTS(dataset,llm_chain):
