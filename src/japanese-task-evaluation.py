@@ -59,8 +59,8 @@ if __name__ == "__main__":
         )
         llm = HuggingFacePipeline(pipeline=pipe)
         llm_chain = LLMChain(llm=llm, prompt=get_template(eval_category[0], template_type), output_key="output")
-        marc_ja_score = eval_MARC_ja(dataset,llm_chain)
-        table_contents.append(marc_ja_score)
+        marc_ja_score, marc_ja_balanced_score = eval_MARC_ja(dataset,llm_chain)
+        table_contents.append(marc_ja_score, marc_ja_balanced_score)
         #JSTS--------------------------------------------------------
         if config.use_artifact:
             artifact = run.use_artifact('wandb/LLM_evaluation_Japan/JGLUE-JSTS:v0', type='dataset')
@@ -90,8 +90,8 @@ if __name__ == "__main__":
         )
         llm = HuggingFacePipeline(pipeline=pipe)
         llm_chain = LLMChain(llm=llm, prompt=get_template(eval_category[2], template_type), output_key="output")
-        jnli_score = eval_JNLI(dataset,llm_chain)
-        table_contents.append(jnli_score)
+        jnli_score, jnli_balanced_score = eval_JNLI(dataset,llm_chain)
+        table_contents.append(jnli_score, jnli_balanced_score)
 
         #JSQuAD--------------------------------------------------------
         if config.use_artifact:
@@ -147,9 +147,9 @@ if __name__ == "__main__":
         table_contents.append(JCoLA_balanced_score)
 
         #End--------------------------------------------------------
-        table = wandb.Table(columns=['model_name ','MARC-ja', 'JSTS-pearson', 'JSTS-spearman', 'JNLI', 'JSQuAD-EM', 'JSQuAD-F1', 'JCommonsenseQA','JCoLA','JCoLA-balanced'] ,
+        table = wandb.Table(columns=['model_name ','MARC-ja','MARC-ja-balanced', 'JSTS-pearson', 'JSTS-spearman', 'JNLI', 'JNLI-balanced','JSQuAD-EM', 'JSQuAD-F1', 'JCommonsenseQA','JCoLA','JCoLA-balanced'] ,
                             data=[table_contents])
-        table = wandb.Table(columns=['model_name ','MARC-ja', 'JSTS-pearson', 'JSTS-spearman', 'JNLI', 'JSQuAD-EM', 'JSQuAD-F1', 'JCommonsenseQA','JCoLA','JCoLA-balanced'] ,
+        table = wandb.Table(columns=['model_name ','MARC-ja','MARC-ja-balanced', 'JSTS-pearson', 'JSTS-spearman', 'JNLI', 'JNLI-balanced','JSQuAD-EM', 'JSQuAD-F1', 'JCommonsenseQA','JCoLA','JCoLA-balanced'] ,
                             data=table.data)
         run.log({'result_table':table}) 
         run.log_code()
