@@ -60,7 +60,8 @@ if __name__ == "__main__":
         llm = HuggingFacePipeline(pipeline=pipe)
         llm_chain = LLMChain(llm=llm, prompt=get_template(eval_category[0], template_type), output_key="output")
         marc_ja_score, marc_ja_balanced_score = eval_MARC_ja(dataset,llm_chain)
-        table_contents.append(marc_ja_score, marc_ja_balanced_score)
+        table_contents.append(marc_ja_score)
+        table_contents.append(marc_ja_balanced_score)
         #JSTS--------------------------------------------------------
         if config.use_artifact:
             artifact = run.use_artifact('wandb/LLM_evaluation_Japan/JGLUE-JSTS:v0', type='dataset')
