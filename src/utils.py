@@ -44,7 +44,8 @@ def eval_MARC_ja(dataset,llm_chain):
     y_preds = np.where(np.char.find(y_preds, 'negative') >= 0, 1, 0) 
     
     marc_ja_score = accuracy_score(y_trues, y_preds)
-    return marc_ja_score
+    marc_ja_balanced_score = balanced_accuracy_score(y_trues, y_preds)
+    return marc_ja_balanced_score
 
 
 def eval_JSTS(dataset,llm_chain):
@@ -111,8 +112,9 @@ def eval_JNLI(dataset,llm_chain):
     y_preds = np.select(conditions, choices, default=0)
     y_preds = np.nan_to_num(y_preds, nan=0)
     jnli_score = accuracy_score(y_trues, y_preds)
+    jnli_balanced_score = balanced_accuracy_score(y_trues, y_preds)
 
-    return jnli_score
+    return jnli_score, jnli_balanced_score
 
 def eval_JSQuAD(dataset,llm_chain):
 
