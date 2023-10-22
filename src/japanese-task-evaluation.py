@@ -24,7 +24,7 @@ config = dict(
     wandb_entity="wandb",
     model_name="cyberagent/open-calm-small",
     prompt_type="other",
-    use_artifact = False,
+    use_artifact = True,
     use_peft=False
     )
 
@@ -49,7 +49,7 @@ if __name__ == "__main__":
         if config.use_peft:
             peft_config = PeftConfig.from_pretrained(config.model_name)
             model = AutoModelForCausalLM.from_pretrained(peft_config.base_model_name_or_path, device_map="auto", torch_dtype=torch.float16)
-            model = PeftModel.from_pretrained(model, peft_model_name)
+            model = PeftModel.from_pretrained(model, config.model_name)
         else:
             model = AutoModelForCausalLM.from_pretrained(config.model_name, trust_remote_code=True,torch_dtype=torch.float16)
         template_type = config.prompt_type
