@@ -15,15 +15,17 @@ from huggingface_hub.inference_api import InferenceApi
 from huggingface_hub import login
 from prompt_template import get_template
 from utils import eval_MARC_ja, eval_JSTS, eval_JNLI, eval_JSQuAD, eval_JCommonsenseQA, eval_JCoLA
+from peft import PeftModel, PeftConfig
 
 
 "can be changed in W&B Launch's setting"
 config = dict(
-    wandb_project="LLM_evaluation_Japan_public",
+    wandb_project="LLM_evaluation_Japan",
     wandb_entity="wandb",
     model_name="cyberagent/open-calm-small",
     prompt_type="other",
-    use_artifact = False
+    use_artifact = False,
+    use_peft=False
     )
 
 login(os.environ['HUGGINGFACE_TOKEN'])
@@ -43,7 +45,13 @@ if __name__ == "__main__":
             temperature = 1e-9
         else:
             temperature = 0
-        model = AutoModelForCausalLM.from_pretrained(config.model_name, trust_remote_code=True,torch_dtype=torch.float16)
+
+        if use_peft:
+            peft_config = PeftConfig.from_pretrained(config.model_name)
+            model = AutoModelForCausalLM.from_pretrained(peft_config.base_model_name_or_path, device_map="auto", torch_dtype=torch.float16)
+            model = PeftModel.from_pretrained(model, peft_model_name)
+        else:
+            model = AutoModelForCausalLM.from_pretrained(config.model_name, trust_remote_code=True,torch_dtype=torch.float16)
         template_type = config.prompt_type
 
         #MRAC-ja --------------------------------------------------------
