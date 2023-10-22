@@ -46,7 +46,7 @@ if __name__ == "__main__":
         else:
             temperature = 0
 
-        if use_peft:
+        if config.use_peft:
             peft_config = PeftConfig.from_pretrained(config.model_name)
             model = AutoModelForCausalLM.from_pretrained(peft_config.base_model_name_or_path, device_map="auto", torch_dtype=torch.float16)
             model = PeftModel.from_pretrained(model, peft_model_name)
