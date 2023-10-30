@@ -1,4 +1,4 @@
-langchain==0.0.266
+langchain==0.0.325
 wandb==0.15.8
 huggingface_hub==0.16.3
 torch==2.0.1
