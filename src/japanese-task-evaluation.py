@@ -48,7 +48,7 @@ if __name__ == "__main__":
 
         if config.use_peft:
             peft_config = PeftConfig.from_pretrained(config.model_name)
-            model = AutoModelForCausalLM.from_pretrained(peft_config.base_model_name_or_path, device_map="auto", torch_dtype=torch.float16)
+            model = AutoModelForCausalLM.from_pretrained(peft_config.base_model_name_or_path,  torch_dtype=torch.float16)
             model = PeftModel.from_pretrained(model, config.model_name)
         else:
             model = AutoModelForCausalLM.from_pretrained(config.model_name, trust_remote_code=True,torch_dtype=torch.float16)
