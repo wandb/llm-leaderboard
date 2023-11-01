@@ -100,7 +100,8 @@ if __name__ == "__main__":
         llm = HuggingFacePipeline(pipeline=pipe)
         llm_chain = LLMChain(llm=llm, prompt=get_template(eval_category[2], template_type), output_key="output")
         jnli_score, jnli_balanced_score = eval_JNLI(dataset,llm_chain)
-        table_contents.append(jnli_score, jnli_balanced_score)
+        table_contents.append(jnli_score)
+        table_contents.append(jnli_balanced_score)
 
         #JSQuAD--------------------------------------------------------
         if config.use_artifact:
