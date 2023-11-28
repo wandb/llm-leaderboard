@@ -1,0 +1,3 @@
+[submodule "llm-jp-eval"]
+	path = llm-jp-eval
+	url = https://github.com/llm-jp/llm-jp-eval.git
