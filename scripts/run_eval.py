@@ -29,5 +29,9 @@ with wandb.init(
 
     cfg.dataset_dir = artifact_dir+cfg.dataset_dir
     run = main(cfg)
+
     
+
+
+
 
