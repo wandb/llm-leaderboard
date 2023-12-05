@@ -1,3 +1,7 @@
 [submodule "llm-jp-eval"]
 	path = llm-jp-eval
 	url = https://github.com/llm-jp/llm-jp-eval.git
+	branch = dev
+[submodule "FastChat"]
+	path = FastChat
+	url = https://github.com/lm-sys/FastChat
