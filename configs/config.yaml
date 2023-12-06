@@ -1,13 +1,18 @@
-defaults:
-  - model: cyberagent-open-calm-small
-  - _self_
+model:
+  _target_: transformers.AutoModelForCausalLM.from_pretrained
+  pretrained_model_name_or_path: "cyberagent/open-calm-small"
+  trust_remote_code: true
+  device_map: "auto"
+  load_in_8bit: false
+  load_in_4bit: false
 
 # basic information
 tokenizer:
   pretrained_model_name_or_path: "cyberagent/open-calm-small"
   use_fast: true
 max_seq_length: 2048
-dataset_dir: "/jaster/1.1.0/evaluation/test/"
+dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v0"
+dataset_dir: "/jaster/1.1.0/evaluation/test"
 target_dataset: "all" # {all, jamp, janli, jcommonsenseqa, jemhopqa, jnli, jsem, jsick, jsquad, jsts, niilc, chabsa}
 log_dir: "./logs"
 torch_dtype: "bf16" # {fp16, bf16, fp32}
@@ -26,27 +31,20 @@ wandb:
   log: true # true for logging WANDB in evaluate_llm.py
   entity: "wandb-japan"
   project: "llm-leaderboard"
-  run_name: "cyberagent/open-calm-small" # use run_name defined above
+  run_name: "" # use run_name defined above
 
 
 metainfo:
-  version: "1.1.0"
   model_name: "cyberagent/open-calm-small"
-  model_type: "external model" # {llm-jp, external model, ...}
-  instruction_tuning_method_by_llm_jp: "None" # {"None", "Full", "LoRA", ...}
-  instruction_tuning_data_by_llm-jp: ["None"] # {"None", "jaster", "dolly_ja", "oasst_ja", ...}
-  data_type: "test" # {"dev", "test"}
+  instruction_tuning_method: "None" # {"None", "Full", "LoRA", ...}
+  instruction_tuning_data: ["None"] # {"None", "jaster", "dolly_ja", "oasst_ja", ...}
   num_few_shots: 0
-  max_num_samples: 100 # -1 for all data
+  max_num_samples: 10 # -1 for all data
+  data_type: "test" # {"dev", "test"}
+  llm-jp-eval-version: "1.1.0"
 
 generator:
   top_p: 1.0
   top_k: 0
   temperature: 0.1
   repetition_penalty: 1.0
-
-# hydra settings
-hydra:
-  job:
-    env_set:
-      TOKENIZERS_PARALLELISM: false
