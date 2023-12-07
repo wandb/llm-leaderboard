@@ -1,17 +1,23 @@
 model:
   _target_: transformers.AutoModelForCausalLM.from_pretrained
-  pretrained_model_name_or_path: "cyberagent/open-calm-small"
+  pretrained_model_name_or_path: "EleutherAI/pythia-70m"
   trust_remote_code: true
   device_map: "auto"
   load_in_8bit: false
   load_in_4bit: false
 
-# basic information
+### For jaster
+generator:
+  top_p: 1.0
+  top_k: 0
+  temperature: 0.1
+  repetition_penalty: 1.0
+
 tokenizer:
-  pretrained_model_name_or_path: "cyberagent/open-calm-small"
+  pretrained_model_name_or_path: "EleutherAI/pythia-70m"
   use_fast: true
 max_seq_length: 2048
-dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v0"
+dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v0" #if you use artifacts, please fill here (if not, fill null)
 dataset_dir: "/jaster/1.1.0/evaluation/test"
 target_dataset: "all" # {all, jamp, janli, jcommonsenseqa, jemhopqa, jnli, jsem, jsick, jsquad, jsts, niilc, chabsa}
 log_dir: "./logs"
@@ -31,11 +37,11 @@ wandb:
   log: true # true for logging WANDB in evaluate_llm.py
   entity: "wandb-japan"
   project: "llm-leaderboard"
-  run_name: "" # use run_name defined above
+  run_name: "EleutherAI/pythia-70m" # use run_name defined above
 
 
 metainfo:
-  model_name: "cyberagent/open-calm-small"
+  model_name: "EleutherAI/pythia-70m"
   instruction_tuning_method: "None" # {"None", "Full", "LoRA", ...}
   instruction_tuning_data: ["None"] # {"None", "jaster", "dolly_ja", "oasst_ja", ...}
   num_few_shots: 0
@@ -43,8 +49,23 @@ metainfo:
   data_type: "test" # {"dev", "test"}
   llm-jp-eval-version: "1.1.0"
 
-generator:
-  top_p: 1.0
-  top_k: 0
-  temperature: 0.1
-  repetition_penalty: 1.0
+
+### For mtbench
+mtbench:
+  bench_name: 'japanese_mt_bench'
+  model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
+  question_begin: null 
+  question_end: null 
+  max_new_token: 1024
+  num_choices: 1
+  num_gpus_per_model: 1
+  num_gpus_total: 1
+  max_gpu_memory: null
+  dtype: bfloat16 # None or float32 or float16 or bfloat16
+  # for gen_judgment
+  judge_file: 'judge_prompts.jsonl' #change with Artifact path
+  judge_model: 'gpt-4'
+  mode: 'single'
+  baseline_model: null 
+  parallel: 1
+  first_n: null 
