@@ -1,6 +1,6 @@
 model:
   _target_: transformers.AutoModelForCausalLM.from_pretrained
-  pretrained_model_name_or_path: "EleutherAI/pythia-70m"
+  pretrained_model_name_or_path: "EleutherAI/pythia-70m" #if you use openai api, please put the name of model
   trust_remote_code: true
   device_map: "auto"
   load_in_8bit: false
@@ -17,7 +17,7 @@ tokenizer:
   pretrained_model_name_or_path: "EleutherAI/pythia-70m"
   use_fast: true
 max_seq_length: 2048
-dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v0" #if you use artifacts, please fill here (if not, fill null)
+dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v1" #if you use artifacts, please fill here (if not, fill null)
 dataset_dir: "/jaster/1.1.0/evaluation/test"
 target_dataset: "all" # {all, jamp, janli, jcommonsenseqa, jemhopqa, jnli, jsem, jsick, jsquad, jsts, niilc, chabsa}
 log_dir: "./logs"
@@ -42,6 +42,7 @@ wandb:
 
 metainfo:
   model_name: "EleutherAI/pythia-70m"
+  model_type: "external model" # {external model, openai}
   instruction_tuning_method: "None" # {"None", "Full", "LoRA", ...}
   instruction_tuning_data: ["None"] # {"None", "jaster", "dolly_ja", "oasst_ja", ...}
   num_few_shots: 0
@@ -49,9 +50,11 @@ metainfo:
   data_type: "test" # {"dev", "test"}
   llm-jp-eval-version: "1.1.0"
 
-
 ### For mtbench
 mtbench:
+  question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_question:v1'
+  referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v1'
+  judge_prompt_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v0' 
   bench_name: 'japanese_mt_bench'
   model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
   question_begin: null 
@@ -63,7 +66,7 @@ mtbench:
   max_gpu_memory: null
   dtype: bfloat16 # None or float32 or float16 or bfloat16
   # for gen_judgment
-  judge_file: 'judge_prompts.jsonl' #change with Artifact path
+  
   judge_model: 'gpt-4'
   mode: 'single'
   baseline_model: null 
