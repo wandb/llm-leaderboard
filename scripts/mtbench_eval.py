@@ -8,7 +8,7 @@ from tqdm import tqdm
 import wandb
 from fastchat.llm_judge.common import load_questions
 from fastchat.llm_judge.gen_model_answer import run_eval
-from fastchat.llm_judge.gen_api_answer import get_answer
+from fastchat.llm_judge.gen_api_answer import get_api_answer
 from fastchat.llm_judge.gen_judgment import *
 from fastchat.llm_judge.common import (
         load_questions,
@@ -54,12 +54,10 @@ def mtbench_evaluate(run_id, cfg, leaderboard_score):
 
     # 1. generate model answers
     if cfg.metainfo.model_type == "openai":
-        get_answer(
-            question=question_file,
-            model=cfg.model.pretrained_model_name_or_path, 
-            num_choices=cfg.mtbench.num_choices, 
-            max_tokens=cfg.mtbench.max_new_token, 
-            answer_file= answer_file
+        questions = load_questions(question_file, None, None)
+        get_api_answer(
+            question_file=question_file,
+            answer_file=answer_file
         )
     else:
         run_eval(
@@ -205,13 +203,12 @@ def mtbench_evaluate(run_id, cfg, leaderboard_score):
 
     ## merge tables
     df_judge["question"] = np.nan
-    df_judge.loc[df_judge.turn == 1, 'question'] = df_question.turns.apply(lambda x: x[0]).astype(str).values
-    df_judge.loc[df_judge.turn == 2, 'question'] = df_question.turns.apply(lambda x: x[1]).astype(str).values
-
+    df_judge.loc[df_judge.turn == 1, 'question'] = df_question.turns.apply(lambda x: x[0]).values
+    df_judge.loc[df_judge.turn == 2, 'question'] = df_question.turns.apply(lambda x: x[1]).values
 
     df_judge['answer'] = np.nan
-    df_judge.loc[df_judge.turn == 1, 'answer'] = df_answer.choices.apply(lambda x: x[0][ 'turns'][0]).astype(str).values
-    df_judge.loc[df_judge.turn == 2, 'answer'] = df_answer.choices.apply(lambda x: x[0][ 'turns'][1]).astype(str).values
+    df_judge.loc[df_judge.turn == 1, 'answer'] = df_answer.choices.apply(lambda x: x[0][ 'turns'][0]).values
+    df_judge.loc[df_judge.turn == 2, 'answer'] = df_answer.choices.apply(lambda x: x[0][ 'turns'][1]).values
     df_judge = df_judge.merge(df_answer[['question_id', 'answer_id']], on='question_id', how='left')
     df_judge = df_judge.merge(df_question[['question_id', 'category']], on='question_id', how='left')
 
