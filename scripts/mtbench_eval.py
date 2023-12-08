@@ -3,6 +3,7 @@ import hashlib
 import json
 import numpy as np
 import pandas as pd
+from io import StringIO
 from tqdm import tqdm
 import wandb
 from fastchat.llm_judge.common import load_questions
@@ -88,7 +89,7 @@ def mtbench_evaluate(run_id, cfg, leaderboard_score):
 
     ## Load judge
     artifact_dir = run.use_artifact(cfg.mtbench.judge_prompt_artifacts_path, type='dataset').download()
-    judge_prompts = load_judge_prompts(artifact_dir + "/judge_ja_prompts.jsonl")
+    judge_prompts = load_judge_prompts(artifact_dir + "/judge_prompts.jsonl")
 
     if cfg.mtbench.first_n:
         questions = questions[: cfg.mtbench.first_n]
@@ -204,12 +205,13 @@ def mtbench_evaluate(run_id, cfg, leaderboard_score):
 
     ## merge tables
     df_judge["question"] = np.nan
-    df_judge.loc[df_judge.turn==1, 'question'] = df_question.turns.apply(lambda x: x[0]).values
-    df_judge.loc[df_judge.turn==2, 'question'] = df_question.turns.apply(lambda x: x[1]).values
+    df_judge.loc[df_judge.turn == 1, 'question'] = df_question.turns.apply(lambda x: x[0]).astype(str).values
+    df_judge.loc[df_judge.turn == 2, 'question'] = df_question.turns.apply(lambda x: x[1]).astype(str).values
+
 
     df_judge['answer'] = np.nan
-    df_judge.loc[df_judge.turn==1, 'answer'] = df_answer.choices.apply(lambda x: x[0][ 'turns'][0]).values
-    df_judge.loc[df_judge.turn==2, 'answer'] = df_answer.choices.apply(lambda x: x[0][ 'turns'][1]).values
+    df_judge.loc[df_judge.turn == 1, 'answer'] = df_answer.choices.apply(lambda x: x[0][ 'turns'][0]).astype(str).values
+    df_judge.loc[df_judge.turn == 2, 'answer'] = df_answer.choices.apply(lambda x: x[0][ 'turns'][1]).astype(str).values
     df_judge = df_judge.merge(df_answer[['question_id', 'answer_id']], on='question_id', how='left')
     df_judge = df_judge.merge(df_question[['question_id', 'category']], on='question_id', how='left')
 
@@ -234,7 +236,7 @@ def mtbench_evaluate(run_id, cfg, leaderboard_score):
     table_metric = wandb.Table(dataframe=mtbench_df)
 
     ## table for all
-    jaster_df = pd.read_json(leaderboard_score, orient='records', lines=True)
+    jaster_df = pd.read_json(StringIO(leaderboard_score), orient='records', lines=True)
     mtbench_df = mtbench_df.drop(columns=['model_name'])
     combined_df = pd.concat([jaster_df,  mtbench_df], axis=1)
     table_all = wandb.Table(dataframe=combined_df)
