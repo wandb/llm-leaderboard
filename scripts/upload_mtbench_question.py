@@ -25,16 +25,16 @@ parser.add_argument(
 args = parser.parse_args()
 
 with wandb.init(entity=args.entity, project=args.project, job_type="upload_data") as run:
-    dataset_artifact = wandb.Artifact(name="mtbench_question", 
+    dataset_artifact = wandb.Artifact(name="mtbench_ja_question", 
                                     type="dataset", 
                                     metadata={"version":args.dataset_version},
                                     description="This dataset is based on version {}".format(args.dataset_version))
 
 
-    url = "https://github.com/Stability-AI/FastChat/blob/jp-stable/fastchat/llm_judge/data/japanese_mt_bench/question_full.jsonl"
+    url = "https://github.com/Stability-AI/FastChat/blob/jp-stable/fastchat/llm_judge/data/japanese_mt_bench/question.jsonl"
     response = requests.get(url)
-    with open("question_full.jsonl", "wb") as file:
+    with open("question.jsonl", "wb") as file:
         file.write(response.content)
-    dataset_artifact.add_file("question_full.jsonl")
+    dataset_artifact.add_file("question.jsonl")
 
     run.log_artifact(dataset_artifact)
