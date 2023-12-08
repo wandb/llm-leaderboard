@@ -1,7 +1,7 @@
 import wandb
 import sys
 import os
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 sys.path.append('llm-jp-eval/src') 
 from llm_jp_eval.evaluator import evaluate
 sys.path.append('FastChat') 
