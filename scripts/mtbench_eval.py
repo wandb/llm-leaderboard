@@ -7,6 +7,7 @@ from tqdm import tqdm
 import wandb
 from fastchat.llm_judge.common import load_questions
 from fastchat.llm_judge.gen_model_answer import run_eval
+from fastchat.llm_judge.gen_api_answer import get_answer
 from fastchat.llm_judge.gen_judgment import *
 from fastchat.llm_judge.common import (
         load_questions,
@@ -39,27 +40,42 @@ def mtbench_evaluate(run_id, cfg, leaderboard_score):
         ray.init()
     
     ## file path
-    question_file = f"question.jsonl"
+    #question
+    artifact_dir = run.use_artifact(cfg.mtbench.question_artifacts_path, type='dataset').download()
+    question_file = artifact_dir+f"/question.jsonl"
+    
+    #create answerfile and answerdir
     answer_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl"
     answer_dir = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer"
-    ref_answer_dir = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/reference_answer"
+
+    #refeerence answer
+    ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path, type='dataset').download()
 
     # 1. generate model answers
-    run_eval(
-        model_path=cfg.model.pretrained_model_name_or_path,
-        model_id=cfg.mtbench.model_id,
-        question_file=question_file,
-        question_begin=cfg.mtbench.question_begin,
-        question_end=cfg.mtbench.question_end,
-        answer_file=answer_file,
-        max_new_token=cfg.mtbench.max_new_token,
-        num_choices=cfg.mtbench.num_choices,
-        num_gpus_per_model=cfg.mtbench.num_gpus_per_model,
-        num_gpus_total=cfg.mtbench.num_gpus_total,
-        max_gpu_memory=cfg.mtbench.max_gpu_memory,
-        dtype=str_to_torch_dtype(cfg.mtbench.dtype),
-        revision="main"
-    )
+    if cfg.metainfo.model_type == "openai":
+        get_answer(
+            question=question_file,
+            model=cfg.model.pretrained_model_name_or_path, 
+            num_choices=cfg.mtbench.num_choices, 
+            max_tokens=cfg.mtbench.max_new_token, 
+            answer_file= answer_file
+        )
+    else:
+        run_eval(
+            model_path=cfg.model.pretrained_model_name_or_path,
+            model_id=cfg.mtbench.model_id,
+            question_file=question_file,
+            question_begin=cfg.mtbench.question_begin,
+            question_end=cfg.mtbench.question_end,
+            answer_file=answer_file,
+            max_new_token=cfg.mtbench.max_new_token,
+            num_choices=cfg.mtbench.num_choices,
+            num_gpus_per_model=cfg.mtbench.num_gpus_per_model,
+            num_gpus_total=cfg.mtbench.num_gpus_total,
+            max_gpu_memory=cfg.mtbench.max_gpu_memory,
+            dtype=str_to_torch_dtype(cfg.mtbench.dtype),
+            #revision="main"
+        )
 
     # 2. evaluate outputs
     ## Load questions
@@ -71,7 +87,8 @@ def mtbench_evaluate(run_id, cfg, leaderboard_score):
     ref_answers = load_model_answers(ref_answer_dir)
 
     ## Load judge
-    judge_prompts = load_judge_prompts(cfg.mtbench.judge_file)
+    artifact_dir = run.use_artifact(cfg.mtbench.judge_prompt_artifacts_path, type='dataset').download()
+    judge_prompts = load_judge_prompts(artifact_dir + "/judge_ja_prompts.jsonl")
 
     if cfg.mtbench.first_n:
         questions = questions[: cfg.mtbench.first_n]
