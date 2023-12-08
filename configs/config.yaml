@@ -55,8 +55,8 @@ metainfo:
 ### For mtbench
 ################
 mtbench:
-  question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_question:v1'
-  referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v1'
+  question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v0'
+  referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v0'
   judge_prompt_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v0' 
   bench_name: 'japanese_mt_bench'
   model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
@@ -77,11 +77,11 @@ mtbench:
   # for conv template # added
   custom_conv_template: False
   conv_name: "custom"
-  conv_system_message: "以下は、タスクを説明する指示と、文脈のある入力の組み合わせです。要求を適切に満たす応答を書きなさい。",
-  conv_roles: "('指示', '応答')",# "User", "System"とか
-  conv_sep: "\n\n### ",
-  conv_stop_token_ids: "[2]",
-  conv_stop_str: "###",
-  conv_role_message_separator: ": \n",
-  conv_role_only_separator: ": \n",
+  conv_system_message: "以下は、タスクを説明する指示と、文脈のある入力の組み合わせです。要求を適切に満たす応答を書きなさい。"
+  conv_roles: "('指示', '応答')"
+  conv_sep: "\n\n### "
+  conv_stop_token_ids: "[2]"
+  conv_stop_str: "###"
+  conv_role_message_separator: ": \n"
+  conv_role_only_separator: ": \n"
 
