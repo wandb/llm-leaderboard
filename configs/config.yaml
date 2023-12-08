@@ -1,3 +1,9 @@
+wandb:
+  log: true # true for logging WANDB in evaluate_llm.py
+  entity: "wandb-japan"
+  project: "llm-leaderboard"
+  run_name: "EleutherAI/pythia-70m" # use run_name defined above
+
 model:
   _target_: transformers.AutoModelForCausalLM.from_pretrained
   pretrained_model_name_or_path: "EleutherAI/pythia-70m" #if you use openai api, please put the name of model
@@ -6,7 +12,9 @@ model:
   load_in_8bit: false
   load_in_4bit: false
 
-### For jaster
+################
+# For jaster
+################
 generator:
   top_p: 1.0
   top_k: 0
@@ -33,13 +41,6 @@ custom_fewshots_template: null
 # example of fewshots template
 # "\n### 入力：\n{input}\n### 回答：\n{output}"
 
-wandb:
-  log: true # true for logging WANDB in evaluate_llm.py
-  entity: "wandb-japan"
-  project: "llm-leaderboard"
-  run_name: "EleutherAI/pythia-70m" # use run_name defined above
-
-
 metainfo:
   model_name: "EleutherAI/pythia-70m"
   model_type: "external model" # {external model, openai}
@@ -50,7 +51,9 @@ metainfo:
   data_type: "test" # {"dev", "test"}
   llm-jp-eval-version: "1.1.0"
 
+################
 ### For mtbench
+################
 mtbench:
   question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_question:v1'
   referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v1'
@@ -66,9 +69,19 @@ mtbench:
   max_gpu_memory: null
   dtype: bfloat16 # None or float32 or float16 or bfloat16
   # for gen_judgment
-  
   judge_model: 'gpt-4'
   mode: 'single'
   baseline_model: null 
   parallel: 1
-  first_n: null 
+  first_n: null
+  # for conv template # added
+  custom_conv_template: False
+  conv_name: "custom"
+  conv_system_message: "以下は、タスクを説明する指示と、文脈のある入力の組み合わせです。要求を適切に満たす応答を書きなさい。",
+  conv_roles: "('指示', '応答')",# "User", "System"とか
+  conv_sep: "\n\n### ",
+  conv_stop_token_ids: "[2]",
+  conv_stop_str: "###",
+  conv_role_message_separator: ": \n",
+  conv_role_only_separator: ": \n",
+
