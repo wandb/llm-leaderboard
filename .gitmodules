@@ -5,3 +5,4 @@
 [submodule "FastChat"]
 	path = FastChat
 	url = https://github.com/nejumi/FastChat
+	branch = wandb-nejumi
