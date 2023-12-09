@@ -1,21 +1,15 @@
 # Nejumi-leaderboard Neo
 
 
-## 目次
 
-- [Install](#Install)
-- [Data Preparation](#Data Preparation)
-
-
-## Install
-- [ ] 複数のrepositoryがある場合のinstal方法を考える必要がある
-- [ ] サブモジュールがあるrepositoryのinstall instructionを書く
 
 ## Set up
 1. Set up environment variables
 ```
 export WANDB_API_KEY=<your WANDB_API_KEY>
+# if needed, please set the following API KEY too
 export OPENAI_API_KEY=<your OPENAI_API_KEY>
+export ANTHROPIC_API_KEY=<your ANTHROPIC_API_KEY>
 ```
 
 ## Data Prepartion 
@@ -48,30 +42,25 @@ If you use wandb's Artifacts, this process is not necessary. The following data 
 If you create questions or prompts originally, you also need to create reference answers. The method for creating reference answers can be referenced from the [FastChat Readme](https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge).
 
 - japanese questions
-  - 5d4f13a of [Stability-AI/FastChat](https://github.com/Stability-AI/FastChat/tree/jp-stable) : "wandb-japan/llm-leaderboard/jaster:v0"
+  - [Stability-AI/FastChat (5d4f13a)](https://github.com/Stability-AI/FastChat/tree/jp-stable) : 'wandb-japan/llm-leaderboard/mtbench_ja_question:v0'
 - japanese prompt
-  - 5d4f13a of [Stability-AI/FastChat](https://github.com/Stability-AI/FastChat/tree/jp-stable) : "wandb-japan/llm-leaderboard/jaster:v0"
+  - [Stability-AI/FastChat (5d4f13a)](https://github.com/Stability-AI/FastChat/tree/jp-stable) : 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v0'
 - reference answer
-  - 5d4f13a of [Stability-AI/FastChat](https://github.com/Stability-AI/FastChat/tree/jp-stable) : "wandb-japan/llm-leaderboard/jaster:v0"
-
+  - [Stability-AI/FastChat (5d4f13a)](https://github.com/Stability-AI/FastChat/tree/jp-stable) : 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v0'
 
 
 Below, an example of the process of registering data in wandb's Artifacts is described for reference 
-1. register questions
 ```bash
-  python3 scripts/upload_mtbench_question.py -e wandb-japan -p llm-leaderboard -v 20231130
+# register questions
+  python3 scripts/upload_mtbench_question.py -e <wandb/entity> -p <wandb/project> -v <data version> -f "your path"
 ```
-
-2. register judge prompts
-
-
-3. register reference answer
-
 
 ## Evaluation
 Please follow the instructions below. By executing these steps, the results will be aggregated and displayed on the wandb dashboard
-1. update configs/config.yaml
-[ ] detailed explanation of config file is needed
+1. create configs/config.yaml
+```bash
+cp configs/config_template.yaml configs/config.yaml
+```
 2. run scripts/run_eval.py
 ```bash
 python3 scripts/run_eval.py
