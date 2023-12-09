@@ -45,7 +45,7 @@ custom_fewshots_template: null
 
 metainfo:
   model_name: "gpt-3.5-turbo"
-  model_type: "openai" # {external model, OpenAI, ANTHROPIC}
+  model_type: "commercial api" # {open llm, commercial api}
   instruction_tuning_method: "None" # {"None", "Full", "LoRA", ...}
   instruction_tuning_data: ["None"] # {"None", "jaster", "dolly_ja", "oasst_ja", ...}
   num_few_shots: 0
