@@ -17,6 +17,7 @@ colorama==0.4.6
 dataclasses-json==0.6.1
 distro==1.8.0
 docker-pycreds==0.4.0
+einops
 filelock==3.12.4
 frozenlist==1.4.0
 fsspec==2023.9.2
