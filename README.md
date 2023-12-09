@@ -20,21 +20,12 @@ If you use wandb's Artifacts, this process is not necessary. The following data 
 - v 1.1.0: "wandb-japan/llm-leaderboard/jaster:v1"
 
 Below, an example of the process of registering data in wandb's Artifacts is described for reference 
-0. library install
-```bash
-cd llm-jp-eval
-poetry install
-```
 
-1. create jaster dataset
-```bash
-  poetry run python scripts/preprocess_dataset.py  \
-  --dataset-name all  \
-  --output-dir dataset \
-```
+1. create dataset by following an instruction of [llm-jp-eval](https://github.com/llm-jp/llm-jp-eval/tree/wandb-nejumi)
+
 2. register to wandb artifacts
 ```bash
-python3 scripts/upload_jaster.py -e wandb-japan -p llm-leaderboard -d llm-jp-eval/dataset -v 1.0.0
+python3 scripts/upload_jaster.py -e <wandb/entity> -p <wandb/project> -d <dataset folder> -v 1.0.0
 ```
 
 ### preparation for mtbench
