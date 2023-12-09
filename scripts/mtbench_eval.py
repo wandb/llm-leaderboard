@@ -53,7 +53,7 @@ def mtbench_evaluate(run_id, cfg, leaderboard_score):
     ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path, type='dataset').download()
 
     # 1. generate model answers
-    if cfg.metainfo.model_type == "openai":
+    if cfg.openai or cfg.ANTHROPIC:
         questions = load_questions(question_file, None, None)
         get_api_answer(
             question_file=question_file,
@@ -189,8 +189,12 @@ def mtbench_evaluate(run_id, cfg, leaderboard_score):
     df_question = pd.read_json(question_file, lines=True)
 
     # load answers
+    # Reason of using [df_answer.model_id == cfg.mtbench.model_id| (df_answer.model_id == cfg.model.pretrained_model_name_or_path
+    # The answer files generated through the API use the model name as the model ID. 
+    # However, for the answer files created by our local model implementation, the model ID is used as the model ID. 
+    # It will be necessary to make changes in the future to standardize this.
     df_answer = pd.read_json(f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl", lines=True)
-    df_answer = df_answer[df_answer.model_id == cfg.mtbench.model_id]
+    df_answer = df_answer[(df_answer.model_id == cfg.mtbench.model_id)|(df_answer.model_id == cfg.model.pretrained_model_name_or_path)]
     df_answer = df_answer.sort_values(['question_id'])
 
     # load judge results
