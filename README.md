@@ -25,7 +25,7 @@ Below, an example of the process of registering data in wandb's Artifacts is des
 
 2. register to wandb artifacts
 ```bash
-python3 scripts/upload_jaster.py -e <wandb/entity> -p <wandb/project> -d <dataset folder> -v 1.0.0
+python3 scripts/upload_jaster.py -e <wandb/entity> -p <wandb/project> -d <dataset folder> -v <version>
 ```
 
 ### preparation for mtbench
