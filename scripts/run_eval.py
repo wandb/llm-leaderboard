@@ -17,9 +17,9 @@ cfg = OmegaConf.load("configs/config.yaml")
 # change of table in run.log (add "jaster_" as prefix)
 # add a script to generate leaderboard_score
 # change the variables returned from the original to run, leaderboard_score
-run, leaderboard_score = evaluate(cfg)
+run, leaderboard_table = evaluate(cfg)
 
 
 # mt-bench evaluation
 # 2023/12/7: create mtbench_eval.py by using functions of FastChat
-mtbench_evaluate(run_id=run.id, cfg=cfg,leaderboard_score=leaderboard_score)
+mtbench_evaluate(run_id=run.id, cfg=cfg,leaderboard_table=leaderboard_table)
