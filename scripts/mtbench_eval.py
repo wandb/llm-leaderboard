@@ -21,7 +21,7 @@ from fastchat.llm_judge.common import (
     )
 from fastchat.utils import str_to_torch_dtype
 
-def mtbench_evaluate(run_id, cfg, leaderboard_score):
+def mtbench_evaluate(run_id, cfg, leaderboard_table):
     # create hash and append it to the model_id in order to avoid duplicated id
     mnaum_data = str(datetime.datetime.now())
     encoded_data = mnaum_data.encode()
@@ -205,6 +205,7 @@ def mtbench_evaluate(run_id, cfg, leaderboard_score):
     df_judge['model'] = df_judge.model.apply(lambda x: x.split('_hash_')[0])
     df_judge = df_judge.sort_values(['question_id', 'turn'])
 
+
     ## merge tables
     df_judge["question"] = np.nan
     df_judge.loc[df_judge.turn == 1, 'question'] = df_question.turns.apply(lambda x: x[0]).values
@@ -215,6 +216,7 @@ def mtbench_evaluate(run_id, cfg, leaderboard_score):
     df_judge.loc[df_judge.turn == 2, 'answer'] = df_answer.choices.apply(lambda x: x[0][ 'turns'][1]).values
     df_judge = df_judge.merge(df_answer[['question_id', 'answer_id']], on='question_id', how='left')
     df_judge = df_judge.merge(df_question[['question_id', 'category']], on='question_id', how='left')
+
 
     ## clean dataframe up
     use_col = [
@@ -231,15 +233,14 @@ def mtbench_evaluate(run_id, cfg, leaderboard_score):
     table_radar = wandb.Table(dataframe=df_summary)
     
     ## table for LB mtbench
-    columns = ['model_name'] + df_summary.category.values.tolist()
-    data = [[cfg.metainfo.basemodel_name] + df_summary.score.values.tolist()]
+    columns = ['basemodel_name'] + df_summary.category.values.tolist()
+    data = [cfg.metainfo.basemodel_name + df_summary.score.values.tolist()]
     mtbench_df = pd.DataFrame(data, columns=columns)
     table_metric = wandb.Table(dataframe=mtbench_df)
 
     ## table for all
-    jaster_df = pd.read_json(leaderboard_score, orient='records', lines=True)
     mtbench_df = mtbench_df.drop(columns=['model_name'])
-    combined_df = pd.concat([jaster_df,  mtbench_df], axis=1)
+    combined_df = pd.concat([leaderboard_table,  mtbench_df], axis=1)
     table_all = wandb.Table(dataframe=combined_df)
 
     run.log({
