@@ -237,7 +237,7 @@ def mtbench_evaluate(run_id, cfg, leaderboard_score):
     table_metric = wandb.Table(dataframe=mtbench_df)
 
     ## table for all
-    jaster_df = pd.read_json(StringIO(leaderboard_score), orient='records', lines=True)
+    jaster_df = pd.read_json(leaderboard_score, orient='records', lines=True)
     mtbench_df = mtbench_df.drop(columns=['model_name'])
     combined_df = pd.concat([jaster_df,  mtbench_df], axis=1)
     table_all = wandb.Table(dataframe=combined_df)
