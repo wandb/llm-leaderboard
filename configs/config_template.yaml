@@ -4,7 +4,7 @@ wandb:
   project: "your/WANDB/project"
   run_name: "your/WANDB/run_name" 
 
-openai: false
+openai: true
 ANTHROPIC: false
 
 model:
@@ -27,13 +27,13 @@ tokenizer:
 
 # for llm-jp-eval
 max_seq_length: 2048
-dataset_artifact: "your dataset artifact path" #if you use artifacts, please fill here (if not, fill null)
-dataset_dir: "your dataset path"
+dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v2" #if you use artifacts, please fill here (if not, fill null)
+dataset_dir: "/jaster/1.1.0/evaluation/test"
 target_dataset: "all" # {all, jamp, janli, jcommonsenseqa, jemhopqa, jnli, jsem, jsick, jsquad, jsts, niilc, chabsa}
 log_dir: "./logs"
 torch_dtype: "bf16" # {fp16, bf16, fp32}
 custom_prompt_template: null
-# if you use this, please include {instruction} and {input}. If you use few shots, please include {few_shots_text} additionally.
+# if you use this, please include {instruction} and {input}. If you use few shots, please include {few_shots} additionally.
 # example of prompt template with fewshots
 # "以下はタスクを説明する指示と、追加の背景情報を提供する入力の組み合わせです。要求を適切に満たす回答を書いてください。\n### 指示：\n{instruction}\n{few_shots}\n### 入力：\n{input}\n### 回答：\n"
 # example of prompt template without fewshots
@@ -44,22 +44,21 @@ custom_fewshots_template: null
 # "\n### 入力：\n{input}\n### 回答：\n{output}"
 
 metainfo:
-  model_name: "your modelname"
-  model_type: "commercial api" # {open llm, commercial api}
+  basemodel_name: "your modelname"
+  model_type: "" # {open llm, commercial api}
   instruction_tuning_method: "None" # {"None", "Full", "LoRA", ...}
   instruction_tuning_data: ["None"] # {"None", "jaster", "dolly_ja", "oasst_ja", ...}
   num_few_shots: 0
-  max_num_samples: 100 # -1 for all data
   dev_max_num_samples: 100 # -1 for all data
   test_max_num_samples: 100 # -1 for all data
   llm-jp-eval-version: "1.1.0"
 
 # for mtbench
 mtbench:
-  question_artifacts_path: "your artifacts path of question data"
-  referenceanswer_artifacts_path: "your artifacts path of reference data"
-  judge_prompt_artifacts_path: "your artifacts path of promot data"
-  bench_name: "japanese_mt_bench"
+  question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v0'
+  referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v0'
+  judge_prompt_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v0' 
+  bench_name: 'japanese_mt_bench'
   model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
   question_begin: null 
   question_end: null 
@@ -70,8 +69,8 @@ mtbench:
   max_gpu_memory: null
   dtype: bfloat16 # None or float32 or float16 or bfloat16
   # for gen_judgment
-  judge_model: "gpt-4"
-  mode: "single"
+  judge_model: 'gpt-4'
+  mode: 'single'
   baseline_model: null 
   parallel: 1
   first_n: null
