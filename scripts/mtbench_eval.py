@@ -234,13 +234,13 @@ def mtbench_evaluate(run_id, cfg, leaderboard_table):
     
     ## table for LB mtbench
     columns = ['basemodel_name'] + df_summary.category.values.tolist()
-    data = [cfg.metainfo.basemodel_name + df_summary.score.values.tolist()]
+    data = [[cfg.metainfo.basemodel_name] + df_summary.score.values.tolist()]
     mtbench_df = pd.DataFrame(data, columns=columns)
     table_metric = wandb.Table(dataframe=mtbench_df)
 
     ## table for all
-    mtbench_df = mtbench_df.drop(columns=['model_name'])
-    combined_df = pd.concat([leaderboard_table,  mtbench_df], axis=1)
+    mtbench_df = mtbench_df.drop(columns=['basemodel_name'])
+    combined_df = pd.concat([leaderboard_table.get_dataframe(),  mtbench_df], axis=1)
     table_all = wandb.Table(dataframe=combined_df)
 
     run.log({
