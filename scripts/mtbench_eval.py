@@ -28,7 +28,7 @@ def mtbench_evaluate(run_id, cfg, leaderboard_score):
     hash_object = hashlib.sha256(encoded_data)
     hashed_string = hash_object.hexdigest()
     if cfg.mtbench.model_id == None:
-        cfg.mtbench.model_id = f'{cfg.metainfo.model_name.replace("/", "--")}_hash_{hashed_string}'
+        cfg.mtbench.model_id = f'{cfg.metainfo.basemodel_name.replace("/", "--")}_hash_{hashed_string}'
 
     # initialize wandb run
     run = wandb.init(entity=cfg.wandb.entity,
@@ -232,7 +232,7 @@ def mtbench_evaluate(run_id, cfg, leaderboard_score):
     
     ## table for LB mtbench
     columns = ['model_name'] + df_summary.category.values.tolist()
-    data = [[cfg.metainfo.model_name] + df_summary.score.values.tolist()]
+    data = [[cfg.metainfo.basemodel_name] + df_summary.score.values.tolist()]
     mtbench_df = pd.DataFrame(data, columns=columns)
     table_metric = wandb.Table(dataframe=mtbench_df)
 
