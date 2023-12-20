@@ -3,7 +3,7 @@ wandb==0.15.8
 huggingface_hub==0.16.3
 torch==2.0.1
 datasets==2.13.1
-transformers==4.31.0
+transformers==4.36.0
 sentencepiece==0.1.99
 fuzzywuzzy==0.18.0
 peft
