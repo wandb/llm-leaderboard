@@ -1,0 +1,8 @@
+[submodule "llm-jp-eval"]
+	path = llm-jp-eval
+	url = https://github.com/llm-jp/llm-jp-eval.git
+	branch = wandb-nejumi2
+[submodule "FastChat"]
+	path = FastChat
+	url = https://github.com/nejumi/FastChat
+	branch = wandb-nejumi
