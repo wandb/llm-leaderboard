@@ -1,8 +1,6 @@
 # Nejumi-leaderboard Neo
 
 
-
-
 ## Set up
 1. Set up environment variables
 ```
