@@ -9,6 +9,10 @@ export WANDB_API_KEY=<your WANDB_API_KEY>
 export OPENAI_API_KEY=<your OPENAI_API_KEY>
 export ANTHROPIC_API_KEY=<your ANTHROPIC_API_KEY>
 ```
+もしhuggingfaceのloginが必要なモデルを使用する際は、huggingfaceにログインをしてください。
+```
+huggingface-cli login
+```
 
 ## Data Prepartion 
 ### preparation for llm-jp-eval
