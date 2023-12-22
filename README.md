@@ -14,7 +14,7 @@ export ANTHROPIC_API_KEY=<your ANTHROPIC_API_KEY>
 If you use wandb's Artifacts, this process is not necessary. The following data is currently registered in wandb's Artifacts.
 
 - v 1.0.0: "wandb-japan/llm-leaderboard/jaster:v0"
-- v 1.1.0: "wandb-japan/llm-leaderboard/jaster:v2"
+- v 1.1.0: "wandb-japan/llm-leaderboard/jaster:v3"
 
 Below, an example of the process of registering data in wandb's Artifacts is described for reference 
 
