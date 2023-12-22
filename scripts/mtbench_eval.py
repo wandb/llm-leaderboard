@@ -42,7 +42,10 @@ def mtbench_evaluate(run_id, cfg, leaderboard_table):
     
     ## file path
     #question
-    artifact_dir = run.use_artifact(cfg.mtbench.question_artifacts_path, type='dataset').download()
+    if cfg.testmode:
+        artifact_dir = run.use_artifact("wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v0", type='dataset').download()
+    else:
+        artifact_dir = run.use_artifact(cfg.mtbench.question_artifacts_path, type='dataset').download()
     question_file = artifact_dir+f"/question.jsonl"
     
     #create answerfile and answerdir
@@ -50,7 +53,10 @@ def mtbench_evaluate(run_id, cfg, leaderboard_table):
     answer_dir = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer"
 
     #refeerence answer
-    ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path, type='dataset').download()
+    if cfg.testmode:
+        ref_answer_dir = run.use_artifact('wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v0', type='dataset').download()
+    else:
+        ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path, type='dataset').download()
 
     # 1. generate model answers
     if cfg.openai or cfg.ANTHROPIC:

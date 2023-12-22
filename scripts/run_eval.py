@@ -4,8 +4,8 @@ import os
 from omegaconf import OmegaConf
 sys.path.append('llm-jp-eval/src') 
 from llm_jp_eval.evaluator import evaluate
-sys.path.append('FastChat')
-from mtbench_eval import mtbench_evaluate
+#sys.path.append('FastChat')
+#from mtbench_eval import mtbench_evaluate
 cfg = OmegaConf.load("configs/config.yaml")
 
 # llm-jp-eval
@@ -22,4 +22,4 @@ run, leaderboard_table = evaluate(cfg)
 
 # mt-bench evaluation
 # 2023/12/7: create mtbench_eval.py by using functions of FastChat
-mtbench_evaluate(run_id=run.id, cfg=cfg,leaderboard_table=leaderboard_table)
+#mtbench_evaluate(run_id=run.id, cfg=cfg,leaderboard_table=leaderboard_table)
