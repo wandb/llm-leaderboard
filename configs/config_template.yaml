@@ -4,6 +4,8 @@ wandb:
   project: "your/WANDB/project"
   run_name: "your/WANDB/run_name" 
 
+github_version: v2.0.0 #for recording
+
 testmode: true
 
 openai: false
@@ -58,8 +60,8 @@ metainfo:
 
 # for mtbench
 mtbench:
-  question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_question:v0'
-  referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v0'
+  question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_question:v0' # if testmode is true, small dataset will be used
+  referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v0' # if testmode is true, small dataset will be used
   judge_prompt_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v0' 
   bench_name: 'japanese_mt_bench'
   model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
