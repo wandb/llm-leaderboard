@@ -7,7 +7,11 @@ export WANDB_API_KEY=<your WANDB_API_KEY>
 # if needed, please set the following API KEY too
 export OPENAI_API_KEY=<your OPENAI_API_KEY>
 export ANTHROPIC_API_KEY=<your ANTHROPIC_API_KEY>
+# if needed, please login in huggingface
+huggingface-cli login
 ```
+
+
 
 ## Data Prepartion 
 ### preparation for llm-jp-eval
