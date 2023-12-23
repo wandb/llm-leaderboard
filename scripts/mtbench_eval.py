@@ -60,7 +60,7 @@ def mtbench_evaluate(run_id, cfg, leaderboard_table):
         ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path, type='dataset').download()
 
     # 1. generate model answers
-    if cfg.openai or cfg.ANTHROPIC:
+    if cfg.api in ["openai","anthropic","cohere","google"]:
         questions = load_questions(question_file, None, None)
         get_api_answer(
             question_file=question_file,
