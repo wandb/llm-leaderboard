@@ -54,7 +54,7 @@ def mtbench_evaluate(run_id, cfg, leaderboard_table):
 
     #refeerence answer
     if cfg.testmode:
-        ref_answer_dir = run.use_artifact('wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v0', type='dataset').download()
+        ref_answer_dir = run.use_artifact('wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v0', type='dataset').download()
     else:
         ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path, type='dataset').download()
 
@@ -79,7 +79,7 @@ def mtbench_evaluate(run_id, cfg, leaderboard_table):
             num_gpus_total=cfg.mtbench.num_gpus_total,
             max_gpu_memory=cfg.mtbench.max_gpu_memory,
             dtype=str_to_torch_dtype(cfg.mtbench.dtype),
-            #revision="main"
+            revision="main"
         )
 
     # 2. evaluate outputs
