@@ -4,6 +4,7 @@ import json
 import numpy as np
 import pandas as pd
 from io import StringIO
+import google.generativeai as genai
 from tqdm import tqdm
 import wandb
 from fastchat.llm_judge.common import load_questions
@@ -213,11 +214,14 @@ def mtbench_evaluate(run_id, cfg, leaderboard_table):
 
 
     ## merge tables
-    df_judge["question"] = np.nan
+    #df_judge["question"] = np.nan
+    df_judge["question"] = pd.Series(np.nan, dtype='object')
+    
     df_judge.loc[df_judge.turn == 1, 'question'] = df_question.turns.apply(lambda x: x[0]).values
     df_judge.loc[df_judge.turn == 2, 'question'] = df_question.turns.apply(lambda x: x[1]).values
 
-    df_judge['answer'] = np.nan
+    #df_judge['answer'] = np.nan
+    df_judge['answer'] = pd.Series(np.nan, dtype='object')
     df_judge.loc[df_judge.turn == 1, 'answer'] = df_answer.choices.apply(lambda x: x[0][ 'turns'][0]).values
     df_judge.loc[df_judge.turn == 2, 'answer'] = df_answer.choices.apply(lambda x: x[0][ 'turns'][1]).values
     df_judge = df_judge.merge(df_answer[['question_id', 'answer_id']], on='question_id', how='left')
