@@ -11,6 +11,8 @@ export GOOGLE_API_KEY=<your GOOGLE_API_KEY>
 export COHERE_API_KEY=<your COHERE_API_KEY>
 # if needed, please login in huggingface
 huggingface-cli login
+# if needed
+export LANG=ja_JP.UTF-8
 ```
 
 
