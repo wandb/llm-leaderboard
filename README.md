@@ -7,6 +7,8 @@ export WANDB_API_KEY=<your WANDB_API_KEY>
 # if needed, please set the following API KEY too
 export OPENAI_API_KEY=<your OPENAI_API_KEY>
 export ANTHROPIC_API_KEY=<your ANTHROPIC_API_KEY>
+export GOOGLE_API_KEY=<your GOOGLE_API_KEY>
+export COHERE_API_KEY=<your COHERE_API_KEY>
 # if needed, please login in huggingface
 huggingface-cli login
 ```
