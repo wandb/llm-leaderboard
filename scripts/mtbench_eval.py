@@ -260,10 +260,6 @@ def mtbench_evaluate(run_id, cfg, leaderboard_table):
         "leaderboard_table":table_all
     })
 
-    # log config file
-    artifact = wandb.Artifact('config', type='config')
-    artifact.add_file("configs/config.yaml")
-    run.log_artifact(artifact)
     
     run.finish()
     return
