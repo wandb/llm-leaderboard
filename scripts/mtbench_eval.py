@@ -20,22 +20,29 @@ from fastchat.llm_judge.common import (
         play_a_match_single,
         NEED_REF_CATS,
     )
+from config_singleton import WandbConfigSingleton
+from fastchat.conversation import initialize_custom_template
 from fastchat.utils import str_to_torch_dtype
+from omegaconf import OmegaConf
 
-def mtbench_evaluate(run_id, cfg, leaderboard_table):
+def mtbench_evaluate():
+    # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
+    instance = WandbConfigSingleton.get_instance()
+    run = instance.run
+    cfg = instance.config
+    # Get the table for the leaderboard
+    leaderboard_table = instance.table
+    
     # create hash and append it to the model_id in order to avoid duplicated id
     mnaum_data = str(datetime.datetime.now())
     encoded_data = mnaum_data.encode()
     hash_object = hashlib.sha256(encoded_data)
     hashed_string = hash_object.hexdigest()
     if cfg.mtbench.model_id == None:
-        cfg.mtbench.model_id = f'{cfg.metainfo.basemodel_name.replace("/", "--")}_hash_{hashed_string}'
+        cfg.mtbench.model_id = f'{cfg.metainfo.basemodel_name.replace("/", "--")}_hash_{hashed_string}' 
 
-    # initialize wandb run
-    run = wandb.init(entity=cfg.wandb.entity,
-                     project=cfg.wandb.project,
-                     id=run_id,
-                     resume="allow")
+    if cfg.mtbench.custom_conv_template:
+        initialize_custom_template()
     
     if cfg.mtbench.num_gpus_total // cfg.mtbench.num_gpus_per_model > 1:
         import ray
@@ -60,7 +67,7 @@ def mtbench_evaluate(run_id, cfg, leaderboard_table):
         ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path, type='dataset').download()
 
     # 1. generate model answers
-    if cfg.api in ["openai","anthropic","cohere","google"]:
+    if cfg.api in ["openai","anthropic","cohere","google", "amazon_bedrock"]:
         questions = load_questions(question_file, None, None)
         get_api_answer(
             question_file=question_file,
@@ -251,16 +258,16 @@ def mtbench_evaluate(run_id, cfg, leaderboard_table):
     ## table for all
     mtbench_df = mtbench_df.drop(columns=['basemodel_name'])
     combined_df = pd.concat([leaderboard_table.get_dataframe(),  mtbench_df], axis=1)
-    table_all = wandb.Table(dataframe=combined_df)
+    instance.table = wandb.Table(dataframe=combined_df)
 
     run.log({
         "mtbench_output_table":table_log,
         "mtbench_leaderboard_table":table_metric,
         "mtbench_radar_table":table_radar,
-        "leaderboard_table":table_all
+        #"leaderboard_table":instance.table
     })
 
     
-    run.finish()
+    #run.finish()
     return
 
