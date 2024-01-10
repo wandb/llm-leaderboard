@@ -113,15 +113,7 @@ for mtbench
   - `dtype`: Data type. Choose from None or float32 or float16 or bfloat16
   - `judge_model`: Model used for evaluation. The default is 'gpt-4'
   - `question_begin`,`question_end`,`mode`,`baseline_model`,`parallel`,`first_n`: Parameters for original FastChat. In this leaderboard, use the default values.
-  - `custom_conv_template`: If the model is not compatible FastChat, you need to use custom conv template, and set this variable true. Then, the following custom conv template will be used. The defalt is false.
-  - `conv_name`: Your costom conv name. The default is "custom".
-  - `conv_system_message`: System message
-  - `conv_roles`: Role
-  - `conv_sep`: Sep
-  - `conv_stop_token_ids`: Stop toke ids
-  - `conv_stop_str`: Stop str
-  - `conv_role_message_separator`: Role message separator
-  - `conv_role_only_separator`: Separator for role
+  - `custom_conv_template`: If the model is not compatible FastChat, you need to use custom conv template, and set this variable true. Then, the custom conv template you set with the following variables will be used. The defalt is false.
 
 
    
