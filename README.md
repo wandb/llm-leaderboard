@@ -100,25 +100,20 @@ variables for llm-jp-eval
   - `llm-jp-eval-version`: Version information of llm-jp-eval.
 
 for mtbench
--`mtbench`:
+- `mtbench`:
   - `question_artifacts_path`: URL of wandb Artifacts of evaluation dataset. Choose the version from the Data Preparation section
   - `referenceanswer_artifacts_path`: URL of wandb Artifacts of reference answer. Choose the version from the Data Preparation section
   - `judge_prompt_artifacts_path`: URL of wandb Artifacts of judge prompt. Choose the version from the Data Preparation section
-  - `bench_name`: If you evaluate japanese dataset, set 'japanese_mt_benct'. If you evaluate English dataset, set 'mt_benct'. 
+  - `bench_name`: If you evaluate japanese dataset, set 'japanese_mt_benct'. If you evaluate English dataset, set 'mt_benct'.
+  - `model_id`: Name of model
   - `max_new_token`: The maximum length of the input. The default is 1024.
   - `num_gpus_per_model`: Number of GPUs per model. If you use multiple gpu, change here. The default is 1.
   - `num_gpus_total`:  Number of Total GPUs. If you use multiple gpu, change here. The default is 1.
   - `max_gpu_memory`: If you specifiy the max of GPU memory, change here. The default is null.
   - `dtype`: Data type. Choose from None or float32 or float16 or bfloat16
-  # for gen_judgment
-  - `judge_model`: The default is 'gpt-4'
-  - `mode`: The default is 'single'
-  - `baseline_model`: The default is null 
-  - `parallel`: 1
-  - `first_n`: null
-  # for conv template 
+  - `judge_model`: Model used for evaluation. The default is 'gpt-4'
+  - `question_begin`,`question_end`,`mode`,`baseline_model`,`parallel`,`first_n`: Parameters for original FastChat. In this leaderboard, use the default values.
   - `custom_conv_template`: If the model is not compatible FastChat, you need to use custom conv template, and set this variable true. Then, the following custom conv template will be used. The defalt is false.
-  # the following variables will be used when custom_conv_template is set as true
   - `conv_name`: Your costom conv name. The default is "custom".
   - `conv_system_message`: System message
   - `conv_roles`: Role
