@@ -50,15 +50,42 @@ Below, an example of the process of registering data in wandb's Artifacts is des
 # register questions
   python3 scripts/upload_mtbench_question.py -e <wandb/entity> -p <wandb/project> -v <data version> -f "your path"
 ```
-
-## Evaluation
-Please follow the instructions below. By executing these steps, the results will be aggregated and displayed on the wandb dashboard
+## Create config.yaml file
 1. create configs/config.yaml
 ```bash
 cp configs/config_template.yaml configs/config.yaml
 ```
-2. run scripts/run_eval.py
+2. set each variable properly by following the below instruction
+   
+- `wandb`: Information used for W&B support.
+  - `entity`: Name of the W&B Entity.
+  - `project`: Name of the W&B Project.
+  - `run_name`: Name of the W&B run.
+- `github_version`: For recording. Not need to be changed
+- `testmode`: The default is false. If set to true, it allows for a lightweight implementation where only 1 or 2 questions are extracted from each category. Please set it to true when you want to perform a functionality check
+- `api`:  If you don't use api, please set "api" as "false". If you use api, please select from "openai", "anthoropic", "google", "cohere"
+- model:
+  `_target_`: transformers.AutoModelForCausalLM.from_pretrained
+  `pretrained_model_name_or_path`: Name of your model. if you use openai api, put the name of model
+  `trust_remote_code`: true
+  `device_map`: device map. The default is "auto"
+  `load_in_8bit`: 8 bit quantization. The default is false
+  `load_in_4bit`: 4 bit quantization.The default is false
+- generator: Settings for generation. For more details, refer to the [generation_utils](https://huggingface.co/docs/transformers/internal/generation_utils)  in huggingface transformers.
+  - `top_p`: top-p sampling. The default is 1.0.
+  - `top_k`: top-k sampling. Default is commented out.
+  - `temperature`: The temperature for sampling. Default is commented out.
+  - `repetition_penalty`: Repetition penalty. The default is 1.0.
+
+
+
+
+
+
+   
+## Evaluation execution
+1. run scripts/run_eval.py
 ```bash
 python3 scripts/run_eval.py
 ```
-3. check wandb dashboard from the generated wandb URL
+2. check the wandb dashboard
