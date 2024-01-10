@@ -1,25 +1,52 @@
 import wandb
+from wandb.sdk.wandb_run import Run
 import sys
-import os
 from omegaconf import OmegaConf
+import pandas as pd
 sys.path.append('llm-jp-eval/src') 
-from llm_jp_eval.evaluator import evaluate
 sys.path.append('FastChat')
+from llm_jp_eval.evaluator import evaluate
 from mtbench_eval import mtbench_evaluate
+from config_singleton import WandbConfigSingleton
+
+# Configuration loading
 cfg = OmegaConf.load("configs/config.yaml")
 
-# llm-jp-eval
-# 2023/12/7: update from the original llm-jp-eval/dev
-# use artifactsを追加する
-#   artifact = run.use_artifact('wandb-japan/llm-leaderboard/jaster:v0', type='dataset')
-#   artifact_dir = artifact.download()
-#   cfg.dataset_dir = artifact_dir+cfg.dataset_dir
-# change of table in run.log (add "jaster_" as prefix)
-# add a script to generate leaderboard_score
-# change the variables returned from the original to run, leaderboard_score
-run, leaderboard_table = evaluate(cfg)
+# W&B setup and artifact handling
+if cfg.wandb.log:
+    wandb.login()
+    cfg_dict = OmegaConf.to_container(cfg, resolve=True)
+    assert isinstance(cfg_dict, dict)
+    run = wandb.init(
+        entity=cfg.wandb.entity,
+        project=cfg.wandb.project,
+        name=cfg.wandb.run_name,
+        config=cfg_dict,
+        job_type="evaluation",
+    )
+    
+    # Save configuration as artifact
+    artifact = wandb.Artifact('config', type='config')
+    artifact.add_file("configs/config.yaml")
+    run.log_artifact(artifact)
+else:
+    run = None
+    run_name = "Nan"
 
+# Initialize the WandbConfigSingleton
+WandbConfigSingleton.initialize(run, wandb.Table(dataframe=pd.DataFrame()))
 
-# mt-bench evaluation
-# 2023/12/7: create mtbench_eval.py by using functions of FastChat
-mtbench_evaluate(run_id=run.id, cfg=cfg,leaderboard_table=leaderboard_table)
+# Evaluation phase
+# 1. llm-jp-eval evaluation
+evaluate()
+
+# 2. mt-bench evaluation
+mtbench_evaluate()
+
+# Logging results to W&B
+if cfg.wandb.log and run is not None:
+    instance = WandbConfigSingleton.get_instance()
+    run.log({
+        "leaderboard_table": instance.table
+    })
+    run.finish()
