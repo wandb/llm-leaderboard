@@ -67,7 +67,7 @@ def mtbench_evaluate():
         ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path, type='dataset').download()
 
     # 1. generate model answers
-    if cfg.api in ["openai","anthropic","cohere","google", "amazon_bedrock"]:
+    if cfg.api in ["openai","anthropic","cohere","google","amazon_bedrock","mistral"]:
         questions = load_questions(question_file, None, None)
         get_api_answer(
             question_file=question_file,
