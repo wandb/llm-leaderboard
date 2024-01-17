@@ -13,7 +13,8 @@ testmode: false
 api: false
 
 model:
-  _target_: transformers.AutoModelForCausalLM.from_pretrained
+  use_wandb_artifacts: false
+  artifacts_path: ""
   pretrained_model_name_or_path: 'name of your model' #if you use openai api, put the name of model
   trust_remote_code: true
   device_map: "auto"
@@ -27,6 +28,8 @@ generator:
   repetition_penalty: 1.0
 
 tokenizer:
+  use_wandb_artifacts: false
+  artifacts_path: ""
   pretrained_model_name_or_path: null
   use_fast: true
 
