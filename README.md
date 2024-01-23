@@ -3,6 +3,7 @@
 ## Set up
 1. Set up environment variables
 ```
+export LANG=ja_JP.UTF-8
 export WANDB_API_KEY=<your WANDB_API_KEY>
 # if needed, please set the following API KEY too
 export OPENAI_API_KEY=<your OPENAI_API_KEY>
