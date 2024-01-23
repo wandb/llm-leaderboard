@@ -38,6 +38,7 @@ run = wandb.init(
 
 # Initialize the WandbConfigSingleton
 WandbConfigSingleton.initialize(run, wandb.Table(dataframe=pd.DataFrame()))
+cfg = WandbConfigSingleton.get_instance().config
 
 # Save configuration as artifact
 if cfg.wandb.log:
