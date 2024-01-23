@@ -66,6 +66,23 @@ def mtbench_evaluate():
     else:
         ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path, type='dataset').download()
 
+    # Download and move both tokenizer and model artifacts to a new folder, then set the new folder name as model_path
+    import os
+    import shutil
+
+    # Only create a new folder and use it as model_path for model and tokenizer if we are using artifacts
+    import os
+    import shutil
+
+    # Tokenizer artifactをダウンロード
+    if cfg.model.use_wandb_artifacts:
+        artifact_tokenizer = run.use_artifact(cfg.tokenizer.artifacts_path)
+        tokenizer_path = artifact_tokenizer.download()
+        artifact_model = run.use_artifact(cfg.model.artifacts_path)
+        model_path = artifact_model.download()
+
+        cfg.model.pretrained_model_name_or_path = model_path
+    
     # 1. generate model answers
     if cfg.api in ["openai","anthropic","cohere","google","amazon_bedrock","mistral"]:
         questions = load_questions(question_file, None, None)
