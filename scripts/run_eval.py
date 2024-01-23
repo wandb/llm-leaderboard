@@ -11,24 +11,21 @@ from mtbench_eval import mtbench_evaluate
 from config_singleton import WandbConfigSingleton
 from cleanup import cleanup_gpu
 
-# Configuration loading
-cfg = OmegaConf.load("configs/config.yaml")
+if os.path.exists("configs/config.yaml"):
+    # Configuration loading
+    cfg = OmegaConf.load("configs/config.yaml")
 
 # W&B setup and artifact handling
-if cfg.wandb.log:
-    wandb.login()
-    cfg_dict = OmegaConf.to_container(cfg, resolve=True)
-    assert isinstance(cfg_dict, dict)
-    run = wandb.init(
-        entity=cfg.wandb.entity,
-        project=cfg.wandb.project,
-        name=cfg.wandb.run_name,
-        config=cfg_dict,
-        job_type="evaluation",
-    )
-else:
-    run = None
-    run_name = "Nan"
+wandb.login()
+cfg_dict = OmegaConf.to_container(cfg, resolve=True)
+assert isinstance(cfg_dict, dict)
+run = wandb.init(
+    entity=cfg.wandb.entity,
+    project=cfg.wandb.project,
+    name=cfg.wandb.run_name,
+    config=cfg_dict,
+    job_type="evaluation",
+)
 
 # Initialize the WandbConfigSingleton
 WandbConfigSingleton.initialize(run, wandb.Table(dataframe=pd.DataFrame()))
