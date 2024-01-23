@@ -14,11 +14,11 @@ from cleanup import cleanup_gpu
 if os.path.exists("configs/config.yaml"):
     # Configuration loading
     cfg = OmegaConf.load("configs/config.yaml")
+    cfg_dict = OmegaConf.to_container(cfg, resolve=True)
+    assert isinstance(cfg_dict, dict)
 
 # W&B setup and artifact handling
 wandb.login()
-cfg_dict = OmegaConf.to_container(cfg, resolve=True)
-assert isinstance(cfg_dict, dict)
 run = wandb.init(
     entity=cfg.wandb.entity,
     project=cfg.wandb.project,
