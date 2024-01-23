@@ -11,4 +11,3 @@ def cleanup_gpu():
             del obj
     gc.collect()
     torch.cuda.empty_cache()
-    print(torch.cuda.memory_summary())
