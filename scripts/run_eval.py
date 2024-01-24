@@ -11,24 +11,34 @@ from mtbench_eval import mtbench_evaluate
 from config_singleton import WandbConfigSingleton
 from cleanup import cleanup_gpu
 
+# Configuration loading
 if os.path.exists("configs/config.yaml"):
-    # Configuration loading
     cfg = OmegaConf.load("configs/config.yaml")
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
     assert isinstance(cfg_dict, dict)
+else:
+    # Provide default settings in case config.yaml does not exist
+    cfg_dict = {
+        'wandb': {
+            'entity': 'default_entity',
+            'project': 'default_project',
+            'run_name': 'default_run_name'
+        }
+    }
 
 # W&B setup and artifact handling
 wandb.login()
 run = wandb.init(
-    entity=cfg.wandb.entity,
-    project=cfg.wandb.project,
-    name=cfg.wandb.run_name,
+    entity=cfg_dict['wandb']['entity'],
+    project=cfg_dict['wandb']['project'],
+    name=cfg_dict['wandb']['run_name'],
     config=cfg_dict,
     job_type="evaluation",
 )
 
 # Initialize the WandbConfigSingleton
 WandbConfigSingleton.initialize(run, wandb.Table(dataframe=pd.DataFrame()))
+cfg = WandbConfigSingleton.get_instance().config
 
 # Save configuration as artifact
 if cfg.wandb.log:
