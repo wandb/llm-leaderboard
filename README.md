@@ -4,20 +4,18 @@
 1. Set up environment variables
 ```
 export WANDB_API_KEY=<your WANDB_API_KEY>
-# if needed, please set the following API KEY too
 export OPENAI_API_KEY=<your OPENAI_API_KEY>
+export LANG=ja_JP.UTF-8
+# if needed, set the following API KEY too
 export ANTHROPIC_API_KEY=<your ANTHROPIC_API_KEY>
 export GOOGLE_API_KEY=<your GOOGLE_API_KEY>
 export COHERE_API_KEY=<your COHERE_API_KEY>
 export MISTRAL_API_KEY=<your MISTRAL_API_KEY>
-# Set your AWS credentials for Bedrock if necessary
 export AWS_ACCESS_KEY_ID=<your AWS_ACCESS_KEY_ID>
 export AWS_SECRET_ACCESS_KEY=<your AWS_SECRET_ACCESS_KEY>
 export AWS_DEFAULT_REGION=<your AWS_DEFAULT_REGION>
 # if needed, please login in huggingface
 huggingface-cli login
-# if needed
-export LANG=ja_JP.UTF-8
 ```
 
 
