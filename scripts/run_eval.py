@@ -57,13 +57,35 @@ if cfg.wandb.log:
     run.log_artifact(artifact)
 
 # Evaluation phase
-# 1. llm-jp-eval evaluation
-evaluate()
-cleanup_gpu()
+# 1. Llm-jp-eval-jp 0 shot evaluation
+if cfg.run_llm_jp_eval_jp_0_shot:
+    evaluate(num_fewshots=0, target="all_jp")
+    cleanup_gpu()
 
-# 2. mt-bench evaluation
-mtbench_evaluate()
-cleanup_gpu()
+# 2. Llm-jp-eval-jp few shots evaluation
+if cfg.run_llm_jp_eval_jp_few_shots:
+    evaluate(num_fewshots=cfg.num_few_shots, target="all_jp")
+    cleanup_gpu()
+
+# 3. Llm-jp-eval-en 0 shot evaluation
+if cfg.run_llm_jp_eval_en_0_shot:
+    evaluate(num_fewshots=0, target="all_en")
+    cleanup_gpu()
+
+# 4. Llm-jp-eval-en few shots evaluation
+if cfg.run_llm_jp_eval_en_few_shots:
+    evaluate(num_fewshots=cfg.num_few_shots, target="all_en")
+    cleanup_gpu()
+
+# 5. mt-bench evaluation
+if cfg.run_mt_bench_jp:
+    mtbench_evaluate(language="jp")
+    cleanup_gpu()
+
+# 6. mt-bench evaluation
+if cfg.run_mt_bench_en:
+    mtbench_evaluate(language="en")
+    cleanup_gpu()
 
 # Logging results to W&B
 if cfg.wandb.log and run is not None:

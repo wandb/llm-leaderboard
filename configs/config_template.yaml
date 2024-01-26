@@ -8,6 +8,16 @@ github_version: v2.0.0 #for recording
 
 testmode: false
 
+# 実行モード
+num_few_shots: 4
+
+run_llm_jp_eval_jp_0_shot: true
+run_llm_jp_eval_jp_few_shots: true
+run_llm_jp_eval_en_0_shot: true
+run_llm_jp_eval_en_few_shots: true
+run_mt_bench_jp: true
+run_mt_bench_en: true
+
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthoropic", "google", "cohere", "mistral", "amazon_bedrock"
 api: false
@@ -89,6 +99,38 @@ mtbench:
   conv_name: "custom"
   conv_system_message: "以下は、タスクを説明する指示と、文脈のある入力の組み合わせです。要求を適切に満たす応答を書きなさい。"
   conv_roles: "('指示', '応答')"
+  conv_sep: "\n\n### "
+  conv_stop_token_ids: "[2]"
+  conv_stop_str: "###"
+  conv_role_message_separator: ": \n"
+  conv_role_only_separator: ": \n"
+
+mtbench_en:
+  question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_en_question:v0' # if testmode is true, small dataset will be used
+  referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_en_referenceanswer:v0' # if testmode is true, small dataset will be used
+  judge_prompt_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_en_prompt:v0' 
+  bench_name: 'english_mt_bench'
+  model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
+  question_begin: null 
+  question_end: null 
+  max_new_token: 1024
+  num_choices: 1
+  num_gpus_per_model: 1
+  num_gpus_total: 1
+  max_gpu_memory: null
+  dtype: bfloat16 # None or float32 or float16 or bfloat16
+  # for gen_judgment
+  judge_model: 'gpt-4'
+  mode: 'single'
+  baseline_model: null 
+  parallel: 1
+  first_n: null
+  # for conv template # added
+  custom_conv_template: false 
+  # the following variables will be used when custom_conv_template is set as true
+  conv_name: "custom"
+  conv_system_message: "Here is a set of instructions explaining a task, combined with contextually relevant input. Please write an appropriate response fulfilling the request."
+  conv_roles: "('Instruction', 'Response')"
   conv_sep: "\n\n### "
   conv_stop_token_ids: "[2]"
   conv_stop_str: "###"
