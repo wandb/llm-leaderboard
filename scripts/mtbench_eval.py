@@ -40,13 +40,13 @@ def mtbench_evaluate(language):
     hashed_string = hash_object.hexdigest()
     
     if language=="ja":
-        if cfg.mtbench.model_id == None:
-            cfg.mtbench.model_id = f'{cfg.metainfo.basemodel_name.replace("/", "--")}_hash_{hashed_string}' 
+        if cfg.mtbench_ja.model_id == None:
+            cfg.mtbench_ja.model_id = f'{cfg.metainfo.basemodel_name.replace("/", "--")}_hash_{hashed_string}' 
 
-        if cfg.mtbench.custom_conv_template:
+        if cfg.mtbench_ja.custom_conv_template:
             initialize_custom_template()
         
-        if cfg.mtbench.num_gpus_total // cfg.mtbench.num_gpus_per_model > 1:
+        if cfg.mtbench_ja.num_gpus_total // cfg.mtbench_ja.num_gpus_per_model > 1:
             import ray
             ray.init()
 
@@ -55,18 +55,18 @@ def mtbench_evaluate(language):
         if cfg.testmode:
             artifact_dir = run.use_artifact("wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v0", type='dataset').download()
         else:
-            artifact_dir = run.use_artifact(cfg.mtbench.question_artifacts_path, type='dataset').download()
+            artifact_dir = run.use_artifact(cfg.mtbench_ja.question_artifacts_path, type='dataset').download()
         question_file = artifact_dir+f"/question.jsonl"
         
         #create answerfile and answerdir
-        answer_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl"
-        answer_dir = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer"
+        answer_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench_ja.bench_name}/model_answer/{cfg.mtbench_ja.model_id}.jsonl"
+        answer_dir = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench_ja.bench_name}/model_answer"
 
         #refeerence answer
         if cfg.testmode:
             ref_answer_dir = run.use_artifact('wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v0', type='dataset').download()
         else:
-            ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path, type='dataset').download()
+            ref_answer_dir = run.use_artifact(cfg.mtbench_ja.referenceanswer_artifacts_path, type='dataset').download()
 
         # Download and move both tokenizer and model artifacts to a new folder, then set the new folder name as model_path
         import os
@@ -95,17 +95,17 @@ def mtbench_evaluate(language):
         else:
             run_eval(
                 model_path=cfg.model.pretrained_model_name_or_path,
-                model_id=cfg.mtbench.model_id,
+                model_id=cfg.mtbench_ja.model_id,
                 question_file=question_file,
-                question_begin=cfg.mtbench.question_begin,
-                question_end=cfg.mtbench.question_end,
+                question_begin=cfg.mtbench_ja.question_begin,
+                question_end=cfg.mtbench_ja.question_end,
                 answer_file=answer_file,
-                max_new_token=cfg.mtbench.max_new_token,
-                num_choices=cfg.mtbench.num_choices,
-                num_gpus_per_model=cfg.mtbench.num_gpus_per_model,
-                num_gpus_total=cfg.mtbench.num_gpus_total,
-                max_gpu_memory=cfg.mtbench.max_gpu_memory,
-                dtype=str_to_torch_dtype(cfg.mtbench.dtype),
+                max_new_token=cfg.mtbench_ja.max_new_token,
+                num_choices=cfg.mtbench_ja.num_choices,
+                num_gpus_per_model=cfg.mtbench_ja.num_gpus_per_model,
+                num_gpus_total=cfg.mtbench_ja.num_gpus_total,
+                max_gpu_memory=cfg.mtbench_ja.max_gpu_memory,
+                dtype=str_to_torch_dtype(cfg.mtbench_ja.dtype),
                 revision="main"
             )
 
@@ -115,38 +115,38 @@ def mtbench_evaluate(language):
 
         ## Load answers
         model_answers = load_model_answers(answer_dir)
-        model_answers = {cfg.mtbench.model_id: model_answers[cfg.mtbench.model_id]}
+        model_answers = {cfg.mtbench_ja.model_id: model_answers[cfg.mtbench_ja.model_id]}
         ref_answers = load_model_answers(ref_answer_dir)
 
         ## Load judge
-        artifact_dir = run.use_artifact(cfg.mtbench.judge_prompt_artifacts_path, type='dataset').download()
+        artifact_dir = run.use_artifact(cfg.mtbench_ja.judge_prompt_artifacts_path, type='dataset').download()
         judge_prompts = load_judge_prompts(artifact_dir + "/judge_prompts.jsonl")
 
-        if cfg.mtbench.first_n:
-            questions = questions[: cfg.mtbench.first_n]
+        if cfg.mtbench_ja.first_n:
+            questions = questions[: cfg.mtbench_ja.first_n]
 
-        models = [cfg.mtbench.model_id] #get_model_list(answer_dir)
+        models = [cfg.mtbench_ja.model_id] #get_model_list(answer_dir)
     
-        if cfg.mtbench.mode == "single":
-            judges = make_judge_single(cfg.mtbench.judge_model, judge_prompts)
+        if cfg.mtbench_ja.mode == "single":
+            judges = make_judge_single(cfg.mtbench_ja.judge_model, judge_prompts)
             play_a_match_func = play_a_match_single
             output_file = (
-                f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_judgment/{cfg.mtbench.judge_model}_single.jsonl"
+                f"FastChat/fastchat/llm_judge/data/{cfg.mtbench_ja.bench_name}/model_judgment/{cfg.mtbench_ja.judge_model}_single.jsonl"
             )
             make_match_func = make_match_single
             baseline_model = None
         else:
-            judges = make_judge_pairwise(cfg.mtbench.judge_model, judge_prompts)
+            judges = make_judge_pairwise(cfg.mtbench_ja.judge_model, judge_prompts)
             play_a_match_func = play_a_match_pair
             output_file = (
-                f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_judgment/{cfg.mtbench.judge_model}_pair.jsonl"
+                f"FastChat/fastchat/llm_judge/data/{cfg.mtbench_ja.bench_name}/model_judgment/{cfg.mtbench_ja.judge_model}_pair.jsonl"
             )
-            if cfg.mtbench.mode == "pairwise-all":
+            if cfg.mtbench_ja.mode == "pairwise-all":
                 make_match_func = make_match_all_pairs
                 baseline_model = None
             else:
                 make_match_func = make_match
-                baseline_model = cfg.mtbench.baseline_model
+                baseline_model = cfg.mtbench_ja.baseline_model
 
         check_data(questions, model_answers, ref_answers, models, judges)
 
@@ -185,9 +185,9 @@ def mtbench_evaluate(language):
         )
 
         match_stat = {}
-        match_stat["bench_name"] = cfg.mtbench.bench_name
-        match_stat["mode"] = cfg.mtbench.mode
-        match_stat["judge"] = cfg.mtbench.judge_model
+        match_stat["bench_name"] = cfg.mtbench_ja.bench_name
+        match_stat["mode"] = cfg.mtbench_ja.mode
+        match_stat["judge"] = cfg.mtbench_ja.judge_model
         match_stat["baseline"] = baseline_model
         match_stat["model_list"] = models
         match_stat["total_num_questions"] = len(questions)
@@ -200,7 +200,7 @@ def mtbench_evaluate(language):
         #input("Press Enter to confirm...")
 
         # Play matches
-        if cfg.mtbench.parallel == 1:
+        if cfg.mtbench_ja.parallel == 1:
             for match in tqdm(matches):
                 play_a_match_func(match, output_file=output_file)
         else:
@@ -211,7 +211,7 @@ def mtbench_evaluate(language):
             np.random.seed(0)
             np.random.shuffle(matches)
 
-            with ThreadPoolExecutor(cfg.mtbench.parallel) as executor:
+            with ThreadPoolExecutor(cfg.mtbench_ja.parallel) as executor:
                 for match in tqdm(
                     executor.map(play_a_match_wrapper, matches), total=len(matches)
                 ):
@@ -222,17 +222,17 @@ def mtbench_evaluate(language):
         df_question = pd.read_json(question_file, lines=True)
 
         # load answers
-        # Reason of using [df_answer.model_id == cfg.mtbench.model_id| (df_answer.model_id == cfg.model.pretrained_model_name_or_path
+        # Reason of using [df_answer.model_id == cfg.mtbench_ja.model_id| (df_answer.model_id == cfg.model.pretrained_model_name_or_path
         # The answer files generated through the API use the model name as the model ID. 
         # However, for the answer files created by our local model implementation, the model ID is used as the model ID. 
         # It will be necessary to make changes in the future to standardize this.
-        df_answer = pd.read_json(f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl", lines=True)
-        df_answer = df_answer[(df_answer.model_id == cfg.mtbench.model_id)|(df_answer.model_id == cfg.model.pretrained_model_name_or_path)]
+        df_answer = pd.read_json(f"FastChat/fastchat/llm_judge/data/{cfg.mtbench_ja.bench_name}/model_answer/{cfg.mtbench_ja.model_id}.jsonl", lines=True)
+        df_answer = df_answer[(df_answer.model_id == cfg.mtbench_ja.model_id)|(df_answer.model_id == cfg.model.pretrained_model_name_or_path)]
         df_answer = df_answer.sort_values(['question_id'])
 
         # load judge results
         df_judge = pd.read_json(output_file, lines=True)
-        df_judge = df_judge[df_judge.model == cfg.mtbench.model_id]
+        df_judge = df_judge[df_judge.model == cfg.mtbench_ja.model_id]
         df_judge.model = df_judge.model.str.replace("--", "/")
         df_judge['hash'] = df_judge.model.apply(lambda x: x.split('_hash_')[-1])
         df_judge['model'] = df_judge.model.apply(lambda x: x.split('_hash_')[0])
@@ -280,9 +280,9 @@ def mtbench_evaluate(language):
         instance.table = wandb.Table(dataframe=combined_df)
 
         run.log({
-            "mtbench_output_table":table_log,
-            "mtbench_leaderboard_table":table_metric,
-            "mtbench_radar_table":table_radar,
+            "mtbench_ja_output_table":table_log,
+            "mtbench_ja_leaderboard_table":table_metric,
+            "mtbench_ja_radar_table":table_radar,
             #"leaderboard_table":instance.table
         })
 
@@ -290,8 +290,8 @@ def mtbench_evaluate(language):
         #run.finish()
         return
 
-    if language=="en":
-        if cfg.mtbench_en.model_id == None:
+    elif language=="en":
+        if cfg.mtbench_ja.model_id == None:
             cfg.mtbench_en.model_id = f'{cfg.metainfo.basemodel_name.replace("/", "--")}_hash_{hashed_string}' 
 
         if cfg.mtbench_en.custom_conv_template:
@@ -529,11 +529,10 @@ def mtbench_evaluate(language):
         mtbench_df = mtbench_df.drop(columns=['basemodel_name'])
         combined_df = pd.concat([leaderboard_table.get_dataframe(),  mtbench_df], axis=1)
         instance.table = wandb.Table(dataframe=combined_df)
-
         run.log({
-            "mtbench_output_table":table_log,
-            "mtbench_leaderboard_table":table_metric,
-            "mtbench_radar_table":table_radar,
+            "mtbench_en_output_table":table_log,
+            "mtbench_en_leaderboard_table":table_metric,
+            "mtbench_en_radar_table":table_radar,
             #"leaderboard_table":instance.table
         })
 

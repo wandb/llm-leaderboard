@@ -9,8 +9,6 @@ github_version: v2.0.0 #for recording
 testmode: false
 
 # 実行モード
-num_few_shots: 4
-
 run_llm_jp_eval_jp_0_shot: true
 run_llm_jp_eval_jp_few_shots: true
 run_llm_jp_eval_en_0_shot: true
@@ -73,7 +71,7 @@ metainfo:
   llm-jp-eval-version: "1.1.0"
 
 # for mtbench
-mtbench:
+mtbench_ja:
   question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_question:v0' # if testmode is true, small dataset will be used
   referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v0' # if testmode is true, small dataset will be used
   judge_prompt_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1' 
