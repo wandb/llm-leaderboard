@@ -10,6 +10,8 @@ from llm_jp_eval.evaluator import evaluate
 from mtbench_eval import mtbench_evaluate
 from config_singleton import WandbConfigSingleton
 from cleanup import cleanup_gpu
+from dotenv import load_dotenv
+load_dotenv()
 
 # Configuration loading
 if os.path.exists("configs/config.yaml"):
@@ -64,6 +66,12 @@ cleanup_gpu()
 # 2. mt-bench evaluation
 mtbench_evaluate()
 cleanup_gpu()
+
+# 3. MMLU
+from mmlu_eval import evaluate as mmlu_evaluate
+mmlu_evaluate()
+cleanup_gpu()
+
 
 # Logging results to W&B
 if cfg.wandb.log and run is not None:

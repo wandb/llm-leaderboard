@@ -108,7 +108,7 @@ outputs/
 artifacts/
 
 # config
-configs/config.yaml
+# configs/config.yaml
 
 # debug
 dataset/
