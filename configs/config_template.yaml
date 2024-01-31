@@ -71,38 +71,6 @@ metainfo:
   llm-jp-eval-version: "1.1.0"
 
 # for mtbench
-mtbench_ja:
-  question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_question:v0' # if testmode is true, small dataset will be used
-  referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v0' # if testmode is true, small dataset will be used
-  judge_prompt_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1' 
-  bench_name: 'mt_bench_ja'
-  model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
-  question_begin: null 
-  question_end: null 
-  max_new_token: 1024
-  num_choices: 1
-  num_gpus_per_model: 1
-  num_gpus_total: 1
-  max_gpu_memory: null
-  dtype: bfloat16 # None or float32 or float16 or bfloat16
-  # for gen_judgment
-  judge_model: 'gpt-4'
-  mode: 'single'
-  baseline_model: null 
-  parallel: 1
-  first_n: null
-  # for conv template # added
-  custom_conv_template: false 
-  # the following variables will be used when custom_conv_template is set as true
-  conv_name: "custom"
-  conv_system_message: "以下は、タスクを説明する指示と、文脈のある入力の組み合わせです。要求を適切に満たす応答を書きなさい。"
-  conv_roles: "('指示', '応答')"
-  conv_sep: "\n\n### "
-  conv_stop_token_ids: "[2]"
-  conv_stop_str: "###"
-  conv_role_message_separator: ": \n"
-  conv_role_only_separator: ": \n"
-
 mtbench:
   model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
   question_begin: null 
