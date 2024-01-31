@@ -130,7 +130,7 @@ def mtbench_evaluate(language):
         ref_answers = load_model_answers(ref_answer_dir)
 
         ## Load judge
-        artifact_dir = run.use_artifact(cfg.mtbench_ja.judge_prompt_artifacts_path, type='dataset').download()
+        artifact_dir = run.use_artifact(cfg.mtbench.ja.judge_prompt_artifacts_path, type='dataset').download()
         judge_prompts = load_judge_prompts(artifact_dir + "/judge_prompts.jsonl")
 
         if cfg.mtbench.first_n:
@@ -294,9 +294,9 @@ def mtbench_evaluate(language):
 
         run.log(
             {
-                "mtbench_ja_output_table": table_log,
-                "mtbench_ja_leaderboard_table": table_metric,
-                "mtbench_ja_radar_table": table_radar,
+                "mtbench_output_table_ja": table_log,
+                "mtbench_leaderboard_table_ja": table_metric,
+                "mtbench_radar_table_ja": table_radar,
                 # "leaderboard_table":instance.table
             }
         )
