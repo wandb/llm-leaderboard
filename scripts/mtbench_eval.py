@@ -549,9 +549,9 @@ def mtbench_evaluate(language):
 
         run.log(
             {
-                "mtbench_ja_output_table": table_log,
-                "mtbench_ja_leaderboard_table": table_metric,
-                "mtbench_ja_radar_table": table_radar,
+                "mtbench_output_table_en": table_log,
+                "mtbench_leaderboard_table_en": table_metric,
+                "mtbench_radar_table_en": table_radar,
                 # "leaderboard_table":instance.table
             }
         )
