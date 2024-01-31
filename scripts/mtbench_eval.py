@@ -38,7 +38,7 @@ def mtbench_evaluate(language):
     encoded_data = mnaum_data.encode()
     hash_object = hashlib.sha256(encoded_data)
     hashed_string = hash_object.hexdigest()
-    
+
     if language=="ja":
         if cfg.mtbench_ja.model_id == None:
             cfg.mtbench_ja.model_id = f'{cfg.metainfo.basemodel_name.replace("/", "--")}_hash_{hashed_string}' 
