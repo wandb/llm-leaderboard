@@ -66,7 +66,7 @@ def mtbench_evaluate(language):
         question_file = artifact_dir + f"/question.jsonl"
 
         # create answerfile and answerdir
-        answer_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbenc.ja.bench_name}/model_answer/{cfg.mtbench_ja.model_id}.jsonl"
+        answer_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.ja.bench_name}/model_answer/{cfg.mtbench_ja.model_id}.jsonl"
         answer_dir = (
             f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.ja.bench_name}/model_answer"
         )
@@ -316,7 +316,7 @@ def mtbench_evaluate(language):
         question_file = artifact_dir + f"/question.jsonl"
 
         # create answerfile and answerdir
-        answer_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbenc.en.bench_name}/model_answer/{cfg.mtbench_ja.model_id}.jsonl"
+        answer_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.en.bench_name}/model_answer/{cfg.mtbench_ja.model_id}.jsonl"
         answer_dir = (
             f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.en.bench_name}/model_answer"
         )
