@@ -323,7 +323,7 @@ def mtbench_evaluate(language):
         #refeerence answer
         if cfg.testmode:
             ref_answer_dir = run.use_artifact(
-                "wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v0",
+                "wandb-japan/llm-leaderboard/mtbench_en_referenceanswer_small_for_test:v0",
                 type="dataset",
             ).download()
         else:
@@ -410,7 +410,7 @@ def mtbench_evaluate(language):
                 baseline_model = cfg.mtbench.baseline_model
         print(questions)
         print(model_answers)
-        print(ref_answers)
+        print(ref_answers) # おかしい
         print(models)
         print(judges)
         check_data(questions, model_answers, ref_answers, models, judges)
