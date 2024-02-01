@@ -141,13 +141,13 @@ def mtbench_evaluate(language):
         if cfg.mtbench.mode == "single":
             judges = make_judge_single(cfg.mtbench.judge_model, judge_prompts)
             play_a_match_func = play_a_match_single
-            output_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.ja.bench_name}/model_judgment/{cfg.mtbench.ja.judge_model}_single.jsonl"
+            output_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.ja.bench_name}/model_judgment/{cfg.mtbench.judge_model}_single.jsonl"
             make_match_func = make_match_single
             baseline_model = None
         else:
-            judges = make_judge_pairwise(cfg.mtbench.ja.judge_model, judge_prompts)
+            judges = make_judge_pairwise(cfg.mtbench.judge_model, judge_prompts)
             play_a_match_func = play_a_match_pair
-            output_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.ja.bench_name}/model_judgment/{cfg.mtbench.ja.judge_model}_pair.jsonl"
+            output_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.ja.bench_name}/model_judgment/{cfg.mtbench.judge_model}_pair.jsonl"
             if cfg.mtbench.mode == "pairwise-all":
                 make_match_func = make_match_all_pairs
                 baseline_model = None
@@ -396,13 +396,13 @@ def mtbench_evaluate(language):
         if cfg.mtbench.mode == "single":
             judges = make_judge_single(cfg.mtbench.judge_model, judge_prompts)
             play_a_match_func = play_a_match_single
-            output_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.en.bench_name}/model_judgment/{cfg.mtbench.ja.judge_model}_single.jsonl"
+            output_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.en.bench_name}/model_judgment/{cfg.mtbench.judge_model}_single.jsonl"
             make_match_func = make_match_single
             baseline_model = None
         else:
             judges = make_judge_pairwise(cfg.mtbench.en.judge_model, judge_prompts)
             play_a_match_func = play_a_match_pair
-            output_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.en.bench_name}/model_judgment/{cfg.mtbench.ja.judge_model}_pair.jsonl"
+            output_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.en.bench_name}/model_judgment/{cfg.mtbench.judge_model}_pair.jsonl"
             if cfg.mtbench.mode == "pairwise-all":
                 make_match_func = make_match_all_pairs
                 baseline_model = None
