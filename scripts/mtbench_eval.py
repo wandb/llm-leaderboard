@@ -66,7 +66,7 @@ def mtbench_evaluate(language):
         question_file = artifact_dir + f"/question.jsonl"
 
         # create answerfile and answerdir
-        answer_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.ja.bench_name}/model_answer/{cfg.mtbench.ja.model_id}.jsonl"
+        answer_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.ja.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl"
         answer_dir = (
             f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.ja.bench_name}/model_answer"
         )
@@ -229,12 +229,12 @@ def mtbench_evaluate(language):
         df_question = pd.read_json(question_file, lines=True)
 
         # load answers
-        # Reason of using [df_answer.model_id == cfg.mtbench.ja.model_id| (df_answer.model_id == cfg.model.pretrained_model_name_or_path
+        # Reason of using [df_answer.model_id == cfg.mtbench.model_id| (df_answer.model_id == cfg.model.pretrained_model_name_or_path
         # The answer files generated through the API use the model name as the model ID. 
         # However, for the answer files created by our local model implementation, the model ID is used as the model ID. 
         # It will be necessary to make changes in the future to standardize this.
         df_answer = pd.read_json(
-            f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.ja.bench_name}/model_answer/{cfg.mtbench.ja.model_id}.jsonl",
+            f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.ja.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl",
             lines=True,
         )
         df_answer = df_answer[
@@ -316,7 +316,7 @@ def mtbench_evaluate(language):
         question_file = artifact_dir + f"/question.jsonl"
 
         # create answerfile and answerdir
-        answer_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.en.bench_name}/model_answer/{cfg.mtbench.ja.model_id}.jsonl"
+        answer_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.en.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl"
         answer_dir = (
             f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.en.bench_name}/model_answer"
         )
@@ -484,12 +484,12 @@ def mtbench_evaluate(language):
         df_question = pd.read_json(question_file, lines=True)
 
         # load answers
-        # Reason of using [df_answer.model_id == cfg.mtbench.en.model_id| (df_answer.model_id == cfg.model.pretrained_model_name_or_path
+        # Reason of using [df_answer.model_id == cfg.mtbench.model_id| (df_answer.model_id == cfg.model.pretrained_model_name_or_path
         # The answer files generated through the API use the model name as the model ID. 
         # However, for the answer files created by our local model implementation, the model ID is used as the model ID. 
         # It will be necessary to make changes in the future to standardize this.
         df_answer = pd.read_json(
-            f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.en.bench_name}/model_answer/{cfg.mtbench.ja.model_id}.jsonl",
+            f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.en.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl",
             lines=True,
         )
         df_answer = df_answer[
