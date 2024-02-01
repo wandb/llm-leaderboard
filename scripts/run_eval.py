@@ -62,22 +62,22 @@ if cfg.wandb.log:
 # Evaluation phase
 # 1. Llm-jp-eval-jp 0 shot evaluation
 if cfg.run_llm_jp_eval_ja_0_shot:
-    evaluate(num_fewshots=0, target="all_ja")
+    evaluate(num_fewshots=0, target_dataset="all_jp")
     cleanup_gpu()
 
 # 2. Llm-jp-eval-jp few shots evaluation
 if cfg.run_llm_jp_eval_ja_few_shots:
-    evaluate(num_fewshots=cfg.metainfo.num_few_shots, target="all_ja")
+    evaluate(num_fewshots=cfg.metainfo.num_few_shots, target_dataset="all_jp")
     cleanup_gpu()
 
 # 3. Llm-jp-eval-en 0 shot evaluation
 if cfg.run_llm_jp_eval_en_0_shot:
-    evaluate(num_fewshots=0, target="all_en")
+    evaluate(num_fewshots=0, target_dataset="all_en")
     cleanup_gpu()
 
 # 4. Llm-jp-eval-en few shots evaluation
 if cfg.run_llm_jp_eval_en_few_shots:
-    evaluate(num_fewshots=cfg.metainfo.num_few_shots, target="all_en")
+    evaluate(num_fewshots=cfg.metainfo.num_few_shots, target_dataset="all_en")
     cleanup_gpu()
 
 # 5. mt-bench evaluation
