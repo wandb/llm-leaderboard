@@ -408,11 +408,6 @@ def mtbench_evaluate(language):
             else:
                 make_match_func = make_match
                 baseline_model = cfg.mtbench.baseline_model
-        print(questions)
-        print(model_answers)
-        print(ref_answers) # おかしい
-        print(models)
-        print(judges)
         check_data(questions, model_answers, ref_answers, models, judges)
 
         question_math = [q for q in questions if q["category"] in NEED_REF_CATS]
