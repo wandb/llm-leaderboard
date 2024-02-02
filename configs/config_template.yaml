@@ -43,8 +43,8 @@ tokenizer:
 
 # for llm-jp-eval
 max_seq_length: 2048
-dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v3" #if you use artifacts, please fill here (if not, fill null)
-dataset_dir: "/jaster/1.1.0/evaluation/test"
+dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v4" #if you use artifacts, please fill here (if not, fill null)
+dataset_dir: "/jaster/1.2.0/evaluation/test"
 target_dataset: "all" # {all, jamp, janli, jcommonsenseqa, jemhopqa, jnli, jsem, jsick, jsquad, jsts, niilc, chabsa, mmluen}
 log_dir: "./logs"
 torch_dtype: "bf16" # {fp16, bf16, fp32}
@@ -68,7 +68,7 @@ metainfo:
   instruction_tuning_method: "None" # {"None", "Full", "LoRA", ...}
   instruction_tuning_data: ["None"] # {"None", "jaster", "dolly_ja", "oasst_ja", ...}
   num_few_shots: 0
-  llm-jp-eval-version: "1.1.0"
+  llm-jp-eval-version: "1.2.0"
 
 # for mtbench
 mtbench:
