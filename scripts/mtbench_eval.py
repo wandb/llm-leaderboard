@@ -289,8 +289,9 @@ def mtbench_evaluate(language):
     
     ## table for LB mtbench
     columns = ['basemodel_name'] + df_summary.category.values.tolist()
+    columns_with_language = [f'{c}-{language}' for c in columns]
     data = [[cfg.metainfo.basemodel_name] + df_summary.score.values.tolist()]
-    mtbench_df = pd.DataFrame(data, columns=columns)
+    mtbench_df = pd.DataFrame(data, columns=columns_with_language)
     table_metric = wandb.Table(dataframe=mtbench_df)
 
     ## table for all
