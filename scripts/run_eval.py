@@ -93,13 +93,5 @@ if cfg.run_mt_bench_en:
 # Logging results to W&B
 if cfg.wandb.log and run is not None:
     instance = WandbConfigSingleton.get_instance()
-    run.log({
-        "leaderboard_table": instance.table
-    })
-    run.finish()
-
-# Logging results to W&B
-if cfg.wandb.log and run is not None:
-    instance = WandbConfigSingleton.get_instance()
     run.log({"leaderboard_table": instance.table})
     run.finish()
