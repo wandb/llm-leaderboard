@@ -4,8 +4,9 @@ import os
 import sys
 from omegaconf import DictConfig, OmegaConf
 import pandas as pd
-sys.path.append('llm-jp-eval/src') 
-sys.path.append('FastChat')
+
+sys.path.append("llm-jp-eval/src")
+sys.path.append("FastChat")
 from llm_jp_eval.evaluator import evaluate
 from mtbench_eval import mtbench_evaluate
 from config_singleton import WandbConfigSingleton
@@ -19,19 +20,19 @@ if os.path.exists("configs/config.yaml"):
 else:
     # Provide default settings in case config.yaml does not exist
     cfg_dict = {
-        'wandb': {
-            'entity': 'default_entity',
-            'project': 'default_project',
-            'run_name': 'default_run_name'
+        "wandb": {
+            "entity": "default_entity",
+            "project": "default_project",
+            "run_name": "default_run_name",
         }
     }
 
 # W&B setup and artifact handling
 wandb.login()
 run = wandb.init(
-    entity=cfg_dict['wandb']['entity'],
-    project=cfg_dict['wandb']['project'],
-    name=cfg_dict['wandb']['run_name'],
+    entity=cfg_dict["wandb"]["entity"],
+    project=cfg_dict["wandb"]["project"],
+    name=cfg_dict["wandb"]["run_name"],
     config=cfg_dict,
     job_type="evaluation",
 )
@@ -47,24 +48,26 @@ if cfg.wandb.log:
     else:
         # If "configs/config.yaml" does not exist, write the contents of run.config as a YAML configuration string
         instance = WandbConfigSingleton.get_instance()
-        assert isinstance(instance.config, DictConfig), "instance.config must be a DictConfig"
-        with open("configs/config.yaml", 'w') as f:
+        assert isinstance(
+            instance.config, DictConfig
+        ), "instance.config must be a DictConfig"
+        with open("configs/config.yaml", "w") as f:
             f.write(OmegaConf.to_yaml(instance.config))
         artifact_config_path = "configs/config.yaml"
 
-    artifact = wandb.Artifact('config', type='config')
+    artifact = wandb.Artifact("config", type="config")
     artifact.add_file(artifact_config_path)
     run.log_artifact(artifact)
 
 # Evaluation phase
 # 1. Llm-jp-eval-jp 0 shot evaluation
-if cfg.run_llm_jp_eval_jp_0_shot:
-   evaluate(num_fewshots=0, target_dataset="all-jp")
-   cleanup_gpu()
+if cfg.run_llm_jp_eval_ja_0_shot:
+    evaluate(num_fewshots=0, target_dataset="all-ja")
+    cleanup_gpu()
 
-# 2. Llm-jp-eval-jp few shots evaluation    
-if cfg.run_llm_jp_eval_jp_few_shots:
-    evaluate(num_fewshots=4, target_dataset="all-jp")
+# 2. Llm-jp-eval-jp few shots evaluation
+if cfg.run_llm_jp_eval_ja_few_shots:
+    evaluate(num_fewshots=cfg.metainfo.num_few_shots, target_dataset="all-ja")
     cleanup_gpu()
 
 # 3. Llm-jp-eval-en 0 shot evaluation
@@ -74,12 +77,12 @@ if cfg.run_llm_jp_eval_en_0_shot:
 
 # 4. Llm-jp-eval-en few shots evaluation
 if cfg.run_llm_jp_eval_en_few_shots:
-    evaluate(num_fewshots=4, target_dataset="all-en")
+    evaluate(num_fewshots=cfg.metainfo.num_few_shots, target_dataset="all-en")
     cleanup_gpu()
 
 # 5. mt-bench evaluation
-if cfg.run_mt_bench_jp:
-    mtbench_evaluate(language="jp")
+if cfg.run_mt_bench_ja:
+    mtbench_evaluate(language="ja")
     cleanup_gpu()
 
 # 6. mt-bench evaluation
@@ -98,7 +101,5 @@ if cfg.wandb.log and run is not None:
 # Logging results to W&B
 if cfg.wandb.log and run is not None:
     instance = WandbConfigSingleton.get_instance()
-    run.log({
-        "leaderboard_table": instance.table
-    })
+    run.log({"leaderboard_table": instance.table})
     run.finish()
