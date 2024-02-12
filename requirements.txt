@@ -110,3 +110,5 @@ tiktoken==0.5.2 ; python_version >= "3.9" and python_version < "4.0"
 transformers_stream_generator==0.0.4 ; python_version >= "3.9" and python_version < "4.0"
 mistralai==0.0.8 ; python_version >= "3.9" and python_version < "4.0"
 langchain-mistralai==0.0.1 ; python_version >= "3.9" and python_version < "4.0"
+-e git+https://github.com/wandb/FastChat.git@main#egg=fschat
+-e git+https://github.com/llm-jp/l/lm-jp-eval.git@wandb-nejumi2-dev#egg=llm_jp_eval
