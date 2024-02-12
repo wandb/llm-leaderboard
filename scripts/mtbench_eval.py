@@ -25,7 +25,7 @@ from fastchat.conversation import initialize_custom_template
 from fastchat.utils import str_to_torch_dtype
 from omegaconf import OmegaConf
 
-def mtbench_evaluate():
+def mtbench_evaluate(language):
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
@@ -39,32 +39,52 @@ def mtbench_evaluate():
     hash_object = hashlib.sha256(encoded_data)
     hashed_string = hash_object.hexdigest()
     if cfg.mtbench.model_id == None:
-        cfg.mtbench.model_id = f'{cfg.metainfo.basemodel_name.replace("/", "--")}_hash_{hashed_string}' 
+        cfg.mtbench.model_id = (
+            f'{cfg.metainfo.basemodel_name.replace("/", "--")}_hash_{hashed_string}'
+        )
 
     if cfg.mtbench.custom_conv_template:
         initialize_custom_template()
-    
+
     if cfg.mtbench.num_gpus_total // cfg.mtbench.num_gpus_per_model > 1:
         import ray
+
         ray.init()
+
+    # get language config
+    if language=='ja':
+        lang_config = cfg.mtbench.ja
+    elif language=='en':
+        lang_config = cfg.mtbench.en
+    else:
+        raise ValueError(f"Invalid language: {language}")
     
     ## file path
     #question
     if cfg.testmode:
-        artifact_dir = run.use_artifact("wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v0", type='dataset').download()
+        artifact_dir = run.use_artifact(
+            f"wandb-japan/llm-leaderboard/mtbench_{language}_question_small_for_test:v0",
+            type="dataset",
+        ).download()
     else:
-        artifact_dir = run.use_artifact(cfg.mtbench.question_artifacts_path, type='dataset').download()
-    question_file = artifact_dir+f"/question.jsonl"
-    
-    #create answerfile and answerdir
-    answer_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl"
-    answer_dir = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer"
+        artifact_dir = run.use_artifact(
+            lang_config.question_artifacts_path, type="dataset"
+        ).download()
+    question_file = artifact_dir + f"/question.jsonl"
 
-    #refeerence answer
+    # create answerfile and answerdir
+    answer_file = f"FastChat/fastchat/llm_judge/data/{lang_config.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl"
+    answer_dir = (
+        f"FastChat/fastchat/llm_judge/data/{lang_config.bench_name}/model_answer"
+    )
+
+    #reference answer
     if cfg.testmode:
-        ref_answer_dir = run.use_artifact('wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v0', type='dataset').download()
+        ref_answer_dir = run.use_artifact(f'wandb-japan/llm-leaderboard/mtbench_{language}_referenceanswer_small_for_test:v0', type='dataset').download()
     else:
-        ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path, type='dataset').download()
+        ref_answer_dir = run.use_artifact(
+            lang_config.referenceanswer_artifacts_path, type="dataset"
+        ).download()
 
     # Download and move both tokenizer and model artifacts to a new folder, then set the new folder name as model_path
     import os
@@ -104,7 +124,7 @@ def mtbench_evaluate():
             num_gpus_total=cfg.mtbench.num_gpus_total,
             max_gpu_memory=cfg.mtbench.max_gpu_memory,
             dtype=str_to_torch_dtype(cfg.mtbench.dtype),
-            revision="main"
+            revision="main",
         )
 
     # 2. evaluate outputs
@@ -117,35 +137,30 @@ def mtbench_evaluate():
     ref_answers = load_model_answers(ref_answer_dir)
 
     ## Load judge
-    artifact_dir = run.use_artifact(cfg.mtbench.judge_prompt_artifacts_path, type='dataset').download()
+    artifact_dir = run.use_artifact(lang_config.judge_prompt_artifacts_path, type='dataset').download()
     judge_prompts = load_judge_prompts(artifact_dir + "/judge_prompts.jsonl")
 
     if cfg.mtbench.first_n:
         questions = questions[: cfg.mtbench.first_n]
 
-    models = [cfg.mtbench.model_id] #get_model_list(answer_dir)
- 
+    models = [cfg.mtbench.model_id]  # get_model_list(answer_dir)
+
     if cfg.mtbench.mode == "single":
         judges = make_judge_single(cfg.mtbench.judge_model, judge_prompts)
         play_a_match_func = play_a_match_single
-        output_file = (
-            f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_judgment/{cfg.mtbench.judge_model}_single.jsonl"
-        )
+        output_file = f"FastChat/fastchat/llm_judge/data/{lang_config.bench_name}/model_judgment/{cfg.mtbench.judge_model}_single.jsonl"
         make_match_func = make_match_single
         baseline_model = None
     else:
         judges = make_judge_pairwise(cfg.mtbench.judge_model, judge_prompts)
         play_a_match_func = play_a_match_pair
-        output_file = (
-            f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_judgment/{cfg.mtbench.judge_model}_pair.jsonl"
-        )
+        output_file = f"FastChat/fastchat/llm_judge/data/{lang_config.bench_name}/model_judgment/{cfg.mtbench.judge_model}_pair.jsonl"
         if cfg.mtbench.mode == "pairwise-all":
             make_match_func = make_match_all_pairs
             baseline_model = None
         else:
             make_match_func = make_match
             baseline_model = cfg.mtbench.baseline_model
-
     check_data(questions, model_answers, ref_answers, models, judges)
 
     question_math = [q for q in questions if q["category"] in NEED_REF_CATS]
@@ -183,7 +198,7 @@ def mtbench_evaluate():
     )
 
     match_stat = {}
-    match_stat["bench_name"] = cfg.mtbench.bench_name
+    match_stat["bench_name"] = lang_config.bench_name
     match_stat["mode"] = cfg.mtbench.mode
     match_stat["judge"] = cfg.mtbench.judge_model
     match_stat["baseline"] = baseline_model
@@ -224,9 +239,15 @@ def mtbench_evaluate():
     # The answer files generated through the API use the model name as the model ID. 
     # However, for the answer files created by our local model implementation, the model ID is used as the model ID. 
     # It will be necessary to make changes in the future to standardize this.
-    df_answer = pd.read_json(f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl", lines=True)
-    df_answer = df_answer[(df_answer.model_id == cfg.mtbench.model_id)|(df_answer.model_id == cfg.model.pretrained_model_name_or_path)]
-    df_answer = df_answer.sort_values(['question_id'])
+    df_answer = pd.read_json(
+        f"FastChat/fastchat/llm_judge/data/{lang_config.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl",
+        lines=True,
+    )
+    df_answer = df_answer[
+        (df_answer.model_id == cfg.mtbench.model_id)
+        | (df_answer.model_id == cfg.model.pretrained_model_name_or_path)
+    ]
+    df_answer = df_answer.sort_values(["question_id"])
 
     # load judge results
     df_judge = pd.read_json(output_file, lines=True)
@@ -274,17 +295,18 @@ def mtbench_evaluate():
 
     ## table for all
     mtbench_df = mtbench_df.drop(columns=['basemodel_name'])
+    mtbench_df.columns = [f'{c}-{language}' for c in mtbench_df.columns]
     combined_df = pd.concat([leaderboard_table.get_dataframe(),  mtbench_df], axis=1)
     instance.table = wandb.Table(dataframe=combined_df)
 
-    run.log({
-        "mtbench_output_table":table_log,
-        "mtbench_leaderboard_table":table_metric,
-        "mtbench_radar_table":table_radar,
-        #"leaderboard_table":instance.table
-    })
+    run.log(
+        {
+            f"mtbench_output_table_{language}": table_log,
+            f"mtbench_leaderboard_table_{language}": table_metric,
+            f"mtbench_radar_table_{language}": table_radar,
+            # "leaderboard_table":instance.table
+        }
+    )
 
-    
-    #run.finish()
+    # run.finish()
     return
-
