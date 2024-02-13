@@ -138,4 +138,4 @@ xmltodict==0.13.0
 yarl==1.9.3
 zipp==3.17.0
 -e git+https://github.com/wandb/FastChat.git@main#egg=fschat
--e git+https://github.com/llm-jp/l/lm-jp-eval.git@wandb-nejumi2-dev#egg=llm_jp_eval
+-e git+https://github.com/llm-jp/llm-jp-eval.git@wandb-nejumi2-dev#egg=llm_jp_eval
