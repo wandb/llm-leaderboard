@@ -7,7 +7,6 @@ from io import StringIO
 import google.generativeai as genai
 from tqdm import tqdm
 import wandb
-from fastchat.llm_judge.common import load_questions
 from fastchat.llm_judge.gen_model_answer import run_eval
 from fastchat.llm_judge.gen_api_answer import get_api_answer
 from fastchat.llm_judge.gen_judgment import *
@@ -58,7 +57,9 @@ def mtbench_evaluate():
     
     #create answerfile and answerdir
     answer_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl"
-    answer_dir = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer"
+    answer_dir = (
+        f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer"
+    )
 
     #refeerence answer
     if cfg.testmode:
@@ -129,7 +130,7 @@ def mtbench_evaluate():
         judges = make_judge_single(cfg.mtbench.judge_model, judge_prompts)
         play_a_match_func = play_a_match_single
         output_file = (
-            f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_judgment/{cfg.mtbench.judge_model}_single.jsonl"
+            f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_judgment/{cfg.mtbench.judge_model}_single"
         )
         make_match_func = make_match_single
         baseline_model = None
@@ -137,7 +138,7 @@ def mtbench_evaluate():
         judges = make_judge_pairwise(cfg.mtbench.judge_model, judge_prompts)
         play_a_match_func = play_a_match_pair
         output_file = (
-            f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_judgment/{cfg.mtbench.judge_model}_pair.jsonl"
+            f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_judgment/{cfg.mtbench.judge_model}_pair"
         )
         if cfg.mtbench.mode == "pairwise-all":
             make_match_func = make_match_all_pairs
@@ -218,24 +219,27 @@ def mtbench_evaluate():
     # 3. consolidate results and log as wandb.Table
     # load questions
     df_question = pd.read_json(question_file, lines=True)
-
     # load answers
     # Reason of using [df_answer.model_id == cfg.mtbench.model_id| (df_answer.model_id == cfg.model.pretrained_model_name_or_path
     # The answer files generated through the API use the model name as the model ID. 
     # However, for the answer files created by our local model implementation, the model ID is used as the model ID. 
     # It will be necessary to make changes in the future to standardize this.
-    df_answer = pd.read_json(f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl", lines=True)
+    df_answer = pd.read_json(answer_file, lines=True)
     df_answer = df_answer[(df_answer.model_id == cfg.mtbench.model_id)|(df_answer.model_id == cfg.model.pretrained_model_name_or_path)]
     df_answer = df_answer.sort_values(['question_id'])
 
     # load judge results
-    df_judge = pd.read_json(output_file, lines=True)
+    output_file_turn1 = output_file + "/"+ cfg.mtbench.model_id + "__1turn.jsonl"
+    output_file_turn2 = output_file + "/"+ cfg.mtbench.model_id + "__2turn.jsonl"
+    df_judge1 = pd.read_json(output_file_turn1, lines=True)
+    df_judge2 = pd.read_json(output_file_turn2, lines=True)
+    df_judge = pd.concat([df_judge1, df_judge2], ignore_index=True)
+
     df_judge = df_judge[df_judge.model == cfg.mtbench.model_id]
     df_judge.model = df_judge.model.str.replace("--", "/")
     df_judge['hash'] = df_judge.model.apply(lambda x: x.split('_hash_')[-1])
     df_judge['model'] = df_judge.model.apply(lambda x: x.split('_hash_')[0])
     df_judge = df_judge.sort_values(['question_id', 'turn'])
-
 
     ## merge tables
     #df_judge["question"] = np.nan
@@ -250,7 +254,6 @@ def mtbench_evaluate():
     df_judge.loc[df_judge.turn == 2, 'answer'] = df_answer.choices.apply(lambda x: x[0][ 'turns'][1]).values
     df_judge = df_judge.merge(df_answer[['question_id', 'answer_id']], on='question_id', how='left')
     df_judge = df_judge.merge(df_question[['question_id', 'category']], on='question_id', how='left')
-
 
     ## clean dataframe up
     use_col = [
