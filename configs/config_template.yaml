@@ -97,7 +97,7 @@ mtbench:
   conv_role_message_separator: ": \n"
   conv_role_only_separator: ": \n"
   ja:
-    question_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_question:v0" # if testmode is true, small dataset will be used
+    question_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_question:v1" # if testmode is true, small dataset will be used
     referenceanswer_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v0" # if testmode is true, small dataset will be used
     judge_prompt_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1"
     bench_name: "mt_bench_ja"
