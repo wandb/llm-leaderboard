@@ -1,3 +1,4 @@
+import os
 import datetime
 import hashlib
 import json
@@ -71,7 +72,13 @@ def mtbench_evaluate(language):
         artifact_dir = run.use_artifact(
             lang_config.question_artifacts_path, type="dataset"
         ).download()
-    question_file = artifact_dir + f"/question.jsonl"
+    if language=="ja":
+        filename = "question_full.jsonl"
+    elif language=="en":
+        filename = "question.jsonl"
+    else:
+        raise ValueError(f"Invalid language: {language}")
+    question_file = os.path.join(artifact_dir, filename)
 
     # create answerfile and answerdir
     answer_file = f"FastChat/fastchat/llm_judge/data/{lang_config.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl"
