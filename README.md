@@ -43,7 +43,7 @@ If you create questions or prompts originally, you also need to create reference
 
 The following data are based on [Stability-AI/FastChat/jp-stable](https://github.com/Stability-AI/FastChat/tree/jp-stable)
 - japanese questions
-  - [Stability-AI/FastChat (5d4f13a) v1.0] : 'wandb-japan/llm-leaderboard/mtbench_ja_question:v0'
+  - Stability-AI/FastChat (5d4f13a) v1.0 : 'wandb-japan/llm-leaderboard/mtbench_ja_question:v0'
   - [Stability-AI/FastChat (97d0f08) v1.1 (latest)](https://github.com/Stability-AI/FastChat/commit/97d0f0863c5ee8610f00c94a293418a4209c52dd) : 'wandb-japan/llm-leaderboard/mtbench_ja_question:v1'
 - japanese prompt
   - [Stability-AI/FastChat (5d4f13a) (latest)](https://github.com/Stability-AI/FastChat/tree/jp-stable) : 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1'
