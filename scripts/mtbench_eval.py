@@ -62,8 +62,9 @@ def mtbench_evaluate(language):
     ## file path
     #question
     if cfg.testmode:
+        test_dataset_version = {"ja": 1, "en": 0}
         artifact_dir = run.use_artifact(
-            f"wandb-japan/llm-leaderboard/mtbench_{language}_question_small_for_test:v0",
+            f"wandb-japan/llm-leaderboard/mtbench_{language}_question_small_for_test:v{test_dataset_version.get(language)}",
             type="dataset",
         ).download()
     else:
