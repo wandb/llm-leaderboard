@@ -13,7 +13,7 @@ run_llm_jp_eval_ja_0_shot: true
 run_llm_jp_eval_ja_few_shots: true
 run_llm_jp_eval_en_0_shot: true
 run_llm_jp_eval_en_few_shots: true
-run_mt_bench_jp: true
+run_mt_bench_ja: true
 run_mt_bench_en: true
 
 # if you don't use api, please set "api" as "false"
