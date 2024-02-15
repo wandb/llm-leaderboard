@@ -78,7 +78,7 @@ def mtbench_evaluate(language):
         filename = "question.jsonl"
     else:
         raise ValueError(f"Invalid language: {language}")
-    question_file = os.path.join(artifact_dir, filename)
+    question_file = artifact_dir + "/" + filename
 
     # create answerfile and answerdir
     answer_file = f"FastChat/fastchat/llm_judge/data/{lang_config.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl"
