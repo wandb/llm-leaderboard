@@ -43,7 +43,7 @@ tokenizer:
 
 # for llm-jp-eval
 max_seq_length: 2048
-dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v5" #if you use artifacts, please fill here (if not, fill null)
+dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v6" #if you use artifacts, please fill here (if not, fill null)
 dataset_dir: "/jaster/1.2.0/evaluation/test"
 target_dataset: "all" # {all, jamp, janli, jcommonsenseqa, jemhopqa, jnli, jsem, jsick, jsquad, jsts, niilc, chabsa, mmlu_en}
 log_dir: "./logs"
