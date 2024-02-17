@@ -26,7 +26,7 @@ If you use wandb's Artifacts, this process is not necessary. The following data 
 
 - v 1.0.0: "wandb-japan/llm-leaderboard/jaster:v0"
 - v 1.1.0: "wandb-japan/llm-leaderboard/jaster:v3"
-- v 1.2.0 (latest): "wandb-japan/llm-leaderboard/jaster:v5"
+- v 1.2.1 (latest): "wandb-japan/llm-leaderboard/jaster:v6"
 
 Below, an example of the process of registering data in wandb's Artifacts is described for reference 
 
