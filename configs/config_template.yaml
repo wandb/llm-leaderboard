@@ -13,7 +13,7 @@ run_llm_jp_eval_ja_0_shot: true
 run_llm_jp_eval_ja_few_shots: true
 run_llm_jp_eval_en_0_shot: true
 run_llm_jp_eval_en_few_shots: true
-run_mt_bench_jp: true
+run_mt_bench_ja: true
 run_mt_bench_en: true
 
 # if you don't use api, please set "api" as "false"
@@ -43,7 +43,7 @@ tokenizer:
 
 # for llm-jp-eval
 max_seq_length: 2048
-dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v5" #if you use artifacts, please fill here (if not, fill null)
+dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v6" #if you use artifacts, please fill here (if not, fill null)
 dataset_dir: "/jaster/1.2.0/evaluation/test"
 target_dataset: "all" # {all, jamp, janli, jcommonsenseqa, jemhopqa, jnli, jsem, jsick, jsquad, jsts, niilc, chabsa, mmlu_en}
 log_dir: "./logs"
@@ -97,7 +97,7 @@ mtbench:
   conv_role_message_separator: ": \n"
   conv_role_only_separator: ": \n"
   ja:
-    question_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_question:v0" # if testmode is true, small dataset will be used
+    question_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_question:v2" # if testmode is true, small dataset will be used
     referenceanswer_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v0" # if testmode is true, small dataset will be used
     judge_prompt_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1"
     bench_name: "mt_bench_ja"
