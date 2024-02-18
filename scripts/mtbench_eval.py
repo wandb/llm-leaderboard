@@ -31,6 +31,7 @@ def mtbench_evaluate(language):
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
     cfg = instance.config
+    cfg.api = cfg.model.api
     # Get the table for the leaderboard
     leaderboard_table = instance.table
     
@@ -41,7 +42,7 @@ def mtbench_evaluate(language):
     hashed_string = hash_object.hexdigest()
     if cfg.mtbench.model_id == None:
         cfg.mtbench.model_id = (
-            f'{cfg.metainfo.basemodel_name.replace("/", "--")}_hash_{hashed_string}'
+            f'{cfg.model_name.replace("/", "--")}_hash_{hashed_string}'
         )
 
     if cfg.mtbench.custom_conv_template:
@@ -54,65 +55,42 @@ def mtbench_evaluate(language):
 
     # get language config
     if language=='ja':
-        lang_config = cfg.mtbench.ja
+        dataset = cfg.mtbench.dataset.ja
+        bench_name = cfg.mtbench.dataset.ja.bench_name
     elif language=='en':
-        lang_config = cfg.mtbench.en
+        dataset = cfg.mtbench.dataset.en
+        bench_name = cfg.mtbench.dataset.en.bench_name
     else:
         raise ValueError(f"Invalid language: {language}")
     
     ## file path
-    #question
+    # Load question & reference answer
     if cfg.testmode:
-        test_dataset_version = {"ja": 4, "en": 0}
-        artifact_dir = run.use_artifact(
-            f"wandb-japan/llm-leaderboard/mtbench_{language}_question_small_for_test:v{test_dataset_version.get(language)}",
-            type="dataset",
-        ).download()
+        question_dir = run.use_artifact(dataset.test_question_artifacts_path).download()
+        ref_answer_dir = run.use_artifact(dataset.test_referenceanswer_artifacts_path).download()
     else:
-        artifact_dir = run.use_artifact(
-            lang_config.question_artifacts_path, type="dataset"
-        ).download()
-    if language=="ja":
-        filename = "question_full.jsonl"
-    elif language=="en":
-        filename = "question.jsonl"
-    else:
-        raise ValueError(f"Invalid language: {language}")
-    question_file = artifact_dir + "/" + filename
+        question_dir = run.use_artifact(dataset.question_artifacts_path).download()
+        ref_answer_dir = run.use_artifact(dataset.referenceanswer_artifacts_path).download()
+    question_file = question_dir + "/" + "question.jsonl"
+    judgement_dir = run.use_artifact(dataset.judge_prompt_artifacts_path, type='dataset').download()
+    judge_prompts = load_judge_prompts(judgement_dir + "/judge_prompts.jsonl")
 
     # create answerfile and answerdir
-    answer_file = f"FastChat/fastchat/llm_judge/data/{lang_config.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl"
+    answer_file = f"FastChat/fastchat/llm_judge/data/{bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl"
     answer_dir = (
-        f"FastChat/fastchat/llm_judge/data/{lang_config.bench_name}/model_answer"
+        f"FastChat/fastchat/llm_judge/data/{bench_name}/model_answer"
     )
 
-    #reference answer
-    if cfg.testmode:
-        ref_answer_dir = run.use_artifact(f'wandb-japan/llm-leaderboard/mtbench_{language}_referenceanswer_small_for_test:v0', type='dataset').download()
-    else:
-        ref_answer_dir = run.use_artifact(
-            lang_config.referenceanswer_artifacts_path, type="dataset"
-        ).download()
-
-    # Download and move both tokenizer and model artifacts to a new folder, then set the new folder name as model_path
-    import os
-    import shutil
-
-    # Only create a new folder and use it as model_path for model and tokenizer if we are using artifacts
-    import os
-    import shutil
-
-    # Tokenizer artifactをダウンロード
+    # Tokenizer & Model Download
     if cfg.model.use_wandb_artifacts:
         artifact_tokenizer = run.use_artifact(cfg.tokenizer.artifacts_path)
         tokenizer_path = artifact_tokenizer.download()
         artifact_model = run.use_artifact(cfg.model.artifacts_path)
         model_path = artifact_model.download()
-
         cfg.model.pretrained_model_name_or_path = model_path
     
     # 1. generate model answers
-    if cfg.api in ["openai","anthropic","cohere","google","amazon_bedrock","mistral"]:
+    if cfg.model.api in ["openai","anthropic","cohere","google","amazon_bedrock","mistral"]:
         questions = load_questions(question_file, None, None)
         get_api_answer(
             question_file=question_file,
@@ -144,10 +122,6 @@ def mtbench_evaluate(language):
     model_answers = {cfg.mtbench.model_id: model_answers[cfg.mtbench.model_id]}
     ref_answers = load_model_answers(ref_answer_dir)
 
-    ## Load judge
-    artifact_dir = run.use_artifact(lang_config.judge_prompt_artifacts_path, type='dataset').download()
-    judge_prompts = load_judge_prompts(artifact_dir + "/judge_prompts.jsonl")
-
     if cfg.mtbench.first_n:
         questions = questions[: cfg.mtbench.first_n]
 
@@ -156,13 +130,13 @@ def mtbench_evaluate(language):
     if cfg.mtbench.mode == "single":
         judges = make_judge_single(cfg.mtbench.judge_model, judge_prompts)
         play_a_match_func = play_a_match_single
-        output_file = f"FastChat/fastchat/llm_judge/data/{lang_config.bench_name}/model_judgment/{cfg.mtbench.judge_model}_single.jsonl"
+        output_file = f"FastChat/fastchat/llm_judge/data/{bench_name}/model_judgment/{cfg.mtbench.judge_model}_single"
         make_match_func = make_match_single
         baseline_model = None
     else:
         judges = make_judge_pairwise(cfg.mtbench.judge_model, judge_prompts)
         play_a_match_func = play_a_match_pair
-        output_file = f"FastChat/fastchat/llm_judge/data/{lang_config.bench_name}/model_judgment/{cfg.mtbench.judge_model}_pair.jsonl"
+        output_file = f"FastChat/fastchat/llm_judge/data/{bench_name}/model_judgment/{cfg.mtbench.judge_model}_pair"
         if cfg.mtbench.mode == "pairwise-all":
             make_match_func = make_match_all_pairs
             baseline_model = None
@@ -206,7 +180,7 @@ def mtbench_evaluate(language):
     )
 
     match_stat = {}
-    match_stat["bench_name"] = lang_config.bench_name
+    match_stat["bench_name"] = bench_name
     match_stat["mode"] = cfg.mtbench.mode
     match_stat["judge"] = cfg.mtbench.judge_model
     match_stat["baseline"] = baseline_model
@@ -248,7 +222,7 @@ def mtbench_evaluate(language):
     # However, for the answer files created by our local model implementation, the model ID is used as the model ID. 
     # It will be necessary to make changes in the future to standardize this.
     df_answer = pd.read_json(
-        f"FastChat/fastchat/llm_judge/data/{lang_config.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl",
+        f"FastChat/fastchat/llm_judge/data/{bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl",
         lines=True,
     )
     df_answer = df_answer[
@@ -258,7 +232,11 @@ def mtbench_evaluate(language):
     df_answer = df_answer.sort_values(["question_id"])
 
     # load judge results
-    df_judge = pd.read_json(output_file, lines=True)
+    output_file_turn1 = output_file + "/"+ cfg.mtbench.model_id + "__1turn.jsonl"
+    output_file_turn2 = output_file + "/"+ cfg.mtbench.model_id + "__2turn.jsonl"
+    df_judge1 = pd.read_json(output_file_turn1, lines=True)
+    df_judge2 = pd.read_json(output_file_turn2, lines=True)
+    df_judge = pd.concat([df_judge1, df_judge2], ignore_index=True)
     df_judge = df_judge[df_judge.model == cfg.mtbench.model_id]
     df_judge.model = df_judge.model.str.replace("--", "/")
     df_judge['hash'] = df_judge.model.apply(lambda x: x.split('_hash_')[-1])
@@ -296,13 +274,13 @@ def mtbench_evaluate(language):
     table_radar = wandb.Table(dataframe=df_summary)
     
     ## table for LB mtbench
-    columns = ['basemodel_name'] + df_summary.category.values.tolist()
-    data = [[cfg.metainfo.basemodel_name] + df_summary.score.values.tolist()]
+    columns = ['model_name'] + df_summary.category.values.tolist()
+    data = [[cfg.model_name] + df_summary.score.values.tolist()]
     mtbench_df = pd.DataFrame(data, columns=columns)
     table_metric = wandb.Table(dataframe=mtbench_df)
 
     ## table for all
-    mtbench_df = mtbench_df.drop(columns=['basemodel_name'])
+    mtbench_df = mtbench_df.drop(columns=['model_name'])
     mtbench_df.columns = [f'{c}-{language}' for c in mtbench_df.columns]
     combined_df = pd.concat([leaderboard_table.get_dataframe(),  mtbench_df], axis=1)
     instance.table = wandb.Table(dataframe=combined_df)
