@@ -271,7 +271,7 @@ def mtbench_evaluate(language):
 
     # table for radar chart
     df_summary = df_judge.groupby(['category'], as_index=False).score.mean()
-    df_summary["AVG"] = df_summary.mean(axis=1)
+    df_summary["AVG"] = df_summary.mean(axis=1, numeric_only=True)
     table_radar = wandb.Table(dataframe=df_summary)
     
     ## table for LB mtbench
