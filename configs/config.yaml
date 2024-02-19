@@ -7,11 +7,12 @@ wandb:
 github_version: v2.0.0 #for recording
 
 testmode: true
+strict: false
 
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthoropic", "google", "cohere", "mistral", "amazon_bedrock"
 api: "openai"
-openai: true # put model name of api into model.pretrained_model_name_or_path
+openapi: true # put model name of api into model.pretrained_model_name_or_path
 
 model:
   use_wandb_artifacts: false
@@ -35,6 +36,8 @@ tokenizer:
   use_fast: true
 
 # for custom dataset
+
+# for jglue
 
 # for llm-jp-eval
 max_seq_length: 2048
