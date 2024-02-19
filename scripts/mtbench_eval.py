@@ -293,6 +293,7 @@ def mtbench_evaluate(language):
 
     # table for radar chart
     df_summary = df_judge.groupby(['category'], as_index=False).score.mean()
+    df_summary["AVG"] = df_summary.mean(axis=1)
     table_radar = wandb.Table(dataframe=df_summary)
     
     ## table for LB mtbench
@@ -303,7 +304,7 @@ def mtbench_evaluate(language):
 
     ## table for all
     mtbench_df = mtbench_df.drop(columns=['basemodel_name'])
-    mtbench_df.columns = [f'{c}-{language}' for c in mtbench_df.columns]
+    mtbench_df.columns = [f'{c}_MTbench_{language}' for c in mtbench_df.columns]
     combined_df = pd.concat([leaderboard_table.get_dataframe(),  mtbench_df], axis=1)
     instance.table = wandb.Table(dataframe=combined_df)
 
