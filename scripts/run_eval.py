@@ -4,8 +4,8 @@ import os
 import sys
 from omegaconf import DictConfig, OmegaConf
 import pandas as pd
-sys.path.append('llm-jp-eval/src') 
-sys.path.append('FastChat')
+# sys.path.append('llm-jp-eval/src') 
+# sys.path.append('FastChat')
 from llm_jp_eval.evaluator import evaluate
 from mtbench_eval import mtbench_evaluate
 from config_singleton import WandbConfigSingleton
@@ -64,14 +64,18 @@ evaluate()
 cleanup_gpu()
 
 # 2. mt-bench evaluation
-mtbench_evaluate()
-cleanup_gpu()
+# mtbench_evaluate()
+# cleanup_gpu()
 
 # 3. MMLU
-from mmlu_eval import evaluate as mmlu_evaluate
-mmlu_evaluate()
-cleanup_gpu()
+# from mmlu_eval import evaluate as mmlu_evaluate
+# mmlu_evaluate()
+# cleanup_gpu()
 
+# 4. JGLUE
+from jglue_eval import evaluate as jglue_evaluate
+jglue_evaluate(cfg)
+cleanup_gpu()
 
 # Logging results to W&B
 if cfg.wandb.log and run is not None:
