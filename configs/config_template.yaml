@@ -80,7 +80,7 @@ mtbench:
       question_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_question:v0" 
       test_question_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v0"
       referenceanswer_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v0" 
-      test_referenceanswer_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_jp_referenceanswer_small_for_test:v0"
+      test_referenceanswer_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v0"
       judge_prompt_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1"
       bench_name: "mt_bench_ja"
     en:
