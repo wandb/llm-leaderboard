@@ -1,0 +1,93 @@
+wandb:
+  log: True
+  entity: "wandb-japan"
+  project: "llm-leaderboard-test"
+  run_name: "gpt-3.5-turbo"
+
+github_version: "2.0.0"
+
+testmode: true
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthoropic", "google", "cohere"
+api: "openai"
+
+model:
+  use_wandb_artifacts: false
+  artifacts_path: ""
+  pretrained_model_name_or_path: "gpt-3.5-turbo" #if you use openai api, put the name of model
+  trust_remote_code: true
+  device_map: "auto"
+  load_in_8bit: false
+  load_in_4bit: false
+
+generator:
+  top_p: 1.0
+  top_k: 0
+  temperature: 0.1
+  repetition_penalty: 1.0
+
+tokenizer:
+  use_wandb_artifacts: false
+  artifacts_path: ""
+  pretrained_model_name_or_path: "gpt-3.5-turbo"
+  use_fast: true
+
+# for llm-jp-eval
+max_seq_length: 2048
+dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v3" #url of wandb reference artifacts
+dataset_dir: "/jaster/1.1.0/evaluation/test"
+target_dataset: "all"
+log_dir: "./logs"
+torch_dtype: "bf16" # {fp16, bf16, fp32}
+custom_prompt_template: null
+# if you use this, please include {instruction} and {input}. If you use few shots, please include {few_shots} additionally.
+# example of prompt template with fewshots
+# "以下はタスクを説明する指示と、追加の背景情報を提供する入力の組み合わせです。要求を適切に満たす回答を書いてください。\n### 指示：\n{instruction}\n{few_shots}\n### 入力：\n{input}\n### 回答：\n"
+# example of prompt template without fewshots
+# "以下はタスクを説明する指示と、追加の背景情報を提供する入力の組み合わせです。要求を適切に満たす回答を書いてください。\n### 指示：\n{instruction}\n### 入力：\n{input}\n### 回答：\n"
+custom_fewshots_template: null
+# Please include {input} and {output} as variables
+# example of fewshots template
+# "\n### 入力：\n{input}\n### 回答：\n{output}"
+
+metainfo:
+  basemodel_name: "gpt-3.5-turbo"
+  model_type: "open llm" # {open llm, commercial api}
+  instruction_tuning_method: "None" # {"None", "Full", "LoRA", ...}
+  instruction_tuning_data: ["None"] # {"None", "jaster", "dolly_ja", "oasst_ja", ...}
+  num_few_shots: 0
+  llm-jp-eval-version: "1.1.0"
+
+# for mtbench
+mtbench:
+  question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_question:v0' # if testmode is true, small dataset will be used
+  referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v0' # if testmode is true, small dataset will be used
+  judge_prompt_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1'
+  bench_name: 'japanese_mt_bench'
+  model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
+  question_begin: null
+  question_end: null 
+  max_new_token: 1024
+  num_choices: 1
+  num_gpus_per_model: 1
+  num_gpus_total: 1
+  max_gpu_memory: null
+  dtype: bfloat16 # None or float32 or float16 or bfloat16
+  # for gen_judgment
+  judge_model: 'gpt-4'
+  mode: 'single'
+  baseline_model: null 
+  parallel: 1
+  first_n: null
+  # for conv template # added
+  custom_conv_template: true
+  # the following variables will be used when custom_conv_template is set as true
+  conv_name: "custom"
+  conv_system_message: "以下は、タスクを説明する指示と、文脈のある入力の組み合わせです。要求を適切に満たす応答を書きなさい。"
+  conv_roles: "('USER','ASSISTANT')"
+  conv_sep: ""
+  conv_stop_token_ids: "[0]"
+  conv_stop_str: ""
+  conv_role_message_separator: ": \n"
+  conv_role_only_separator: ": \n"
