@@ -283,7 +283,6 @@ def mtbench_evaluate(language):
     ## table for all
     mtbench_df = mtbench_df.drop(columns=['model_name'])
     mtbench_df.columns = [f'{c}_MTbench_{language}' for c in mtbench_df.columns]
-    print(mtbench_df.columns)
     combined_df = pd.concat([leaderboard_table.get_dataframe(),  mtbench_df], axis=1)
     instance.table = wandb.Table(dataframe=combined_df)    
 
