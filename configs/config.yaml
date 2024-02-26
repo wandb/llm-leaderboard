@@ -1,23 +1,23 @@
 wandb:
   log: True
-  entity: "pid-nn"
-  project: "llm"
-  run_name: "chatgpt-trial"
+  entity: "weblab_lecture" # TODO
+  project: "weblab-llm-leaderboard" # TODO
+  run_name: "team1/gpt_0.125B_global_step35000_openassistant" # ご自身のteam名の後(/以降)、実験管理用にお好きな名前をつけてください
 
 github_version: v2.0.0 #for recording
 
 testmode: true
-strict: false
 
 # if you don't use api, please set "api" as "false"
-# if you use api, please select from "openai", "anthoropic", "google", "cohere", "mistral", "amazon_bedrock"
-api: "openai"
-openapi: true # put model name of api into model.pretrained_model_name_or_path
+# if you use api, please select from "openai", "anthoropic", "google", "cohere"
+api: false
+openapi: false
+strict: false
 
 model:
   use_wandb_artifacts: false
   artifacts_path: ""
-  pretrained_model_name_or_path: "gpt-3.5-turbo-1106" #if you use openai api, put the name of model
+  pretrained_model_name_or_path: "hotsuyuki/gpt_0.125B_global_step35000_openassistant" # huggingfaceのupload先を指定してください
   trust_remote_code: true
   device_map: "auto"
   load_in_8bit: false
@@ -32,12 +32,8 @@ generator:
 tokenizer:
   use_wandb_artifacts: false
   artifacts_path: ""
-  pretrained_model_name_or_path: null
+  pretrained_model_name_or_path: "hotsuyuki/gpt_0.125B_global_step35000_openassistant" # huggingfaceのupload先を指定してください
   use_fast: true
-
-# for custom dataset
-
-# for jglue
 
 # for llm-jp-eval
 max_seq_length: 2048
@@ -61,13 +57,12 @@ custom_fewshots_template: null
 # "\n### 入力：\n{input}\n### 回答：\n{output}"
 
 metainfo:
-  basemodel_name: "your modelname"
-  model_type: "" # {open llm, commercial api}
+  basemodel_name: "hotsuyuki/gpt_0.125B_global_step35000_openassistant"
+  model_type: "open llm" # {open llm, commercial api}
   instruction_tuning_method: "None" # {"None", "Full", "LoRA", ...}
   instruction_tuning_data: ["None"] # {"None", "jaster", "dolly_ja", "oasst_ja", ...}
+  num_few_shots: 0
   llm-jp-eval-version: "1.1.0"
-  num_few_shots: 4
-  max_num_samples: 10 # -1 for all data
   data_type: "test" # {"dev", "test"}
 
 # for mtbench
