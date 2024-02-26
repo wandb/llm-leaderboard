@@ -108,5 +108,5 @@ tiktoken==0.5.2
 transformers_stream_generator==0.0.4  
 mistralai==0.0.8
 langchain-mistralai==0.0.1
-fschat @ git+https://github.com/wandb/FastChat@main
-llm-jp-eval @ git+https://github.com/llm-jp/llm-jp-eval.git@wandb-nejumi2
+fschat @ git+https://github.com/kh-kim/FastChat.git@korean
+llm-jp-eval @ git+https://github.com/kh-kim/llm-kr-eval.git@korean

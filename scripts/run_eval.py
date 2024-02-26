@@ -4,9 +4,9 @@ import os
 import sys
 from omegaconf import DictConfig, OmegaConf
 import pandas as pd
-sys.path.append('llm-jp-eval/src') 
+sys.path.append('llm-kr-eval/src') 
 sys.path.append('FastChat')
-from llm_jp_eval.evaluator import evaluate
+from llm_kr_eval.evaluator import evaluate
 from mtbench_eval import mtbench_evaluate
 from config_singleton import WandbConfigSingleton
 from cleanup import cleanup_gpu
@@ -57,7 +57,7 @@ if cfg.wandb.log:
     run.log_artifact(artifact)
 
 # Evaluation phase
-# 1. llm-jp-eval evaluation
+# 1. llm-kr-eval evaluation
 evaluate()
 cleanup_gpu()
 

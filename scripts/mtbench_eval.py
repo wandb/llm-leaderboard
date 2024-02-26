@@ -50,7 +50,7 @@ def mtbench_evaluate():
     ## file path
     #question
     if cfg.testmode:
-        artifact_dir = run.use_artifact("wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v0", type='dataset').download()
+        artifact_dir = run.use_artifact("wandb-japan/korean-llm-leaderboard/mtbench_ko_question_small_for_test:v0", type='dataset').download()
     else:
         artifact_dir = run.use_artifact(cfg.mtbench.question_artifacts_path, type='dataset').download()
     question_file = artifact_dir+f"/question.jsonl"
@@ -63,7 +63,7 @@ def mtbench_evaluate():
 
     #refeerence answer
     if cfg.testmode:
-        ref_answer_dir = run.use_artifact('wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v0', type='dataset').download()
+        ref_answer_dir = run.use_artifact('wandb-japan/korean-llm-leaderboard/mtbench_ko_referenceanswer_small_for_test:v0', type='dataset').download()
     else:
         ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path, type='dataset').download()
 
@@ -119,7 +119,7 @@ def mtbench_evaluate():
 
     ## Load judge
     artifact_dir = run.use_artifact(cfg.mtbench.judge_prompt_artifacts_path, type='dataset').download()
-    judge_prompts = load_judge_prompts(artifact_dir + "/judge_prompts.jsonl")
+    judge_prompts = load_judge_prompts(artifact_dir + "/judge_ko_prompts.jsonl")
 
     if cfg.mtbench.first_n:
         questions = questions[: cfg.mtbench.first_n]
