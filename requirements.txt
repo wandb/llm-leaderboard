@@ -139,6 +139,7 @@ yarl==1.9.3
 zipp==3.17.0
 #fschat @ git+https://github.com/wandb/FastChat@main
 #llm-jp-eval @ git+https://github.com/llm-jp/llm-jp-eval.git@wandb-nejumi2-dev
--e git+https://github.com/wandb/FastChat.git@main#egg=fschat
-# -e git+https://github.com/llm-jp/llm-jp-eval.git@wandb-nejumi2-dev#egg=llm_jp_evalz
+# -e git+https://github.com/wandb/FastChat.git@main#egg=fschat
+-e git+https://github.com/Taichi-Ibi/FastChat.git@llm-leaderboard_v3#egg=fschat
+# -e git+https://github.com/llm-jp/llm-jp-eval.git@wandb-nejumi2-dev#egg=llm_jp_eval
 -e git+https://github.com/Taichi-Ibi/llm-jp-eval.git@wandb-nejumi2-dev#egg=llm_jp_eval
