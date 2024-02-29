@@ -57,16 +57,16 @@ if cfg.wandb.log:
 # Evaluation phase
 # 1. llm-jp-eval evaluation
 evaluate()
-cleanup_gpu()
+# cleanup_gpu()
 
 # 2. mt-bench evaluation
 mtbench_evaluate()
-cleanup_gpu()
+# cleanup_gpu()
 
 # 3. JGLUE
 from jglue_eval import evaluate as jglue_evaluate
-jglue_evaluate(cfg)
-cleanup_gpu()
+jglue_evaluate()
+# cleanup_gpu()
 
 # Logging results to W&B
 if cfg.wandb.log and run is not None:
