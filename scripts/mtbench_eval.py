@@ -46,7 +46,7 @@ def mtbench_evaluate(language):
         )
 
     if cfg.mtbench.custom_conv_template:
-        initialize_custom_template()
+        initialize_custom_template(language=language)
 
     if cfg.mtbench.num_gpus_total // cfg.mtbench.num_gpus_per_model > 1:
         import ray
