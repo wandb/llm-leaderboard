@@ -35,12 +35,6 @@ if os.path.exists("configs/config.yaml"):
             "baseline_model": None,
             "parallel": 1,
             "first_n": None,
-            "ja":{
-                "bench_name":"mt_bench_ja"
-            },
-            "en":{
-                "bench_name":"mt_bench_en"
-            },
         }
     }
     for key, value in default_settings.items():
