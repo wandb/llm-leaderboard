@@ -30,7 +30,7 @@ If you use wandb's Artifacts, this process is not necessary. The following data 
 
 Below, an example of the process of registering data in wandb's Artifacts is described for reference 
 
-1. create dataset by following an instruction of [llm-jp-eval](https://github.com/llm-jp/llm-jp-eval/tree/wandb-nejumi)
+1. create dataset by following an instruction of [llm-jp-eval](https://github.com/llm-jp/llm-jp-eval)
 
 2. register to wandb artifacts
 ```bash
