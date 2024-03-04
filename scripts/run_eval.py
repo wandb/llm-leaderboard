@@ -35,12 +35,6 @@ if os.path.exists("configs/config.yaml"):
             "baseline_model": None,
             "parallel": 1,
             "first_n": None,
-            "ja":{
-                "bench_name":"mt_bench_ja"
-            },
-            "en":{
-                "bench_name":"mt_bench_en"
-            },
         }
     }
     for key, value in default_settings.items():
@@ -99,7 +93,7 @@ if cfg.run_llm_jp_eval_en_0_shot:
 
 # 4. Llm-jp-eval-en few shots evaluation
 if cfg.run_llm_jp_eval_en_few_shots:
-    evaluate(num_fewshots=cfg.llm_jp_eval.ja_num_shots, target_dataset="all-en")
+    evaluate(num_fewshots=cfg.llm_jp_eval.en_num_shots, target_dataset="all-en")
     cleanup_gpu()
 
 # 5. mt-bench evaluation

@@ -46,7 +46,7 @@ def mtbench_evaluate(language):
         )
 
     if cfg.mtbench.custom_conv_template:
-        initialize_custom_template()
+        initialize_custom_template(language=language)
 
     if cfg.mtbench.num_gpus_total // cfg.mtbench.num_gpus_per_model > 1:
         import ray
@@ -277,13 +277,14 @@ def mtbench_evaluate(language):
     columns = ['model_name'] + df_summary.category.values.tolist()
     data = [[cfg.model_name] + df_summary.score.values.tolist()]
     mtbench_df = pd.DataFrame(data, columns=columns)
+    mtbench_df["AVG"] = mtbench_df.mean(axis=1, numeric_only=True)
     table_metric = wandb.Table(dataframe=mtbench_df)
 
     ## table for all
     mtbench_df = mtbench_df.drop(columns=['model_name'])
-    mtbench_df.columns = [f'{c}-{language}' for c in mtbench_df.columns]
+    mtbench_df.columns = [f'{c}_MTbench_{language}' for c in mtbench_df.columns]
     combined_df = pd.concat([leaderboard_table.get_dataframe(),  mtbench_df], axis=1)
-    instance.table = wandb.Table(dataframe=combined_df)
+    instance.table = wandb.Table(dataframe=combined_df)    
 
     run.log(
         {

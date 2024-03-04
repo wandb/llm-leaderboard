@@ -50,11 +50,11 @@ jmespath==1.0.1
 joblib==1.3.2
 jsonpatch==1.33
 jsonpointer==2.4
-langchain-community==0.0.13
-langchain-core==0.1.12
+langchain-community==0.0.7
+langchain-core==0.1.4
 langchain-google-genai==0.0.5
 langchain-mistralai==0.0.1
-langchain==0.0.300
+langchain==0.0.350
 langsmith==0.0.69
 levenshtein==0.21.1
 lxml==4.9.3
@@ -139,5 +139,7 @@ yarl==1.9.3
 zipp==3.17.0
 #fschat @ git+https://github.com/wandb/FastChat@main
 #llm-jp-eval @ git+https://github.com/llm-jp/llm-jp-eval.git@wandb-nejumi2-dev
--e git+https://github.com/wandb/FastChat.git@main#egg=fschat
--e git+https://github.com/llm-jp/llm-jp-eval.git@wandb-nejumi2-dev#egg=llm_jp_eval
+# -e git+https://github.com/wandb/FastChat.git@main#egg=fschat
+-e git+https://github.com/Taichi-Ibi/FastChat.git@llm-leaderboard_v3#egg=fschat
+# -e git+https://github.com/llm-jp/llm-jp-eval.git@wandb-nejumi2-dev#egg=llm_jp_eval
+-e git+https://github.com/Taichi-Ibi/llm-jp-eval.git@wandb-nejumi2-dev#egg=llm_jp_eval

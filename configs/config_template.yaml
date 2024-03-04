@@ -35,22 +35,26 @@ llm_jp_eval:
   ja_num_shots: 4 # if run_llm_jp_eval_ja_few_shots is true, please set the num of few shots. Default is 4
   en_num_shots: 4 # run_llm_jp_eval_en_few_shots is true, please set the num of few shots. Default is 4
   torch_dtype: "bf16" # {fp16, bf16, fp32}
-  custom_prompt_template: null
-  # if you use this, please include {instruction} and {input}. If you use few shots, please include {few_shots} additionally.
-  # example of prompt template with fewshots
-  # "以下はタスクを説明する指示と、追加の背景情報を提供する入力の組み合わせです。要求を適切に満たす回答を書いてください。\n### 指示：\n{instruction}\n{few_shots}\n### 入力：\n{input}\n### 回答：\n"
-  # example of prompt template without fewshots
-  # "以下はタスクを説明する指示と、追加の背景情報を提供する入力の組み合わせです。要求を適切に満たす回答を書いてください。\n### 指示：\n{instruction}\n### 入力：\n{input}\n### 回答：\n"
-  # example of LLama2 format; plase change tokenizer.bos_token
-  # "<tokenizer.bos_token>[INST] <<SYS>>\n あなたは誠実で優秀な日本人のアシスタントです。 \n<</SYS>>\n\n {instruction} \n\n {input} [/INST]"
-  custom_fewshots_template: null
-  # Please include {input} and {output} as variables
-  # example of fewshots template
-  # "\n### 入力：\n{input}\n### 回答：\n{output}"
-
   # Items that do not need to be changed unless specifically intended.
   dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v6"
   dataset_dir: "/jaster/1.2.1/evaluation/test"
+  ja: 
+    custom_prompt_template: null
+    custom_fewshots_template: null
+  en: 
+    custom_prompt_template: null
+    custom_fewshots_template: null
+    # if you use this, please include {instruction} and {input}. If you use few shots, please include {few_shots} additionally.
+    # example of prompt template with fewshots
+    # "以下はタスクを説明する指示と、追加の背景情報を提供する入力の組み合わせです。要求を適切に満たす回答を書いてください。\n### 指示：\n{instruction}\n{few_shots}\n### 入力：\n{input}\n### 回答：\n"
+    # example of prompt template without fewshots
+    # "以下はタスクを説明する指示と、追加の背景情報を提供する入力の組み合わせです。要求を適切に満たす回答を書いてください。\n### 指示：\n{instruction}\n### 入力：\n{input}\n### 回答：\n"
+    # example of LLama2 format; plase change tokenizer.bos_token
+    # "<tokenizer.bos_token>[INST] <<SYS>>\n あなたは誠実で優秀な日本人のアシスタントです。 \n<</SYS>>\n\n {instruction} \n\n {input} [/INST]"
+    # Please include {input} and {output} as variables
+    # example of fewshots template
+    # "\n### 入力：\n{input}\n### 回答：\n{output}"
+
 
 # for mtbench
 mtbench:
@@ -80,7 +84,7 @@ mtbench:
       question_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_question:v0" 
       test_question_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v0"
       referenceanswer_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v0" 
-      test_referenceanswer_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_jp_referenceanswer_small_for_test:v0"
+      test_referenceanswer_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v0"
       judge_prompt_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1"
       bench_name: "mt_bench_ja"
     en:
