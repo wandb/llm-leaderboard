@@ -20,9 +20,6 @@ if os.path.exists("configs/config.yaml"):
         "model":{
             "trust_remote_code": True
         },
-        "tokenizer":{
-            "use_fast": True
-        },
         "llm_jp_eval":{
             "log_dir": "./logs"
         },
