@@ -81,14 +81,7 @@ def mtbench_evaluate(language):
         f"FastChat/fastchat/llm_judge/data/{bench_name}/model_answer"
     )
 
-    # Tokenizer & Model Download
-    
-    if cfg.tokenizer.use_wandb_artifacts:
-        artifact = run.use_artifact(cfg.tokenizer.artifacts_path)
-        tokenizer_path = artifact.download()
-    else:
-        tokenizer_path = cfg.tokenizer.pretrained_model_name_or_path
-    
+    # Model Download
     if cfg.model.use_wandb_artifacts:
         artifact_model = run.use_artifact(cfg.model.artifacts_path)
         model_path = artifact_model.download()
