@@ -23,11 +23,6 @@ model:
   load_in_8bit: false
   load_in_4bit: false
 
-tokenizer:
-  use_wandb_artifacts: false # if you user wandb artifacts, please set true.
-  artifacts_path: "" # if you user wandb artifacts, please paste the link. if not, please leave it as "".
-  pretrained_model_name_or_path: null
-
 # for llm-jp-eval
 llm_jp_eval:
   max_seq_length: 2048
@@ -99,10 +94,3 @@ mtbench:
 # Items that do not need to be changed unless specifically intended.
 #==================================================================
 github_version: g-eval-v1.0 #for recording
-
-generator:
-  top_p: 1.0
-  top_k: 0
-  temperature: 0.1
-  repetition_penalty: 1.0
-
