@@ -11,7 +11,7 @@ export LANG=ja_JP.UTF-8
 
 
 ## Data Prepartion 
-Dataset has been already prepared.
+Dataset has been already prepared in wandb artifacts
 ### llm-jp-eval: 
 "wandb-japan/llm-leaderboard/jaster:v6"
 ### Mt-bench: 
