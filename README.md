@@ -6,41 +6,15 @@
 export WANDB_API_KEY=<your WANDB_API_KEY>
 export OPENAI_API_KEY=<your OPENAI_API_KEY>
 export LANG=ja_JP.UTF-8
-# if needed, set the following API KEY too
-export ANTHROPIC_API_KEY=<your ANTHROPIC_API_KEY>
-export GOOGLE_API_KEY=<your GOOGLE_API_KEY>
-export COHERE_API_KEY=<your COHERE_API_KEY>
-export MISTRAL_API_KEY=<your MISTRAL_API_KEY>
-export AWS_ACCESS_KEY_ID=<your AWS_ACCESS_KEY_ID>
-export AWS_SECRET_ACCESS_KEY=<your AWS_SECRET_ACCESS_KEY>
-export AWS_DEFAULT_REGION=<your AWS_DEFAULT_REGION>
-# if needed, please login in huggingface
-huggingface-cli login
 ```
 
 
 
 ## Data Prepartion 
-### preparation for llm-jp-eval
-If you use wandb's Artifacts, this process is not necessary. The following data is currently registered in wandb's Artifacts.
-
-- v 1.0.0: "wandb-japan/llm-leaderboard/jaster:v0"
-- v 1.1.0: "wandb-japan/llm-leaderboard/jaster:v3"
-- v 1.2.1 (latest): "wandb-japan/llm-leaderboard/jaster:v6"
-
-Below, an example of the process of registering data in wandb's Artifacts is described for reference 
-
-1. create dataset by following an instruction of [llm-jp-eval](https://github.com/llm-jp/llm-jp-eval)
-
-2. register to wandb artifacts
-```bash
-python3 scripts/upload_jaster.py -e <wandb/entity> -p <wandb/project> -d <dataset folder> -v <version>
-```
-
-### preparation for mtbench
-If you use wandb's Artifacts, this process is not necessary. The following data is currently registered in wandb's Artifacts.
-If you create questions or prompts originally, you also need to create reference answers. The method for creating reference answers can be referenced from the [FastChat Readme](https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge).
-
+Dataset has been already prepared.
+### llm-jp-eval: 
+"wandb-japan/llm-leaderboard/jaster:v6"
+### Mt-bench: 
 The following Japanese dataset is based on [Stability-AI/FastChat/jp-stable](https://github.com/Stability-AI/FastChat/tree/jp-stable)
 - Japanese questions
   - [Stability-AI/FastChat (5d4f13a) v1.0](https://github.com/lm-sys/FastChat/commit/5d4f13a4731388ffe1453c459c357d863d87037a): 'wandb-japan/llm-leaderboard/mtbench_ja_question:v0'
@@ -61,12 +35,6 @@ The following English dataset is based on [lm-sys/FastChat/main](https://github.
   - [lm-sys/FastChat (7ad1d63)](https://github.com/lm-sys/FastChat/commit/7ad1d6386288ba1a7862c11feb673425713eea5b)
   - [lm-sys/FastChat (b494d0c) (latest)](https://github.com/lm-sys/FastChat/commit/b494d0c6b4e7935f1764f8439e75da3e66beccc7) : 'wandb-japan/llm-leaderboard/mtbench_en_referenceanswer:v0'
 
-
-Below, an example of the process of registering data in wandb's Artifacts is described for reference 
-```bash
-# register questions
-  python3 scripts/upload_mtbench_question.py -e <wandb/entity> -p <wandb/project> -v <data version> -f "your path"
-```
 ## Create config.yaml file
 1. create configs/config.yaml
 ```bash
@@ -103,7 +71,7 @@ general
     - `custom_fewshots_template`:  Specification of custom prompts for few-shot settings. The default is null. (The default prompt is using the alpaca format.)
 
 - `mtbench`: variables for mtbench
-  - `model_id`: ID of model.
+  - `model_id`: ID of model. Need not to be set if you run for the first time.
   - `max_new_token`: The maximum length of the input. The default is 1024.
   - `num_gpus_per_model`: Number of GPUs per model. If you use multiple gpu, change here. The default is 1.
   - `num_gpus_total`: Number of Total GPUs. If you use multiple gpu, change here. The default is 1.
