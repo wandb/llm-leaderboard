@@ -273,6 +273,7 @@ def mtbench_evaluate():
     columns = ['basemodel_name'] + df_summary.category.values.tolist()
     data = [[cfg.metainfo.basemodel_name] + df_summary.score.values.tolist()]
     mtbench_df = pd.DataFrame(data, columns=columns)
+    mtbench_df["AVG_mtbench"] = mtbench_df.mean(axis=1, numeric_only=True)
     table_metric = wandb.Table(dataframe=mtbench_df)
 
     ## table for all
