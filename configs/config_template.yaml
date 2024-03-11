@@ -31,8 +31,8 @@ llm_jp_eval:
   en_num_shots: 4 # run_llm_jp_eval_en_few_shots is true, please set the num of few shots. Default is 4
   torch_dtype: "bf16" # {fp16, bf16, fp32}
   # Items that do not need to be changed unless specifically intended.
-  dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v6"
-  dataset_dir: "/jaster/1.2.1/evaluation/test"
+  dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v7"
+  dataset_dir: "/jaster/1.2.2/evaluation/test"
   ja: 
     custom_prompt_template: null
     custom_fewshots_template: null
