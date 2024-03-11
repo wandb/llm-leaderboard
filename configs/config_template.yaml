@@ -16,7 +16,7 @@ run_mt_bench_en: true
 
 model:
   api: false # if you don't use api, please set "api" as "false". If you use api, please select from "openai", "anthoropic", "google", "cohere", "mistral", "amazon_bedrock"
-  use_wandb_artifacts: false # if you user wandb artifacts, please set true.
+  use_wandb_artifacts: true # if you user wandb artifacts, please set true.
   artifacts_path: ""  # if you user wandb artifacts, please paste the link. if not, please leave it as "".
   pretrained_model_name_or_path: null #If you use openai api, put the name of model
   device_map: "auto"
