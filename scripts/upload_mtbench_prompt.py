@@ -31,7 +31,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 with wandb.init(entity=args.entity, project=args.project, job_type="upload_data") as run:
-    dataset_artifact = wandb.Artifact(name="mtbench_ja_prompt", 
+    dataset_artifact = wandb.Artifact(name="mtbench_ko_prompt", 
                                     type="dataset", 
                                     metadata={"version":args.dataset_version},
                                     description="This dataset is based on version {}".format(args.dataset_version))
