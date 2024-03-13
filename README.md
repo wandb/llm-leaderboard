@@ -1,6 +1,7 @@
 # Nejumi-leaderboard Neo
 
 ## Set up
+0. Please use python 3.9 or 3.10 which are compatible for llm-jp-eval.
 1. Set up environment variables
 ```
 export WANDB_API_KEY=<your WANDB_API_KEY>
