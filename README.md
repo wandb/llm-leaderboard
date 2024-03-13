@@ -14,9 +14,26 @@ export LANG=ja_JP.UTF-8
 The dataset has been already prepared in wandb artifacts, and the path is implemented into the default config template.
 Evaluators can use them as they are.
 
-### llm-jp-eval: 
-"wandb-japan/llm-leaderboard/jaster:v6"
-### Mt-bench: 
+- v 1.0.0: "wandb-japan/llm-leaderboard/jaster:v0"
+- v 1.1.0: "wandb-japan/llm-leaderboard/jaster:v3"
+- v 1.2.1: "wandb-japan/llm-leaderboard/jaster:v6"
+- v 1.2.2: "wandb-japan/llm-leaderboard/jaster:v7"
+- v 1.2.3: "wandb-japan/llm-leaderboard/jaster:v8"
+- v 1.2.4 (latest): "wandb-japan/llm-leaderboard/jaster:v9"
+
+Below, an example of the process of registering data in wandb's Artifacts is described for reference 
+
+1. create dataset by following an instruction of [llm-jp-eval](https://github.com/llm-jp/llm-jp-eval)
+
+2. register to wandb artifacts
+```bash
+python3 scripts/upload_jaster.py -e <wandb/entity> -p <wandb/project> -d <dataset folder> -v <version>
+```
+
+### preparation for mtbench
+If you use wandb's Artifacts, this process is not necessary. The following data is currently registered in wandb's Artifacts.
+If you create questions or prompts originally, you also need to create reference answers. The method for creating reference answers can be referenced from the [FastChat Readme](https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge).
+
 The following Japanese dataset is based on [Stability-AI/FastChat/jp-stable](https://github.com/Stability-AI/FastChat/tree/jp-stable)
 - Japanese questions
   - [Stability-AI/FastChat (5d4f13a) v1.0](https://github.com/lm-sys/FastChat/commit/5d4f13a4731388ffe1453c459c357d863d87037a): 'wandb-japan/llm-leaderboard/mtbench_ja_question:v0'
@@ -27,6 +44,15 @@ The following Japanese dataset is based on [Stability-AI/FastChat/jp-stable](htt
 - Japanese reference answer
   - [Stability-AI/FastChat (5d4f13a)](https://github.com/Stability-AI/FastChat/tree/jp-stable) : 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v0'
   - [Stability-AI/FastChat (77a69ed) (latest)]() : 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v1'
+
+The following English dataset is based on [lm-sys/FastChat/main](https://github.com/lm-sys/FastChat/tree/main)
+- English questions
+  - [lm-sys/FastChat (b494d0c) v1.0 (latest)](https://github.com/lm-sys/FastChat/commit/b494d0c6b4e7935f1764f8439e75da3e66beccc7) : 'wandb-japan/llm-leaderboard/mtbench_en_question:v0'
+- English prompt
+  - [lm-sys/FastChat (7ad1d63) (latest)](https://github.com/lm-sys/FastChat/commit/7ad1d6386288ba1a7862c11feb673425713eea5b) : 'wandb-japan/llm-leaderboard/mtbench_en_prompt:v0'
+- English reference answer
+  - [lm-sys/FastChat (7ad1d63)](https://github.com/lm-sys/FastChat/commit/7ad1d6386288ba1a7862c11feb673425713eea5b)
+  - [lm-sys/FastChat (b494d0c) (latest)](https://github.com/lm-sys/FastChat/commit/b494d0c6b4e7935f1764f8439e75da3e66beccc7) : 'wandb-japan/llm-leaderboard/mtbench_en_referenceanswer:v0'
 
 The following English dataset is based on [lm-sys/FastChat/main](https://github.com/lm-sys/FastChat/tree/main)
 - English questions
