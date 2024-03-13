@@ -59,7 +59,7 @@ langchain-community==0.0.7
 langchain-core==0.1.4
 langchain-google-genai==0.0.5
 langchain-mistralai==0.0.1
-langchain==0.0.300
+langchain==0.0.350
 langsmith==0.0.69
 levenshtein==0.21.1
 lxml==4.9.3
