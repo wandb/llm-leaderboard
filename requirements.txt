@@ -109,5 +109,5 @@ transformers_stream_generator==0.0.4
 mistralai==0.0.8
 langchain-mistralai==0.0.1
 evaluate==0.4.1
-fschat @ git+https://github.com/kh-kim/FastChat.git@korean
-llm-kr-eval @ git+https://github.com/kh-kim/llm-kr-eval.git@korean
+fschat @ git+https://github.com/wandb/FastChat.git@korean
+llm-kr-eval @ git+https://github.com/wandb/llm-kr-eval.git@korean
