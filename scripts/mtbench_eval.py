@@ -85,7 +85,7 @@ def mtbench_evaluate():
         cfg.model.pretrained_model_name_or_path = model_path
     
     # 1. generate model answers
-    if cfg.api in ["openai","anthropic","cohere","google","amazon_bedrock","mistral"]:
+    if cfg.api in ["openai","anthoropic","cohere","google","amazon_bedrock","mistral"]:
         questions = load_questions(question_file, None, None)
         get_api_answer(
             question_file=question_file,
@@ -273,6 +273,7 @@ def mtbench_evaluate():
     columns = ['basemodel_name'] + df_summary.category.values.tolist()
     data = [[cfg.metainfo.basemodel_name] + df_summary.score.values.tolist()]
     mtbench_df = pd.DataFrame(data, columns=columns)
+    mtbench_df["AVG_mtbench"] = mtbench_df.mean(axis=1, numeric_only=True)
     table_metric = wandb.Table(dataframe=mtbench_df)
 
     ## table for all
