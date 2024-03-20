@@ -30,9 +30,9 @@ parser.add_argument(
 args = parser.parse_args()
 
 with wandb.init(entity=args.entity, project=args.project, job_type="upload_data") as run:
-    dataset_artifact = wandb.Artifact(name="jaster",
+    dataset_artifact = wandb.Artifact(name="kaster",
                                     type="dataset", 
                                     metadata={"version":args.dataset_version},
                                     description="This dataset is based on version {}".format(args.dataset_version))
-    dataset_artifact.add_dir(args.dataset_folder,name="jaster")
+    dataset_artifact.add_dir(args.dataset_folder,name="kaster")
     run.log_artifact(dataset_artifact)
