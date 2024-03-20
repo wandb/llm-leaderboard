@@ -1,7 +1,7 @@
 wandb:
   log: True
-  entity: "wandb-japan"
-  project: "llm-leaderboard-test"
+  entity: "wandb-korea"
+  project: "korean-llm-leaderboard"
   run_name: 'mistralai/Mistral-7B-Instruct-v0.2' # use run_name defined above
 
 github_version: v2.0.0 #for recording
@@ -35,39 +35,39 @@ tokenizer:
 
 # for llm-jp-eval
 max_seq_length: 2048
-dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v3" #if you use artifacts, please fill here (if not, fill null)
-dataset_dir: "/jaster/1.1.0/evaluation/test"
+dataset_artifact: "wandb-korea/korean-llm-leaderboard/kaster:v0" #if you use artifacts, please fill here (if not, fill null)
+dataset_dir: "/kaster/1.1.0/evaluation/test"
 target_dataset: "all" # {all, jamp, janli, jcommonsenseqa, jemhopqa, jnli, jsem, jsick, jsquad, jsts, niilc, chabsa}
 log_dir: "./logs"
 torch_dtype: "bf16" # {fp16, bf16, fp32}
 custom_prompt_template: "<s> [INST] {instruction}\n{input}[/INST]"
 # if you use this, please include {instruction} and {input}. If you use few shots, please include {few_shots} additionally.
 # example of prompt template with fewshots
-# "以下はタスクを説明する指示と、追加の背景情報を提供する入力の組み合わせです。要求を適切に満たす回答を書いてください。\n### 指示：\n{instruction}\n{few_shots}\n### 入力：\n{input}\n### 回答：\n"
+# "다음은 작업을 설명하는 지침과 추가 배경 정보를 제공하는 입력의 조합입니다. 요청을 적절하게 충족하는 답변을 작성하십시오. \n### 지시:\n{instruction}\n{few_shots}\n### 입력:\n{input}\n### 답변:\n"
 # example of prompt template without fewshots
-# "以下はタスクを説明する指示と、追加の背景情報を提供する入力の組み合わせです。要求を適切に満たす回答を書いてください。\n### 指示：\n{instruction}\n### 入力：\n{input}\n### 回答：\n"
+# "다음은 작업을 설명하는 지침과 추가 배경 정보를 제공하는 입력의 조합입니다. 요청을 적절하게 충족하는 답변을 작성하십시오. \n### 지시:\n{instruction}\n### 입력:\n{input}\n### 답변:\n"
 # example of LLama2 format; plase change tokenizer.bos_token
-# "<tokenizer.bos_token>[INST] <<SYS>>\n あなたは誠実で優秀な日本人のアシスタントです。 \n<</SYS>>\n\n {instruction} \n\n {input} [/INST]"
+# "<tokenizer.bos_token>[INST] <<SYS>>\n 당신은 정직하고 우수한 한국인 조수입니다. \n<</SYS>>\n\n {instruction} \n\n {input} [/INST]"
 
 custom_fewshots_template: null
 # Please include {input} and {output} as variables
 # example of fewshots template
-# "\n### 入力：\n{input}\n### 回答：\n{output}"
+# "\n### 입력:\n{input}\n### 답변:\n{output}"
 
 metainfo:
   basemodel_name: "mistralai/Mistral-7B-Instruct-v0.2"
   model_type: "open llm" # {open llm, commercial api}
   instruction_tuning_method: "None" # {"None", "Full", "LoRA", ...}
-  instruction_tuning_data: ["None"] # {"None", "jaster", "dolly_ja", "oasst_ja", ...}
+  instruction_tuning_data: ["None"] # {"None", "kaster", "dolly_ja", "oasst_ja", ...}
   num_few_shots: 0
   llm-jp-eval-version: "1.1.0"
 
 # for mtbench
 mtbench:
-  question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_question:v0' # if testmode is true, small dataset will be used
-  referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v0' # if testmode is true, small dataset will be used
-  judge_prompt_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1' 
-  bench_name: 'japanese_mt_bench'
+  question_artifacts_path: 'wandb-korea/korean-llm-leaderboard/mtbench_ko_question:v0' # if testmode is true, small dataset will be used
+  referenceanswer_artifacts_path: 'wandb-korea/korean-llm-leaderboard/mtbench_ko_referenceanswer:v0' # if testmode is true, small dataset will be used
+  judge_prompt_artifacts_path: 'wandb-korea/korean-llm-leaderboard/mtbench_ko_prompt:v0'
+  bench_name: 'korean_mt_bench'
   model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
   question_begin: null 
   question_end: null 
