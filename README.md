@@ -5,7 +5,7 @@
 ```
 export WANDB_API_KEY=<your WANDB_API_KEY>
 export OPENAI_API_KEY=<your OPENAI_API_KEY>
-export LANG=ja_JP.UTF-8
+export LANG=ko_KR.UTF-8
 # if needed, set the following API KEY too
 export ANTHROPIC_API_KEY=<your ANTHROPIC_API_KEY>
 export GOOGLE_API_KEY=<your GOOGLE_API_KEY>
@@ -21,34 +21,31 @@ huggingface-cli login
 
 
 ## Data Prepartion 
-### preparation for llm-jp-eval
+### preparation for llm-kr-eval
 If you use wandb's Artifacts, this process is not necessary. The following data is currently registered in wandb's Artifacts.
 
-- v 1.0.0: "wandb-japan/llm-leaderboard/jaster:v0"
-- v 1.1.0: "wandb-japan/llm-leaderboard/jaster:v3"
-- v 1.2.1 (latest): "wandb-japan/llm-leaderboard/jaster:v6"
+- v 1.0.0 (latest): "wandb-korea/korean-llm-leaderboard/kaster:v0"
 
 Below, an example of the process of registering data in wandb's Artifacts is described for reference 
 
-1. create dataset by following an instruction of [llm-jp-eval](https://github.com/llm-jp/llm-jp-eval/tree/wandb-nejumi2)
+1. create dataset by following an instruction of [llm-kr-eval](https://github.com/wandb/llm-kr-eval/tree/korean)
 
 2. register to wandb artifacts
 ```bash
-python3 scripts/upload_jaster.py -e <wandb/entity> -p <wandb/project> -d <dataset folder> -v <version>
+python3 scripts/upload_kaster.py -e <wandb/entity> -p <wandb/project> -d <dataset folder> -v <version>
 ```
 
 ### preparation for mtbench
 If you use wandb's Artifacts, this process is not necessary. The following data is currently registered in wandb's Artifacts.
-If you create questions or prompts originally, you also need to create reference answers. The method for creating reference answers can be referenced from the [FastChat Readme](https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge).
+If you create questions or prompts originally, you also need to create reference answers. The method for creating reference answers can be referenced from the [FastChat Readme](https://github.com/wandb/FastChat/tree/korean/fastchat/llm_judge).
 
-The following data are based on [Stability-AI/FastChat/jp-stable](https://github.com/Stability-AI/FastChat/tree/jp-stable)
-- japanese questions
-  - Stability-AI/FastChat (5d4f13a) v1.0 : 'wandb-japan/llm-leaderboard/mtbench_ja_question:v0'
-  - [Stability-AI/FastChat (97d0f08) v1.1 (latest)](https://github.com/Stability-AI/FastChat/commit/97d0f0863c5ee8610f00c94a293418a4209c52dd) : 'wandb-japan/llm-leaderboard/mtbench_ja_question:v1'
-- japanese prompt
-  - [Stability-AI/FastChat (5d4f13a) (latest)](https://github.com/Stability-AI/FastChat/tree/jp-stable) : 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1'
+The following data are based on [wandb/FastChat/tree/korean/](https://github.com/wandb/FastChat/tree/korean/)
+- korean questions
+  - [wandb/FastChat (865816c) v1.0 (latest)](https://github.com/wandb/FastChat/commit/865816c5094a22aa08b25b2d0b1f6bd7b089034b) : 'wandb-korea/korean-llm-leaderboard/mtbench_kr_question:v0'
+- korean prompt
+  - [wandb/FastChat (c0849d1) (latest)](https://github.com/wandb/FastChat/commit/c0849d1cf5bf0e6fd7cc86351cddce49f6e82423) : 'wandb-korea/korean-llm-leaderboard/mtbench_kr_prompt:v0'
 - reference answer
-  - [Stability-AI/FastChat (5d4f13a) (latest)](https://github.com/Stability-AI/FastChat/tree/jp-stable) : 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v0'
+  - [wandb/FastChat (94fefd0) (latest)](https://github.com/wandb/FastChat/commit/865816c5094a22aa08b25b2d0b1f6bd7b089034b) : 'wandb-korea/korean-llm-leaderboard/mtbench_kr_referenceanswer:v0'
 
 
 Below, an example of the process of registering data in wandb's Artifacts is described for reference 
@@ -87,7 +84,7 @@ general
   - `temperature`: The temperature for sampling. Default is commented out.
   - `repetition_penalty`: Repetition penalty. The default is 1.0.
 
-variables for llm-jp-eval
+variables for llm-kr-eval
 - `max_seq_length`: The maximum length of the input. The default is 2048.
 - `dataset_artifact`: URL of wandb Artifacts of evaluation dataset. Choose the version from the Data Preparation section
 - `dataset_dir`: location of the evaluation data after downloading wandb Artifacts
@@ -103,7 +100,7 @@ variables for llm-jp-eval
   - `instruction_tuning_method`: Tuning method of model. This is for record, so doesn't affect evaluation performance. 
   - `instruction_tuning_data`: Tuning data of model. This is for record, so doesn't affect evaluation performance. 
   - `num_few_shots`: The number of questions to be presented as Few-shot. The default is 0.
-  - `llm-jp-eval-version`: Version information of llm-jp-eval.
+  - `llm-kr-eval-version`: Version information of llm-kr-eval.
 
 for mtbench
 - `mtbench`:
