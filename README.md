@@ -1,4 +1,4 @@
-# Nejumi-leaderboard Neo
+# Horangi-leaderboard Neo
 
 ## Set up
 1. Set up environment variables
