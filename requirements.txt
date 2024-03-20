@@ -110,4 +110,4 @@ mistralai==0.0.8
 langchain-mistralai==0.0.1
 evaluate==0.4.1
 fschat @ git+https://github.com/wandb/FastChat.git@korean
-llm-kr-eval @ git+https://github.com/wandb/llm-kr-eval.git@korean
+llm-kr-eval @ git+https://github.com/wandb/llm-kr-eval.git@main
