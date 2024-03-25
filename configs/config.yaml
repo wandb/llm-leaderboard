@@ -1,8 +1,8 @@
 wandb:
   log: True
-  entity: "weblab_lecture" # TODO
-  project: "weblab-llm-leaderboard" # TODO
-  run_name: "team1/gpt_0.125B_global_step35000_openassistant" # ご自身のteam名の後(/以降)、実験管理用にお好きな名前をつけてください
+  entity: "weblab-geniac-leaderboard"
+  project: "leaderboard"
+  run_name: 'weblab-geniacN/gpt_0.125B_global_step35000_openassistant' # ご自身のteam名(weblab-geniac{N}, Nは1~8)の後(/以降)、実験管理用にお好きな名前をつけてください
 
 github_version: v2.0.0 #for recording
 
