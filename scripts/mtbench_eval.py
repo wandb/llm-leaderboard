@@ -24,6 +24,20 @@ from fastchat.conversation import initialize_custom_template
 from fastchat.utils import str_to_torch_dtype
 from omegaconf import OmegaConf
 
+def filter_jsonl(input_file, question_ids=[1, 11, 21, 31, 41, 51, 61, 71]):
+    # ファイルから全データを読み込み、フィルタリングする
+    filtered_data = []
+    with open(input_file, 'r') as f_in:
+        for line in f_in:
+            data = json.loads(line)
+            if data['question_id'] in question_ids:
+                filtered_data.append(json.dumps(data, ensure_ascii=False))
+
+    # フィルタリングされたデータを元のファイルに書き戻す
+    with open(input_file, 'w') as f_out:
+        for item in filtered_data:
+            f_out.write(item + '\n')
+
 def mtbench_evaluate():
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()
@@ -49,11 +63,14 @@ def mtbench_evaluate():
     
     ## file path
     #question
+    artifact_dir = run.use_artifact(cfg.mtbench.question_artifacts_path, type='dataset').download()
     if cfg.testmode:
-        artifact_dir = run.use_artifact("wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v0", type='dataset').download()
-    else:
-        artifact_dir = run.use_artifact(cfg.mtbench.question_artifacts_path, type='dataset').download()
+        filter_jsonl(artifact_dir+f"/question.jsonl")
+        print("downsampling questions...")
     question_file = artifact_dir+f"/question.jsonl"
+
+
+
     
     #create answerfile and answerdir
     answer_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl"
@@ -62,10 +79,10 @@ def mtbench_evaluate():
     )
 
     #refeerence answer
+    ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path, type='dataset').download()
     if cfg.testmode:
-        ref_answer_dir = run.use_artifact('wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v0', type='dataset').download()
-    else:
-        ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path, type='dataset').download()
+        filter_jsonl(ref_answer_dir+f"/gpt-4.jsonl")
+        print("downsampling refeerence answers...")
 
     # Download and move both tokenizer and model artifacts to a new folder, then set the new folder name as model_path
     import os
