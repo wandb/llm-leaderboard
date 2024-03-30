@@ -11,7 +11,7 @@ attrs==23.1.0
 backoff==2.2.1
 bitsandbytes==0.41.2.post2
 boto3==1.34.11
-botocore==1.34.68
+botocore==1.34.11
 cachetools==5.3.3
 certifi==2023.11.17
 charset-normalizer==3.3.2
@@ -55,12 +55,13 @@ jmespath==1.0.1
 joblib==1.3.2
 jsonpatch==1.33
 jsonpointer==2.4
-langchain==0.0.300
+langchain==0.1.13
 langchain-anthropic==0.1.4
-langchain-core==0.1.12
+langchain-core==0.1.33
 langchain-google-genai==0.0.5
 langchain-mistralai==0.0.1
-langsmith==0.0.69
+langchain-community==0.0.29
+langsmith==0.1.17
 Levenshtein==0.21.1
 lxml==4.9.3
 markdown-it-py==3.0.0
@@ -158,5 +159,5 @@ xmltodict==0.13.0
 xxhash==3.4.1
 yarl==1.9.3
 zipp==3.18.1
-fschat @ git+https://github.com/wandb/FastChat.git@korean
-llm-kr-eval @ git+https://github.com/wandb/llm-kr-eval.git@main
+-e git+https://github.com/wandb/FastChat.git@korean#egg=fschat
+-e git+https://github.com/wandb/llm-kr-eval.git@main#egg=llm_kr_eval

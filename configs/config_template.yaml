@@ -66,6 +66,8 @@ metainfo:
 mtbench:
   question_artifacts_path: 'wandb-korea/korean-llm-leaderboard/mtbench_ko_question:v0' # if testmode is true, small dataset will be used
   referenceanswer_artifacts_path: 'wandb-korea/korean-llm-leaderboard/mtbench_ko_referenceanswer:v0' # if testmode is true, small dataset will be used
+  small_question_artifacts_path: wandb-korea/korean-llm-leaderboard/mtbench_ko_question_small_for_test:v0
+  small_referenceanswer_artifacts_path: wandb-korea/korean-llm-leaderboard/mtbench_ko_referenceanswer_small_for_test:v0
   judge_prompt_artifacts_path: 'wandb-korea/korean-llm-leaderboard/mtbench_ko_prompt:v0'
   bench_name: 'korean_mt_bench'
   model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
