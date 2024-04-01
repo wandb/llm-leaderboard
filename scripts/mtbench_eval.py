@@ -196,11 +196,11 @@ def mtbench_evaluate(language):
     # Play matches
     if cfg.mtbench.parallel == 1:
         for match in tqdm(matches):
-            play_a_match_func(match, output_file=output_file)
+            play_a_match_func(match, output_file=output_file, use_azure=cfg.mtbench.use_azure)
     else:
 
         def play_a_match_wrapper(match):
-            play_a_match_func(match, output_file=output_file)
+            play_a_match_func(match, output_file=output_file, use_azure=cfg.mtbench.use_azure)
 
         np.random.seed(0)
         np.random.shuffle(matches)
