@@ -59,6 +59,7 @@ mtbench:
   num_gpus_total: 1
   max_gpu_memory: null
   dtype: bfloat16 # None or float32 or float16 or bfloat16
+  use_azure: false
   # for conv template # added
   custom_conv_template: false
   # the following variables will be used when custom_conv_template is set as true
