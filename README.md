@@ -106,6 +106,7 @@ general
   - `num_gpus_total`: Number of Total GPUs. If you use multiple gpu, change here. The default is 1.
   - `max_gpu_memory`: If you specifiy the max of GPU memory, change here. The default is null.
   - `dtype`: Data type. Choose from None or float32 or float16 or bfloat16
+  - `use_azure`: if you use azure openai service for evaluation, set true. If you set true, you will use openai api.
   - `custom_conv_template`: If the model is not compatible FastChat, you need to use custom conv template, and set this variable true. Then, the custom conv template you set with the following variables will be used. The defalt is false.
   - `conv_name`: Name of prompt template. The default is "custom".
   - `conv_sep`, `conv_stop_token_ids`, `conv_stop_str`, `conv_role_only_separator`: Settings for conversation.
