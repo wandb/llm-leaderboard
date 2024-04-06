@@ -159,5 +159,7 @@ xmltodict==0.13.0
 xxhash==3.4.1
 yarl==1.9.3
 zipp==3.18.1
-fschat @ git+https://github.com/wandb/FastChat@main
-llm-kr-eval @ git+https://github.com/wandb/llm-kr-eval.git@main
+-e git+https://github.com/wandb/FastChat@main#egg=fschat
+-e git+https://github.com/wandb/llm-kr-eval.git@main#egg=llm-kr-eval
+#fschat @ git+https://github.com/wandb/FastChat@main
+#llm-kr-eval @ git+https://github.com/wandb/llm-kr-eval.git@main
