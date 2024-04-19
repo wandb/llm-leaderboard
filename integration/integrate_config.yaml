@@ -9,41 +9,19 @@ old_runs:
     run_id: "mi3rxo2n"
     datasets:
       - jaster_ja_0_shot
-      # - jaster_ja_4_shot
+      - jaster_ja_4_shot
       # - jaster_en_0_shot
       # - jaster_en_4_shot
       - mtbench_ja
+      - mtbench_en
+  - entity: "geniac"
+    project: "llm-leaderboard-test"
+    run_id: "rqkttbnp"
+    datasets:
+      # - jaster_ja_0_shot
+      # - jaster_ja_4_shot
+      - jaster_en_0_shot
+      - jaster_en_4_shot
+      # - mtbench_ja
       # - mtbench_en
-  # - entity: "geniac"
-  #   project: "llm-leaderboard-test"
-  #   run_id: "rqkttbnp"
-  #   tables:
-#       - jaster_leaderboard_table_ja_0shot
-#       - jaster_output_table_ja_0shot
-#       - jaster_output_table_dev_ja_0shot
-#       - jaster_leaderboard_table_ja_4shot
-#       - jaster_output_table_ja_4shot
-#       - jaster_output_table_dev_ja_4shot
-  #     - jaster_leaderboard_table_en_0shot
-  #     - jaster_output_table_en_0shot
-  #     - jaster_output_table_dev_en_0shot
-  #     - jaster_leaderboard_table_en_4shot
-  #     - jaster_output_table_en_4shot
-  #     - jaster_output_table_dev_en_4shot
-#       # # jaster English
-#       # - jaster_leaderboard_table_en_0shot
-#       # - jaster_output_table_en_0shot
-#       # - jaster_output_table_dev_en_0shot
-#       # - jaster_leaderboard_table_en_4shot
-#       # - jaster_output_table_en_4shot
-#       # - jaster_output_table_dev_en_4shot
-#       # Japanse MT Bench
-#       - mtbench_output_table_ja
-#       - mtbench_leaderboard_table_ja
-#       - mtbench_radar_table_ja
-#       # English MT Bench
-#       - mtbench_output_table_en
-#       - mtbench_leaderboard_table_en
-#       - mtbench_radar_table_en
 
-# # hisotryってなに
