@@ -4,12 +4,15 @@ import json
 from omegaconf import OmegaConf
 import pandas as pd
 import wandb
+from wandb.sdk.wandb_run import Run
 import yaml
+
+from config_singleton import WandbConfigSingleton
 
 
 def get_output_table(
     table_name: str,
-    run,
+    run: Run,
     entity: str,
     project: str,
     run_id: str,
@@ -24,7 +27,7 @@ def get_output_table(
     return df
 
 
-def process_jaster_dataset(dataset_name, run, old_run, leaderboard_tables):
+def process_jaster_dataset(dataset_name: str, run: Run, old_run, leaderboard_tables):
     prefix, language, num_fewshots, _ = dataset_name.split("_")
     table_names = [
         f"{prefix}_leaderboard_table_{language}_{num_fewshots}shot",
@@ -49,7 +52,7 @@ def process_jaster_dataset(dataset_name, run, old_run, leaderboard_tables):
             leaderboard_tables.append(output_table)
 
 
-def process_mtbench_dataset(dataset_name, run, old_run, leaderboard_tables):
+def process_mtbench_dataset(dataset_name: str, run: Run, old_run, leaderboard_tables):
     prefix, language = dataset_name.split("_")
     table_names = [
         f"{prefix}_leaderboard_table_{language}",
@@ -71,34 +74,15 @@ def process_mtbench_dataset(dataset_name, run, old_run, leaderboard_tables):
             leaderboard_tables.append(output_table)
 
 
-def main():
-    config_path = Path("integration/integrate_config.yaml")
-    with config_path.open() as f:
-        config = OmegaConf.create(yaml.safe_load(f))
-
-    new_run: dict[str, str] = config.new_run
-    old_runs: list[object] = config.old_runs
-
-    # test dataset names
-    all_datasets = []
+def test_dataset_names(old_runs, all_datasets: list[str]):
     for old_run in old_runs:
         all_datasets += old_run.datasets
     assert len(all_datasets) == len(set(all_datasets)), "Dataset names must be unique"
 
-    wandb.login()
-    run = wandb.init(
-        entity=new_run.entity,
-        project=new_run.project,
-        name=new_run.run_name,
-        job_type="evaluation",
-    )
-    # log config
-    artifact = wandb.Artifact(config_path.stem, type="config")
-    artifact.add_file(config_path)
-    run.log_artifact(artifact)
 
-    # log output tables
-    leaderboard_tables = []
+def log_tables(
+    leaderboard_tables: list[pd.DataFrame], old_runs, run: Run
+) -> list[pd.DataFrame]:
     for old_run in old_runs:
         for dataset_name in old_run.datasets:
             if dataset_name.startswith("jaster"):
@@ -115,12 +99,70 @@ def main():
                     old_run=old_run,
                     leaderboard_tables=leaderboard_tables,
                 )
-
-    # log leaderboard table
     leaderboard_table = pd.concat(leaderboard_tables, axis=1)
-    run.log({"leaderboard_table": leaderboard_table})
-    run.finish()
+    return leaderboard_table
+
+
+def integrate_runs(run_chain: bool = False):
+    integration_cfg_path = Path("integration_configs/config.yaml")
+    with integration_cfg_path.open() as f:
+        integration_cfg = OmegaConf.create(yaml.safe_load(f))
+    old_runs: list[object] = integration_cfg.old_runs
+
+    if run_chain:
+        instance = WandbConfigSingleton.get_instance()
+        run = instance.run
+        cfg = instance.config
+        old_leaderboard_table = instance.table
+
+        # test dataset names
+        all_datasets = []
+        if cfg.run_llm_jp_eval_ja_0_shot:
+            all_datasets.append("jaster_ja_0_shot")
+        if cfg.run_llm_jp_eval_ja_few_shots:
+            all_datasets.append("jaster_ja_4_shot")
+        if cfg.run_llm_jp_eval_en_0_shot:
+            all_datasets.append("jaster_en_0_shot")
+        if cfg.run_llm_jp_eval_en_few_shots:
+            all_datasets.append("jaster_en_4_shot")
+        if cfg.run_mt_bench_ja:
+            all_datasets.append("mtbench_ja")
+        if cfg.run_mt_bench_en:
+            all_datasets.append("mtbench_en")
+        test_dataset_names(old_runs, all_datasets)
+
+        # log tables and update tables
+        leaderboard_tables = [old_leaderboard_table.get_dataframe()]
+        leaderboard_tables = log_tables(leaderboard_tables, old_runs, run)
+        leaderboard_table = pd.concat(leaderboard_tables, axis=1)
+        instance.table = wandb.Table(dataframe=leaderboard_table)
+
+    else:
+        # test dataset names
+        all_datasets = []
+        test_dataset_names(old_runs, all_datasets)
+
+        wandb.login()
+        run = wandb.init(
+            entity=integration_cfg.new_run.entity,
+            project=integration_cfg.new_run.project,
+            name=integration_cfg.new_run.run_name,
+            job_type="evaluation",
+        )
+
+        # log config
+        artifact = wandb.Artifact(integration_cfg_path.stem, type="config")
+        artifact.add_file(integration_cfg_path)
+        run.log_artifact(artifact)
+
+        # log output tables
+        leaderboard_tables = []
+        leaderboard_table = log_tables(
+            leaderboard_tables=leaderboard_tables, old_runs=old_runs, run=run
+        )
+        run.log({"leaderboard_table": leaderboard_table})
+        run.finish()
 
 
 if __name__ == "__main__":
-    main()
+    integrate_runs()
