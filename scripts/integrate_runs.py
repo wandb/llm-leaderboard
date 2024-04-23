@@ -81,7 +81,10 @@ def test_dataset_names(old_runs, all_datasets: list[str]):
 
 
 def log_tables(
-    leaderboard_tables: list[pd.DataFrame], old_runs, run: Run, integration_cfg_path: Path
+    leaderboard_tables: list[pd.DataFrame],
+    old_runs,
+    run: Run,
+    integration_cfg_path: Path,
 ) -> list[pd.DataFrame]:
     artifact = wandb.Artifact(integration_cfg_path.stem, type="integration_config")
     artifact.add_file(integration_cfg_path)
@@ -101,7 +104,6 @@ def log_tables(
                     run=run,
                     old_run=old_run,
                     leaderboard_tables=leaderboard_tables,
-                    integration_cfg_path=integration_cfg_path,
                 )
     leaderboard_table = pd.concat(leaderboard_tables, axis=1)
     return leaderboard_table
@@ -137,7 +139,12 @@ def integrate_runs(run_chain: bool = False):
 
         # log tables and update tables
         leaderboard_tables = [old_leaderboard_table.get_dataframe()]
-        leaderboard_table = log_tables(leaderboard_tables, old_runs, run)
+        leaderboard_table = log_tables(
+            leaderboard_tables,
+            old_runs,
+            run,
+            integration_cfg_path,
+        )
         instance.table = wandb.Table(dataframe=leaderboard_table)
 
     else:
@@ -156,7 +163,10 @@ def integrate_runs(run_chain: bool = False):
         # log output tables
         leaderboard_tables = []
         leaderboard_table = log_tables(
-            leaderboard_tables=leaderboard_tables, old_runs=old_runs, run=run, integration_cfg_path=integration_cfg_path
+            leaderboard_tables=leaderboard_tables,
+            old_runs=old_runs,
+            run=run,
+            integration_cfg_path=integration_cfg_path,
         )
         run.log({"leaderboard_table": leaderboard_table})
         run.finish()
