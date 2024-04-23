@@ -104,7 +104,7 @@ if cfg.run_mt_bench_en:
     mtbench_evaluate(language="en")
     cleanup_gpu()
 
-if cfg.integrate_runs:
+if cfg.use_run_integration:
     integrate_runs(run_chain=True)
 
 # Logging results to W&B

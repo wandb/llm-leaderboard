@@ -81,8 +81,11 @@ def test_dataset_names(old_runs, all_datasets: list[str]):
 
 
 def log_tables(
-    leaderboard_tables: list[pd.DataFrame], old_runs, run: Run
+    leaderboard_tables: list[pd.DataFrame], old_runs, run: Run, integration_cfg_path: Path
 ) -> list[pd.DataFrame]:
+    artifact = wandb.Artifact(integration_cfg_path.stem, type="integration_config")
+    artifact.add_file(integration_cfg_path)
+    run.log_artifact(artifact)
     for old_run in old_runs:
         for dataset_name in old_run.datasets:
             if dataset_name.startswith("jaster"):
@@ -133,8 +136,7 @@ def integrate_runs(run_chain: bool = False):
 
         # log tables and update tables
         leaderboard_tables = [old_leaderboard_table.get_dataframe()]
-        leaderboard_tables = log_tables(leaderboard_tables, old_runs, run)
-        leaderboard_table = pd.concat(leaderboard_tables, axis=1)
+        leaderboard_table = log_tables(leaderboard_tables, old_runs, run)
         instance.table = wandb.Table(dataframe=leaderboard_table)
 
     else:
@@ -150,15 +152,10 @@ def integrate_runs(run_chain: bool = False):
             job_type="evaluation",
         )
 
-        # log config
-        artifact = wandb.Artifact(integration_cfg_path.stem, type="config")
-        artifact.add_file(integration_cfg_path)
-        run.log_artifact(artifact)
-
         # log output tables
         leaderboard_tables = []
         leaderboard_table = log_tables(
-            leaderboard_tables=leaderboard_tables, old_runs=old_runs, run=run
+            leaderboard_tables=leaderboard_tables, old_runs=old_runs, run=run, integration_cfg_path=integration_cfg_path
         )
         run.log({"leaderboard_table": leaderboard_table})
         run.finish()
