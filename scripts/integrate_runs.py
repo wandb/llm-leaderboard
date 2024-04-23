@@ -86,7 +86,7 @@ def log_tables(
     run: Run,
     integration_cfg_path: Path,
 ) -> list[pd.DataFrame]:
-    artifact = wandb.Artifact(integration_cfg_path.stem, type="integration_config")
+    artifact = wandb.Artifact(integration_cfg_path.stem, type="config")
     artifact.add_file(integration_cfg_path)
     run.log_artifact(artifact)
     for old_run in old_runs:
