@@ -101,6 +101,7 @@ def log_tables(
                     run=run,
                     old_run=old_run,
                     leaderboard_tables=leaderboard_tables,
+                    integration_cfg_path=integration_cfg_path,
                 )
     leaderboard_table = pd.concat(leaderboard_tables, axis=1)
     return leaderboard_table
