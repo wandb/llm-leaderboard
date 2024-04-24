@@ -36,7 +36,7 @@ tokenizer:
 # for llm-kr-eval
 max_seq_length: 2048
 dataset_artifact: "wandb-korea/korean-llm-leaderboard/kaster:v0" #if you use artifacts, please fill here (if not, fill null)
-dataset_dir: "/kaster/evaluation/test"
+dataset_dir: "/kaster/test"
 target_dataset: "all" 
 log_dir: "./logs"
 torch_dtype: "bf16" # {fp16, bf16, fp32}
