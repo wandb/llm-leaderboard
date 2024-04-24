@@ -11,7 +11,7 @@ from llm_jp_eval.evaluator import evaluate
 from mtbench_eval import mtbench_evaluate
 from config_singleton import WandbConfigSingleton
 from cleanup import cleanup_gpu
-from integrate_runs import integrate_runs
+from blend_run import blend_run
 
 # Configuration loading
 if os.path.exists("configs/config.yaml"):
@@ -104,8 +104,8 @@ if cfg.run_mt_bench_en:
     mtbench_evaluate(language="en")
     cleanup_gpu()
 
-if cfg.use_run_integration:
-    integrate_runs(run_chain=True)
+if cfg.blend_run:
+    blend_run(run_chain=True)
 
 # Logging results to W&B
 instance = WandbConfigSingleton.get_instance()

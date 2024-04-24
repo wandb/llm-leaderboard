@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+from typing import Union
 
 from omegaconf import OmegaConf
 import pandas as pd
@@ -9,13 +10,22 @@ import yaml
 
 from config_singleton import WandbConfigSingleton
 
+DATASET_DICT = {
+    "run_llm_jp_eval_ja_0_shot": "jaster_ja_0_shot",
+    "run_llm_jp_eval_ja_few_shots": "jaster_ja_4_shot",
+    "run_llm_jp_eval_en_0_shot": "jaster_en_0_shot",
+    "run_llm_jp_eval_en_few_shots": "jaster_en_4_shot",
+    "run_mt_bench_ja": "mtbench_ja",
+    "run_mt_bench_en": "mtbench_en",
+}
+
 
 def get_output_table(
     table_name: str,
-    run: Run,
     entity: str,
     project: str,
     run_id: str,
+    run: Run,
 ) -> pd.DataFrame:
     art_path = f"{entity}/{project}/run-{run_id}-{table_name}:latest"
     artifact = run.use_artifact(art_path)
@@ -27,7 +37,12 @@ def get_output_table(
     return df
 
 
-def process_jaster_dataset(dataset_name: str, run: Run, old_run, leaderboard_tables):
+def process_jaster_dataset(
+    dataset_name: str,
+    old_run: dict[str, Union[str, list[str]]],
+    leaderboard_tables: list[pd.DataFrame],
+    run: Run,
+):
     prefix, language, num_fewshots, _ = dataset_name.split("_")
     table_names = [
         f"{prefix}_leaderboard_table_{language}_{num_fewshots}shot",
@@ -52,7 +67,12 @@ def process_jaster_dataset(dataset_name: str, run: Run, old_run, leaderboard_tab
             leaderboard_tables.append(output_table)
 
 
-def process_mtbench_dataset(dataset_name: str, run: Run, old_run, leaderboard_tables):
+def process_mtbench_dataset(
+    dataset_name: str,
+    run: Run,
+    old_run: dict[str, Union[str, list[str]]],
+    leaderboard_tables: list[pd.DataFrame],
+):
     prefix, language = dataset_name.split("_")
     table_names = [
         f"{prefix}_leaderboard_table_{language}",
@@ -74,7 +94,7 @@ def process_mtbench_dataset(dataset_name: str, run: Run, old_run, leaderboard_ta
             leaderboard_tables.append(output_table)
 
 
-def test_dataset_names(old_runs, all_datasets: list[str]):
+def test_dataset_names(old_runs: dict[str, Union[str, list[str]]], all_datasets: list[str]):
     for old_run in old_runs:
         all_datasets += old_run.datasets
     assert len(all_datasets) == len(set(all_datasets)), "Dataset names must be unique"
@@ -82,12 +102,12 @@ def test_dataset_names(old_runs, all_datasets: list[str]):
 
 def log_tables(
     leaderboard_tables: list[pd.DataFrame],
-    old_runs,
+    old_runs:  dict[str, Union[str, list[str]]],
     run: Run,
-    integration_cfg_path: Path,
+    blend_cfg_path: Path,
 ) -> list[pd.DataFrame]:
-    artifact = wandb.Artifact(integration_cfg_path.stem, type="config")
-    artifact.add_file(integration_cfg_path)
+    artifact = wandb.Artifact(blend_cfg_path.stem, type="config")
+    artifact.add_file(blend_cfg_path)
     run.log_artifact(artifact)
     for old_run in old_runs:
         for dataset_name in old_run.datasets:
@@ -109,11 +129,11 @@ def log_tables(
     return leaderboard_table
 
 
-def integrate_runs(run_chain: bool = False):
-    integration_cfg_path = Path("integration_configs/config.yaml")
-    with integration_cfg_path.open() as f:
-        integration_cfg = OmegaConf.create(yaml.safe_load(f))
-    old_runs: list[object] = integration_cfg.old_runs
+def blend_run(run_chain: bool):
+    blend_cfg_path = Path("blend_run_configs/config.yaml")
+    with blend_cfg_path.open() as f:
+        blend_cfg = OmegaConf.create(yaml.safe_load(f))
+    old_runs: list[object] = blend_cfg.old_runs
 
     if run_chain:
         instance = WandbConfigSingleton.get_instance()
@@ -123,40 +143,31 @@ def integrate_runs(run_chain: bool = False):
 
         # test dataset names
         all_datasets = []
-        if cfg.run_llm_jp_eval_ja_0_shot:
-            all_datasets.append("jaster_ja_0_shot")
-        if cfg.run_llm_jp_eval_ja_few_shots:
-            all_datasets.append("jaster_ja_4_shot")
-        if cfg.run_llm_jp_eval_en_0_shot:
-            all_datasets.append("jaster_en_0_shot")
-        if cfg.run_llm_jp_eval_en_few_shots:
-            all_datasets.append("jaster_en_4_shot")
-        if cfg.run_mt_bench_ja:
-            all_datasets.append("mtbench_ja")
-        if cfg.run_mt_bench_en:
-            all_datasets.append("mtbench_en")
-        test_dataset_names(old_runs, all_datasets)
+        for k, v in DATASET_DICT.items():
+            if cfg[k]:
+                all_datasets.append(v)
+        test_dataset_names(old_runs=old_runs, all_datasets=all_datasets)
 
         # log tables and update tables
         leaderboard_tables = [old_leaderboard_table.get_dataframe()]
         leaderboard_table = log_tables(
-            leaderboard_tables,
-            old_runs,
-            run,
-            integration_cfg_path,
+            leaderboard_tables=leaderboard_tables,
+            old_runs=old_runs,
+            run=run,
+            blend_cfg_path=blend_cfg_path,
         )
         instance.table = wandb.Table(dataframe=leaderboard_table)
 
     else:
         # test dataset names
         all_datasets = []
-        test_dataset_names(old_runs, all_datasets)
+        test_dataset_names(old_runs=old_runs, all_datasets=all_datasets)
 
         wandb.login()
         run = wandb.init(
-            entity=integration_cfg.new_run.entity,
-            project=integration_cfg.new_run.project,
-            name=integration_cfg.new_run.run_name,
+            entity=blend_cfg.new_run.entity,
+            project=blend_cfg.new_run.project,
+            name=blend_cfg.new_run.run_name,
             job_type="evaluation",
         )
 
@@ -166,11 +177,11 @@ def integrate_runs(run_chain: bool = False):
             leaderboard_tables=leaderboard_tables,
             old_runs=old_runs,
             run=run,
-            integration_cfg_path=integration_cfg_path,
+            blend_cfg_path=blend_cfg_path,
         )
         run.log({"leaderboard_table": leaderboard_table})
         run.finish()
 
 
 if __name__ == "__main__":
-    integrate_runs()
+    blend_run(run_chain=False)
