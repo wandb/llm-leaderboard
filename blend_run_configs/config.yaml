@@ -7,7 +7,7 @@ old_runs:
   - entity: "geniac"
     project: "llm-leaderboard-test"
     run_id: "mi3rxo2n"
-    datasets:
+    tasks:
       - jaster_ja_0_shot
       - jaster_ja_4_shot
       # - jaster_en_0_shot
@@ -17,7 +17,7 @@ old_runs:
   - entity: "geniac"
     project: "llm-leaderboard-test"
     run_id: "rqkttbnp"
-    datasets:
+    tasks:
       # - jaster_ja_0_shot
       # - jaster_ja_4_shot
       - jaster_en_0_shot
