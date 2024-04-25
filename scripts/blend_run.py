@@ -25,7 +25,7 @@ def test_task_name(
 ) -> None:
     for old_run in old_runs:
         all_tasks += old_run.tasks
-    assert len(all_tasks) == len(set(all_tasks)), "Dataset names must be unique"
+    assert len(all_tasks) == len(set(all_tasks)), "Tasks must be unique"
 
     return None
 
