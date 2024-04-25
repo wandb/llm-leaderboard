@@ -124,11 +124,6 @@ def blend_run(run_chain: bool):
         blend_cfg = OmegaConf.create(yaml.safe_load(f))
     old_runs: list[dict[str, Union[str, list[str]]]] = blend_cfg.old_runs
 
-    # log config
-    artifact = wandb.Artifact(blend_cfg_path.stem, type="config")
-    artifact.add_file(blend_cfg_path)
-    run.log_artifact(artifact)
-
     # get run
     if run_chain:
         instance = WandbConfigSingleton.get_instance()
@@ -143,6 +138,11 @@ def blend_run(run_chain: bool):
             name=blend_cfg.new_run.run_name,
             job_type="evaluation",
         )
+
+    # log config
+    artifact = wandb.Artifact(blend_cfg_path.stem, type="config")
+    artifact.add_file(blend_cfg_path)
+    run.log_artifact(artifact)
 
     # test
     all_tasks = []
