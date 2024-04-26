@@ -91,9 +91,6 @@ mtbench:
       judge_prompt_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_en_prompt:v0"
       bench_name: "mt_bench_en"
 
-# If you integrate old runs, set true. Also edit integration_configs/config.yaml
-blend_run: false
-
 #==================================================================
 # Items that do not need to be changed unless specifically intended.
 #==================================================================

@@ -1,27 +1,25 @@
+run_chain: false
+
 new_run:
   entity: "your/WANDB/entity"
   project: "your/WANDB/project"
   run_name: "your/WANDB/run_name" # this run_name will be used as the name of run in leaderboard. Can be changed later
 
 old_runs:
-  - entity: "your/WANDB/entity"
-    project: "your/WANDB/project"
-    run_id: "your/WANDB/run_id"
+  - run_path: "your/WANDB/run_path"
     datasets:
       - jaster_ja_0_shot
       - jaster_ja_4_shot
-      # - jaster_en_0_shot
-      # - jaster_en_4_shot
-      - mtbench_ja
-      - mtbench_en
-  - entity: "your/WANDB/entity"
-    project: "your/WANDB/project"
-    run_id: "your/WANDB/run_id"
-    datasets:
-      # - jaster_ja_0_shot
-      # - jaster_ja_4_shot
       - jaster_en_0_shot
       - jaster_en_4_shot
-      # - mtbench_ja
-      # - mtbench_en
+      - mtbench_ja
+      - mtbench_en
+  - run_path: "your/WANDB/run_path"
+    datasets:
+      - jaster_ja_0_shot
+      - jaster_ja_4_shot
+      - jaster_en_0_shot
+      - jaster_en_4_shot
+      - mtbench_ja
+      - mtbench_en
 
