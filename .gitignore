@@ -109,7 +109,7 @@ artifacts/
 
 # config
 configs/config.yaml
-integration_configs/config.yaml
+blend_run_configs/config.yaml
 
 # debug
 dataset/
