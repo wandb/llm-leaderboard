@@ -19,6 +19,6 @@ old_runs:
       # - jaster_ja_0_shot
       # - jaster_ja_4_shot
       - jaster_en_0_shot
-      - jaster_en_4_shot
+      - jaster_en_4_shotz
       # - mtbench_ja
       # - mtbench_en

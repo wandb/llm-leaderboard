@@ -1,11 +1,11 @@
-run_chain: false
+run_chain: false # If you want to reuse past evaluation results in a new run, please set it to true.
 
-new_run:
+new_run: # This setting is for blending runs without running new evaluations. If run_chain is set to true, this setting is disabled.
   entity: "your/WANDB/entity"
   project: "your/WANDB/project"
-  run_name: "your/WANDB/run_name" # this run_name will be used as the name of run in leaderboard. Can be changed later
+  run_name: "your/WANDB/run_name"
 
-old_runs:
+old_runs: # Please specify the tasks you want to carry over from past runs. Multiple runs are permissible.
   - run_path: "your/WANDB/run_path"
     tasks:
       - jaster_ja_0_shot
