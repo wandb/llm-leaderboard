@@ -31,12 +31,11 @@ def test_task_name(
 
 
 def get_output_table(
-    entity: str,
-    project: str,
-    run_id: str,
+    run_path: str,
     table_name: str,
     run: Run,
 ) -> pd.DataFrame:
+    entity, project, run_id = run_path.split("/")
     art_path = f"{entity}/{project}/run-{run_id}-{table_name}:latest"
     artifact = run.use_artifact(art_path)
     artifact_dir = artifact.download()
@@ -72,9 +71,7 @@ def process_task(
 
     for table_name in table_names:
         output_table = get_output_table(
-            entity=old_run.entity,
-            project=old_run.project,
-            run_id=old_run.run_id,
+            run_path=old_run.run_path,
             table_name=table_name,
             run=run,
         )
@@ -118,11 +115,18 @@ def blend_tables(
     return leaderboard_table
 
 
-def blend_run(run_chain: bool):
+def blend_run(run_chain: bool) -> None:
     blend_cfg_path = Path("blend_run_configs/config.yaml")
     with blend_cfg_path.open() as f:
         blend_cfg = OmegaConf.create(yaml.safe_load(f))
     old_runs: list[dict[str, Union[str, list[str]]]] = blend_cfg.old_runs
+
+    # check mode
+    if not run_chain:
+        pass
+    elif not blend_cfg.run_chain:
+        print('Blend run skipped.')
+        return None
 
     # get run
     if run_chain:

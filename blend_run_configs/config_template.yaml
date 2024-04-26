@@ -7,7 +7,7 @@ new_run:
 
 old_runs:
   - run_path: "your/WANDB/run_path"
-    datasets:
+    tasks:
       - jaster_ja_0_shot
       - jaster_ja_4_shot
       - jaster_en_0_shot
@@ -15,11 +15,10 @@ old_runs:
       - mtbench_ja
       - mtbench_en
   - run_path: "your/WANDB/run_path"
-    datasets:
+    tasks:
       - jaster_ja_0_shot
       - jaster_ja_4_shot
       - jaster_en_0_shot
       - jaster_en_4_shot
       - mtbench_ja
       - mtbench_en
-
