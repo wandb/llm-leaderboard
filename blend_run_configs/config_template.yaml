@@ -1,12 +1,12 @@
 new_run:
-  entity: "geniac"
-  project: "llm-leaderboard-test"
-  run_name: "[test]run_integration"
+  entity: "your/WANDB/entity"
+  project: "your/WANDB/project"
+  run_name: "your/WANDB/run_name" # this run_name will be used as the name of run in leaderboard. Can be changed later
 
 old_runs:
-  - entity: "geniac"
-    project: "llm-leaderboard-test"
-    run_id: "mi3rxo2n"
+  - entity: "your/WANDB/entity"
+    project: "your/WANDB/project"
+    run_id: "your/WANDB/run_id"
     datasets:
       - jaster_ja_0_shot
       - jaster_ja_4_shot
@@ -14,9 +14,9 @@ old_runs:
       # - jaster_en_4_shot
       - mtbench_ja
       - mtbench_en
-  - entity: "geniac"
-    project: "llm-leaderboard-test"
-    run_id: "rqkttbnp"
+  - entity: "your/WANDB/entity"
+    project: "your/WANDB/project"
+    run_id: "your/WANDB/run_id"
     datasets:
       # - jaster_ja_0_shot
       # - jaster_ja_4_shot
