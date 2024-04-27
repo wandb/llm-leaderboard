@@ -31,7 +31,9 @@ Below, an example of the process of registering data in wandb's Artifacts is des
 1. create dataset by following an instruction of [llm-kr-eval](https://github.com/wandb/llm-kr-eval/tree/korean)
 
 2. register to wandb artifacts
+   
 ```bash
+# please urs korean brancb!
 python3 scripts/upload_kaster.py -e <wandb/entity> -p <wandb/project> -d <dataset folder> -v <version>
 ```
 
