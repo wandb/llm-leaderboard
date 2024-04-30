@@ -21,7 +21,8 @@ Evaluators can use them as they are.
 - v 1.2.2: "wandb-japan/llm-leaderboard/jaster:v7"
 - v 1.2.3: "wandb-japan/llm-leaderboard/jaster:v8"
 - v 1.2.4: "wandb-japan/llm-leaderboard/jaster:v9"
-- v 1.2.5 (latest): "wandb-japan/llm-leaderboard/jaster:v10"
+- v 1.2.5: "wandb-japan/llm-leaderboard/jaster:v10"
+- v 1.2.6 (latest): "wandb-japan/llm-leaderboard/jaster:v11"
 
 Below, an example of the process of registering data in wandb's Artifacts is described for reference 
 
