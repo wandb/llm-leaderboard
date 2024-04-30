@@ -69,6 +69,9 @@ artifact = wandb.Artifact("config", type="config")
 artifact.add_file(artifact_config_path)
 run.log_artifact(artifact)
 
+# Inherit old runs
+blend_run(run_chain=True)
+
 # Evaluation phase
 # 1. Llm-jp-eval-jp 0 shot evaluation
 if cfg.run_llm_jp_eval_ja_0_shot:
@@ -99,8 +102,6 @@ if cfg.run_mt_bench_ja:
 if cfg.run_mt_bench_en:
     mtbench_evaluate(language="en")
     cleanup_gpu()
-
-blend_run(run_chain=True)
 
 # Logging results to W&B
 instance = WandbConfigSingleton.get_instance()
