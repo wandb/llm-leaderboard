@@ -14,11 +14,11 @@ old_runs: # Please specify the tasks you want to carry over from past runs. Mult
       - jaster_en_4_shot
       - mtbench_ja
       - mtbench_en
-  - run_path: "your/WANDB/run_path"
-    tasks:
-      - jaster_ja_0_shot
-      - jaster_ja_4_shot
-      - jaster_en_0_shot
-      - jaster_en_4_shot
-      - mtbench_ja
-      - mtbench_en
+  # - run_path: "your/WANDB/run_path"
+  #   tasks:
+  #     - jaster_ja_0_shot
+  #     - jaster_ja_4_shot
+  #     - jaster_en_0_shot
+  #     - jaster_en_4_shot
+  #     - mtbench_ja
+  #     - mtbench_en
