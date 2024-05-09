@@ -7,7 +7,7 @@ new_run: # This setting is for blending runs without running new evaluations. If
 
 old_runs: # Please specify the tasks you want to carry over from past runs. Multiple runs are permissible.
   - run_path: "your/WANDB/run_path"
-    tasks:
+    tasks: # The list of tasks to take over. Please comment out tasks that do not need to be taken over.
       - jaster_ja_0_shot
       - jaster_ja_4_shot
       - jaster_en_0_shot

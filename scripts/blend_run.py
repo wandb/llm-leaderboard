@@ -61,6 +61,8 @@ def process_task(
             f"{prefix}_output_table_dev_{language}_{num_fewshots}shot",
             f"{prefix}_output_table_{language}_{num_fewshots}shot",
         ]
+        if language == "ja":
+            table_names.append(f"{prefix}_radar_table_{language}_{num_fewshots}shot")
     elif dataset_name == "mtbench":
         prefix, language = task_name.split("_")
         table_names = [
@@ -125,7 +127,7 @@ def blend_run(run_chain: bool) -> None:
     if not run_chain:
         pass
     elif not blend_cfg.run_chain:
-        print('Blend run skipped.')
+        print("Blend run skipped.")
         return None
 
     # get run
