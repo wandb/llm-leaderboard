@@ -20,43 +20,20 @@ huggingface-cli login
 
 
 
-## Data Prepartion 
-### preparation for llm-jp-eval
-If you use wandb's Artifacts, this process is not necessary. The following data is currently registered in wandb's Artifacts.
+## Preparing Data
 
-- v 1.0.0: "wandb-japan/llm-leaderboard/jaster:v0"
-- v 1.1.0: "wandb-japan/llm-leaderboard/jaster:v3"
-- v 1.2.1 (latest): "wandb-japan/llm-leaderboard/jaster:v6"
+If you use the public W&B server, you can use the same artifacts used for the public leaderboard to do your evaluation. However, if you use a private W&B server you'll need to mirror the artifacts first. To mirror the default artifacts, you can do the following:
 
-Below, an example of the process of registering data in wandb's Artifacts is described for reference 
+```
+host=https://my-server.wandb.io # the host url for your wandb instance
+dest=my-user/my-project # the user/project to hold the resulting artifacts
 
-1. create dataset by following an instruction of [llm-jp-eval](https://github.com/llm-jp/llm-jp-eval/tree/wandb-nejumi2)
-
-2. register to wandb artifacts
-```bash
-python3 scripts/upload_jaster.py -e <wandb/entity> -p <wandb/project> -d <dataset folder> -v <version>
+./scripts/mirror-data.sh "$host" "$dest"
+# There will be interactive instructions to follow
 ```
 
-### preparation for mtbench
-If you use wandb's Artifacts, this process is not necessary. The following data is currently registered in wandb's Artifacts.
-If you create questions or prompts originally, you also need to create reference answers. The method for creating reference answers can be referenced from the [FastChat Readme](https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge).
-
-The following data are based on [Stability-AI/FastChat/jp-stable](https://github.com/Stability-AI/FastChat/tree/jp-stable)
-- japanese questions
-  - Stability-AI/FastChat (5d4f13a) v1.0 : 'wandb-japan/llm-leaderboard/mtbench_ja_question:v0'
-  - [Stability-AI/FastChat (97d0f08) v1.1 (latest)](https://github.com/Stability-AI/FastChat/commit/97d0f0863c5ee8610f00c94a293418a4209c52dd) : 'wandb-japan/llm-leaderboard/mtbench_ja_question:v1'
-- japanese prompt
-  - [Stability-AI/FastChat (5d4f13a) (latest)](https://github.com/Stability-AI/FastChat/tree/jp-stable) : 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1'
-- reference answer
-  - [Stability-AI/FastChat (5d4f13a) (latest)](https://github.com/Stability-AI/FastChat/tree/jp-stable) : 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v0'
-
-
-Below, an example of the process of registering data in wandb's Artifacts is described for reference 
-```bash
-# register questions
-  python3 scripts/upload_mtbench_question.py -e <wandb/entity> -p <wandb/project> -v <data version> -f "your path"
-```
 ## Create config.yaml file
+
 1. create configs/config.yaml
 ```bash
 cp configs/config_template.yaml configs/config.yaml
