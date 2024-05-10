@@ -5,8 +5,8 @@ import sys
 from omegaconf import DictConfig, OmegaConf
 import pandas as pd
 
-# sys.path.append("llm-jp-eval/src")
-# sys.path.append("FastChat")
+#sys.path.append("llm-jp-eval/src")
+#sys.path.append("FastChat")
 from llm_jp_eval.evaluator import evaluate
 from mtbench_eval import mtbench_evaluate
 from config_singleton import WandbConfigSingleton
@@ -18,8 +18,12 @@ if os.path.exists("configs/config.yaml"):
     cfg = OmegaConf.load("configs/config.yaml")
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
     default_settings = {
-        "model": {"trust_remote_code": True},
-        "llm_jp_eval": {"log_dir": "./logs"},
+        "model": {
+            "trust_remote_code": True
+        },
+        "llm_jp_eval": {
+            "log_dir": "./logs"
+        },
         "mtbench": {
             "question_begin": None,
             "question_end": None,
@@ -29,7 +33,7 @@ if os.path.exists("configs/config.yaml"):
             "baseline_model": None,
             "parallel": 1,
             "first_n": None,
-        },
+        }
     }
     for key, value in default_settings.items():
         cfg_dict[key].update(value)
