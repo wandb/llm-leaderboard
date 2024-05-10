@@ -11,6 +11,7 @@ from llm_jp_eval.evaluator import evaluate
 from mtbench_eval import mtbench_evaluate
 from config_singleton import WandbConfigSingleton
 from cleanup import cleanup_gpu
+from blend_run import blend_run
 
 # Configuration loading
 if os.path.exists("configs/config.yaml"):
@@ -71,6 +72,9 @@ else:
 artifact = wandb.Artifact("config", type="config")
 artifact.add_file(artifact_config_path)
 run.log_artifact(artifact)
+
+# Inherit old runs
+blend_run(run_chain=True)
 
 # Evaluation phase
 # 1. Llm-jp-eval-jp 0 shot evaluation

@@ -21,7 +21,8 @@ Evaluators can use them as they are.
 - v 1.2.2: "wandb-japan/llm-leaderboard/jaster:v7"
 - v 1.2.3: "wandb-japan/llm-leaderboard/jaster:v8"
 - v 1.2.4: "wandb-japan/llm-leaderboard/jaster:v9"
-- v 1.2.5 (latest): "wandb-japan/llm-leaderboard/jaster:v10"
+- v 1.2.5: "wandb-japan/llm-leaderboard/jaster:v10"
+- v 1.2.6 (latest): "wandb-japan/llm-leaderboard/jaster:v11"
 
 Below, an example of the process of registering data in wandb's Artifacts is described for reference 
 
@@ -132,5 +133,40 @@ general
 1. run scripts/run_eval.py
 ```bash
 python3 scripts/run_eval.py
+```
+2. check the wandb dashboard
+
+## Blend runs
+You can inherit some of the evaluations from past runs.
+
+### Create config.yaml file
+1. create blend_run_configs/config.yaml
+```bash
+cp blend_run_configs/config_template.yaml blend_run_configs/config.yaml
+```
+2. set each variable properly by following the below instruction
+
+- `run_chain`: If you want to reuse past evaluation results in a new run, please set it to true.
+- `new_run`: This setting is for blending runs without running new evaluations. If run_chain is set to true, this setting is disabled.
+  - `entity`: Name of the W&B Entity.
+  - `project`: Name of the W&B Project.
+  - `run_name`: Name of the W&B run.
+- `old_runs`: Please specify the tasks you want to take over from past runs. Multiple runs are permissible.
+  - `run_path`: Path of the old run. The run_path is in the following format: "entity/project/run_id". It can be copied from the overview of the run.
+  - `tasks`: The list of tasks to take over. Please comment out tasks that do not need to be taken over.
+
+## Evaluation execution
+This is how to integrate past evaluations into a new evaluation.
+1. run scripts/run_eval.py
+```bash
+python3 scripts/run_eval.py
+```
+2. check the wandb dashboard
+
+## Blend runs
+You can also create a blended run by combining the evaluation results of multiple runs without conducting a new evaluation.
+1. run scripts/blend_run.py
+```bash
+python3 scripts/blend_run.py
 ```
 2. check the wandb dashboard
