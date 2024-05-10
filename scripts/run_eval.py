@@ -18,13 +18,13 @@ if os.path.exists("configs/config.yaml"):
     cfg = OmegaConf.load("configs/config.yaml")
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
     default_settings = {
-        "model": {
+        "model":{
             "trust_remote_code": True
         },
-        "llm_jp_eval": {
+        "llm_jp_eval":{
             "log_dir": "./logs"
         },
-        "mtbench": {
+        "mtbench":{
             "question_begin": None,
             "question_end": None,
             "judge_model": "gpt-4",
