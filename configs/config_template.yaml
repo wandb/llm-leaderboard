@@ -31,7 +31,7 @@ tokenizer:
   use_wandb_artifacts: false
   artifacts_path: ""
   pretrained_model_name_or_path: null
-  use_fast: true
+  use_fast: false
 
 # for llm-jp-eval
 max_seq_length: 2048
