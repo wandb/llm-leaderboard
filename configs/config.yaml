@@ -22,10 +22,8 @@ model:
   load_in_4bit: false
 
 generator:
-  top_p: 1.0
-  top_k: 0
-  temperature: 0.1
-  repetition_penalty: 1.0
+  do_sample: false
+  num_beams: 1 # https://huggingface.co/docs/transformers/v4.40.2/en/main_classes/text_generation
 
 tokenizer:
   use_wandb_artifacts: false
@@ -41,13 +39,6 @@ target_dataset: "all" # {all, jamp, janli, jcommonsenseqa, jemhopqa, jnli, jsem,
 log_dir: "./logs"
 torch_dtype: "bf16" # {fp16, bf16, fp32}
 custom_prompt_template: null
-# if you use this, please include {instruction} and {input}. If you use few shots, please include {few_shots} additionally.
-# example of prompt template with fewshots
-# "以下はタスクを説明する指示と、追加の背景情報を提供する入力の組み合わせです。要求を適切に満たす回答を書いてください。\n### 指示：\n{instruction}\n{few_shots}\n### 入力：\n{input}\n### 回答：\n"
-# example of prompt template without fewshots
-# "以下はタスクを説明する指示と、追加の背景情報を提供する入力の組み合わせです。要求を適切に満たす回答を書いてください。\n### 指示：\n{instruction}\n### 入力：\n{input}\n### 回答：\n"
-# example of LLama2 format; plase change tokenizer.bos_token
-# "<tokenizer.bos_token>[INST] <<SYS>>\n あなたは誠実で優秀な日本人のアシスタントです。 \n<</SYS>>\n\n {instruction} \n\n {input} [/INST]"
 
 custom_fewshots_template: null
 # Please include {input} and {output} as variables
@@ -84,7 +75,7 @@ mtbench:
   parallel: 1
   first_n: null
   # for conv template # added
-  custom_conv_template: false
+  custom_conv_template: true
   # the following variables will be used when custom_conv_template is set as true
   conv_name: "custom"
   conv_system_message: "以下は、タスクを説明する指示と、文脈のある入力の組み合わせです。要求を適切に満たす応答を書きなさい。"
