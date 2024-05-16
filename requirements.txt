@@ -220,5 +220,5 @@ wheel==0.41.2
 xmltodict==0.13.0
 yarl==1.9.3
 zipp==3.17.0
-fschat @ git+https://github.com/wandb/FastChat@main
+fschat @ git+https://github.com/wandb/FastChat@project_d2
 llm-jp-eval @ git+https://github.com/llm-jp/llm-jp-eval.git@wandb-nejumi2
