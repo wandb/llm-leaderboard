@@ -105,7 +105,8 @@ def mtbench_evaluate():
             num_gpus_total=cfg.mtbench.num_gpus_total,
             max_gpu_memory=cfg.mtbench.max_gpu_memory,
             dtype=str_to_torch_dtype(cfg.mtbench.dtype),
-            revision="main"
+            revision="main",
+            cfg=cfg,
         )
 
     # 2. evaluate outputs
