@@ -84,10 +84,10 @@ mtbench:
   parallel: 1
   first_n: null
   # for conv template # added
-  custom_conv_template: false 
+  custom_conv_template: true 
   # the following variables will be used when custom_conv_template is set as true
   conv_name: "custom"
-  conv_system_message: "以下は、タスクを説明する指示と、文脈のある入力の組み合わせです。要求を適切に満たす応答を書きなさい。"
+  conv_system_message: "<s>以下は、タスクを説明する指示と、文脈のある入力の組み合わせです。要求を適切に満たす応答を書きなさい。"
   conv_roles: "('指示', '応答')"
   conv_sep: "\n\n### "
   conv_stop_token_ids: "[2]"
