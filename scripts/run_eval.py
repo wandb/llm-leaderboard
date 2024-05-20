@@ -10,6 +10,7 @@ from llm_jp_eval.evaluator import evaluate
 from mtbench_eval import mtbench_evaluate
 from config_singleton import WandbConfigSingleton
 from cleanup import cleanup_gpu
+from vllm_server import start_vllm_server
 
 # Configuration loading
 if os.path.exists("configs/config.yaml"):
@@ -56,14 +57,19 @@ if cfg.wandb.log:
     artifact.add_file(artifact_config_path)
     run.log_artifact(artifact)
 
+
+# 0. Start inference server if vLLM is to be used
+if cfg.api=="vllm":
+    start_vllm_server()
+
 # Evaluation phase
 # 1. llm-jp-eval evaluation
-evaluate()
-cleanup_gpu()
+#evaluate()
+#cleanup_gpu()
 
 # 2. mt-bench evaluation
 mtbench_evaluate()
-cleanup_gpu()
+#cleanup_gpu()
 
 # Logging results to W&B
 if cfg.wandb.log and run is not None:
