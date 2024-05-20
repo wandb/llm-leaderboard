@@ -63,11 +63,6 @@ evaluate()
 mtbench_evaluate()
 # cleanup_gpu()
 
-# 3. JGLUE
-from jglue_eval import evaluate as jglue_evaluate
-jglue_evaluate()
-# cleanup_gpu()
-
 # Logging results to W&B
 if cfg.wandb.log and run is not None:
     instance = WandbConfigSingleton.get_instance()
