@@ -28,44 +28,15 @@ generator:
   top_k: 0
   temperature: 0.1
   repetition_penalty: 1.0
+  max_tokens: 128
 
-tokenizer:
-  use_wandb_artifacts: false
-  artifacts_path: ""
-  pretrained_model_name_or_path: "mistralai/Mistral-7B-Instruct-v0.2"
-  use_fast: true
+llm_jp_eval:
+  aaa: aaa
 
-# for llm-jp-eval
-max_seq_length: 2048
-dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v3" #if you use artifacts, please fill here (if not, fill null)
-dataset_dir: "/jaster/1.1.0/evaluation/test"
-target_dataset: "all" # {all, jamp, janli, jcommonsenseqa, jemhopqa, jnli, jsem, jsick, jsquad, jsts, niilc, chabsa}
-log_dir: "./logs"
-torch_dtype: "bf16" # {fp16, bf16, fp32}
-custom_prompt_template: "<s> [INST] {instruction}\n{input}[/INST]"
-# if you use this, please include {instruction} and {input}. If you use few shots, please include {few_shots} additionally.
-# example of prompt template with fewshots
-# "以下はタスクを説明する指示と、追加の背景情報を提供する入力の組み合わせです。要求を適切に満たす回答を書いてください。\n### 指示：\n{instruction}\n{few_shots}\n### 入力：\n{input}\n### 回答：\n"
-# example of prompt template without fewshots
-# "以下はタスクを説明する指示と、追加の背景情報を提供する入力の組み合わせです。要求を適切に満たす回答を書いてください。\n### 指示：\n{instruction}\n### 入力：\n{input}\n### 回答：\n"
-# example of LLama2 format; plase change tokenizer.bos_token
-# "<tokenizer.bos_token>[INST] <<SYS>>\n あなたは誠実で優秀な日本人のアシスタントです。 \n<</SYS>>\n\n {instruction} \n\n {input} [/INST]"
-
-custom_fewshots_template: null
-# Please include {input} and {output} as variables
-# example of fewshots template
-# "\n### 入力：\n{input}\n### 回答：\n{output}"
-
-metainfo:
-  basemodel_name: "mistralai/Mistral-7B-Instruct-v0.2"
-  model_type: "open llm" # {open llm, commercial api}
-  instruction_tuning_method: "None" # {"None", "Full", "LoRA", ...}
-  instruction_tuning_data: ["None"] # {"None", "jaster", "dolly_ja", "oasst_ja", ...}
-  num_few_shots: 0
-  llm-jp-eval-version: "1.1.0"
-
-# for mtbench
 mtbench:
+  temperature_override:
+    roleplay: 0.7
+    aaa: 0.7
   question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_question:v0' # if testmode is true, small dataset will be used
   referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v0' # if testmode is true, small dataset will be used
   judge_prompt_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1' 
@@ -85,14 +56,24 @@ mtbench:
   baseline_model: null 
   parallel: 1
   first_n: null
-  # for conv template # added
-  custom_conv_template: true 
-  # the following variables will be used when custom_conv_template is set as true
-  conv_name: "custom"
-  conv_system_message: ""
-  conv_roles: "('[INST]', '[/INST]')"
-  conv_sep: "</s> "
-  conv_stop_token_ids: "[2]"
-  conv_stop_str: "</s> "
-  conv_role_message_separator: " "
-  conv_role_only_separator: " "
+
+jmmlu:
+ aaa: aaa
+
+mmlu:
+ aaa: aaa
+
+lctg-bench:
+ aaa: aaa
+
+bbq:
+ aaa: aaa
+
+#jbbq:
+
+#ly_toxicity:
+
+
+
+
+
