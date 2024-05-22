@@ -9,8 +9,7 @@ sys.path.append('FastChat')
 from llm_jp_eval.evaluator import evaluate
 from mtbench_eval import mtbench_evaluate
 from config_singleton import WandbConfigSingleton
-from cleanup import cleanup_gpu
-from vllm_server import start_vllm_server
+from llm_inference_adapter import get_llm_inference_engine
 
 # Configuration loading
 if os.path.exists("configs/config.yaml"):
@@ -38,7 +37,7 @@ run = wandb.init(
 )
 
 # Initialize the WandbConfigSingleton
-WandbConfigSingleton.initialize(run, server=None)
+WandbConfigSingleton.initialize(run, llm=None)
 cfg = WandbConfigSingleton.get_instance().config
 
 # Save configuration as artifact
@@ -59,14 +58,24 @@ if cfg.wandb.log:
 
 
 # 0. Start inference server
-LLMPipeline.initialize()
+llm = get_llm_inference_engine()
+instance = WandbConfigSingleton.get_instance()
+instance.llm = llm
+
+# example usage
+instance = WandbConfigSingleton.get_instance()
+llm = instance.llm
+llm.max_tokens = 256 # You can modify these settings.
+llm.temperature = 0.7
+res = llm.invoke("Hello! Who are you?")
+print(res.content)
 
 # Evaluation phase
 # 1. llm-jp-eval evaluation (mmlu, jmmlu含む)
 #llmjpeval_evaluate()
 
 # 2. mt-bench evaluation
-mtbench_evaluate()
+#mtbench_evaluate()
 
 # 3. bbq, jbbq
 #bbq_eval
