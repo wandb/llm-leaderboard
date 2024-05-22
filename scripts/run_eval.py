@@ -38,7 +38,7 @@ run = wandb.init(
 )
 
 # Initialize the WandbConfigSingleton
-WandbConfigSingleton.initialize(run, wandb.Table(dataframe=pd.DataFrame()))
+WandbConfigSingleton.initialize(run, server=None)
 cfg = WandbConfigSingleton.get_instance().config
 
 # Save configuration as artifact
@@ -58,23 +58,24 @@ if cfg.wandb.log:
     run.log_artifact(artifact)
 
 
-# 0. Start inference server if vLLM is to be used
-if cfg.api=="vllm":
-    start_vllm_server()
+# 0. Start inference server
+LLMPipeline.initialize()
 
 # Evaluation phase
-# 1. llm-jp-eval evaluation
-#evaluate()
-#cleanup_gpu()
+# 1. llm-jp-eval evaluation (mmlu, jmmlu含む)
+#llmjpeval_evaluate()
 
 # 2. mt-bench evaluation
 mtbench_evaluate()
-#cleanup_gpu()
 
-# Logging results to W&B
-if cfg.wandb.log and run is not None:
-    instance = WandbConfigSingleton.get_instance()
-    run.log({
-        "leaderboard_table": instance.table
-    })
-    run.finish()
+# 3. bbq, jbbq
+#bbq_eval
+
+# 4. lctg-bench
+#lctgbench_evaluate()
+
+# 5. ly-toxicity
+#ly_toxicity_evaluate()
+
+# 6. Aggregation
+#aggregate()
