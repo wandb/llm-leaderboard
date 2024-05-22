@@ -28,6 +28,7 @@ generator:
   top_k: 0
   temperature: 0.1
   repetition_penalty: 1.0
+  max_tokens: 128
 
 llm_jp_eval:
   aaa: aaa
