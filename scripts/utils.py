@@ -30,9 +30,6 @@ def parse_float(input_str: str) -> float:
     except ValueError:
         return -2.0
 
-def normalize(input_str: str) -> str:
-    return unicodedata.normalize("NFKC", input_str)
-
 def replace_braces(text):
     return text.replace("{", "{{").replace("}", "}}")
 
@@ -97,12 +94,19 @@ def format_text(input_str: str, dataset: str) -> float:
 def exact_match(y_pred: str, y_true: str) -> int | float:
     assert isinstance(y_pred, str), f"y_pred must be a string, but got {type(y_pred)}"
     assert isinstance(y_true, str), f"y_true must be a string, but got {type(y_true)}"
-    score = (y_pred == y_true)*1
-    return score
+    return (y_pred == y_true)*1
 
 def normalize(input_str: str) -> str:
     return unicodedata.normalize("NFKC", input_str)
 
-metrics_func_dict = {
-    'exact_match': exact_match
+def char_f1(y_pred: str, y_true: str) -> int | float:
+    return fuzz.token_sort_ratio(y_pred, y_true) / 100.0
+
+def set_f1(y_pred: str, y_true: str) -> int | float:
+    return 1
+
+metrics_func_dict: dict[str, callble] = {
+    'exact_match': exact_match,
+    "char_f1": charf1,
+    "set_f1": set_f1
 }
