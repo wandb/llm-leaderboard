@@ -140,7 +140,7 @@ def sample_evaluate():
                 score = metrics_func(y_pred, y_true)
 
                 # matome
-                evaluation_result = {
+                evaluation_results.append({
                     **eval_matainfo,
                     'index': idx,
                     "input": sample["input"],
@@ -150,8 +150,7 @@ def sample_evaluate():
                     "metrics": metrics,
                     "score": score,
                     "latency": latency,
-                }
-                evaluation_results.append(evaluation_result)
+                })
 
             # tmp save
             table_name = target_dataset + '_output_table'
