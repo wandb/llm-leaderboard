@@ -4,12 +4,11 @@ import os
 import sys
 from omegaconf import DictConfig, OmegaConf
 import pandas as pd
-sys.path.append('llm-jp-eval/src') 
 sys.path.append('FastChat')
-from llm_jp_eval.evaluator import evaluate
 from mtbench_eval import mtbench_evaluate
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
+from sample_evaluation import sample_evaluate
 
 # Configuration loading
 if os.path.exists("configs/config.yaml"):
@@ -72,7 +71,7 @@ print(res.content)
 
 # Evaluation phase
 # 1. llm-jp-eval evaluation (mmlu, jmmlu含む)
-#llmjpeval_evaluate()
+sample_evaluate()
 
 # 2. mt-bench evaluation
 #mtbench_evaluate()
