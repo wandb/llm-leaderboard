@@ -13,13 +13,17 @@ from utils import (
     get_evaluation_prompt,
     get_few_shot_samples,
     Sample,
-    format_text,
     normalize,
     metrics_func_dict
 )
 
 # 実装はSaaSだけでなく、dedicated cloudでも動くように、OpenAIだけでなく、Azure OpenAIでも動くように心がけてください
 # TODO generator configなど渡す
+
+def format_text(input_str: str, dataset: str) -> float: # TODO どうするか考える
+    if dataset in ["sample_dataset"]:
+        output_str = input_str.strip()
+    return output_str
 
 def sample_evaluate():
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
