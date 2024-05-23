@@ -71,7 +71,6 @@ bbq:
 
 sample_dataset:
   artifacts_path: 't-ibi/llm-leaderboard/sample_dataset:v0'
-  test_artifacts_path: 't-ibi/llm-leaderboard/sample_dataset_test:v0'
   language: 'ja'
 #jbbq:
 
