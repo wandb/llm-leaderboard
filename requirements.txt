@@ -70,8 +70,6 @@ langchain-mistralai==0.0.1
 langchain==0.1.0
 # langchain==0.0.300
 # langsmith==0.0.69
-wheel
-flash_attn
 lark==1.1.9
 levenshtein==0.21.1
 llvmlite==0.42.0
@@ -195,3 +193,5 @@ zipp==3.18.2
 fschat @ git+https://github.com/wandb/FastChat@prototype_hyper
 # llm-jp-eval @ git+https://github.com/llm-jp/llm-jp-eval.git@wandb-nejumi2
 toolz
+wheel
+flash_attn
