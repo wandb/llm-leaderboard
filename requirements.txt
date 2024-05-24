@@ -195,3 +195,4 @@ fschat @ git+https://github.com/wandb/FastChat@prototype_hyper
 toolz
 wheel
 flash_attn
+langchain_community
