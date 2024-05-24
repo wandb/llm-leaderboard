@@ -18,7 +18,23 @@ from utils import (
     text_formatter,
 )
 
-# 実装はSaaSだけでなく、dedicated cloudでも動くように、OpenAIだけでなく、Azure OpenAIでも動くように心がけてください
+"""
+## datasetの追加方法
+以下のファイルを作成・編集してください。
+
+- 作成
+    - {データセット名}_evaluation.py
+        - 評価コードの作成
+- 編集
+    - run_eval.py
+        - データセット評価関数のimport, 実行
+    - config_template.py
+        - データセットの設定
+    - utils.py
+        - 必要に応じて編集
+
+> 実装はSaaSだけでなく、dedicated cloudでも動くように、OpenAIだけでなく、Azure OpenAIでも動くように心がけてください。
+"""
 
 def sample_evaluate():
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
