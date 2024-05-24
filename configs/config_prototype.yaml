@@ -6,14 +6,14 @@ wandb:
 
 github_version: v2.0.0 #for recording
 
-testmode: false
+testmode: true
 
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
 api: vllm
 
 model:
-  use_wandb_artifacts: true
+  use_wandb_artifacts: false
   artifacts_path: ""
   pretrained_model_name_or_path: "tokyotech-llm/Swallow-MS-7b-v0.1" #if you use openai api, put the name of model
   dtype: 'float16'
@@ -25,7 +25,9 @@ model:
 
 generator:
   top_p: 1.0
+  # top_k: 0
   temperature: 0.1
+  # repetition_penalty: 1.0
   max_tokens: 128
 
 custom_prompt_template: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。\n\n ### 指示:\n{instruction}\n\n### 入力:\n{input}\n\n### 応答:"
