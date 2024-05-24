@@ -145,16 +145,10 @@ def sample_evaluate():
                     }
                 )
 
-            # save evaluation results
+            # log table
             table_name = task + "_output_table"
             if subset == "dev":
                 table_name += "_dev"
-            output_table_dict[table_name] = evaluation_results
-
-        # output table
-        wandb.log(
-            {
-                table_name: wandb.Table(data=pd.DataFrame(v))
-                for table_name, v in output_table_dict.items()
-            }
-        )
+            df = pd.DataFrame(evaluation_results)
+            wandb.log({table_name: df})
+            print(f'{task} {subset} score:', df['score'].mean())
