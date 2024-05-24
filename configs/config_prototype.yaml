@@ -30,6 +30,8 @@ generator:
   repetition_penalty: 1.0
   max_tokens: 128
 
+num_few_shots: 4
+
 llm_jp_eval:
   aaa: aaa
 

@@ -61,17 +61,9 @@ llm = get_llm_inference_engine()
 instance = WandbConfigSingleton.get_instance()
 instance.llm = llm
 
-# example usage
-instance = WandbConfigSingleton.get_instance()
-llm = instance.llm
-llm.max_tokens = 256 # You can modify these settings.
-llm.temperature = 0.7
-res = llm.invoke("Hello! Who are you?")
-print(res.content)
-
 # Evaluation phase
 # 1. llm-jp-eval evaluation (mmlu, jmmlu含む)
-sample_evaluate()
+# llmjp_evaluate()
 
 # 2. mt-bench evaluation
 #mtbench_evaluate()
@@ -84,6 +76,9 @@ sample_evaluate()
 
 # 5. ly-toxicity
 #ly_toxicity_evaluate()
+
+# Sample
+sample_evaluate()
 
 # 6. Aggregation
 #aggregate()

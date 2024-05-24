@@ -20,7 +20,6 @@ from utils import (
 
 # 実装はSaaSだけでなく、dedicated cloudでも動くように、OpenAIだけでなく、Azure OpenAIでも動くように心がけてください
 
-
 def sample_evaluate():
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()
@@ -28,42 +27,45 @@ def sample_evaluate():
     cfg = instance.config
     llm = instance.llm
 
-    # データセットを取得しましょう
-    artifact_dir = run.use_artifact(
-        cfg.sample_dataset.artifacts_path, type="dataset"
-    ).download()
+    # download dataset
+    dataset_name = 'sample_dataset'
+    artifact = run.use_artifact(cfg[dataset_name].artifacts_path, type="dataset")
+    artifact_dir = artifact.download()
 
-    target_datasets = [
+    tasks = [
         "chabsa",
         "mawps",
         "niilc",
     ]
 
-    for target_dataset in target_datasets:
-        # 評価タスクを実行しましょう
+    for task in tasks:
+        # execute evaluation
         output_table_dict = {}
-        for eval_type in ("test", "dev"):
+        for subset in ("test", "dev"):
             eval_matainfo = {
                 "run_name": run.name,
                 "model_name": cfg.model.pretrained_model_name_or_path,
-                "target_dataset": target_dataset,
-                "num_few_shots": cfg[target_dataset].num_few_shots,
-                "eval_type": eval_type,
+                "task": task,
+                "num_few_shots": cfg.num_few_shots,
+                "subset": subset,
             }
 
-            target_dataset_path = (
+            # read task data
+            task_data_path = (
                 Path(artifact_dir)
-                / eval_type
-                / target_dataset
-                / f"{target_dataset}.json"
+                / dataset_name
+                / subset
+                / f"{task}.json"
             )
-            if not target_dataset_path.exists():
-                print(f"skip {target_dataset} because it is not found in {artifact_dir}")
+            if not task_data_path.exists():
+                print(
+                    f"skip {task} because it is not found in {artifact_dir}"
+                )
                 continue
-            with target_dataset_path.open(encoding="utf-8") as f:
-                target_data = json.load(f)
+            with task_data_path.open(encoding="utf-8") as f:
+                task_data = json.load(f)
 
-            # カスタムプロンプトがあれば設定
+            # define custom prompt template
             if "custom_prompt_template" in cfg:
                 custom_prompt_template = cfg.custom_prompt_template
             else:
@@ -74,40 +76,41 @@ def sample_evaluate():
             else:
                 custom_fewshots_template = None
 
-            # fewshotsを取得
+            # get fewshots samples
             few_shots: list[Sample] = get_few_shot_samples(
-                target_dataset_path=target_dataset_path,
-                num_few_shots=cfg[target_dataset].num_few_shots,
+                target_dataset_path=task_data_path,
+                num_few_shots=cfg.num_few_shots,
             )
 
-            # prompt取得
+            # get prompt
             prompt: BasePromptTemplate = get_evaluation_prompt(
-                instruction=target_data["instruction"],
+                instruction=task_data["instruction"],
                 few_shots=few_shots,
-                language=cfg.sample_dataset.language,
+                language=cfg[dataset_name].language,
                 custom_prompt_template=custom_prompt_template,
-                custom_fewshots_template=custom_prompt_template,
+                custom_fewshots_template=custom_fewshots_template,
             )
 
-            # 評価サンプル数
-            test_max_num_samples = 100
-            val_max_num_samples = 10
+            # number of evaluation samples
             if cfg.testmode:
                 test_max_num_samples = 2
                 val_max_num_samples = 2
-            if eval_type == "test":
+            else:
+                test_max_num_samples = 100
+                val_max_num_samples = 10
+            if subset == "test":
                 num_samples = test_max_num_samples
-            elif eval_type == "dev":
+            elif subset == "dev":
                 num_samples = val_max_num_samples
-            samples = target_data["samples"][:num_samples]
+            samples = task_data["samples"][:num_samples]
 
             # llm pipline
-            llm.max_tokens = target_data["output_length"]
+            llm.max_tokens = task_data["output_length"]
             chain = prompt | llm
 
             evaluation_results = []
             for idx, sample in tqdm(enumerate(samples)):
-                # generation
+                # generate output
                 input_data = {"input": sample["input"]}
                 start_time = time.time()
                 output = chain.invoke(input_data)
@@ -115,19 +118,19 @@ def sample_evaluate():
                 latency = end_time - start_time
                 prompt = prompt.format(**input_data)
 
-                # scoring
+                # score
                 y_pred: str = pipe(
                     output,
-                    lambda x: text_formatter(x, target_dataset),
+                    lambda x: text_formatter(x, task),
                     lambda x: x.split("\n\n")[0],
                     normalize,
                 )
                 y_true: str = pipe(sample["output"], normalize)
-                metrics: list[str] = target_data["metrics"][0]
+                metrics: list[str] = task_data["metrics"][0]
                 metrics_func: callable = metrics_func_dict[metrics]
                 score = metrics_func(y_pred, y_true)
 
-                # matome
+                # collect data
                 evaluation_results.append(
                     {
                         **eval_matainfo,
@@ -142,9 +145,9 @@ def sample_evaluate():
                     }
                 )
 
-            # tmp save
-            table_name = target_dataset + "_output_table"
-            if eval_type == "dev":
+            # save evaluation results
+            table_name = task + "_output_table"
+            if subset == "dev":
                 table_name += "_dev"
             output_table_dict[table_name] = evaluation_results
 
