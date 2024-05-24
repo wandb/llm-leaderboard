@@ -70,8 +70,8 @@ bbq:
   aaa: aaa
 
 sample_dataset:
-  artifacts_path: 't-ibi/llm-leaderboard/sample_dataset:v0'
-  language: 'ja'
+  artifacts_path: 't-ibi/llm-leaderboard/sample_dataset:v1'
+  language: ja
 #jbbq:
 
 #ly_toxicity:
