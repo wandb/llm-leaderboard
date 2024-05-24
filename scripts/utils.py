@@ -49,6 +49,21 @@ def normalize(input_str: str) -> str:
     return unicodedata.normalize("NFKC", input_str)
 
 
+def text_formatter(input_str: str, dataset: str) -> str:
+    if dataset in ["niilc"]:
+        output_str = input_str.strip().upper()
+        replacements = ["回答:", "回答: ", "答え:", "答え: "]
+        for r in replacements:
+            output_str = output_str.replace(r, "")
+    elif dataset in ["mawps", "chabsa"]:
+        output_str = input_str.strip()
+    # elif dataset in ["your_dataset_name_here"]:
+    #     output_str = input_str
+    else:
+        output_str = input_str
+    return output_str
+
+
 def exact_match(y_pred: str, y_true: str) -> float:
     return (y_pred == y_true) * 1.0
 
