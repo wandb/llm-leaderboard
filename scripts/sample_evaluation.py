@@ -56,7 +56,6 @@ def sample_evaluate():
 
     for task in tasks:
         # execute evaluation
-        output_table_dict = {}
         for subset in ("test", "dev"):
             eval_matainfo = {
                 "run_name": run.name,
