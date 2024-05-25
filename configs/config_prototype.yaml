@@ -30,16 +30,6 @@ generator:
   # repetition_penalty: 1.0
   max_tokens: 128
 
-custom_prompt_template: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。\n\n ### 指示:\n{instruction}\n\n### 入力:\n{input}\n\n### 応答:"
-
-num_few_shots: 4
-
-jaster:
-  artifacts_path: "wandb-japan/llm-leaderboard/jaster:v11"
-  dataset_dir: "jaster/1.2.6/evaluation"
-  language: ja
-
-
 mtbench:
   temperature_override:
     roleplay: 0.7
@@ -63,6 +53,15 @@ mtbench:
   baseline_model: null 
   parallel: 1
   first_n: null
+
+custom_prompt_template: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。\n\n ### 指示:\n{instruction}\n\n### 入力:\n{input}\n\n### 応答:"
+
+num_few_shots: 4
+
+jaster:
+  artifacts_path: "wandb-japan/llm-leaderboard/jaster:v11"
+  dataset_dir: "jaster/1.2.6/evaluation"
+  language: ja
 
 jmmlu:
   aaa: aaa
