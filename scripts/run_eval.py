@@ -10,6 +10,7 @@ from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
 from sample_evaluation import sample_evaluate
 from jaster_evaluation import jaster_evaluate
+from mmlu_evaluation import mmlu_evaluate
 
 # Configuration loading
 if os.path.exists("configs/config.yaml"):
@@ -63,8 +64,10 @@ instance = WandbConfigSingleton.get_instance()
 instance.llm = llm
 
 # Evaluation phase
-# 1. llm-jp-eval evaluation (mmlu, jmmlu含む)
+# 1. llm-jp-eval evaluation (jmmlu含む)
 jaster_evaluate()
+
+mmlu_evaluate()
 
 # 2. mt-bench evaluation
 #mtbench_evaluate()
