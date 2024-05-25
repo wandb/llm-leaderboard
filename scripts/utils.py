@@ -50,9 +50,26 @@ def normalize(input_str: str) -> str:
 
 
 def text_formatter(input_str: str, dataset: str) -> str:
-    if dataset in ["niilc"]:
-        output_str = input_str.strip().upper()
+    if dataset in ["jamp", "janli", "jnli", "jsem", "jsick"]:
+        output_str = input_str.strip().lower()
+    elif dataset in [
+        "jcommonsenseqa",
+        "mawps",
+        "wiki_reading",
+        "wiki_ner",
+        "wiki_dependency",
+        "wiki_pas",
+        "wiki_coreference",
+    ]:
+        output_str = input_str.strip()
+    elif dataset in ["jemhopqa", "jsquad", "niilc"]:
+        output_str = input_str.strip().lower()
         replacements = ["回答:", "回答: ", "答え:", "答え: "]
+        for r in replacements:
+            output_str = output_str.replace(r, "")
+    elif dataset.startswith("mmlu_en"):
+        output_str = input_str.strip().upper()
+        replacements = ["ANSWER:", "ANSWER: ", "RESPONSE:", "RESPONSE: "]
         for r in replacements:
             output_str = output_str.replace(r, "")
     elif dataset in ["mawps", "chabsa"]:

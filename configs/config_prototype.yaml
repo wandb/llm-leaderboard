@@ -34,8 +34,10 @@ custom_prompt_template: "以下に、あるタスクを説明する指示があ�
 
 num_few_shots: 4
 
-llm_jp_eval:
-  aaa: aaa
+jaster:
+  artifacts_path: "wandb-japan/llm-leaderboard/jaster:v11"
+  language: ja
+
 
 mtbench:
   temperature_override:
