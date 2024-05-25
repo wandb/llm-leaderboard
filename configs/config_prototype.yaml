@@ -36,6 +36,7 @@ num_few_shots: 4
 
 jaster:
   artifacts_path: "wandb-japan/llm-leaderboard/jaster:v11"
+  dataset_dir: "jaster/1.2.6/evaluation"
   language: ja
 
 
@@ -77,6 +78,7 @@ bbq:
 
 sample_dataset:
   artifacts_path: 't-ibi/llm-leaderboard/sample_dataset:v1'
+  dataset_dir: 'sample_dataset'
   language: ja
 #jbbq:
 
