@@ -81,7 +81,7 @@ def jaster_evaluate():
             # read task data
             task_data_path = (
                 Path(artifact_dir)
-                / dataset_name
+                / cfg[dataset_name].dataset_dir
                 / subset
                 / f"{task}.json"
             )
