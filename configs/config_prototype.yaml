@@ -67,7 +67,9 @@ jmmlu:
   aaa: aaa
 
 mmlu:
-  aaa: aaa
+  artifacts_path: "wandb-japan/llm-leaderboard/jaster:v11"
+  dataset_dir: "jaster/1.2.6/evaluation"
+  language: en
 
 lctg-bench:
   aaa: aaa
