@@ -76,15 +76,8 @@ def mmlu_evaluate():
                 task_data = json.load(f)
 
             # define custom prompt template
-            if "custom_prompt_template" in cfg:
-                custom_prompt_template = cfg.custom_prompt_template
-            else:
-                custom_prompt_template = None
-
-            if "custom_fewshots_template" in cfg:
-                custom_fewshots_template = cfg.custom_fewshots_template
-            else:
-                custom_fewshots_template = None
+            custom_prompt_template = cfg.get("custom_prompt_template", None)
+            custom_fewshots_template = cfg.get("custom_fewshots_template", None)
 
             # get fewshots samples
             few_shots: list[Sample] = get_few_shot_samples(
@@ -155,10 +148,17 @@ def mmlu_evaluate():
                     }
                 )
 
-            # log table
-            table_name = task + "_output_table"
-            if subset == "dev":
-                table_name += "_dev"
-            df = pd.DataFrame(evaluation_results)
-            wandb.log({table_name: df})
-            print(f"{task} {subset} score:", df["score"].mean())
+    # log table
+    output_df = pd.DataFrame(evaluation_results)
+    dev_table = output_df.query("subset == 'dev'")
+    test_table = output_df.query("subset == 'test'")
+    leaderboard_table = pd.pivot_table(
+        data=test_table, values="score", index="dataset", columns="task", aggfunc="mean"
+    ).reset_index()
+    wandb.log(
+        {
+            f"{dataset_name}_output_table_dev": dev_table,
+            f"{dataset_name}_output_table": test_table,
+            f"{dataset_name}_leaderboard_table": leaderboard_table,
+        }
+    )
