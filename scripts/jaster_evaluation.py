@@ -44,7 +44,7 @@ def jaster_evaluate():
     llm = instance.llm
 
     # download dataset
-    dataset_name = 'llmjp'
+    dataset_name = 'jaster'
     artifact = run.use_artifact(cfg[dataset_name].artifacts_path, type="dataset")
     artifact_dir = artifact.download()
 
