@@ -36,6 +36,7 @@ from utils import (
 > 実装はSaaSだけでなく、dedicated cloudでも動くように、OpenAIだけでなく、Azure OpenAIでも動くように心がけてください。
 """
 
+
 def jaster_evaluate():
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()
@@ -44,7 +45,7 @@ def jaster_evaluate():
     llm = instance.llm
 
     # download dataset
-    dataset_name = 'jaster'
+    dataset_name = "jaster"
     artifact = run.use_artifact(cfg[dataset_name].artifacts_path, type="dataset")
     artifact_dir = artifact.download()
 
@@ -68,12 +69,14 @@ def jaster_evaluate():
         "wiki_coreference",
     ]
 
+    evaluation_results = []
     for task in tasks:
         # execute evaluation
         for subset in ("test", "dev"):
             eval_matainfo = {
                 "run_name": run.name,
                 "model_name": cfg.model.pretrained_model_name_or_path,
+                "dataset": dataset_name,
                 "task": task,
                 "num_few_shots": cfg.num_few_shots,
                 "subset": subset,
@@ -87,9 +90,7 @@ def jaster_evaluate():
                 / f"{task}.json"
             )
             if not task_data_path.exists():
-                print(
-                    f"skip {task} because it is not found in {artifact_dir}"
-                )
+                print(f"skip {task} because it is not found in {artifact_dir}")
                 continue
             with task_data_path.open(encoding="utf-8") as f:
                 task_data = json.load(f)
@@ -140,7 +141,6 @@ def jaster_evaluate():
             llm.max_tokens = task_data["output_length"]
             chain = prompt | llm
 
-            evaluation_results = []
             for idx, sample in tqdm(enumerate(samples)):
                 # generate output
                 input_data = {"input": sample["input"]}
@@ -177,10 +177,17 @@ def jaster_evaluate():
                     }
                 )
 
-            # log table
-            table_name = task + "_output_table"
-            if subset == "dev":
-                table_name += "_dev"
-            df = pd.DataFrame(evaluation_results)
-            wandb.log({table_name: df})
-            print(f'{task} {subset} score:', df['score'].mean())
+    # log table
+    output_df = pd.DataFrame(evaluation_results)
+    dev_table = output_df.query("subset == 'dev'")
+    test_table = output_df.query("subset == 'test'")
+    leaderboard_table = pd.pivot_table(
+        data=test_table, values="score", index="dataset", columns="task", aggfunc="mean"
+    ).reset_index()
+    wandb.log(
+        {
+            f"{dataset_name}_output_table_dev": dev_table,
+            f"{dataset_name}_output_table": test_table,
+            f"{dataset_name}_leaderboard_table": leaderboard_table,
+        }
+    )
