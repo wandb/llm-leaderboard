@@ -72,6 +72,7 @@ def jaster_evaluate():
     evaluation_results = []
     for task in tasks:
         # execute evaluation
+        language = cfg[dataset_name].language
         for subset in ("test", "dev"):
             eval_matainfo = {
                 "run_name": run.name,
@@ -96,15 +97,8 @@ def jaster_evaluate():
                 task_data = json.load(f)
 
             # define custom prompt template
-            if "custom_prompt_template" in cfg:
-                custom_prompt_template = cfg.custom_prompt_template
-            else:
-                custom_prompt_template = None
-
-            if "custom_fewshots_template" in cfg:
-                custom_fewshots_template = cfg.custom_fewshots_template
-            else:
-                custom_fewshots_template = None
+            custom_prompt_template = cfg.get(f"custom_prompt_template_{language}", None)
+            custom_fewshots_template = cfg.get(f"custom_fewshots_template_{language}", None)
 
             # get fewshots samples
             few_shots: list[Sample] = get_few_shot_samples(
@@ -113,24 +107,25 @@ def jaster_evaluate():
             )
 
             # get prompt
-            prompt: BasePromptTemplate = get_evaluation_prompt(
+            base_prompt: BasePromptTemplate = get_evaluation_prompt(
                 instruction=task_data["instruction"],
                 few_shots=few_shots,
-                language=cfg[dataset_name].language,
+                language=language,
                 custom_prompt_template=custom_prompt_template,
                 custom_fewshots_template=custom_fewshots_template,
             )
 
             # number of evaluation samples
             if cfg.testmode:
-                test_max_num_samples = 2
-                val_max_num_samples = 2
+                test_max_num_samples = 1
+                val_max_num_samples = 1
             elif "wiki" in task:
                 test_max_num_samples = 20
                 val_max_num_samples = 5
             else:
                 test_max_num_samples = 100
                 val_max_num_samples = 10
+
             if subset == "test":
                 num_samples = test_max_num_samples
             elif subset == "dev":
@@ -139,7 +134,7 @@ def jaster_evaluate():
 
             # llm pipline
             llm.max_tokens = task_data["output_length"]
-            chain = prompt | llm
+            chain = base_prompt | llm
 
             for idx, sample in tqdm(enumerate(samples)):
                 # generate output
@@ -148,7 +143,7 @@ def jaster_evaluate():
                 output = chain.invoke(input_data)
                 end_time = time.time()
                 latency = end_time - start_time
-                prompt = prompt.format(**input_data)
+                prompt = base_prompt.format(**input_data)
 
                 # score
                 y_pred: str = pipe(
@@ -182,7 +177,7 @@ def jaster_evaluate():
     dev_table = output_df.query("subset == 'dev'")
     test_table = output_df.query("subset == 'test'")
     leaderboard_table = pd.pivot_table(
-        data=test_table, values="score", index="dataset", columns="task", aggfunc="mean"
+        data=test_table, values="score", index="model_name", columns="task", aggfunc="mean"
     ).reset_index()
     wandb.log(
         {
