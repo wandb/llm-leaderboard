@@ -54,7 +54,8 @@ mtbench:
   parallel: 1
   first_n: null
 
-custom_prompt_template: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。\n\n ### 指示:\n{instruction}\n\n### 入力:\n{input}\n\n### 応答:"
+custom_prompt_template_ja: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。\n\n ### 指示:\n{instruction}\n\n### 入力:\n{input}\n\n### 応答:"
+custom_prompt_template_en": The following text provides instructions for a certain task, along with accompanying input that offers further context. Please describe the appropriate response to complete the request.\n\n ### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:"
 
 num_few_shots: 4
 
@@ -81,6 +82,7 @@ sample_dataset:
   artifacts_path: 't-ibi/llm-leaderboard/sample_dataset:v1'
   dataset_dir: 'sample_dataset'
   language: ja
+
 #jbbq:
 
 #ly_toxicity:
