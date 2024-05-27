@@ -67,7 +67,12 @@ def text_formatter(input_str: str, dataset: str) -> str:
         replacements = ["回答:", "回答: ", "答え:", "答え: "]
         for r in replacements:
             output_str = output_str.replace(r, "")
-    elif dataset.startswith("mmlu_en"):
+    elif dataset.startswith("jmmlu_"):
+        output_str = input_str.strip().upper()
+        replacements = ["回答:", "回答: ", "答え:", "答え: "]
+        for r in replacements:
+            output_str = output_str.replace(r, "")
+    elif dataset.startswith("mmlu_en_"):
         output_str = input_str.strip().upper()
         replacements = ["ANSWER:", "ANSWER: ", "RESPONSE:", "RESPONSE: "]
         for r in replacements:
