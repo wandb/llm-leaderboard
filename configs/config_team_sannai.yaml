@@ -1,12 +1,12 @@
 wandb:
   log: True
-  entity: "weblab-geniac-leaderboard"
-  project: "leaderboard"
-  run_name: 'weblab-geniacN/gpt_0.125B_global_step35000_openassistant' # ご自身のteam名(weblab-geniac{N}, Nは1~8)の後(/以降)、実験管理用にお好きな名前をつけてください
+  entity: "weblab-geniac8"
+  project: "nejumi_leaderboard"
+  run_name: 'Team Zoo' # ご自身のteam名(weblab-geniac{N}, Nは1~8)の後(/以降)、実験管理用にお好きな名前をつけてください
 
 github_version: v2.0.0 #for recording
 
-testmode: false
+testmode: true
 
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthoropic", "google", "cohere"
@@ -15,7 +15,7 @@ api: false
 model:
   use_wandb_artifacts: false
   artifacts_path: ""
-  pretrained_model_name_or_path: "hotsuyuki/gpt_0.125B_global_step35000_openassistant" # huggingfaceのupload先を指定してください
+  pretrained_model_name_or_path: "team-sanai/zoo_3exp_v2_2epoch_5000" # huggingfaceのupload先を指定してください
   trust_remote_code: true
   device_map: "auto"
   load_in_8bit: false
@@ -32,11 +32,11 @@ generator:
 tokenizer:
   use_wandb_artifacts: false
   artifacts_path: ""
-  pretrained_model_name_or_path: "hotsuyuki/gpt_0.125B_global_step35000_openassistant" # huggingfaceのupload先を指定してください
-  use_fast: false
+  pretrained_model_name_or_path: "team-sanai/zoo_3exp_v2_2epoch_5000" # huggingfaceのupload先を指定してください
+  use_fast: False
 
 # for llm-jp-eval
-max_seq_length: 2048
+max_seq_length: 4096
 dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v11" #if you use artifacts, please fill here (if not, fill null)
 dataset_dir: "/jaster/1.2.6/evaluation/test"
 target_dataset: "all" # {all, jamp, janli, jcommonsenseqa, jemhopqa, jnli, jsem, jsick, jsquad, jsts, niilc, chabsa}
@@ -50,7 +50,7 @@ custom_fewshots_template: null
 # "\n### 入力：\n{input}\n### 回答：\n{output}"
 
 metainfo:
-  basemodel_name: "hotsuyuki/gpt_0.125B_global_step35000_openassistant"
+  basemodel_name: "zoo"
   model_type: "open llm" # {open llm, commercial api}
   instruction_tuning_method: "None" # {"None", "Full", "LoRA", ...}
   instruction_tuning_data: ["None"] # {"None", "jaster", "dolly_ja", "oasst_ja", ...}
