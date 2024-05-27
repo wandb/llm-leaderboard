@@ -8,8 +8,10 @@ sys.path.append('FastChat')
 from mtbench_eval import mtbench_evaluate
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
+
 from sample_evaluation import sample_evaluate
 from jaster_evaluation import jaster_evaluate
+from jmmlu_evaluation import jmmlu_evaluate
 from mmlu_evaluation import mmlu_evaluate
 
 # Configuration loading
@@ -66,6 +68,8 @@ instance.llm = llm
 # Evaluation phase
 # 1. llm-jp-eval evaluation (jmmlu含む)
 jaster_evaluate()
+
+jmmlu_evaluate()
 
 mmlu_evaluate()
 
