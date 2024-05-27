@@ -65,10 +65,12 @@ jaster:
   language: ja
 
 jmmlu:
-  aaa: aaa
+  artifacts_path: "t-ibi/llm-leaderboard/jmmlu:v1"
+  dataset_dir: "jmmlu/1.3.0/evaluation"
+  language: ja
 
 mmlu:
-  artifacts_path: "wandb-japan/llm-leaderboard/jaster:v11"
+  artifacts_path: "t-ibi/llm-leaderboard/jmmlu:v0"
   dataset_dir: "jaster/1.2.6/evaluation"
   language: en
 
