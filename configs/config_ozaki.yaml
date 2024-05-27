@@ -6,7 +6,7 @@ wandb:
 
 github_version: v2.0.0 #for recording
 
-testmode: true
+testmode: false
 
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthoropic", "google", "cohere"
