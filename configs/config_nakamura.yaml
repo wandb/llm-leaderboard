@@ -1,8 +1,8 @@
 wandb:
   log: True
   entity: "weblab-geniac-leaderboard"
-  project: "leaderboard"
-  run_name: 'weblab-geniac4/JINIAC-5B-sft_configuration-3_prod-checkpoint-500-dpo_merge_20240526_final' # ご自身のteam名(weblab-geniac{N}, Nは1~8)の後(/以降)、実験管理用にお好きな名前をつけてください
+  project: "nejumi_leaderboard"
+  run_name: 'Team JINIAC' # ご自身のteam名(weblab-geniac{N}, Nは1~8)の後(/以降)、実験管理用にお好きな名前をつけてください
 
 github_version: v2.0.0 #for recording
 

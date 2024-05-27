@@ -1,12 +1,12 @@
 wandb:
   log: True
-  entity: "weblab-geniac8"
-  project: "nejumi_leaderboard"
-  run_name: 'Team 天元突破' # ご自身のteam名(weblab-geniac{N}, Nは1~8)の後(/以降)、実験管理用にお好きな名前をつけてください
+  entity: "weblab-geniac-leaderboard"
+  project: "leaderboard"
+  run_name: 'weblab-geniac6/full-sft-finetuned-stage4-iter86000-v6' # ご自身のteam名(weblab-geniac{N}, Nは1~8)の後(/以降)、実験管理用にお好きな名前をつけてください
 
 github_version: v2.0.0 #for recording
 
-testmode: true
+testmode: false
 
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthoropic", "google", "cohere"
