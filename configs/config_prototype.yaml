@@ -70,7 +70,7 @@ jmmlu:
   language: ja
 
 mmlu:
-  artifacts_path: "t-ibi/llm-leaderboard/jmmlu:v0"
+  artifacts_path: "wandb-japan/llm-leaderboard/jaster:v11"
   dataset_dir: "jaster/1.2.6/evaluation"
   language: en
 

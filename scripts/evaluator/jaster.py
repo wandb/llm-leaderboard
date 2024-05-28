@@ -30,6 +30,10 @@ def evaluate_n_shot(few_shots: bool):
     dataset_name = "jaster"
     artifact = run.use_artifact(cfg[dataset_name].artifacts_path, type="dataset")
     artifact_dir = artifact.download()
+    dataset_dir = Path(artifact_dir) / cfg[dataset_name].dataset_dir
+    if not dataset_dir.exists():
+        print(f"skip {dataset_name} because it is not found in {artifact_dir}")
+        raise FileNotFoundError(f"dataset_dir not found: {dataset_dir}")
 
     tasks = [
         "jamp",
@@ -70,8 +74,7 @@ def evaluate_n_shot(few_shots: bool):
 
             # read task data
             task_data_path = (
-                Path(artifact_dir)
-                / cfg[dataset_name].dataset_dir
+                dataset_dir
                 / subset
                 / f"{task}.json"
             )
