@@ -47,6 +47,10 @@ def evaluate_n_shot(few_shots: bool):
     dataset_name = 'sample_dataset'
     artifact = run.use_artifact(cfg[dataset_name].artifacts_path, type="dataset")
     artifact_dir = artifact.download()
+    dataset_dir = Path(artifact_dir) / cfg[dataset_name].dataset_dir
+    if not dataset_dir.exists():
+        print(f"skip {dataset_name} because it is not found in {artifact_dir}")
+        raise FileNotFoundError(f"dataset_dir not found: {dataset_dir}")
 
     tasks = [
         "chabsa",
@@ -67,14 +71,13 @@ def evaluate_n_shot(few_shots: bool):
                 "model_name": cfg.model.pretrained_model_name_or_path,
                 "dataset": dataset_name,
                 "task": task,
-                "num_few_shots": cfg.num_few_shots,
+                "num_few_shots": num_few_shots,
                 "subset": subset,
             }
 
             # read task data
             task_data_path = (
-                Path(artifact_dir)
-                / cfg[dataset_name].dataset_dir
+                dataset_dir
                 / subset
                 / f"{task}.json"
             )
@@ -93,7 +96,7 @@ def evaluate_n_shot(few_shots: bool):
             # get fewshots samples
             few_shots: list[Sample] = get_few_shot_samples(
                 target_dataset_path=task_data_path,
-                num_few_shots=cfg.num_few_shots,
+                num_few_shots=num_few_shots,
             )
 
             # get prompt

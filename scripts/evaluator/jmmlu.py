@@ -31,6 +31,9 @@ def evaluate_n_shot(few_shots: bool):
     artifact = run.use_artifact(cfg[dataset_name].artifacts_path, type="dataset")
     artifact_dir = artifact.download()
     dataset_dir = Path(artifact_dir) / cfg[dataset_name].dataset_dir
+    if not dataset_dir.exists():
+        print(f"skip {dataset_name} because it is not found in {artifact_dir}")
+        raise FileNotFoundError(f"dataset_dir not found: {dataset_dir}")
     tasks = sorted({p.stem for p in dataset_dir.glob("**/jmmlu_*.json")})
 
     num_few_shots = cfg.get("num_few_shots", None) if few_shots else 0
