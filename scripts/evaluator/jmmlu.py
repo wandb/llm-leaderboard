@@ -9,7 +9,7 @@ import pandas as pd
 from toolz import pipe
 
 from config_singleton import WandbConfigSingleton
-from utils import (
+from .utils import (
     get_evaluation_prompt,
     get_few_shot_samples,
     Sample,
@@ -18,26 +18,8 @@ from utils import (
     text_formatter,
 )
 
-"""
-## datasetの追加方法
-以下のファイルを作成・編集してください。
 
-- 作成
-    - {データセット名}_evaluation.py
-        - 評価コードの作成
-- 編集
-    - run_eval.py
-        - データセット評価関数のimport, 実行
-    - config_template.py
-        - データセットの設定
-    - utils.py
-        - 必要に応じて編集
-
-> 実装はSaaSだけでなく、dedicated cloudでも動くように、OpenAIだけでなく、Azure OpenAIでも動くように心がけてください。
-"""
-
-
-def jaster_evaluate():
+def evaluate_n_shot(fewshots: bool):
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
@@ -45,31 +27,14 @@ def jaster_evaluate():
     llm = instance.llm
 
     # download dataset
-    dataset_name = "jaster"
+    dataset_name = "jmmlu"
     artifact = run.use_artifact(cfg[dataset_name].artifacts_path, type="dataset")
     artifact_dir = artifact.download()
-
-    tasks = [
-        "jamp",
-        "janli",
-        "jcommonsenseqa",
-        "jemhopqa",
-        "jnli",
-        "jsem",
-        "jsick",
-        "jsquad",
-        # "jsts",
-        "niilc",
-        "chabsa",
-        "mawps",
-        "wiki_reading",
-        "wiki_ner",
-        "wiki_dependency",
-        "wiki_pas",
-        "wiki_coreference",
-    ]
+    dataset_dir = Path(artifact_dir) / cfg[dataset_name].dataset_dir
+    tasks = sorted({p.stem for p in dataset_dir.glob("**/jmmlu_*.json")})
 
     evaluation_results = []
+    num_few_shots = cfg.get("num_few_shots", 0)
     for task in tasks:
         # execute evaluation
         language = cfg[dataset_name].language
@@ -77,16 +42,15 @@ def jaster_evaluate():
             eval_matainfo = {
                 "run_name": run.name,
                 "model_name": cfg.model.pretrained_model_name_or_path,
-                "dataset": dataset_name,
-                "task": task,
-                "num_few_shots": cfg.num_few_shots,
+                "dataset": "JMMLU",
+                "task": task[len("jmmlu_"):],
+                "num_few_shots": num_few_shots,
                 "subset": subset,
             }
 
             # read task data
             task_data_path = (
-                Path(artifact_dir)
-                / cfg[dataset_name].dataset_dir
+                dataset_dir
                 / subset
                 / f"{task}.json"
             )
@@ -103,7 +67,7 @@ def jaster_evaluate():
             # get fewshots samples
             few_shots: list[Sample] = get_few_shot_samples(
                 target_dataset_path=task_data_path,
-                num_few_shots=cfg.num_few_shots,
+                num_few_shots=num_few_shots,
             )
 
             # get prompt
@@ -119,12 +83,9 @@ def jaster_evaluate():
             if cfg.testmode:
                 test_max_num_samples = 1
                 val_max_num_samples = 1
-            elif "wiki" in task:
-                test_max_num_samples = 20
-                val_max_num_samples = 5
             else:
-                test_max_num_samples = 100
-                val_max_num_samples = 10
+                test_max_num_samples = 5
+                val_max_num_samples = 1
 
             if subset == "test":
                 num_samples = test_max_num_samples
@@ -143,7 +104,10 @@ def jaster_evaluate():
                 output = chain.invoke(input_data)
                 end_time = time.time()
                 latency = end_time - start_time
-                prompt = base_prompt.format(**input_data)
+                try:
+                    prompt = base_prompt.format(**input_data)
+                except:
+                    import pdb; pdb.set_trace()
 
                 # score
                 y_pred: str = pipe(
@@ -177,12 +141,16 @@ def jaster_evaluate():
     dev_table = output_df.query("subset == 'dev'")
     test_table = output_df.query("subset == 'test'")
     leaderboard_table = pd.pivot_table(
-        data=test_table, values="score", index="model_name", columns="task", aggfunc="mean"
+        data=test_table, values="score", index="model_name", columns="dataset", aggfunc="mean"
     ).reset_index()
     wandb.log(
         {
-            f"{dataset_name}_output_table_dev": dev_table,
-            f"{dataset_name}_output_table": test_table,
-            f"{dataset_name}_leaderboard_table": leaderboard_table,
+            f"{dataset_name}_{num_few_shots}_shot_output_table_dev": dev_table,
+            f"{dataset_name}_{num_few_shots}_shot_output_table": test_table,
+            f"{dataset_name}_{num_few_shots}_shot_leaderboard_table": leaderboard_table,
         }
     )
+
+def evaluate():
+    evaluate_n_shot(fewshots=False)
+    evaluate_n_shot(fewshots=True)
