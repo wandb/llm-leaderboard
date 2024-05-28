@@ -36,7 +36,7 @@ from .utils import (
 > 実装はSaaSだけでなく、dedicated cloudでも動くように、OpenAIだけでなく、Azure OpenAIでも動くように心がけてください。
 """
 
-def evaluate_n_shot(fewshots: bool):
+def evaluate_n_shot(few_shots: bool):
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
@@ -54,6 +54,9 @@ def evaluate_n_shot(fewshots: bool):
         "niilc",
     ]
 
+    num_few_shots = cfg.get("num_few_shots", None) if few_shots else 0
+    if num_few_shots is None:
+        return
     evaluation_results = []
     for task in tasks:
         # execute evaluation
@@ -172,5 +175,5 @@ def evaluate_n_shot(fewshots: bool):
 
     )
 def evaluate():
-    evaluate_n_shot(fewshots=False)
-    evaluate_n_shot(fewshots=True)
+    evaluate_n_shot(few_shots=False)
+    evaluate_n_shot(few_shots=True)
