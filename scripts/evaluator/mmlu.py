@@ -31,6 +31,9 @@ def evaluate_n_shot(few_shots: bool):
     artifact = run.use_artifact(cfg[dataset_name].artifacts_path, type="dataset")
     artifact_dir = artifact.download()
     dataset_dir = Path(artifact_dir) / cfg[dataset_name].dataset_dir
+    if not dataset_dir.exists():
+        print(f"skip {dataset_name} because it is not found in {artifact_dir}")
+        raise FileNotFoundError(f"dataset_dir not found: {dataset_dir}")
     tasks = sorted({p.stem for p in dataset_dir.glob("**/mmlu_en_*.json")})
 
     num_few_shots = cfg.get("num_few_shots", None) if few_shots else 0
@@ -69,7 +72,7 @@ def evaluate_n_shot(few_shots: bool):
             # get fewshots samples
             few_shots: list[Sample] = get_few_shot_samples(
                 target_dataset_path=task_data_path,
-                num_few_shots=cfg.num_few_shots,
+                num_few_shots=num_few_shots
             )
 
             # get prompt
@@ -148,7 +151,6 @@ def evaluate_n_shot(few_shots: bool):
             f"{dataset_name}_{num_few_shots}_shot_output_table": test_table,
             f"{dataset_name}_{num_few_shots}_shot_leaderboard_table": leaderboard_table,
         }
-
     )
 
 def evaluate():
