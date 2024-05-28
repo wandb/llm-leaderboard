@@ -9,7 +9,7 @@ import pandas as pd
 from toolz import pipe
 
 from config_singleton import WandbConfigSingleton
-from utils import (
+from .utils import (
     get_evaluation_prompt,
     get_few_shot_samples,
     Sample,
@@ -36,7 +36,7 @@ from utils import (
 > 実装はSaaSだけでなく、dedicated cloudでも動くように、OpenAIだけでなく、Azure OpenAIでも動くように心がけてください。
 """
 
-def sample_evaluate():
+def evaluate_n_shot(fewshots: bool):
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
@@ -169,4 +169,8 @@ def sample_evaluate():
             f"{dataset_name}_output_table": test_table,
             f"{dataset_name}_leaderboard_table": leaderboard_table,
         }
+
     )
+def evaluate():
+    evaluate_n_shot(fewshots=False)
+    evaluate_n_shot(fewshots=True)

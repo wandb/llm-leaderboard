@@ -9,7 +9,7 @@ import pandas as pd
 from toolz import pipe
 
 from config_singleton import WandbConfigSingleton
-from utils import (
+from .utils import (
     get_evaluation_prompt,
     get_few_shot_samples,
     Sample,
@@ -18,26 +18,8 @@ from utils import (
     text_formatter,
 )
 
-"""
-## datasetの追加方法
-以下のファイルを作成・編集してください。
 
-- 作成
-    - {データセット名}_evaluation.py
-        - 評価コードの作成
-- 編集
-    - run_eval.py
-        - データセット評価関数のimport, 実行
-    - config_template.py
-        - データセットの設定
-    - utils.py
-        - 必要に応じて編集
-
-> 実装はSaaSだけでなく、dedicated cloudでも動くように、OpenAIだけでなく、Azure OpenAIでも動くように心がけてください。
-"""
-
-
-def jmmlu_evaluate():
+def evaluate_n_shot(fewshots: bool):
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
@@ -45,11 +27,11 @@ def jmmlu_evaluate():
     llm = instance.llm
 
     # download dataset
-    dataset_name = "jmmlu"
+    dataset_name = "mmlu"
     artifact = run.use_artifact(cfg[dataset_name].artifacts_path, type="dataset")
     artifact_dir = artifact.download()
     dataset_dir = Path(artifact_dir) / cfg[dataset_name].dataset_dir
-    tasks = sorted({p.stem for p in dataset_dir.glob("**/jmmlu_*.json")})
+    tasks = sorted({p.stem for p in dataset_dir.glob("**/mmlu_en_*.json")})
 
     evaluation_results = []
     for task in tasks:
@@ -59,8 +41,8 @@ def jmmlu_evaluate():
             eval_matainfo = {
                 "run_name": run.name,
                 "model_name": cfg.model.pretrained_model_name_or_path,
-                "dataset": "JMMLU",
-                "task": task[len("jmmlu_"):],
+                "dataset": "MMLU",
+                "task": task[len("mmlu_en_"):],
                 "num_few_shots": cfg.num_few_shots,
                 "subset": subset,
             }
@@ -121,10 +103,7 @@ def jmmlu_evaluate():
                 output = chain.invoke(input_data)
                 end_time = time.time()
                 latency = end_time - start_time
-                try:
-                    prompt = base_prompt.format(**input_data)
-                except:
-                    import pdb; pdb.set_trace()
+                prompt = base_prompt.format(**input_data)
 
                 # score
                 y_pred: str = pipe(
@@ -167,3 +146,7 @@ def jmmlu_evaluate():
             f"{dataset_name}_leaderboard_table": leaderboard_table,
         }
     )
+
+def evaluate():
+    evaluate_n_shot(fewshots=False)
+    evaluate_n_shot(fewshots=True)
