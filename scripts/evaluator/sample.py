@@ -168,12 +168,12 @@ def evaluate_n_shot(few_shots: bool):
     ).reset_index()
     wandb.log(
         {
-            f"{dataset_name}_output_table_dev": dev_table,
-            f"{dataset_name}_output_table": test_table,
-            f"{dataset_name}_leaderboard_table": leaderboard_table,
+            f"{dataset_name}_{num_few_shots}_shot_output_table_dev": dev_table,
+            f"{dataset_name}_{num_few_shots}_shot_output_table": test_table,
+            f"{dataset_name}_{num_few_shots}_shot_leaderboard_table": leaderboard_table,
         }
-
     )
+
 def evaluate():
     evaluate_n_shot(few_shots=False)
     evaluate_n_shot(few_shots=True)
