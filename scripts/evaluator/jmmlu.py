@@ -19,7 +19,7 @@ from .utils import (
 )
 
 
-def evaluate_n_shot(fewshots: bool):
+def evaluate_n_shot(few_shots: bool):
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
@@ -33,8 +33,10 @@ def evaluate_n_shot(fewshots: bool):
     dataset_dir = Path(artifact_dir) / cfg[dataset_name].dataset_dir
     tasks = sorted({p.stem for p in dataset_dir.glob("**/jmmlu_*.json")})
 
+    num_few_shots = cfg.get("num_few_shots", None) if few_shots else 0
+    if num_few_shots is None:
+        return
     evaluation_results = []
-    num_few_shots = cfg.get("num_few_shots", 0)
     for task in tasks:
         # execute evaluation
         language = cfg[dataset_name].language
@@ -152,5 +154,5 @@ def evaluate_n_shot(fewshots: bool):
     )
 
 def evaluate():
-    evaluate_n_shot(fewshots=False)
-    evaluate_n_shot(fewshots=True)
+    evaluate_n_shot(few_shots=False)
+    evaluate_n_shot(few_shots=True)
