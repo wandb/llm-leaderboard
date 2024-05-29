@@ -2,7 +2,7 @@ wandb:
   log: True
   entity: "wandb-japan"
   project: "llm-leaderboard-test"
-  run_name: 'mistralai/Mistral-7B-Instruct-v0.2' # use run_name defined above
+  run_name: "tokyotech-llm/Swallow-MS-7b-v0.1" # use run_name defined above
 
 github_version: v2.0.0 #for recording
 
@@ -15,7 +15,7 @@ api: vllm
 model:
   use_wandb_artifacts: false
   artifacts_path: ""
-  pretrained_model_name_or_path: 'mistralai/Mistral-7B-Instruct-v0.2' #if you use openai api, put the name of model
+  pretrained_model_name_or_path: "tokyotech-llm/Swallow-MS-7b-v0.1" #if you use openai api, put the name of model
   dtype: 'float16'
   max_model_len: 4096
   trust_remote_code: true
@@ -25,13 +25,10 @@ model:
 
 generator:
   top_p: 1.0
-  top_k: 0
+  # top_k: 0
   temperature: 0.1
-  repetition_penalty: 1.0
+  # repetition_penalty: 1.0
   max_tokens: 128
-
-llm_jp_eval:
-  aaa: aaa
 
 mtbench:
   temperature_override:
@@ -57,23 +54,37 @@ mtbench:
   parallel: 1
   first_n: null
 
+custom_prompt_template_ja: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。\n\n ### 指示:\n{instruction}\n\n### 入力:\n{input}\n\n### 応答:"
+custom_prompt_template_en": The following text provides instructions for a certain task, along with accompanying input that offers further context. Please describe the appropriate response to complete the request.\n\n ### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:"
+
+num_few_shots: 4
+
+jaster:
+  artifacts_path: "wandb-japan/llm-leaderboard/jaster:v11"
+  dataset_dir: "jaster/1.2.6/evaluation"
+  language: ja
+
 jmmlu:
- aaa: aaa
+  artifacts_path: "t-ibi/llm-leaderboard/jmmlu:v5"
+  dataset_dir: "jmmlu/1.3.0/evaluation"
+  language: ja
 
 mmlu:
- aaa: aaa
+  artifacts_path: "wandb-japan/llm-leaderboard/jaster:v11"
+  dataset_dir: "jaster/1.2.6/evaluation"
+  language: en
 
 lctg-bench:
- aaa: aaa
+  aaa: aaa
 
 bbq:
- aaa: aaa
+  aaa: aaa
+
+sample_dataset:
+  artifacts_path: 't-ibi/llm-leaderboard/sample_dataset:v1'
+  dataset_dir: 'sample_dataset'
+  language: ja
 
 #jbbq:
 
 #ly_toxicity:
-
-
-
-
-
