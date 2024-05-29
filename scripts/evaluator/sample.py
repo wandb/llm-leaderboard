@@ -153,6 +153,7 @@ def evaluate_n_shot(few_shots: bool):
                         **eval_matainfo,
                         "index": idx,
                         "input": sample["input"],
+                        'raw_output': output,
                         "output": y_pred,
                         "expected_output": y_true,
                         "prompt": prompt,
@@ -171,9 +172,9 @@ def evaluate_n_shot(few_shots: bool):
     ).reset_index()
     wandb.log(
         {
-            f"{dataset_name}_{num_few_shots}_shot_output_table_dev": dev_table,
-            f"{dataset_name}_{num_few_shots}_shot_output_table": test_table,
-            f"{dataset_name}_{num_few_shots}_shot_leaderboard_table": leaderboard_table,
+            f"{dataset_name}_{num_few_shots}shot_output_table_dev": dev_table,
+            f"{dataset_name}_{num_few_shots}shot_output_table": test_table,
+            f"{dataset_name}_{num_few_shots}shot_leaderboard_table": leaderboard_table,
         }
     )
 
