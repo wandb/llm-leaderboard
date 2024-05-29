@@ -4,12 +4,16 @@ import os
 import sys
 from omegaconf import DictConfig, OmegaConf
 import pandas as pd
-sys.path.append('llm-jp-eval/src') 
 sys.path.append('FastChat')
-from llm_jp_eval.evaluator import evaluate
 from mtbench_eval import mtbench_evaluate
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
+
+from evaluator import (
+    jaster,
+    jmmlu,
+    mmlu,
+)
 
 # Configuration loading
 if os.path.exists("configs/config.yaml"):
@@ -62,17 +66,13 @@ llm = get_llm_inference_engine()
 instance = WandbConfigSingleton.get_instance()
 instance.llm = llm
 
-# example usage
-instance = WandbConfigSingleton.get_instance()
-llm = instance.llm
-llm.max_tokens = 256 # You can modify these settings.
-llm.temperature = 0.7
-res = llm.invoke("Hello! Who are you?")
-print(res.content)
-
 # Evaluation phase
-# 1. llm-jp-eval evaluation (mmlu, jmmlu含む)
-#llmjpeval_evaluate()
+# 1. llm-jp-eval evaluation (jmmlu含む)
+jaster.evaluate()
+
+jmmlu.evaluate()
+
+mmlu.evaluate()
 
 # 2. mt-bench evaluation
 #mtbench_evaluate()
@@ -85,6 +85,9 @@ print(res.content)
 
 # 5. ly-toxicity
 #ly_toxicity_evaluate()
+
+# Sample
+# sample_evaluate()
 
 # 6. Aggregation
 #aggregate()
