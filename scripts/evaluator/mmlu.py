@@ -47,7 +47,7 @@ def evaluate_n_shot(few_shots: bool):
             eval_matainfo = {
                 "run_name": run.name,
                 "model_name": cfg.model.pretrained_model_name_or_path,
-                "dataset": "MMLU",
+                "dataset": dataset_name,
                 "task": task[len("mmlu_en_"):],
                 "num_few_shots": cfg.num_few_shots,
                 "subset": subset,
