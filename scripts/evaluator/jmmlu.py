@@ -34,31 +34,31 @@ def evaluate_n_shot(few_shots: bool):
     if not dataset_dir.exists():
         print(f"skip {dataset_name} because it is not found in {artifact_dir}")
         raise FileNotFoundError(f"dataset_dir not found: {dataset_dir}")
-    all_tasks = sorted({p.stem for p in dataset_dir.glob("**/jmmlu_*.json")})
-
     num_few_shots = cfg.get("num_few_shots", None) if few_shots else 0
     if num_few_shots is None:
         return
 
-    for choice_format in ("", "IncorrectChoice", "SymbolChoice"):
-        evaluation_results = []
-        if choice_format == "":
-            tasks = [task for task in all_tasks if not task.endswith('Choice')]
+    for task_suffix in ("", "_IncorrectChoice", "_SymbolChoice"):
+        if task_suffix == "":
+            tasks = sorted({p.stem for p in dataset_dir.glob("**/jmmlu_*.json") if not p.stem.endswith("Choice")})
         else:
-            tasks = [task for task in all_tasks if task.endswith(choice_format)]
+            tasks = sorted({p.stem for p in dataset_dir.glob(f"**/jmmlu_*{task_suffix}.json")})
+
+        evaluation_results = []
         for task in tasks:
             # execute evaluation
-            if choice_format == "":
+            language = cfg[dataset_name].language
+            if task_suffix == "":
+                dataset_name_with_suffix = dataset_name
                 task_without_prefix_and_suffix = task[len("jmmlu_"):]
             else:
-                dataset_name += f"_{choice_format}"
-                task_without_prefix_and_suffix = task[len("jmmlu_"):][:-len(f"_{choice_format}")]
-            language = cfg[dataset_name].language
+                dataset_name_with_suffix = f"{dataset_name}{task_suffix}"
+                task_without_prefix_and_suffix = task[len("jmmlu_"):][:-len(task_suffix)]
             for subset in ("test", "dev"):
                 eval_matainfo = {
                     "run_name": run.name,
                     "model_name": cfg.model.pretrained_model_name_or_path,
-                    "dataset": dataset_name,
+                    "dataset": dataset_name_with_suffix,
                     "task": task_without_prefix_and_suffix,
                     "num_few_shots": num_few_shots,
                     "subset": subset,
@@ -140,6 +140,7 @@ def evaluate_n_shot(few_shots: bool):
                             **eval_matainfo,
                             "index": idx,
                             "input": sample["input"],
+                            'raw_output': output,
                             "output": y_pred,
                             "expected_output": y_true,
                             "prompt": prompt,
@@ -158,9 +159,9 @@ def evaluate_n_shot(few_shots: bool):
         ).reset_index()
         wandb.log(
             {
-                f"{dataset_name}_{num_few_shots}_shot_output_table_dev": dev_table,
-                f"{dataset_name}_{num_few_shots}_shot_output_table": test_table,
-                f"{dataset_name}_{num_few_shots}_shot_leaderboard_table": leaderboard_table,
+                f"{dataset_name_with_suffix}_{num_few_shots}shot_output_table_dev": dev_table,
+                f"{dataset_name_with_suffix}_{num_few_shots}shot_output_table": test_table,
+                f"{dataset_name_with_suffix}_{num_few_shots}shot_leaderboard_table": leaderboard_table,
             }
         )
 
