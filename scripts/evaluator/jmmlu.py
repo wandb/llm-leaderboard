@@ -155,7 +155,7 @@ def evaluate_n_shot(few_shots: bool):
         dev_table = output_df.query("subset == 'dev'")
         test_table = output_df.query("subset == 'test'")
         leaderboard_table = pd.pivot_table(
-            data=test_table, values="score", index="model_name", columns="dataset", aggfunc="mean"
+            data=test_table, values="score", index=['run_name', "model_name"], columns="dataset", aggfunc="mean"
         ).reset_index()
         wandb.log(
             {

@@ -13,6 +13,7 @@ from evaluator import (
     jaster,
     jmmlu,
     mmlu,
+    controllability,
 )
 
 # Configuration loading
@@ -71,8 +72,10 @@ instance.llm = llm
 jaster.evaluate()
 
 jmmlu.evaluate()
+controllability.evaluate()
 
 mmlu.evaluate()
+
 
 # 2. mt-bench evaluation
 #mtbench_evaluate()
