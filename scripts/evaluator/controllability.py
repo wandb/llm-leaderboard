@@ -1,8 +1,9 @@
 import wandb
 import pandas as pd
+
 from config_singleton import WandbConfigSingleton
-from .metrics import format_check_dict
-from .utils import read_wandb_table
+from utils import read_wandb_table
+from .evaluate_utils import controllability_dict
 
 
 def evaluate():
@@ -18,11 +19,11 @@ def evaluate():
         output_df = read_wandb_table(run=run, table_name=table_name)
         # evaluate controllability
         output_df["metrics"] = output_df["task"].map(
-            {k: v.__name__ for k, v in format_check_dict.items()}
+            {k: v.__name__ for k, v in controllability_dict.items()}
         )
         output_df.dropna(subset=["metrics"], axis=0, inplace=True)
         output_df["score"] = output_df.apply(
-            lambda x: format_check_dict[x["task"]](x["output"]) * 1, axis=1
+            lambda x: controllability_dict[x["task"]](x["output"]) * 1, axis=1
         )
         # log tables
         table_dict = {
