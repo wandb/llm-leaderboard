@@ -17,22 +17,6 @@ def eval_robustness(row):
             score += 0.5
         return score
 
-    # jmmlu_0shot_output_table
-    # jmmlu_SymbolChoice_0shot_output_table
-    # jmmlu_IncorrectChoice_0shot_output_table
-
-    # jmmlu_0shot_output_table_dev
-    # jmmlu_SymbolChoice_0shot_output_table_dev
-    # jmmlu_IncorrectChoice_0shot_output_table_dev
-
-    # jmmlu_4shot_output_table
-    # jmmlu_SymbolChoice_4shot_output_table
-    # jmmlu_IncorrectChoice_4shot_output_table
-
-    # jmmlu_4shot_output_table_dev
-    # jmmlu_SymbolChoice_4shot_output_table_dev
-    # jmmlu_IncorrectChoice_4shot_output_table_dev
-
 
 def evaluate_n_shot(few_shots: bool):
     instance = WandbConfigSingleton.get_instance()
@@ -43,6 +27,13 @@ def evaluate_n_shot(few_shots: bool):
     num_few_shots = cfg.get("num_few_shots", None) if few_shots else 0
     if num_few_shots is None:
         return
+
+    if few_shots:
+        num_few_shots = cfg.get("num_few_shots", None)
+        if (num_few_shots is None) or (num_few_shots == 0):
+            return
+    else:
+        num_few_shots = 0
 
     table_name_format = "jmmlu{task_suffix}_{n}shot_output_table{table_suffix}"
     for table_suffix in ("", "_dev"):
