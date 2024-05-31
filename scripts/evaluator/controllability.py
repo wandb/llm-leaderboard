@@ -12,10 +12,9 @@ def evaluate():
 
     input_task = "jaster_0shot"
     output_task = input_task + "_controllability"
-    for subset in ("test", "dev"):
+    for table_suffix in ("", "_dev"):
         # get output table
-        suffix = "" if subset == "test" else "_dev"
-        table_name = f"{input_task}_output_table{suffix}"
+        table_name = f"{input_task}_output_table{table_suffix}"
         output_df = read_wandb_table(run=run, table_name=table_name)
         # evaluate controllability
         output_df["metrics"] = output_df["task"].map(
@@ -27,9 +26,9 @@ def evaluate():
         )
         # log tables
         table_dict = {
-            f"{output_task}_output_table{suffix}": output_df,
+            f"{output_task}_output_table{table_suffix}": output_df,
         }
-        if subset == "test":
+        if table_suffix == "":
             leaderboard_df = pd.pivot_table(
                 data=output_df,
                 values="score",
