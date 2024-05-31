@@ -48,6 +48,7 @@ def evaluate_n_shot(few_shots: bool):
         "niilc",
         "chabsa",
         "mawps",
+        "commonsensemoralja",
         "wiki_reading",
         "wiki_ner",
         "wiki_dependency",

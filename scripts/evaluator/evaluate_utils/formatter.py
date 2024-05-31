@@ -9,6 +9,7 @@ def text_formatter(input_str: str, dataset: str) -> str:
         output_str = input_str.strip().lower()
     elif dataset in [
         "jcommonsenseqa",
+        "commonsensemoralja",
         "mawps",
         "wiki_reading",
         "wiki_ner",
