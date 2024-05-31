@@ -9,7 +9,7 @@ import pandas as pd
 from toolz import pipe
 
 from config_singleton import WandbConfigSingleton
-from .utils import (
+from .evaluate_utils import (
     get_evaluation_prompt,
     get_few_shot_samples,
     Sample,
