@@ -1,8 +1,8 @@
 import wandb
 import pandas as pd
 from config_singleton import WandbConfigSingleton
-from .metrics import format_check_dict
-from .utils import read_wandb_table
+from .evaluate_utils import format_check_dict
+from utils import read_wandb_table
 
 
 def evaluate():

@@ -1,4 +1,4 @@
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 from types import SimpleNamespace
 
 class WandbConfigSingleton:
