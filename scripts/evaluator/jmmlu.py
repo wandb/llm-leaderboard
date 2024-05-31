@@ -14,7 +14,7 @@ from .evaluate_utils import (
     get_few_shot_samples,
     Sample,
     normalize,
-    metrics_func_dict,
+    jaster_metrics_dict,
     text_formatter,
 )
 
@@ -131,7 +131,7 @@ def evaluate_n_shot(few_shots: bool):
                     )
                     y_true: str = pipe(sample["output"], normalize)
                     metrics: list[str] = task_data["metrics"][0]
-                    metrics_func: callable = metrics_func_dict[metrics]
+                    metrics_func: callable = jaster_metrics_dict[metrics]
                     score = metrics_func(y_pred, y_true)
 
                     # collect data
