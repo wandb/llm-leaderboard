@@ -34,9 +34,12 @@ def evaluate_n_shot(few_shots: bool):
     if not dataset_dir.exists():
         print(f"skip {dataset_name} because it is not found in {artifact_dir}")
         raise FileNotFoundError(f"dataset_dir not found: {dataset_dir}")
-    num_few_shots = cfg.get("num_few_shots", None) if few_shots else 0
-    if num_few_shots is None:
-        return
+    if few_shots:
+        num_few_shots = cfg.get("num_few_shots", None)
+        if (num_few_shots is None) or (num_few_shots == 0):
+            return
+    else:
+        num_few_shots = 0
 
     for task_suffix in ("", "_IncorrectChoice", "_SymbolChoice"):
         if task_suffix == "":

@@ -55,9 +55,13 @@ def evaluate_n_shot(few_shots: bool):
         "wiki_coreference",
     ]
 
-    num_few_shots = cfg.get("num_few_shots", None) if few_shots else 0
-    if num_few_shots is None:
-        return
+    if few_shots:
+        num_few_shots = cfg.get("num_few_shots", None)
+        if (num_few_shots is None) or (num_few_shots == 0):
+            return
+    else:
+        num_few_shots = 0
+
     evaluation_results = []
     for task in tasks:
         # execute evaluation
