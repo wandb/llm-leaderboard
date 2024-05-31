@@ -156,7 +156,7 @@ controllability_dict = {
     "JBLiMP": is_a_b,
     "jcommonsenseqa": is_0_4,
     "jcola": is_0_1,
-    "JCommonsenseMorality": is_0_1,
+    "commonsensemoralja": is_0_1,
     "janli": is_entailment2_format,
     "jnli": is_entailment3_format,
     "jsick": is_entailment3_format,
