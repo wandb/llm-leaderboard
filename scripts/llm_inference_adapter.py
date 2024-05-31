@@ -14,6 +14,12 @@ def get_llm_inference_engine():
         start_vllm_server()
 
         # LangChainのVLLMインテグレーションを使用
+        # llm = ChatOpenAI(
+        #     openai_api_key="EMPTY",
+        #     openai_api_base="http://localhost:8000/v1",
+        #     model_name=cfg.model.pretrained_model_name_or_path,
+        #     max_tokens=cfg.generator.max_tokens,
+        # )
         llm = VLLMOpenAI(
             openai_api_key="EMPTY",
             openai_api_base="http://localhost:8000/v1",
