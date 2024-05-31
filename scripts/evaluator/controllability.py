@@ -5,6 +5,10 @@ from config_singleton import WandbConfigSingleton
 from utils import read_wandb_table
 from .evaluate_utils import controllability_dict
 
+"""
+TODO
+chatとcompletionの使い分け
+"""
 
 def evaluate():
     instance = WandbConfigSingleton.get_instance()
