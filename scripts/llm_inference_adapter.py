@@ -22,7 +22,7 @@ def get_llm_inference_engine():
 
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(cfg.model.pretrained_model_name_or_path)
-        cfg.update({"tokenizer": tokenizer})
+        cfg.update({"special_tokens_map": tokenizer.special_tokens_map})
 
         return llm
 
