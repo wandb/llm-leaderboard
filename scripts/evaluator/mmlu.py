@@ -9,12 +9,12 @@ import pandas as pd
 from toolz import pipe
 
 from config_singleton import WandbConfigSingleton
-from .utils import (
+from .evaluate_utils import (
     get_evaluation_prompt,
     get_few_shot_samples,
     Sample,
     normalize,
-    metrics_func_dict,
+    jaster_metrics_dict,
     text_formatter,
 )
 
@@ -36,9 +36,13 @@ def evaluate_n_shot(few_shots: bool):
         raise FileNotFoundError(f"dataset_dir not found: {dataset_dir}")
     tasks = sorted({p.stem for p in dataset_dir.glob("**/mmlu_en_*.json")})
 
-    num_few_shots = cfg.get("num_few_shots", None) if few_shots else 0
-    if num_few_shots is None:
-        return
+    if few_shots:
+        num_few_shots = cfg.get("num_few_shots", None)
+        if (num_few_shots is None) or (num_few_shots == 0):
+            return
+    else:
+        num_few_shots = 0
+
     evaluation_results = []
     for task in tasks:
         # execute evaluation
@@ -106,7 +110,7 @@ def evaluate_n_shot(few_shots: bool):
                 # generate output
                 input_data = {"input": sample["input"]}
                 start_time = time.time()
-                output = chain.invoke(input_data)
+                output = chain.invoke(input_data).content
                 end_time = time.time()
                 latency = end_time - start_time
                 prompt = base_prompt.format(**input_data)
@@ -120,7 +124,7 @@ def evaluate_n_shot(few_shots: bool):
                 )
                 y_true: str = pipe(sample["output"], normalize)
                 metrics: list[str] = task_data["metrics"][0]
-                metrics_func: callable = metrics_func_dict[metrics]
+                metrics_func: callable = jaster_metrics_dict[metrics]
                 score = metrics_func(y_pred, y_true)
 
                 # collect data
@@ -144,7 +148,7 @@ def evaluate_n_shot(few_shots: bool):
     dev_table = output_df.query("subset == 'dev'")
     test_table = output_df.query("subset == 'test'")
     leaderboard_table = pd.pivot_table(
-        data=test_table, values="score", index="model_name", columns="dataset", aggfunc="mean"
+        data=test_table, values="score", index=['run_name', "model_name"], columns="dataset", aggfunc="mean"
     ).reset_index()
     wandb.log(
         {
