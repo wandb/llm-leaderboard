@@ -70,12 +70,12 @@ instance.llm = llm
 # Evaluation phase
 # 1. llm-jp-eval evaluation (jmmlu含む)
 jaster.evaluate()
-controllability.evaluate()
+# controllability.evaluate()
 
-jmmlu.evaluate()
-robustness.evaluate()
+# jmmlu.evaluate()
+# robustness.evaluate()
 
-mmlu.evaluate()
+# mmlu.evaluate()
 
 
 # 2. mt-bench evaluation
