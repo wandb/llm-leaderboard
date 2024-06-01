@@ -68,47 +68,47 @@ jaster_metrics_dict: dict[str, callable] = {
 
 
 # mawps, mgsm
-def is_all_digit(text):
+def is_all_digit(text: str) -> bool:
     return text.isdigit()
 
 
 # jmmlu, mmlu
-def is_one_of_ABCD(text):
+def is_one_of_ABCD(text: str) -> bool:
     return text in {"A", "B", "C", "D"}
 
 
 # JBLiMP
-def is_a_b(text):
+def is_a_b(text: str) -> bool:
     return text in {"a", "b"}
 
 
 # jcommonsenseqa
-def is_0_4(text):
+def is_0_4(text: str) -> bool:
     return text in {"0", "1", "2", "3", "4"}
 
 
 # jcola, JCommonsenseMorality
-def is_0_1(text):
+def is_0_1(text: str) -> bool:
     return text in {"0", "1"}
 
 
 # janli
-def is_entailment2_format(text):
+def is_entailment2_format(text: str) -> bool:
     return text in {"entailment", "non-entailment"}
 
 
 # jnli, jsick, jamp
-def is_entailment3_format(text):
+def is_entailment3_format(text: str) -> bool:
     return text in {"entailment", "contradiction", "neutral"}
 
 
 # jsem
-def is_jsem_format(text):
+def is_jsem_format(text: str) -> bool:
     return text in {"yes", "no", "unknown", "undef"}
 
 
 # wiki_ner
-def is_wiki_ner_format(text):
+def is_wiki_ner_format(text: str) -> bool:
     allowed_tags = {
         "組織名",
         "人名",
@@ -128,7 +128,7 @@ def is_wiki_ner_format(text):
 
 
 # wiki_dependency
-def is_wiki_dependecy_format(text):
+def is_wiki_dependecy_format(text: str) -> bool:
     pattern = re.compile(r"^.+\s*->\s*.+$")
     lines = text.split("\n")
     for line in lines:
@@ -138,7 +138,7 @@ def is_wiki_dependecy_format(text):
 
 
 # chabsa
-def is_chabsa_format(text):
+def is_chabsa_format(text: str) -> bool:
     pattern = re.compile(r"(\w+)\s+(positive|neutral|negative)")
 
     lines = text.split("\n")
