@@ -1,0 +1,13 @@
+{% for message in messages %}
+    {% if loop.index0 == 0 and messages[0]['role'] != 'system'%}
+        {{ '以下は、タスクを説明する指示と、文脈のある入力の組み合わせです。要求を適切に満たす応答を書きなさい。\n\n'}}
+    {% endif %}
+    {% if message['role'] == 'user' %}
+        {{ '### 指示:\n' + message['content'] + '\n\n' }}
+    {% elif message['role'] == 'assistant' %}
+        {{ '### 応答:\n' + message['content'] + eos_token + '\n\n' }}
+    {% endif %}
+    {% if loop.last and add_generation_prompt %}
+        {{ '### 応答:\n' }}
+    {% endif %}
+{% endfor %}
