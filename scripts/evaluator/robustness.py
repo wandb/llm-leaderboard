@@ -104,5 +104,5 @@ def evaluate_n_shot(few_shots: bool):
 
 
 def evaluate():
-    evaluate_n_shot(few_shots=False)
+    # evaluate_n_shot(few_shots=False)
     evaluate_n_shot(few_shots=True)
