@@ -67,6 +67,7 @@ langchain-anthropic
 langchain-core
 langchain-google-genai
 langchain-mistralai
+langchain-openai==0.1.8
 langchain
 langsmith
 lark==1.1.9
