@@ -10,14 +10,12 @@ from toolz import pipe
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import (
-    # get_evaluation_prompt,
-    # get_few_shot_samples,
     apply_chat_template,
-    get_system_message_intro,
-    normalize,
-    jaster_metrics_dict,
-    text_formatter,
     get_few_shot_messages,
+    get_system_message_intro,
+    jaster_metrics_dict,
+    normalize,
+    text_formatter,
 )
 
 
