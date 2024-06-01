@@ -127,13 +127,13 @@ def evaluate_n_shot(few_shots: bool):
                     )
                     messages.extend(few_shot_messages)
                 
-                # question
+                # user input
                 messages.append({"role": "user", "content": sample["input"]})
 
                 # generate output
                 start_time = time.time()
                 prompt = apply_chat_template(messages=messages)
-                output = llm.invoke(messages)
+                output = llm.invoke(messages).content
                 end_time = time.time()
                 latency = end_time - start_time
 
