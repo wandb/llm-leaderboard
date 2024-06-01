@@ -20,6 +20,7 @@ def get_llm_inference_engine():
             **cfg.generator,
         )
 
+        # TODO 別のtokenizerを使っているときにも対応できるようにする。from vllm import LLM, SamplingParamsを使えば良さそう
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(cfg.model.pretrained_model_name_or_path)
         cfg.update({"special_tokens_map": tokenizer.special_tokens_map})
