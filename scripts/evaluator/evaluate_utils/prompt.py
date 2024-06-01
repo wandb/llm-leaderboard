@@ -1,13 +1,10 @@
+from dataclasses import dataclass
 import json
-
 from pathlib import Path
 
-from dataclasses import dataclass
-from config_singleton import WandbConfigSingleton
 from jinja2 import Template
 
 from config_singleton import WandbConfigSingleton
-
 
 def get_system_message_intro(language: str) -> str:
     instance = WandbConfigSingleton.get_instance()
