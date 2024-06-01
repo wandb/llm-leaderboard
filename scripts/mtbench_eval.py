@@ -3,11 +3,9 @@ import hashlib
 import json
 import numpy as np
 import pandas as pd
-from io import StringIO
-import google.generativeai as genai
 from tqdm import tqdm
 import wandb
-from fastchat.llm_judge.gen_model_answer import run_eval
+#from fastchat.llm_judge.gen_model_answer import run_eval
 from fastchat.llm_judge.gen_api_answer import get_api_answer
 from fastchat.llm_judge.gen_judgment import *
 from fastchat.llm_judge.common import (
@@ -19,18 +17,14 @@ from fastchat.llm_judge.common import (
         play_a_match_single,
         NEED_REF_CATS,
     )
+from fastchat.conversation import initialize_vllm_custom_template
 from config_singleton import WandbConfigSingleton
-from fastchat.conversation import initialize_custom_template
-from fastchat.utils import str_to_torch_dtype
-from omegaconf import OmegaConf
 
 def mtbench_evaluate():
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
     cfg = instance.config
-    # Get the table for the leaderboard
-    leaderboard_table = instance.table
     
     # create hash and append it to the model_id in order to avoid duplicated id
     mnaum_data = str(datetime.datetime.now())
@@ -38,11 +32,11 @@ def mtbench_evaluate():
     hash_object = hashlib.sha256(encoded_data)
     hashed_string = hash_object.hexdigest()
     if cfg.mtbench.model_id == None:
-        cfg.mtbench.model_id = f'{cfg.metainfo.basemodel_name.replace("/", "--")}_hash_{hashed_string}' 
+        cfg.mtbench.model_id = f'{cfg.model.pretrained_model_name_or_path.replace("/", "--")}_hash_{hashed_string}' 
 
-    if cfg.mtbench.custom_conv_template:
-        initialize_custom_template()
-    
+    if cfg.api=='vllm':
+        initialize_vllm_custom_template()
+
     if cfg.mtbench.num_gpus_total // cfg.mtbench.num_gpus_per_model > 1:
         import ray
         ray.init()
@@ -50,39 +44,23 @@ def mtbench_evaluate():
     ## file path
     #question
     if cfg.testmode:
-        artifact_dir = run.use_artifact("wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v0", type='dataset').download()
+        artifact_dir = run.use_artifact(cfg.mtbench.question_artifacts_path_test, type='dataset').download()
     else:
         artifact_dir = run.use_artifact(cfg.mtbench.question_artifacts_path, type='dataset').download()
     question_file = artifact_dir+f"/question.jsonl"
     
     #create answerfile and answerdir
-    answer_file = f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl"
+    answer_file = f"fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl"
     answer_dir = (
-        f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer"
+        f"fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer"
     )
 
     #refeerence answer
     if cfg.testmode:
-        ref_answer_dir = run.use_artifact('wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v0', type='dataset').download()
+        ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path_test, type='dataset').download()
     else:
         ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path, type='dataset').download()
 
-    # Download and move both tokenizer and model artifacts to a new folder, then set the new folder name as model_path
-    import os
-    import shutil
-
-    # Only create a new folder and use it as model_path for model and tokenizer if we are using artifacts
-    import os
-    import shutil
-
-    # Tokenizer artifactをダウンロード
-    if cfg.model.use_wandb_artifacts:
-        artifact_tokenizer = run.use_artifact(cfg.tokenizer.artifacts_path)
-        tokenizer_path = artifact_tokenizer.download()
-        artifact_model = run.use_artifact(cfg.model.artifacts_path)
-        model_path = artifact_model.download()
-
-        cfg.model.pretrained_model_name_or_path = model_path
     
     # 1. generate model answers
     if cfg.api in ["openai","anthoropic","cohere","google","amazon_bedrock","mistral", "vllm"]:
@@ -90,22 +68,6 @@ def mtbench_evaluate():
         get_api_answer(
             question_file=question_file,
             answer_file=answer_file
-        )
-    else:
-        run_eval(
-            model_path=cfg.model.pretrained_model_name_or_path,
-            model_id=cfg.mtbench.model_id,
-            question_file=question_file,
-            question_begin=cfg.mtbench.question_begin,
-            question_end=cfg.mtbench.question_end,
-            answer_file=answer_file,
-            max_new_token=cfg.mtbench.max_new_token,
-            num_choices=cfg.mtbench.num_choices,
-            num_gpus_per_model=cfg.mtbench.num_gpus_per_model,
-            num_gpus_total=cfg.mtbench.num_gpus_total,
-            max_gpu_memory=cfg.mtbench.max_gpu_memory,
-            dtype=str_to_torch_dtype(cfg.mtbench.dtype),
-            revision="main"
         )
 
     # 2. evaluate outputs
@@ -126,26 +88,14 @@ def mtbench_evaluate():
 
     models = [cfg.mtbench.model_id] #get_model_list(answer_dir)
  
-    if cfg.mtbench.mode == "single":
-        judges = make_judge_single(cfg.mtbench.judge_model, judge_prompts)
-        play_a_match_func = play_a_match_single
-        output_file = (
-            f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_judgment/{cfg.mtbench.judge_model}_single"
-        )
-        make_match_func = make_match_single
-        baseline_model = None
-    else:
-        judges = make_judge_pairwise(cfg.mtbench.judge_model, judge_prompts)
-        play_a_match_func = play_a_match_pair
-        output_file = (
-            f"FastChat/fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_judgment/{cfg.mtbench.judge_model}_pair"
-        )
-        if cfg.mtbench.mode == "pairwise-all":
-            make_match_func = make_match_all_pairs
-            baseline_model = None
-        else:
-            make_match_func = make_match
-            baseline_model = cfg.mtbench.baseline_model
+    #if cfg.mtbench.mode == "single":
+    judges = make_judge_single(cfg.mtbench.judge_model, judge_prompts)
+    play_a_match_func = play_a_match_single
+    output_file = (
+        f"fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_judgment/{cfg.mtbench.judge_model}_single"
+    )
+    make_match_func = make_match_single
+    baseline_model = None
 
     check_data(questions, model_answers, ref_answers, models, judges)
 
@@ -183,7 +133,7 @@ def mtbench_evaluate():
         multi_turn=True,
     )
 
-    judge_count = 3
+    judge_count = cfg.mtbench.get('judge_count', 1)
     matches *= judge_count
 
     match_stat = {}
@@ -277,21 +227,16 @@ def mtbench_evaluate():
 
     ## table for LB mtbench
     columns = ['basemodel_name'] + df_summary.category.values.tolist()
-    data = [[cfg.metainfo.basemodel_name] + df_summary.score.values.tolist()]
+    data = [[cfg.model.pretrained_model_name_or_path] + df_summary.score.values.tolist()]
     mtbench_df = pd.DataFrame(data, columns=columns)
     mtbench_df["AVG_mtbench"] = mtbench_df.mean(axis=1, numeric_only=True)
     table_metric = wandb.Table(dataframe=mtbench_df)
 
-    ## table for all
-    mtbench_df = mtbench_df.drop(columns=['basemodel_name'])
-    combined_df = pd.concat([leaderboard_table.get_dataframe(),  mtbench_df], axis=1)
-    instance.table = wandb.Table(dataframe=combined_df)
 
     run.log({
         "mtbench_output_table":table_log,
         "mtbench_leaderboard_table":table_metric,
         "mtbench_radar_table":table_radar,
-        #"leaderboard_table":instance.table
     })
 
     
