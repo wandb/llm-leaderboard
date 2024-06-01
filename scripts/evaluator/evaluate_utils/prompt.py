@@ -80,7 +80,7 @@ def apply_chat_template(messages: list[dict[str, str]]) -> str:
     else:
         with chat_template_path.open(encoding="utf-8") as f:
             chat_template = Template(f.read())
-    special_tokens_map = cfg.tokenizer.special_tokens_map
+    special_tokens_map = cfg.special_tokens_map
     special_tokens_map.update({"add_generation_prompt": True})
     conversation_prompt = chat_template.render(messages=messages, **special_tokens_map)
     return conversation_prompt
