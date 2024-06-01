@@ -74,15 +74,25 @@ def apply_chat_template(messages: list[dict[str, str]]) -> str:
     instance = WandbConfigSingleton.get_instance()
     cfg = instance.config
 
-    chat_template_path = Path(f"chat_templates/{cfg.model.chat_template}.jinja")
-    if not chat_template_path.exists():
-        raise ValueError(f"Chat template {chat_template_path} not found")
+    if cfg.api == "vllm":
+        chat_template_path = Path(f"chat_templates/{cfg.model.chat_template}.jinja")
+        if not chat_template_path.exists():
+            raise ValueError(f"Chat template {chat_template_path} not found")
+        else:
+            with chat_template_path.open(encoding="utf-8") as f:
+                chat_template = Template(f.read())
+        special_tokens_map = cfg.special_tokens_map
+        special_tokens_map.update({"add_generation_prompt": True})
+        conversation_prompt = chat_template.render(
+            messages=messages, **special_tokens_map
+        )
     else:
+        chat_template_path = Path(f"chat_templates/defaults/template_alpaca_en.jinja")
         with chat_template_path.open(encoding="utf-8") as f:
             chat_template = Template(f.read())
-    special_tokens_map = cfg.special_tokens_map
-    special_tokens_map.update({"add_generation_prompt": True})
-    conversation_prompt = chat_template.render(messages=messages, **special_tokens_map)
+        conversation_prompt = chat_template.render(
+            messages=messages, add_generation_prompt=True
+        )
     return conversation_prompt
 
 
