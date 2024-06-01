@@ -2,11 +2,11 @@ wandb:
   log: True
   entity: "wandb-japan"
   project: "llm-leaderboard-test"
-  run_name: "tokyotech-llm/Swallow-MS-7b-v0.1" # use run_name defined above
+  run_name: "meta-llama/Meta-Llama-3-8B-Instruct" # use run_name defined above
 
 github_version: v2.0.0 #for recording
 
-testmode: true
+testmode: false
 
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
@@ -15,10 +15,10 @@ api: vllm
 model:
   use_wandb_artifacts: false
   artifacts_path: ""
-  pretrained_model_name_or_path: "tokyotech-llm/Swallow-MS-7b-v0.1" #if you use openai api, put the name of model
-  chat_template: "Swallow-MS-7b-v0.1"
+  pretrained_model_name_or_path: "meta-llama/Meta-Llama-3-8B-Instruct" #if you use openai api, put the name of model
+  #chat_template: "Swallow-MS-7b-v0.1"
   dtype: 'float16'
-  max_model_len: 8192
+  max_model_len: 4096
   trust_remote_code: true
   device_map: "auto"
   load_in_8bit: false
@@ -48,6 +48,7 @@ mtbench:
   judge_prompt_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1' 
   bench_name: 'japanese_mt_bench'
   model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
+  system_message: "以下は、タスクを説明する指示と、文脈のある入力の組み合わせです。要求を適切に満たす応答を書きなさい。"
   question_begin: null 
   question_end: null 
   max_new_token: 1024
@@ -58,6 +59,7 @@ mtbench:
   dtype: bfloat16 # None or float32 or float16 or bfloat16
   # for gen_judgment
   judge_model: 'gpt-4'
+  judge_count: 1
   mode: 'single'
   baseline_model: null 
   parallel: 1
