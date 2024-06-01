@@ -120,7 +120,7 @@ def evaluate_n_shot(few_shots: bool):
                     # generate output
                     input_data = {"input": sample["input"]}
                     start_time = time.time()
-                    output = chain.invoke(input_data)
+                    output = chain.invoke(input_data).content
                     end_time = time.time()
                     latency = end_time - start_time
                     prompt = base_prompt.format(**input_data)
@@ -167,6 +167,8 @@ def evaluate_n_shot(few_shots: bool):
                 f"{dataset_name_with_suffix}_{num_few_shots}shot_leaderboard_table": leaderboard_table,
             }
         )
+        if num_few_shots == 0:
+            return
 
 def evaluate():
     evaluate_n_shot(few_shots=False)
