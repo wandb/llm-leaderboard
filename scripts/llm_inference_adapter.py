@@ -19,6 +19,11 @@ def get_llm_inference_engine():
             model_name=cfg.model.pretrained_model_name_or_path,
             **cfg.generator,
         )
+
+        from transformers import AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained(cfg.model.pretrained_model_name_or_path)
+        cfg.update({"tokenizer": tokenizer})
+
         return llm
 
     elif api_type == "openai":
