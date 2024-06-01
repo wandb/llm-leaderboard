@@ -22,9 +22,9 @@ def start_vllm_server():
             "--dtype", dtype, 
             "--max-model-len", str(max_model_len),
         ]
-        chat_template = cfg.mode.get('chat_template')
+        chat_template = cfg.model.get('chat_template')
         if chat_template:
-            chat_template_path = Path('../chat_templates') / f"{chat_template}.jinja"
+            chat_template_path = Path(f"chat_templates/{chat_template}.jinja")
             if chat_template_path.exists():
                 command.append("--chat-template")
                 command.append(str(chat_template_path))
