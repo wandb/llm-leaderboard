@@ -2,12 +2,10 @@ import json
 import time
 from pathlib import Path
 
-import wandb
-
-# from langchain.prompts import BasePromptTemplate
-from tqdm import tqdm
 import pandas as pd
 from toolz import pipe
+from tqdm import tqdm
+import wandb
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import (
