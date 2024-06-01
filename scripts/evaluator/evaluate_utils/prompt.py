@@ -7,7 +7,6 @@ from langchain.prompts import BasePromptTemplate, PromptTemplate
 from dataclasses import dataclass
 from config_singleton import WandbConfigSingleton
 from jinja2 import Template
-from transformers import AutoTokenizer
 
 from config_singleton import WandbConfigSingleton
 
@@ -81,8 +80,7 @@ def apply_chat_template(messages: list[dict[str, str]]) -> str:
     else:
         with chat_template_path.open(encoding="utf-8") as f:
             chat_template = Template(f.read())
-    tokenizer = AutoTokenizer.from_pretrained(cfg.model.pretrained_model_name_or_path)
-    special_tokens_map = tokenizer.special_tokens_map
+    special_tokens_map = cfg.tokenizer.special_tokens_map
     special_tokens_map.update({"add_generation_prompt": True})
     conversation_prompt = chat_template.render(messages=messages, **special_tokens_map)
     return conversation_prompt
