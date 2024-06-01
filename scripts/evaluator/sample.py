@@ -9,7 +9,7 @@ import pandas as pd
 from toolz import pipe
 
 from config_singleton import WandbConfigSingleton
-from .utils import (
+from .evaluate_utils import (
     get_evaluation_prompt,
     get_few_shot_samples,
     Sample,
@@ -168,7 +168,7 @@ def evaluate_n_shot(few_shots: bool):
     dev_table = output_df.query("subset == 'dev'")
     test_table = output_df.query("subset == 'test'")
     leaderboard_table = pd.pivot_table(
-        data=test_table, values="score", index="model_name", columns="task", aggfunc="mean"
+        data=test_table, values="score", index=['run_name', "model_name"], columns="task", aggfunc="mean"
     ).reset_index()
     wandb.log(
         {
