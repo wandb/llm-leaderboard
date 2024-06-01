@@ -183,6 +183,9 @@ def mtbench_evaluate():
         multi_turn=True,
     )
 
+    judge_count = 3
+    matches *= judge_count
+
     match_stat = {}
     match_stat["bench_name"] = cfg.mtbench.bench_name
     match_stat["mode"] = cfg.mtbench.mode
@@ -219,6 +222,7 @@ def mtbench_evaluate():
     # 3. consolidate results and log as wandb.Table
     # load questions
     df_question = pd.read_json(question_file, lines=True)
+    df_question_repeat = df_question.loc[df_question.index.repeat(judge_count)].reset_index(drop=True)
     # load answers
     # Reason of using [df_answer.model_id == cfg.mtbench.model_id| (df_answer.model_id == cfg.model.pretrained_model_name_or_path
     # The answer files generated through the API use the model name as the model ID. 
@@ -227,6 +231,7 @@ def mtbench_evaluate():
     df_answer = pd.read_json(answer_file, lines=True)
     df_answer = df_answer[(df_answer.model_id == cfg.mtbench.model_id)|(df_answer.model_id == cfg.model.pretrained_model_name_or_path)]
     df_answer = df_answer.sort_values(['question_id'])
+    df_answer_repeat = df_answer.loc[df_answer.index.repeat(judge_count)].reset_index(drop=True)
 
     # load judge results
     output_file_turn1 = output_file + "/"+ cfg.mtbench.model_id + "__1turn.jsonl"
@@ -245,13 +250,13 @@ def mtbench_evaluate():
     #df_judge["question"] = np.nan
     df_judge["question"] = pd.Series(np.nan, dtype='object')
     
-    df_judge.loc[df_judge.turn == 1, 'question'] = df_question.turns.apply(lambda x: x[0]).values
-    df_judge.loc[df_judge.turn == 2, 'question'] = df_question.turns.apply(lambda x: x[1]).values
+    df_judge.loc[df_judge.turn == 1, 'question'] = df_question_repeat.turns.apply(lambda x: x[0]).values
+    df_judge.loc[df_judge.turn == 2, 'question'] = df_question_repeat.turns.apply(lambda x: x[1]).values
 
     #df_judge['answer'] = np.nan
     df_judge['answer'] = pd.Series(np.nan, dtype='object')
-    df_judge.loc[df_judge.turn == 1, 'answer'] = df_answer.choices.apply(lambda x: x[0][ 'turns'][0]).values
-    df_judge.loc[df_judge.turn == 2, 'answer'] = df_answer.choices.apply(lambda x: x[0][ 'turns'][1]).values
+    df_judge.loc[df_judge.turn == 1, 'answer'] = df_answer_repeat.choices.apply(lambda x: x[0][ 'turns'][0]).values
+    df_judge.loc[df_judge.turn == 2, 'answer'] = df_answer_repeat.choices.apply(lambda x: x[0][ 'turns'][1]).values
     df_judge = df_judge.merge(df_answer[['question_id', 'answer_id']], on='question_id', how='left')
     df_judge = df_judge.merge(df_question[['question_id', 'category']], on='question_id', how='left')
 
@@ -266,9 +271,10 @@ def mtbench_evaluate():
     table_log = wandb.Table(dataframe=df_judge)
 
     # table for radar chart
-    df_summary = df_judge.groupby(['category'], as_index=False).score.mean()
+    _df_judge = df_judge.query('score != -1').groupby(['question_id', 'turn', 'category'], as_index=False).score.mean()
+    df_summary = _df_judge.groupby(['category'], as_index=False).score.mean()
     table_radar = wandb.Table(dataframe=df_summary)
-    
+
     ## table for LB mtbench
     columns = ['basemodel_name'] + df_summary.category.values.tolist()
     data = [[cfg.metainfo.basemodel_name] + df_summary.score.values.tolist()]
