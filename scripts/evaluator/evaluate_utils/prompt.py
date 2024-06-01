@@ -16,10 +16,11 @@ class Sample:
     input: str
     output: str
 
+
 def get_system_message_intro(language: str) -> str:
     instance = WandbConfigSingleton.get_instance()
     cfg = instance.config
-    
+
     custom_system_message = cfg.get(f"custom_system_message_{language}", None)
     if custom_system_message is not None:
         return custom_system_message
@@ -29,6 +30,15 @@ def get_system_message_intro(language: str) -> str:
         return "Here is a combination of instructions explaining the task and inputs with context. Please write a response that adequately meets the request."
     else:
         raise ValueError(f"Invalid language: {language}")
+
+
+def get_system_message(language: str, instruction: str):
+    system_message = ""
+    system_message += get_system_message_intro(language=language)
+    system_message += "\n"
+    system_message += instruction
+    return system_message
+
 
 def get_few_shot_messages(target_dataset_path: str, num_few_shots: int):
     dataset_json_name = target_dataset_path.name
@@ -45,6 +55,7 @@ def get_few_shot_messages(target_dataset_path: str, num_few_shots: int):
         few_shot_messages.append({"role": "user", "content": samples[i]["input"]})
         few_shot_messages.append({"role": "assistant", "content": samples[i]["output"]})
     return few_shot_messages
+
 
 def get_few_shot_samples(target_dataset_path: Path, num_few_shots: int) -> list[Sample]:
     dataset_json_name = target_dataset_path.name
