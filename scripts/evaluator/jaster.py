@@ -117,7 +117,7 @@ def evaluate_n_shot(few_shots: bool):
 
                 # system message
                 system_message_intro = get_system_message_intro(language=language)
-                messages.append({"system": system_message_intro + task_data["instruction"]})
+                messages.append({"role": "system", "content": system_message_intro + task_data["instruction"]})
 
                 # add fewshots samples
                 if few_shots:
