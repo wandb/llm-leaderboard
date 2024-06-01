@@ -5,6 +5,10 @@ import torch
 import wandb
 import pandas as pd
 
+from huggingface_hub import HfApi
+from pathlib import Path
+import os
+
 
 def cleanup_gpu():
     """
@@ -42,3 +46,17 @@ def read_wandb_table(
     output_table = wandb.Table.from_json(json_obj=tjs, source_artifact=artifact)
     output_df = pd.DataFrame(data=output_table.data, columns=output_table.columns)
     return output_df
+
+def download_tokenizer_config(repo_id: str):
+    api = HfApi()
+    file_path = api.hf_hub_download(
+        repo_id=repo_id,
+        filename="tokenizer_config.json",
+        revision="main",
+        use_auth_token=os.getenv("HUGGING_TOKEN"),
+    )
+
+    with Path(file_path).open("r") as f:
+        tokenizer_config = json.load(f)
+    
+    return tokenizer_config
