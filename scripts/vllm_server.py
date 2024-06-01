@@ -1,3 +1,4 @@
+from pathlib import Path
 from config_singleton import WandbConfigSingleton
 import subprocess
 import time
@@ -20,8 +21,17 @@ def start_vllm_server():
             "--model", model_id, 
             "--dtype", dtype, 
             "--max-model-len", str(max_model_len),
-
         ]
+        chat_template = cfg.mode.get('chat_template')
+        if chat_template:
+            chat_template_path = Path('../chat_templates') / f"{chat_template}.jinja"
+            if chat_template_path.exists():
+                command.append("--chat-template")
+                command.append(str(chat_template_path))
+            else:
+                raise FileNotFoundError(f"Chat template file {chat_template_path} not found")
+        else:
+            print("Chat template is not set in the config file. Using the default chat template.")
         
         # subprocessでサーバーをバックグラウンドで実行
         process = subprocess.Popen(command)
