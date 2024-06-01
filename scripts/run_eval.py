@@ -3,7 +3,6 @@ from wandb.sdk.wandb_run import Run
 import os
 import sys
 from omegaconf import DictConfig, OmegaConf
-import pandas as pd
 sys.path.append('FastChat')
 from mtbench_eval import mtbench_evaluate
 from config_singleton import WandbConfigSingleton
@@ -13,6 +12,8 @@ from evaluator import (
     jaster,
     jmmlu,
     mmlu,
+    controllability,
+    robustness
 )
 
 # Configuration loading
@@ -69,10 +70,13 @@ instance.llm = llm
 # Evaluation phase
 # 1. llm-jp-eval evaluation (jmmlu含む)
 jaster.evaluate()
+controllability.evaluate()
 
 jmmlu.evaluate()
+robustness.evaluate()
 
 mmlu.evaluate()
+
 
 # 2. mt-bench evaluation
 #mtbench_evaluate()
