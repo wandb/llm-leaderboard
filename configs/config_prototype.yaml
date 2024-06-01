@@ -16,6 +16,7 @@ model:
   use_wandb_artifacts: false
   artifacts_path: ""
   pretrained_model_name_or_path: "tokyotech-llm/Swallow-MS-7b-v0.1" #if you use openai api, put the name of model
+  chat_template: "Swallow-MS-7b-v0.1"
   dtype: 'float16'
   max_model_len: 4096
   trust_remote_code: true
