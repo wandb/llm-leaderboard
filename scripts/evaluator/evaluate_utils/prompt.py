@@ -5,6 +5,13 @@ from typing import Optional
 
 from langchain.prompts import BasePromptTemplate, PromptTemplate
 from dataclasses import dataclass
+from config_singleton import WandbConfigSingleton
+from jinja2 import Template
+from transformers import AutoTokenizer
+
+instance = WandbConfigSingleton.get_instance()
+cfg = instance.config
+model_id = cfg.model.pretrained_model_name_or_path
 
 
 @dataclass(frozen=True)
@@ -80,3 +87,16 @@ def get_evaluation_prompt(
             system_message += f"\n\n### {input_heading}:\n{replace_braces(few_shot.input)}\n\n### {response_heading}:\n{few_shot.output}"
         system_message += few_shots_template
     return PromptTemplate(input_variables=["input"], template=system_message)
+
+
+def apply_chat_template(messages: list[dict[str, str]]) -> str:
+    chat_template_path = Path(f"chat_templates/{cfg.model.chat_template}.jinja")
+    if not chat_template_path.exists():
+        raise ValueError(f"Chat template {chat_template_path} not found")
+    else:
+        with chat_template_path.open(encoding="utf-8") as f:
+            chat_template = Template(json.load(f))
+    tokenizer = AutoTokenizer.from_pretrained(cfg.model.pretrained_model_name_or_path)
+    special_tokens_map = tokenizer.special_tokens_map
+    conversation_prompt = chat_template.render(messages=messages, **special_tokens_map)
+    return conversation_prompt
