@@ -1,4 +1,4 @@
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 from types import SimpleNamespace
 
 class WandbConfigSingleton:
@@ -11,7 +11,7 @@ class WandbConfigSingleton:
         return cls._instance
 
     @classmethod
-    def initialize(cls, run, table):
+    def initialize(cls, run, llm):
         if cls._instance is not None:
             raise Exception("WandbConfigSingleton has already been initialized")
         # Convert run.config to a standard Python dictionary
@@ -19,4 +19,4 @@ class WandbConfigSingleton:
         # Convert Python dictionary to DictConfig
         config = OmegaConf.create(config_dict)
         # Store as attributes in _instance
-        cls._instance = SimpleNamespace(run=run, config=config, table=table)
+        cls._instance = SimpleNamespace(run=run, config=config, llm=llm)
