@@ -2,7 +2,7 @@ wandb:
   log: True
   entity: "wandb-japan"
   project: "llm-leaderboard-test"
-  run_name: "Rakuten/RakutenAI-7B-instruct" # use run_name defined above
+  run_name: "cyberagent/calm2-7b-chat" # use run_name defined above
 
 github_version: v2.0.0 #for recording
 
@@ -15,8 +15,8 @@ api: vllm
 model:
   use_wandb_artifacts: false
   artifacts_path: ""
-  pretrained_model_name_or_path: "Rakuten/RakutenAI-7B-instruct" #if you use openai api, put the name of model
-  chat_template: null
+  pretrained_model_name_or_path: "cyberagent/calm2-7b-chat" #if you use openai api, put the name of model
+  chat_template: "cyberagent/calm2-7b-chat"
   dtype: 'float16'
   max_model_len: 8192
   trust_remote_code: true
