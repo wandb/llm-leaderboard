@@ -3,19 +3,21 @@ import time
 from pathlib import Path
 
 import wandb
-from langchain.prompts import BasePromptTemplate
+# from langchain.prompts import BasePromptTemplate
 from tqdm import tqdm
 import pandas as pd
 from toolz import pipe
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import (
-    get_evaluation_prompt,
-    get_few_shot_samples,
-    Sample,
+    # get_evaluation_prompt,
+    # get_few_shot_samples,
+    apply_chat_template,
+    get_system_message_intro,
     normalize,
     jaster_metrics_dict,
     text_formatter,
+    get_few_shot_messages,
 )
 
 
@@ -89,25 +91,6 @@ def evaluate_n_shot(few_shots: bool):
             with task_data_path.open(encoding="utf-8") as f:
                 task_data = json.load(f)
 
-            # define custom prompt template
-            custom_prompt_template = cfg.get(f"custom_prompt_template_{language}", None)
-            custom_fewshots_template = cfg.get(f"custom_fewshots_template_{language}", None)
-
-            # get fewshots samples
-            few_shots: list[Sample] = get_few_shot_samples(
-                target_dataset_path=task_data_path,
-                num_few_shots=num_few_shots,
-            )
-
-            # get prompt
-            base_prompt: BasePromptTemplate = get_evaluation_prompt(
-                instruction=task_data["instruction"],
-                few_shots=few_shots,
-                language=language,
-                custom_prompt_template=custom_prompt_template,
-                custom_fewshots_template=custom_fewshots_template,
-            )
-
             # number of evaluation samples
             if cfg.testmode:
                 test_max_num_samples = 1
@@ -127,16 +110,32 @@ def evaluate_n_shot(few_shots: bool):
 
             # llm pipline
             llm.max_tokens = task_data["output_length"]
-            chain = base_prompt | llm
 
             for idx, sample in tqdm(enumerate(samples)):
+                # compose messages
+                messages = []
+
+                # system message
+                system_message_intro = get_system_message_intro(language=language)
+                messages.append({"system": system_message_intro + task_data["instruction"]})
+
+                # add fewshots samples
+                if few_shots:
+                    few_shot_messages = get_few_shot_messages(
+                        target_dataset_path=task_data_path,
+                        num_few_shots=num_few_shots,
+                    )
+                    messages.extend(few_shot_messages)
+                
+                # question
+                messages.append({"role": "user", "content": sample["input"]})
+
                 # generate output
-                input_data = {"input": sample["input"]}
                 start_time = time.time()
-                output = chain.invoke(input_data).content
+                prompt = apply_chat_template(messages=messages)
+                output = llm.invoke(messages)
                 end_time = time.time()
                 latency = end_time - start_time
-                prompt = base_prompt.format(**input_data)
 
                 # score
                 y_pred: str = pipe(
