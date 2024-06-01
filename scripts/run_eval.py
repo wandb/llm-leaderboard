@@ -10,10 +10,10 @@ from llm_inference_adapter import get_llm_inference_engine
 
 from evaluator import (
     jaster,
-    jmmlu,
-    mmlu,
-    controllability,
-    robustness
+    # jmmlu,
+    # mmlu,
+    # controllability,
+    # robustness
 )
 
 # Configuration loading
