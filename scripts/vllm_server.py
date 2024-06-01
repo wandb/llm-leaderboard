@@ -21,6 +21,9 @@ def start_vllm_server():
             "--model", model_id, 
             "--dtype", dtype, 
             "--max-model-len", str(max_model_len),
+            "--seed", "42",
+            "--disable-log-stats",
+            "--disable-log-requests",
         ]
         chat_template = cfg.model.get('chat_template')
         if chat_template:
