@@ -46,10 +46,9 @@ def apply_chat_template(messages: list[dict[str, str]]) -> str:
             messages=messages, add_generation_prompt=True, **tokenizer_config
         )
     else:
-        chat_template_path = Path(f"chat_templates/defaults/template_alpaca_en.jinja")
-        with chat_template_path.open(encoding="utf-8") as f:
-            chat_template = Template(f.read())
-        conversation_prompt = chat_template.render(
-            messages=messages, add_generation_prompt=True
+        conversation_prompt = json.dumps(
+            messages,
+            ensure_ascii=False,
+            indent=2,
         )
     return conversation_prompt
