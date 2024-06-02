@@ -21,13 +21,15 @@ def start_vllm_server():
             "--model", model_id, 
             "--dtype", dtype, 
             "--max-model-len", str(max_model_len),
+            "--seed", "42",
+            "--disable-log-stats",
+            "--disable-log-requests",
         ]
         chat_template = cfg.model.get('chat_template')
         if chat_template:
             chat_template_path = Path(f"chat_templates/{chat_template}.jinja")
             if chat_template_path.exists():
-                command.append("--chat-template")
-                command.append(str(chat_template_path))
+                command.extend(["--chat-template", chat_template_path.resolve()])
             else:
                 raise FileNotFoundError(f"Chat template file {chat_template_path} not found")
         else:
