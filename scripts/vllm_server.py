@@ -23,7 +23,7 @@ def start_vllm_server():
         cfg.update({"tokenizer_config": tokenizer_config})
 
         # set chat_template
-        chat_template_name = cfg.get('chat_template')
+        chat_template_name = cfg.model.get('chat_template')
         if not isinstance(chat_template_name, str):
             raise ValueError("Chat template is not set in the config file")
 
@@ -41,9 +41,6 @@ def start_vllm_server():
 
         # serve chat_template
         cfg.tokenizer_config.update({"chat_template": chat_template})
-        with tempfile.NamedTemporaryFile(suffix='.jinja', encoding="utf-8", mode="w+") as f:
-            f.write(chat_template)
-            chat_template_path = Path(f.name)
 
         # サーバーを起動するためのコマンド
         command = [
@@ -51,7 +48,7 @@ def start_vllm_server():
             "--model", model_id, 
             "--dtype", dtype, 
             "--max-model-len", str(max_model_len),
-            "--chat-template", chat_template_path.resolve(),
+            "--chat-template", chat_template,
             "--seed", "42",
             "--disable-log-stats",
             "--disable-log-requests",
