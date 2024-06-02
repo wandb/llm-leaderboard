@@ -2,19 +2,18 @@ import json
 import time
 from pathlib import Path
 
-import wandb
-from langchain.prompts import BasePromptTemplate
-from tqdm import tqdm
 import pandas as pd
 from toolz import pipe
+from tqdm import tqdm
+import wandb
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import (
-    get_evaluation_prompt,
-    get_few_shot_samples,
-    Sample,
-    normalize,
+    apply_chat_template,
+    get_few_shot_messages,
+    get_system_message,
     jaster_metrics_dict,
+    normalize,
     text_formatter,
 )
 
@@ -78,35 +77,12 @@ def evaluate_n_shot(few_shots: bool):
             }
 
             # read task data
-            task_data_path = (
-                dataset_dir
-                / subset
-                / f"{task}.json"
-            )
+            task_data_path = dataset_dir / subset / f"{task}.json"
             if not task_data_path.exists():
                 print(f"skip {task} because it is not found in {artifact_dir}")
                 continue
             with task_data_path.open(encoding="utf-8") as f:
                 task_data = json.load(f)
-
-            # define custom prompt template
-            custom_prompt_template = cfg.get(f"custom_prompt_template_{language}", None)
-            custom_fewshots_template = cfg.get(f"custom_fewshots_template_{language}", None)
-
-            # get fewshots samples
-            few_shots: list[Sample] = get_few_shot_samples(
-                target_dataset_path=task_data_path,
-                num_few_shots=num_few_shots,
-            )
-
-            # get prompt
-            base_prompt: BasePromptTemplate = get_evaluation_prompt(
-                instruction=task_data["instruction"],
-                few_shots=few_shots,
-                language=language,
-                custom_prompt_template=custom_prompt_template,
-                custom_fewshots_template=custom_fewshots_template,
-            )
 
             # number of evaluation samples
             if cfg.testmode:
@@ -125,18 +101,37 @@ def evaluate_n_shot(few_shots: bool):
                 num_samples = val_max_num_samples
             samples = task_data["samples"][:num_samples]
 
-            # llm pipline
+            # set max_tokens
             llm.max_tokens = task_data["output_length"]
-            chain = base_prompt | llm
 
             for idx, sample in tqdm(enumerate(samples)):
+                # compose messages
+                messages = []
+
+                # system message
+                system_message = get_system_message(
+                    system_message_intro=cfg[dataset_name].system_message,
+                    instruction=task_data["instruction"],
+                )
+                messages.append({"role": "system", "content": system_message})
+
+                # add fewshots samples
+                if few_shots:
+                    few_shot_messages = get_few_shot_messages(
+                        target_dataset_path=task_data_path,
+                        num_few_shots=num_few_shots,
+                    )
+                    messages.extend(few_shot_messages)
+
+                # user input
+                messages.append({"role": "user", "content": sample["input"]})
+
                 # generate output
-                input_data = {"input": sample["input"]}
                 start_time = time.time()
-                output = chain.invoke(input_data).content
+                prompt = apply_chat_template(messages=messages)
+                output = llm.invoke(messages).content
                 end_time = time.time()
                 latency = end_time - start_time
-                prompt = base_prompt.format(**input_data)
 
                 # score
                 y_pred: str = pipe(
@@ -156,7 +151,7 @@ def evaluate_n_shot(few_shots: bool):
                         **eval_matainfo,
                         "index": idx,
                         "input": sample["input"],
-                        'raw_output': output,
+                        "raw_output": output,
                         "output": y_pred,
                         "expected_output": y_true,
                         "prompt": prompt,
@@ -171,7 +166,11 @@ def evaluate_n_shot(few_shots: bool):
     dev_table = output_df.query("subset == 'dev'")
     test_table = output_df.query("subset == 'test'")
     leaderboard_table = pd.pivot_table(
-        data=test_table, values="score", index=['run_name', "model_name"], columns="task", aggfunc="mean"
+        data=test_table,
+        values="score",
+        index=["run_name", "model_name"],
+        columns="task",
+        aggfunc="mean",
     ).reset_index()
     wandb.log(
         {
@@ -180,6 +179,7 @@ def evaluate_n_shot(few_shots: bool):
             f"{dataset_name}_{num_few_shots}shot_leaderboard_table": leaderboard_table,
         }
     )
+
 
 def evaluate():
     evaluate_n_shot(few_shots=False)
