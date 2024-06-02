@@ -22,7 +22,7 @@ def start_vllm_server():
         tokenizer_config = download_tokenizer_config(repo_id=model_id)
         cfg.update({"tokenizer_config": tokenizer_config})
 
-        # set chat_template
+        # get chat_template_name
         chat_template_name = cfg.model.get('chat_template')
         if not isinstance(chat_template_name, str):
             raise ValueError("Chat template is not set in the config file")
@@ -39,7 +39,7 @@ def start_vllm_server():
             if chat_template is None:
                 raise ValueError(f"Chat template {chat_template_name} is not found")
 
-        # serve chat_template
+        # write chat_template
         cfg.tokenizer_config.update({"chat_template": chat_template})
 
         # サーバーを起動するためのコマンド
