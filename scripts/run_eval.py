@@ -1,9 +1,9 @@
 import wandb
 from wandb.sdk.wandb_run import Run
-import os
 import sys
+import os
+
 from omegaconf import DictConfig, OmegaConf
-sys.path.append('FastChat')
 from mtbench_eval import mtbench_evaluate
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
@@ -77,9 +77,8 @@ robustness.evaluate()
 
 mmlu.evaluate()
 
-
 # 2. mt-bench evaluation
-#mtbench_evaluate()
+mtbench_evaluate()
 
 # 3. bbq, jbbq
 #bbq_eval
