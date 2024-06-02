@@ -5,6 +5,7 @@ import os
 
 from omegaconf import DictConfig, OmegaConf
 from mtbench_eval import mtbench_evaluate
+from toxicity_eval import toxicity_evaluate
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
 
@@ -86,8 +87,8 @@ mtbench_evaluate()
 # 4. lctg-bench
 lctg.evaluate()
 
-# 5. ly-toxicity
-#ly_toxicity_evaluate()
+# 5. toxicity
+toxicity_evaluate()
 
 # Sample
 # sample_evaluate()
