@@ -13,7 +13,8 @@ from evaluator import (
     jmmlu,
     mmlu,
     controllability,
-    robustness
+    robustness,
+    lctg
 )
 
 # Configuration loading
@@ -74,7 +75,6 @@ controllability.evaluate()
 
 jmmlu.evaluate()
 robustness.evaluate()
-
 mmlu.evaluate()
 
 # 2. mt-bench evaluation
@@ -84,7 +84,7 @@ mtbench_evaluate()
 #bbq_eval
 
 # 4. lctg-bench
-#lctgbench_evaluate()
+lctg.evaluate()
 
 # 5. ly-toxicity
 #ly_toxicity_evaluate()
