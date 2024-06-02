@@ -1,22 +1,22 @@
 wandb:
   log: True
   entity: "wandb-japan"
-  project: "llm-leaderboard-test"
-  run_name: "cyberagent/calm2-7b-chat" # use run_name defined above
+  project: "llm-leaderboard3"
+  run_name: "gpt-4-1106-preview" # use run_name defined above
 
 github_version: v2.0.0 #for recording
 
-testmode: true
+testmode: false
 
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
-api: vllm
+api: openai
 
 model:
   use_wandb_artifacts: false
   artifacts_path: ""
-  pretrained_model_name_or_path: "cyberagent/calm2-7b-chat" #if you use openai api, put the name of model
-  chat_template: "cyberagent/calm2-7b-chat"
+  pretrained_model_name_or_path: "gpt-4-1106-preview" #if you use openai api, put the name of model
+  chat_template: ""
   dtype: 'float16'
   max_model_len: 4096
   trust_remote_code: true
@@ -89,8 +89,9 @@ mmlu:
   dataset_dir: "jaster/1.2.6/evaluation"
   language: en
 
-lctg-bench:
-  aaa: aaa
+lctg:
+  artifacts_path: "wandb-japan/llm-leaderboard3/lctg:v0"
+  dataset_dir: "lctg"
 
 bbq:
   aaa: aaa
