@@ -101,7 +101,7 @@ def evaluate_n_shot(few_shots: bool):
                 num_samples = val_max_num_samples
             samples = task_data["samples"][:num_samples]
 
-            # llm pipline
+            # set max_tokens
             llm.max_tokens = task_data["output_length"]
 
             for idx, sample in tqdm(enumerate(samples)):
