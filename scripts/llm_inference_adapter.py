@@ -1,6 +1,6 @@
 import os
 from config_singleton import WandbConfigSingleton
-from langchain_openai import ChatOpenAI
+from langchain_community.chat_models import ChatOpenAI
 from langchain_community.llms import VLLMOpenAI
 
 def get_llm_inference_engine():
