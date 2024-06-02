@@ -5,6 +5,9 @@ import time
 import requests
 import atexit
 
+from utils import download_tokenizer_config
+
+
 def start_vllm_server():
 
     instance = WandbConfigSingleton.get_instance()
@@ -12,7 +15,6 @@ def start_vllm_server():
     model_id = cfg.model.pretrained_model_name_or_path
     dtype = cfg.model.dtype
     max_model_len = cfg.model.max_model_len
-
 
     def run_vllm_server(model_id, dtype, max_model_len=2048):
         # サーバーを起動するためのコマンド
@@ -25,6 +27,19 @@ def start_vllm_server():
             "--disable-log-stats",
             "--disable-log-requests",
         ]
+
+        tokenizer_config = download_tokenizer_config(repo_id=model_id)
+        cfg.update({"tokenizer_config": tokenizer_config})
+
+        # chat template from hugging face
+        chat_template = cfg.tokenizer_config.get('chat_template')
+        print(chat_template)
+        exit()
+        if chat_template is not None:
+            chat_template_path = Path(f"chat_templates/{chat_template}.jinja")
+            if chat_template_path.exists():
+                command.extend(["--chat-template", chat_template_path.resolve()])
+
         chat_template = cfg.model.get('chat_template')
         if chat_template:
             chat_template_path = Path(f"chat_templates/{chat_template}.jinja")
@@ -34,13 +49,13 @@ def start_vllm_server():
                 raise FileNotFoundError(f"Chat template file {chat_template_path} not found")
         else:
             print("Chat template is not set in the config file. Using the default chat template.")
-        
+
         # subprocessでサーバーをバックグラウンドで実行
         process = subprocess.Popen(command)
-        
+
         # サーバーが起動するのを待つ
         time.sleep(10)
-        
+
         # サーバーのプロセスを返す
         return process
 
