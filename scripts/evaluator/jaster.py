@@ -110,7 +110,8 @@ def evaluate_n_shot(few_shots: bool):
 
                 # system message
                 system_message = get_system_message(
-                    language=language, instruction=task_data["instruction"]
+                    system_message_intro=cfg[dataset_name].system_message,
+                    instruction=task_data["instruction"],
                 )
                 messages.append({"role": "system", "content": system_message})
 

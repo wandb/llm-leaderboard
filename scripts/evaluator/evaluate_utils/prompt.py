@@ -5,25 +5,9 @@ from jinja2 import Template
 
 from config_singleton import WandbConfigSingleton
 
-
-def get_system_message_intro(language: str) -> str:
-    instance = WandbConfigSingleton.get_instance()
-    cfg = instance.config
-
-    custom_system_message = cfg.get(f"custom_system_message_{language}", None)
-    if custom_system_message is not None:
-        return custom_system_message
-    elif language == "ja":
-        return "以下は、タスクを説明する指示と、文脈のある入力の組み合わせです。要求を適切に満たす応答を書きなさい。"
-    elif language == "en":
-        return "Here is a combination of instructions explaining the task and inputs with context. Please write a response that adequately meets the request."
-    else:
-        raise ValueError(f"Invalid language: {language}")
-
-
-def get_system_message(language: str, instruction: str):
+def get_system_message(system_message_intro: str, instruction: str):
     system_message = ""
-    system_message += get_system_message_intro(language=language)
+    system_message += system_message_intro
     system_message += "\n"
     system_message += instruction
     return system_message
