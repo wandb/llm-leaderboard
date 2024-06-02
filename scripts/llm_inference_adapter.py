@@ -1,7 +1,6 @@
 import os
 from config_singleton import WandbConfigSingleton
 from langchain_community.chat_models import ChatOpenAI
-from utils import download_tokenizer_config
 
 
 def get_llm_inference_engine():
@@ -22,11 +21,6 @@ def get_llm_inference_engine():
             model_name=cfg.model.pretrained_model_name_or_path,
             **cfg.generator,
         )
-
-        tokenizer_config = download_tokenizer_config(
-            repo_id=cfg.model.pretrained_model_name_or_path
-        )
-        cfg.update({"tokenizer_config": tokenizer_config})
 
         return llm
 
