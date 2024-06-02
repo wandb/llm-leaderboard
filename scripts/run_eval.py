@@ -10,10 +10,10 @@ from llm_inference_adapter import get_llm_inference_engine
 
 from evaluator import (
     jaster,
-    # jmmlu,
-    # mmlu,
-    # controllability,
-    # robustness
+    jmmlu,
+    mmlu,
+    controllability,
+    robustness
 )
 
 # Configuration loading
@@ -70,12 +70,12 @@ instance.llm = llm
 # Evaluation phase
 # 1. llm-jp-eval evaluation (jmmlu含む)
 jaster.evaluate()
-# controllability.evaluate()
+controllability.evaluate()
 
-# jmmlu.evaluate()
-# robustness.evaluate()
+jmmlu.evaluate()
+robustness.evaluate()
 
-# mmlu.evaluate()
+mmlu.evaluate()
 
 
 # 2. mt-bench evaluation
