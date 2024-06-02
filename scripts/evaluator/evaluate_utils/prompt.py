@@ -1,8 +1,5 @@
 import json
-from pathlib import Path
-
 from jinja2 import Template
-
 from config_singleton import WandbConfigSingleton
 
 def get_system_message(system_message_intro: str, instruction: str):
@@ -36,7 +33,7 @@ def apply_chat_template(messages: list[dict[str, str]]) -> str:
 
     if cfg.api == "vllm":
         tokenizer_config = cfg.tokenizer_config
-        chat_template = cfg.tokenizer_config.chat_template
+        chat_template = Template(cfg.tokenizer_config.chat_template)
         conversation_prompt = chat_template.render(
             messages=messages, add_generation_prompt=True, **tokenizer_config
         )
