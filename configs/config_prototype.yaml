@@ -2,7 +2,7 @@ wandb:
   log: True
   entity: "wandb-japan"
   project: "llm-leaderboard-test"
-  run_name: "tokyotech-llm/Swallow-MS-7b-v0.1" # use run_name defined above
+  run_name: "cyberagent/calm2-7b-chat" # use run_name defined above
 
 github_version: v2.0.0 #for recording
 
@@ -15,10 +15,10 @@ api: vllm
 model:
   use_wandb_artifacts: false
   artifacts_path: ""
-  pretrained_model_name_or_path: "tokyotech-llm/Swallow-MS-7b-v0.1" #if you use openai api, put the name of model
-  chat_template: "Swallow-MS-7b-v0.1"
+  pretrained_model_name_or_path: "cyberagent/calm2-7b-chat" #if you use openai api, put the name of model
+  chat_template: "cyberagent/calm2-7b-chat"
   dtype: 'float16'
-  max_model_len: 8192
+  max_model_len: 4096
   trust_remote_code: true
   device_map: "auto"
   load_in_8bit: false
@@ -65,6 +65,9 @@ mtbench:
 
 custom_prompt_template_ja: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。\n\n ### 指示:\n{instruction}\n\n### 入力:\n{input}\n\n### 応答:"
 custom_prompt_template_en": The following text provides instructions for a certain task, along with accompanying input that offers further context. Please describe the appropriate response to complete the request.\n\n ### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:"
+
+custom_system_message_ja: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。
+custom_system_message_en": The following text provides instructions for a certain task, along with accompanying input that offers further context. Please describe the appropriate response to complete the request.
 
 num_few_shots: 4
 
