@@ -98,4 +98,9 @@ sample_dataset:
 
 #jbbq:
 
-#ly_toxicity:
+toxicity:
+  artifact_path: 'wandb-japan/toxicity-dataset-private/toxicity_dataset_subset:v1'
+  judge_prompts_path: 'wandb-japan/toxicity-dataset-private/toxicity_judge_prompts:v1'
+  max_workers: 5
+  judge_model: 'gpt-4o-2024-05-13'
+  visualize_ids: '[0, 1]'
