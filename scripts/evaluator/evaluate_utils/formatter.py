@@ -1,3 +1,4 @@
+import copy
 import unicodedata
 
 
@@ -19,35 +20,42 @@ def text_formatter(input_str: str, dataset: str) -> str:
     ]:
         output_str = input_str.strip()
     elif dataset in ["jemhopqa", "jsquad", "niilc"]:
-        output_str = input_str.copy()
+        output_str = copy.copy(input_str)
         replacements = ["応答:", "回答:", "答え:"]
         for r in replacements:
             output_str = output_str.replace(r, "")
         output_str = output_str.strip().lower()
+
     elif dataset.startswith("jmmlu_IncorrectChoice"):
-        output_str = input_str.copy()
+        output_str = copy.copy(input_str)
         replacements = ["応答:", "回答:", "答え:"]
         for r in replacements:
             output_str = output_str.replace(r, "")
         output_str = output_str.strip().upper()
+
     elif dataset.startswith("jmmlu_"):
-        output_str = input_str.copy()
+        output_str = copy.copy(input_str)
         replacements = ["応答:", "回答:", "答え:"]
         for r in replacements:
             output_str = output_str.replace(r, "")
         output_str = output_str.strip().upper()
+
     elif dataset.startswith("mmlu_en_"):
-        output_str = input_str.copy()
+        output_str = copy.copy(input_str)
         replacements = ["ANSWER:", "RESPONSE:"]
         for r in replacements:
             output_str = output_str.replace(r, "")
         output_str = output_str.strip().upper()
+
     elif dataset in ["mawps", "chabsa"]:
         output_str = input_str.strip()
+
     # elif dataset in ["your_dataset_name_here"]:
     #     output_str = input_str
+
     else:
         output_str = input_str
+
     return output_str
 
 
