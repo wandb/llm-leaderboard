@@ -35,13 +35,8 @@ def apply_chat_template(messages: list[dict[str, str]]) -> str:
     cfg = instance.config
 
     if cfg.api == "vllm":
-        chat_template_path = Path(f"chat_templates/{cfg.model.chat_template}.jinja")
-        if not chat_template_path.exists():
-            raise ValueError(f"Chat template {chat_template_path} not found")
-        else:
-            with chat_template_path.open(encoding="utf-8") as f:
-                chat_template = Template(f.read())
         tokenizer_config = cfg.tokenizer_config
+        chat_template = cfg.tokenizer_config.chat_template
         conversation_prompt = chat_template.render(
             messages=messages, add_generation_prompt=True, **tokenizer_config
         )
