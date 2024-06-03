@@ -90,7 +90,9 @@ def get_tokenizer_config(model_id=None, chat_template_name=None) -> dict[str, An
             chat_template = f.read()
     # chat_template from hf
     else:
-        chat_template = hf_download(repo_id=chat_template_name).get("chat_template")
+        chat_template = hf_download(
+            repo_id=chat_template_name, filename="tokenizer_config.json"
+        ).get("chat_template")
         if chat_template is None:
             raise ValueError(f"Chat template {chat_template_name} is not found")
 
