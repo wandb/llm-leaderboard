@@ -6,7 +6,7 @@ import requests
 import atexit
 import tempfile
 
-from utils import download_tokenizer_config
+from utils import get_tokenizer_config
 
 
 def start_vllm_server():
@@ -19,28 +19,9 @@ def start_vllm_server():
 
     def run_vllm_server(model_id, dtype, max_model_len=2048):
         # set tokenizer_config
-        tokenizer_config = download_tokenizer_config(repo_id=model_id)
+        tokenizer_config = get_tokenizer_config()
         cfg.update({"tokenizer_config": tokenizer_config})
-
-        # get chat_template_name
-        chat_template_name = cfg.model.get('chat_template')
-        if not isinstance(chat_template_name, str):
-            raise ValueError("Chat template is not set in the config file")
-
-        # chat_template from local
-        local_chat_template_path = Path(f"chat_templates/{chat_template_name}.jinja")
-        if local_chat_template_path.exists():
-            with local_chat_template_path.open(encoding="utf-8") as f:
-                chat_template = f.read()
-
-        # chat_template from hf
-        else:
-            chat_template = download_tokenizer_config(repo_id=chat_template_name).get("chat_template")
-            if chat_template is None:
-                raise ValueError(f"Chat template {chat_template_name} is not found")
-
-        # write chat_template
-        cfg.tokenizer_config.update({"chat_template": chat_template})
+        chat_template = cfg.tokenizer_config.get("chat_template")
 
         # サーバーを起動するためのコマンド
         command = [
