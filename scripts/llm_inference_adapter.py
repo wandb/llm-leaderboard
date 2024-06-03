@@ -1,7 +1,16 @@
 import os
 from config_singleton import WandbConfigSingleton
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI, AzureChatOpenAI
+from langchain_mistralai.chat_models import ChatMistralAI
+from langchain_google_genai import ChatGoogleGenerativeAI
+import google.generativeai as genai
+from langchain_aws import ChatBedrock
+from langchain_anthropic import ChatAnthropic
 
+# from langchain_community.llms import Cohere
+# from langchain.llms import VLLMOpenAI, Cohere
+# from langchain_cohere import Cohere
+# from langchain_community.chat_models import ChatOpenAI, AzureChatOpenAI
 
 def get_llm_inference_engine():
     instance = WandbConfigSingleton.get_instance()
@@ -11,7 +20,6 @@ def get_llm_inference_engine():
     if api_type == "vllm":
         # vLLMサーバーを起動
         from vllm_server import start_vllm_server
-
         start_vllm_server()
 
         # LangChainのVLLMインテグレーションを使用
@@ -22,8 +30,6 @@ def get_llm_inference_engine():
             **cfg.generator,
         )
 
-        return llm
-
     elif api_type == "openai":
         # LangChainのOpenAIインテグレーションを使用
         llm = ChatOpenAI(
@@ -31,32 +37,68 @@ def get_llm_inference_engine():
             model=cfg.model.pretrained_model_name_or_path,
             **cfg.generator,
         )
-        return llm
 
-    elif api_type == "azure-openai":
-        # Azure OpenAI APIの設定
-        # ここにAnthropic APIの初期化コードを追加
-        pass
-
-    elif api_type == "anthropic":
-        # Anthropic APIの設定
-        # ここにAnthropic APIの初期化コードを追加
-        pass
+    elif api_type == "mistral":
+        # LangChainのMistralAIインテグレーションを使用
+        llm = ChatMistralAI(
+            model=cfg.model.pretrained_model_name_or_path, 
+            anthropic_api_key=os.environ["MISTRAL_API_KEY"],
+            **cfg.generator,
+        )
 
     elif api_type == "google":
-        # Google APIの設定
-        # ここにGoogle APIの初期化コードを追加
-        pass
-
-    elif api_type == "cohere":
-        # Cohere APIの設定
-        # ここにCohere APIの初期化コードを追加
-        pass
+        # LangChainのGoogleGenerativeAIインテグレーションを使用
+        llm = ChatGoogleGenerativeAI(
+            model=cfg.model.pretrained_model_name_or_path,
+            api_key=os.environ["GOOGLE_API_KEY"],
+            **cfg.generator,
+            max_output_tokens = cfg.generator.get("max_tokens"),
+        )
+        # safety_settings_NONE = [
+        #     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        #     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        #     {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        #     {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+        # ]
+        # llm.client = genai.GenerativeModel(
+        #     model_name=cfg.model.pretrained_model_name_or_path, 
+        #     safety_settings=safety_settings_NONE
+        # )
 
     elif api_type == "bedrock":
-        # AWS APIの設定
-        # ここにAmazon Bedrock APIの初期化コードを追加
-        pass
+        # LangChainのBedrockインテグレーションを使用
+        llm = ChatBedrock(
+            region_name=os.environ["AWS_DEFAULT_REGION"],
+            model_id=cfg.model.pretrained_model_name_or_path,
+            model_kwargs=cfg.generator,
+        )
+
+    elif api_type == "anthropic":
+        # LangChainのAnthropicインテグレーションを使用
+        llm = ChatAnthropic(
+            model=cfg.model.pretrained_model_name_or_path, 
+            anthropic_api_key=os.environ["ANTHROPIC_API_KEY"],
+            **cfg.generator,
+        )
+
+    # elif api_type == "azure-openai":
+    #     llm = AzureChatOpenAI(
+    #         api_key=os.environ["OPENAI_API_KEY"],
+    #         # api_base=os.environ["OPENAI_API_BASE"],
+    #         # api_version=os.environ["OPENAI_API_VERSION"]
+    #         api_version="2024-05-01-preview",
+    #         model=cfg.model.pretrained_model_name_or_path,
+    #         **cfg.generator,
+    #     )
+
+    # elif api_type == "cohere":
+    #     llm = Cohere(
+    #         model=cfg.model.pretrained_model_name_or_path,
+    #         cohere_api_key=os.environ["COHERE_API_KEY"],
+    #         **cfg.generator,
+    #     )
 
     else:
         raise ValueError(f"Unsupported API type: {api_type}")
+    
+    return llm
