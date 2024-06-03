@@ -95,14 +95,6 @@ def evaluate_n_shot(few_shots: bool):
                     num_samples = val_max_num_samples
                 samples = task_data["samples"][:num_samples]
 
-                # set max_tokens
-                if api_type == "google":
-                    llm.max_output_tokens = task_data["output_length"]
-                elif api_type == "bedrock":
-                    pass
-                else:
-                    llm.max_tokens = task_data["output_length"]
-
                 for idx, sample in tqdm(enumerate(samples)):
                     # compose messages
                     messages = []
@@ -128,10 +120,7 @@ def evaluate_n_shot(few_shots: bool):
                     # generate output
                     start_time = time.time()
                     prompt = apply_chat_template(messages=messages)
-                    if api_type == "bedrock":
-                        output = llm.invoke(messages, max_tokens=task_data["output_length"]).content
-                    else:
-                        output = llm.invoke(messages).content
+                    output = llm.invoke(messages, max_tokens=task_data["output_length"]).content
                     end_time = time.time()
                     latency = end_time - start_time
 
