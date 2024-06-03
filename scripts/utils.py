@@ -1,13 +1,15 @@
+import os
 import gc
 import json
-import torch
-
-import wandb
-import pandas as pd
+from typing import Any
 
 from huggingface_hub import HfApi
+import pandas as pd
 from pathlib import Path
-import os
+import torch
+import wandb
+
+from config_singleton import WandbConfigSingleton
 
 
 def cleanup_gpu():
@@ -45,18 +47,54 @@ def read_wandb_table(
         tjs = json.load(f)
     output_table = wandb.Table.from_json(json_obj=tjs, source_artifact=artifact)
     output_df = pd.DataFrame(data=output_table.data, columns=output_table.columns)
+
     return output_df
 
-def download_tokenizer_config(repo_id: str):
+
+def hf_download(repo_id: str, filename: str):
     api = HfApi()
     file_path = api.hf_hub_download(
         repo_id=repo_id,
-        filename="tokenizer_config.json",
+        filename=filename,
         revision="main",
         use_auth_token=os.getenv("HUGGING_TOKEN"),
     )
 
     with Path(file_path).open("r") as f:
         tokenizer_config = json.load(f)
-    
+
+    return tokenizer_config
+
+
+def get_tokenizer_config(model_id=None, chat_template_name=None) -> dict[str, Any]:
+    if model_id is None and chat_template_name is None:
+        instance = WandbConfigSingleton.get_instance()
+        cfg = instance.config
+        model_id = cfg.model.pretrained_model_name_or_path
+        chat_template_name = cfg.model.get("chat_template")
+
+    # get tokenizer_config
+    tokenizer_config = hf_download(
+        repo_id=model_id,
+        filename="tokenizer_config.json",
+    )
+
+    # get chat_template_name
+    if not isinstance(chat_template_name, str):
+        raise ValueError("Chat template is not set in the config file")
+
+    # chat_template from local
+    local_chat_template_path = Path(f"chat_templates/{chat_template_name}.jinja")
+    if local_chat_template_path.exists():
+        with local_chat_template_path.open(encoding="utf-8") as f:
+            chat_template = f.read()
+    # chat_template from hf
+    else:
+        chat_template = hf_download(repo_id=chat_template_name).get("chat_template")
+        if chat_template is None:
+            raise ValueError(f"Chat template {chat_template_name} is not found")
+
+    # add chat_template to tokenizer_config
+    tokenizer_config.update({"chat_template": chat_template})
+
     return tokenizer_config
