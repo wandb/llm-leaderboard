@@ -24,6 +24,7 @@ def evaluate_n_shot(few_shots: bool):
     run = instance.run
     cfg = instance.config
     llm = instance.llm
+    api_type = cfg.api
 
     # download dataset
     dataset_name = "jaster"
@@ -102,7 +103,12 @@ def evaluate_n_shot(few_shots: bool):
             samples = task_data["samples"][:num_samples]
 
             # set max_tokens
-            llm.max_tokens = task_data["output_length"]
+            if api_type == "google":
+                llm.max_output_tokens = task_data["output_length"]
+            elif api_type == "bedrock":
+                pass
+            else:
+                llm.max_tokens = task_data["output_length"]
 
             for idx, sample in tqdm(enumerate(samples)):
                 # compose messages
@@ -129,7 +135,10 @@ def evaluate_n_shot(few_shots: bool):
                 # generate output
                 start_time = time.time()
                 prompt = apply_chat_template(messages=messages)
-                output = llm.invoke(messages).content
+                if api_type == "bedrock":
+                    output = llm.invoke(messages, max_tokens=task_data["output_length"]).content
+                else:
+                    output = llm.invoke(messages).content
                 end_time = time.time()
                 latency = end_time - start_time
 
