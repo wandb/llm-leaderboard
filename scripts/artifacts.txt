@@ -1,0 +1,4 @@
+wandb-japan/llm-leaderboard/jaster:v11
+wandb-japan/llm-leaderboard/mtbench_ja_question:v3
+wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1
+wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v1
