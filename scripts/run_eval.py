@@ -9,6 +9,7 @@ from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
 
 from evaluator import (
+    bbq,
     jaster,
     jmmlu,
     mmlu,
@@ -69,7 +70,7 @@ instance.llm = llm
 
 # Evaluation phase
 # 1. llm-jp-eval evaluation (jmmlu含む)
-jaster.evaluate()
+# jaster.evaluate()
 
 #controllability.evaluate()
 
@@ -81,10 +82,10 @@ jaster.evaluate()
 
 
 # 2. mt-bench evaluation
-mtbench_evaluate()
+# mtbench_evaluate()
 
 # 3. bbq, jbbq
-#bbq_eval
+bbq.evaluate()
 
 # 4. lctg-bench
 #lctgbench_evaluate()
