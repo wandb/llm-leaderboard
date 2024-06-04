@@ -2,6 +2,7 @@ import os
 from config_singleton import WandbConfigSingleton
 from langchain_community.chat_models import ChatOpenAI
 
+
 def get_llm_inference_engine():
     instance = WandbConfigSingleton.get_instance()
     cfg = instance.config
@@ -10,6 +11,7 @@ def get_llm_inference_engine():
     if api_type == "vllm":
         # vLLMサーバーを起動
         from vllm_server import start_vllm_server
+
         start_vllm_server()
 
         # LangChainのVLLMインテグレーションを使用
@@ -19,10 +21,6 @@ def get_llm_inference_engine():
             model_name=cfg.model.pretrained_model_name_or_path,
             **cfg.generator,
         )
-
-        from transformers import AutoTokenizer
-        tokenizer = AutoTokenizer.from_pretrained(cfg.model.pretrained_model_name_or_path)
-        cfg.update({"special_tokens_map": tokenizer.special_tokens_map})
 
         return llm
 
