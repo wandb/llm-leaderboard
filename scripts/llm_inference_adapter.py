@@ -39,7 +39,7 @@ def get_llm_inference_engine():
         # LangChainのMistralAIインテグレーションを使用
         llm = ChatMistralAI(
             model=cfg.model.pretrained_model_name_or_path, 
-            anthropic_api_key=os.environ["MISTRAL_API_KEY"],
+            api_key=os.environ["MISTRAL_API_KEY"],
             **cfg.generator,
         )
 
@@ -74,7 +74,7 @@ def get_llm_inference_engine():
         # LangChainのAnthropicインテグレーションを使用
         llm = ChatAnthropic(
             model=cfg.model.pretrained_model_name_or_path, 
-            anthropic_api_key=os.environ["ANTHROPIC_API_KEY"],
+            api_key=os.environ["ANTHROPIC_API_KEY"],
             **cfg.generator,
         )
 
