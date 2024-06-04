@@ -2,17 +2,16 @@ import json
 import time
 from pathlib import Path
 
-import wandb
-# from langchain.prompts import BasePromptTemplate
-from tqdm import tqdm
 import pandas as pd
 from toolz import pipe
+from tqdm import tqdm
+import wandb
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import (
     apply_chat_template,
     get_few_shot_messages,
-    get_system_message_intro,
+    get_system_message,
     jaster_metrics_dict,
     normalize,
     text_formatter,
@@ -78,11 +77,7 @@ def evaluate_n_shot(few_shots: bool):
             }
 
             # read task data
-            task_data_path = (
-                dataset_dir
-                / subset
-                / f"{task}.json"
-            )
+            task_data_path = dataset_dir / subset / f"{task}.json"
             if not task_data_path.exists():
                 print(f"skip {task} because it is not found in {artifact_dir}")
                 continue
@@ -106,7 +101,7 @@ def evaluate_n_shot(few_shots: bool):
                 num_samples = val_max_num_samples
             samples = task_data["samples"][:num_samples]
 
-            # llm pipline
+            # set max_tokens
             llm.max_tokens = task_data["output_length"]
 
             for idx, sample in tqdm(enumerate(samples)):
@@ -114,8 +109,11 @@ def evaluate_n_shot(few_shots: bool):
                 messages = []
 
                 # system message
-                system_message_intro = get_system_message_intro(language=language)
-                messages.append({"role": "system", "content": system_message_intro + task_data["instruction"]})
+                system_message = get_system_message(
+                    system_message_intro=cfg[dataset_name].system_message,
+                    instruction=task_data["instruction"],
+                )
+                messages.append({"role": "system", "content": system_message})
 
                 # add fewshots samples
                 if few_shots:
@@ -124,7 +122,7 @@ def evaluate_n_shot(few_shots: bool):
                         num_few_shots=num_few_shots,
                     )
                     messages.extend(few_shot_messages)
-                
+
                 # user input
                 messages.append({"role": "user", "content": sample["input"]})
 
@@ -153,7 +151,7 @@ def evaluate_n_shot(few_shots: bool):
                         **eval_matainfo,
                         "index": idx,
                         "input": sample["input"],
-                        'raw_output': output,
+                        "raw_output": output,
                         "output": y_pred,
                         "expected_output": y_true,
                         "prompt": prompt,
@@ -168,7 +166,11 @@ def evaluate_n_shot(few_shots: bool):
     dev_table = output_df.query("subset == 'dev'")
     test_table = output_df.query("subset == 'test'")
     leaderboard_table = pd.pivot_table(
-        data=test_table, values="score", index=['run_name', "model_name"], columns="task", aggfunc="mean"
+        data=test_table,
+        values="score",
+        index=["run_name", "model_name"],
+        columns="task",
+        aggfunc="mean",
     ).reset_index()
     wandb.log(
         {
@@ -177,6 +179,7 @@ def evaluate_n_shot(few_shots: bool):
             f"{dataset_name}_{num_few_shots}shot_leaderboard_table": leaderboard_table,
         }
     )
+
 
 def evaluate():
     evaluate_n_shot(few_shots=False)
