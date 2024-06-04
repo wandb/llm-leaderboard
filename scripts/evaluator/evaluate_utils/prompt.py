@@ -1,15 +1,13 @@
 import json
-
 from pathlib import Path
 from typing import Optional
+from collections import defaultdict
 
 from langchain.prompts import BasePromptTemplate, PromptTemplate
 from dataclasses import dataclass
-from config_singleton import WandbConfigSingleton
 from jinja2 import Template
 
 from config_singleton import WandbConfigSingleton
-
 
 @dataclass(frozen=True)
 class Sample:
@@ -65,6 +63,35 @@ def get_few_shot_samples(target_dataset_path: Path, num_few_shots: int) -> list[
     ), f"Wrong number of few shots {num_few_shots}, we only have {len(samples)} few shots"
     return samples[:num_few_shots]
 
+# bbqデータセットはカテゴリごとにfew-shotを構築するため、専用のカテゴリごとのfew-shotを取得する関数を追加
+def get_few_shot_samples_by_bbq_category(target_dataset_path: Path, num_few_shots: int, sample_class=None) -> dict[str, list]:
+    if num_few_shots == 0:
+        return defaultdict(list)
+    
+    if sample_class is None:
+        from evaluator.bbq import BBQSample
+        sample_class = BBQSample
+    
+    dataset_json_name = target_dataset_path.name
+    target_few_shot_path = target_dataset_path.resolve().parent.parent / "train" / dataset_json_name
+
+    assert target_few_shot_path.exists(), f"Wrong path {target_few_shot_path.resolve()}, can not extract few-shot samples"
+
+    samples_data = json.loads(target_few_shot_path.read_text(encoding="utf-8"))["samples"]
+
+    category_samples = defaultdict(list)
+    for data in samples_data:
+        sample = sample_class(**data)
+        category_samples[sample.category].append(sample)
+    
+    few_shot_samples = defaultdict(list)
+    for category, samples in category_samples.items():
+        selected_samples = samples[:num_few_shots]
+        few_shot_samples[category].extend(selected_samples)
+    
+    return few_shot_samples
+
+
 
 def replace_braces(text):
     return text.replace("{", "{{").replace("}", "}}")
@@ -106,16 +133,16 @@ def get_evaluation_prompt(
     if language == "ja":
         input_heading = "入力"
         response_heading = "応答"
-        system_message_intro = f"以下は、タスクを説明する指示と、文脈のある入力の組み合わせです。要求を適切に満たす応答を書きなさい。\n\n### 指示:\n{instruction}"
-        few_shots_template = "\n\n### 入力:\n{input}\n\n### 応答:\n"
+        system_message_intro = f"{instruction}" # alpaca formatだとprefixに"### Instruction"が入るのでそれに対応した形に変更
+        few_shots_template = "\n\n### 入力:\n{input}\n" # alpaca formatだとsuffixに"### Response"が入るのでそれに対応した形に変更
     elif language == "en":
         input_heading = "Input"
         response_heading = "Response"
-        system_message_intro = f"Here is a combination of instructions explaining the task and inputs with context. Please write a response that adequately meets the request.\n\n### Instruction:\n{instruction}"
-        few_shots_template = "\n\n### Input:\n{input}\n\n### Response:\n"
+        system_message_intro = f"{instruction}"
+        few_shots_template = "\n\n### Input:\n{input}\n"
     else:
         raise ValueError(f"Invalid language: {language}")
-
+    
     if custom_prompt_template is not None:
         if len(few_shots) == 0:
             system_message: str = custom_prompt_template.format(
@@ -138,6 +165,8 @@ def get_evaluation_prompt(
         for few_shot in few_shots:
             system_message += f"\n\n### {input_heading}:\n{replace_braces(few_shot.input)}\n\n### {response_heading}:\n{few_shot.output}"
         system_message += few_shots_template
+
     messages = [{"role": "user", "content": system_message}]
     conversation_prompt = apply_chat_template(messages)
+
     return PromptTemplate(input_variables=["input"], template=conversation_prompt)
