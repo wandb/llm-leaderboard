@@ -94,3 +94,9 @@ mtbench:
   conv_stop_str: "###"
   conv_role_message_separator: ": \n"
   conv_role_only_separator: ": \n"
+
+# for bbq
+bbq:
+  artifacts_path: "ryo12271443/nejumi-bbq-test/bbq:v1"
+  dataset_dir: "bbq"
+  language: "en"
