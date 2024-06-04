@@ -5,6 +5,7 @@ import os
 
 from omegaconf import DictConfig, OmegaConf
 from mtbench_eval import mtbench_evaluate
+from toxicity_eval import toxicity_evaluate
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
 
@@ -14,7 +15,8 @@ from evaluator import (
     jmmlu,
     mmlu,
     controllability,
-    robustness
+    robustness,
+    lctg
 )
 
 # Configuration loading
@@ -71,15 +73,11 @@ instance.llm = llm
 # Evaluation phase
 # 1. llm-jp-eval evaluation (jmmlu含む)
 # jaster.evaluate()
+# controllability.evaluate()
 
-#controllability.evaluate()
-
-#jmmlu.evaluate()
-#robustness.evaluate()
-
-#mmlu.evaluate()
-
-
+# jmmlu.evaluate()
+# robustness.evaluate()
+# mmlu.evaluate()
 
 # 2. mt-bench evaluation
 # mtbench_evaluate()
@@ -88,10 +86,10 @@ instance.llm = llm
 bbq.evaluate()
 
 # 4. lctg-bench
-#lctgbench_evaluate()
+# lctg.evaluate()
 
-# 5. ly-toxicity
-#ly_toxicity_evaluate()
+# 5. toxicity
+# toxicity_evaluate()
 
 # Sample
 # sample_evaluate()
