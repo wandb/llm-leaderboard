@@ -195,3 +195,5 @@ zipp==3.18.2
 toolz
 wheel
 langchain_community
+questionary
+
