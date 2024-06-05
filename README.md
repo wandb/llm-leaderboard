@@ -87,7 +87,7 @@ for mtbench
   - `question_artifacts_path`: URL of wandb Artifacts of evaluation dataset. Choose the version from the Data Preparation section
   - `referenceanswer_artifacts_path`: URL of wandb Artifacts of reference answer. Choose the version from the Data Preparation section
   - `judge_prompt_artifacts_path`: URL of wandb Artifacts of judge prompt. Choose the version from the Data Preparation section
-  - `bench_name`: If you evaluate japanese dataset, set 'japanese_mt_benct'. If you evaluate English dataset, set 'mt_benct'.
+  - `bench_name`: If you evaluate Japanese dataset, set 'japanese_mt_bench'. If you evaluate English dataset, set 'mt_bench'.
   - `model_id`: Name of model
   - `max_new_token`: The maximum length of the input. The default is 1024.
   - `num_gpus_per_model`: Number of GPUs per model. If you use multiple gpu, change here. The default is 1.
