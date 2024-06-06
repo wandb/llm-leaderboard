@@ -70,7 +70,7 @@ general
   - `run_name`: Name of the W&B run. If you set "model name" as run name, you can see easily find run on Wandb dashboard.
 - `github_version`: For recording. Not need to be changed
 - `testmode`: The default is false. If set to true, it allows for a lightweight implementation where only 1 or 2 questions are extracted from each category. Please set it to true when you want to perform a functionality check
-- `api`:  If you don't use api, please set "api" as "false". If you use api, please select from "openai", "anthoropic", "google", "cohere"
+- `api`:  If you don't use api, please set "api" as "false". If you use api, please select from "openai", "anthropic", "google", "cohere"
 - model: Information of model
   - `_target_`: transformers.AutoModelForCausalLM.from_pretrained
   -`pretrained_model_name_or_path`: Name of your model. if you use openai api, put the name of model
