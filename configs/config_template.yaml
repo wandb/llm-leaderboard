@@ -97,6 +97,6 @@ mtbench:
 
 # for bbq
 bbq:
-  artifacts_path: "ryo12271443/nejumi-bbq-test/bbq:v1"
-  dataset_dir: "bbq"
-  language: "en"
+  artifacts_path: 
+  dataset_dir: 
+  language: 
