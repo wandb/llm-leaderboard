@@ -123,7 +123,7 @@ def make_match_single(
             m = models[i]
             a = model_answers[m][q_id]
             if ref_answers is not None:
-                ref = ref_answers[judge.model_name][q_id]
+                ref = ref_answers[list(ref_answers.keys())[0]][q_id]
                 matches.append(
                     MatchSingle(
                         dict(q), m, a, judge, ref_answer=ref, multi_turn=multi_turn
@@ -152,10 +152,10 @@ def make_judge_pairwise(judge_model, judge_prompts):
 
 def make_judge_single(judge_model, judge_prompts):
     judges = {}
-    judges["default"] = Judge(judge_model, judge_prompts["single-v1"])
+    judges["default"] = Judge(judge_model, judge_prompts["single-v1"], ref_based=True)
     judges["math"] = Judge(judge_model, judge_prompts["single-math-v1"], ref_based=True)
     judges["default-mt"] = Judge(
-        judge_model, judge_prompts["single-v1-multi-turn"], multi_turn=True
+        judge_model, judge_prompts["single-v1-multi-turn"], multi_turn=True, ref_based=True
     )
     judges["math-mt"] = Judge(
         judge_model,
