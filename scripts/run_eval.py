@@ -44,7 +44,7 @@ assert custom_cfg_path.exists(), f"Config file {custom_cfg_path.resolve()} does 
 # Configuration loading
 custom_cfg = OmegaConf.load(custom_cfg_path)
 default_cfg_path = config_dir / default_cfg_name
-if custom_cfg_path.stem() != default_cfg_path.stem():
+if custom_cfg_path.stem != default_cfg_path.stem:
     default_cfg = OmegaConf.load(default_cfg_path)
     custom_cfg = OmegaConf.merge(default_cfg, custom_cfg)
 cfg_dict = OmegaConf.to_container(custom_cfg, resolve=True)
