@@ -96,7 +96,7 @@ mtbench:
   conv_role_only_separator: ": \n"
 
 # for bbq
-bbq:
-  artifacts_path: 
-  dataset_dir: 
-  language: 
+jbbq:
+  artifacts_path: ryo12271443/nejumi-bbq-test/jbbq:v2 # tmp
+  dataset_dir: jbbq
+  language: ja
