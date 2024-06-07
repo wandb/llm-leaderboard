@@ -12,6 +12,7 @@ from llm_inference_adapter import get_llm_inference_engine
 from evaluator import (
     bbq,
     jaster,
+    jbbq,
     jmmlu,
     mmlu,
     controllability,
@@ -83,7 +84,8 @@ instance.llm = llm
 # mtbench_evaluate()
 
 # 3. bbq, jbbq
-bbq.evaluate()
+# bbq.evaluate()
+jbbq.evaluate()
 
 # 4. lctg-bench
 # lctg.evaluate()
