@@ -97,6 +97,6 @@ mtbench:
 
 # for bbq
 jbbq:
-  artifacts_path: ryo12271443/nejumi-bbq-test/jbbq:v2 # tmp
+  artifacts_path: 
   dataset_dir: jbbq
   language: ja
