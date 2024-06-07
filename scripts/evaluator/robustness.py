@@ -1,3 +1,5 @@
+import time
+
 import wandb
 import pandas as pd
 
@@ -104,5 +106,6 @@ def evaluate_n_shot(few_shots: bool):
 
 
 def evaluate():
+    time.sleep(30)  # wait for upload dataset
     # evaluate_n_shot(few_shots=False)
     evaluate_n_shot(few_shots=True)
