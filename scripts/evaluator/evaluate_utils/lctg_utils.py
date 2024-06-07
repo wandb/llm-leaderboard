@@ -104,19 +104,27 @@ def quality_process_results(df,task):
     for ctg_col in ctg_cols:
         ctg = ctg_col.replace("_result", "")
         check_result_list = list()
+        #check_result_list_reason = list()
         for base_text, generated_text in tqdm(zip(df["base_text"].tolist(), df[ctg_col].tolist()), total=len(df)):
             cr = check_generated_result(task, generated_text, base_text)
             if (cr == "適切") or (cr == "不適切"):
-                label_map = {"適切": True, "不適切": False}
+                label_map = {"適切": 1, "不適切": 0}
                 check_result_list.append(label_map[cr])
             else:
                 cr = check_generated_result(task, generated_text, base_text, is_bool=True)
                 if cr == "True" or cr == "False":
-                    label_map = {"True": True, "False": False}
+                    label_map = {"True": 1, "False": 0}
                     check_result_list.append(label_map[cr])
                 else:
                     check_result_list.append(cr)
+            #if (cr == "不適切") or (cr == "False"):
+            #    check_result_list_reason.append(check_generated_result_reason(task, generated_text, base_text))
+            #else:
+            #    check_result_list_reason.append("不適切となった場合にのみ理由を提示します")
+            
+            
         result_dict[f"{ctg}"] = check_result_list
+        #result_dict[f"{ctg}_reason"] = check_result_list_reason
     return pd.DataFrame(result_dict)
 
 def check_generated_result(task: str, generated_result: str, base_text: str = None, is_bool: bool = False):
@@ -143,13 +151,32 @@ def check_generated_result(task: str, generated_result: str, base_text: str = No
     result = _delete_blank(result)
     return result
 
+def check_generated_result_reason(task: str, generated_result: str, base_text: str = None):
+    user_content = get_quality_reason_check_prompt(task, generated_result, base_text)
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    completion = client.chat.completions.create(
+        model="gpt-4o-2024-05-13",
+        messages=[
+            {
+                "role": "system",
+                "content": "あなたは指示に忠実に従うAIアシスタントです。ユーザーの指示に従って下さい。"
+            },
+            {
+                "role": "user",
+                "content": user_content
+            }
+        ]
+    )
+    result = completion.choices[0].message.content
+    result = _delete_blank(result)
+    return result
 
 def check_label(cr):
     label_map = {"適切": True, "不適切": False, "True": True, "False": False}
     return label_map.get(cr, cr)
 
 def calculate_true_proportions(df):
-    return [df['format_wo_hf'].mean(),df['char_count_wo_hf'].mean(),df['keyword_wo_hf'].mean(),df['prohibited_word_wo_hf'].mean()]
+    return [df['format_wo_hf'].sum()/len(df),df['char_count_wo_hf'].sum()/len(df),df['keyword_wo_hf'].sum()/len(df),df['prohibited_word_wo_hf'].sum()/len(df)]
 
 ###########################################################
 # Get scores
@@ -165,6 +192,7 @@ def transform_data(output_df, merged_df, task):
     ]
     ctgs = ['is_valid_format', 'is_valid_char_count', 'is_valid_keyword', 'is_valid_prohibited_word']
     quals = ['format_wo_hf', 'char_count_wo_hf', 'keyword_wo_hf', 'prohibited_word_wo_hf']
+    #reasons = ['format_wo_hf_reason', 'char_count_wo_hf_reason', 'keyword_wo_hf_reason', 'prohibited_word_wo_hf_reason']
     new_rows = []
     for _, row in merged_df.iterrows():
         for i, cat in enumerate(categories):
@@ -178,7 +206,8 @@ def transform_data(output_df, merged_df, task):
                 'output': row[outputs[i]],
                 'preprocessed_output': row[preprocessed_outputs[i]],
                 'ctg': row[ctgs[i]],
-                'qual': row[quals[i]]
+                'qual': row[quals[i]],
+                #'reason': row[reasons[i]]
             }
             # Append row data for the current category
             new_rows.append(row_data)
@@ -245,7 +274,6 @@ def get_quality_check_prompt(task: str, generated_result: str, base_text: str = 
 
 
 def get_quality_check_prompt_bool(task: str, generated_result: str, base_text: str = "") -> str:
-    quality_check_prompt = ""
     if task == "summary":
         quality_check_prompt = f"""以下に要約した文章とその要約元の文章が提示されています。
 要約した文章は要約元の文章を適切に要約できているかを判断してください。
@@ -285,7 +313,6 @@ def get_quality_check_prompt_bool(task: str, generated_result: str, base_text: s
 
 
 def get_header_footer_remover_prompt(task: str, generated_result: str) -> str:
-    remove_prompt = ""
     if task == "summary":
         remove_prompt = f"""以下に提示している文章は、ある文章を生成AIを用いて要約した出力結果です。
 出力には「要約」あるいはそれに類する単語を含むような文として、「以下の文章を要約します。」「【要約】」などの冒頭の説明文や「以上が要約結果になります。」などの文末の説明文が入っていることがあります。また、英語でこれらの説明文が与えられることもあります。
@@ -311,3 +338,62 @@ def get_header_footer_remover_prompt(task: str, generated_result: str) -> str:
 {generated_result}
 """
     return remove_prompt
+
+
+
+
+def get_quality_reason_check_prompt(task: str, generated_result: str, base_text: str = "") -> str:
+    if task == "summary":
+        quality_check_reason_prompt = f"""先ほど、私はあなたに以下のような質問をしました。
+"以下に要約した文章とその要約元の文章が提示されています。
+要約した文章は要約元の文章を適切に要約できているかを判断してください。
+適切に要約できている場合は「適切」、適切に要約できていない場合は「不適切」と回答してください。
+ただし、要約元の文章から断定できない情報が要約した文章に含まれている場合も「不適切」と回答してください。
+「適切」「不適切」のいずれかのみを出力し、説明文などは付与しないでください。
+【要約元の文章】
+{base_text}
+
+【要約した文章】
+{generated_result}"
+
+すると、あなたは以下のように答えました。
+"不適切"
+
+なぜ"不適切"と回答をしたのか、理由を教えてください。
+"""
+    elif task == "ad_text":
+        quality_check_reason_prompt = f"""先ほど、私はあなたに以下のような質問をしました。
+"以下に、ランディングページの説明文とその説明文をもとに作成した1つの広告文のタイトルがあります。
+説明文の内容に基づいているタイトルを作成できているかを判断してください。
+適切に作成できている場合は「適切」、適切に作成できていない場合は「不適切」と回答してください。
+ただし、説明文とタイトルが完全に一致している事例とタイトルとして長すぎる事例も「不適切」と回答してください。
+「適切」「不適切」のいずれかのみを出力し、説明文などは付与しないでください。
+
+【説明文】
+{base_text}
+
+【広告文のタイトル】
+{generated_result}
+"
+すると、あなたは以下のように答えました。
+"不適切"
+
+なぜ"不適切"と回答をしたのか、理由を教えてください。
+
+"""
+    elif task == "pros_and_cons":
+        quality_check_reason_prompt = f"""先ほど、私はあなたに以下のような質問をしました。
+"以下に提示している文章は、ある事象・事物についてのメリットとデメリットを生成AIに回答してもらった出力結果です。
+出力結果が、メリット・デメリットの双方について言及できているか否かを回答してください。
+言及できている場合は「適切」、言及できていない場合は「不適切」と回答してください。
+「適切」「不適切」のいずれかのみを出力し、説明文などは付与しないでください。
+
+【文章】
+{generated_result}
+"
+すると、あなたは以下のように答えました。
+"不適切"
+
+なぜ"不適切"と回答をしたのか、理由を教えてください。
+"""
+    return quality_check_reason_prompt
