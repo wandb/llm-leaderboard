@@ -12,6 +12,8 @@ from dataclasses import dataclass
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import (
+    apply_chat_template,
+    get_system_message,
     get_evaluation_prompt,
     get_few_shot_samples_by_bbq_category,
     Sample,
@@ -228,23 +230,27 @@ def evaluate_n_shot(few_shots: bool):
             few_shots_dict = get_few_shot_samples_by_bbq_category(task_data_path, num_few_shots, BBQSample)
 
             # get prompt by category
-            prompts_dict = {}
+            messages_dict = {}
             for category in categories:
-                prompts_dict[category]: BasePromptTemplate = get_evaluation_prompt(
+                # system message
+                messages = []
+                system_message = get_system_message(
+                    system_message_intro="",
                     instruction=task_data["instruction"],
-                    few_shots=few_shots_dict[category],
-                    language=language,
-                    custom_prompt_template=custom_prompt_template,
-                    custom_fewshots_template=custom_fewshots_template,
                 )
+                messages.append({"role": "system", "content": system_message})
+                for message in few_shots_dict[category]:
+                    messages.append(message)
+                messages_dict[category] = messages
+                apply_chat_template(messages=messages_dict[category])
 
             # number of evaluation samples
             if cfg.testmode:
                 test_max_num_samples = 1
                 val_max_num_samples = 1
             else:
-                test_max_num_samples = 8 # 各カテゴリからいくつのデータで推論するか。上から順にサンプリングする
-                val_max_num_samples = 8 # 各カテゴリからいくつのデータで推論するか。上から順にサンプリングする
+                test_max_num_samples = 24 # 各カテゴリからいくつのデータで推論するか。上から順にサンプリングする
+                val_max_num_samples = 24 # 各カテゴリからいくつのデータで推論するか。上から順にサンプリングする
 
             if subset == "test":
                 num_samples = test_max_num_samples
@@ -257,22 +263,18 @@ def evaluate_n_shot(few_shots: bool):
                 category_samples = [sample for sample in task_data["samples"] if sample["category"] == category]
                 selected_samples = category_samples[:num_samples]
 
-                llm.max_tokens = task_data["output_length"]
-                chain = prompts_dict[category] | llm
-
                 for idx, sample in tqdm(enumerate(selected_samples)):
                     # generate output
-                    input_data = {"input": sample["input"]}
+                    messages_dict[category].append({"role": "user", "content": sample["input"]})
                     start_time = time.time()
-                    output = chain.invoke(input_data)
+                    output = llm.invoke(messages_dict[category]).content
                     end_time = time.time()
                     latency = end_time - start_time
-                    prompt = prompts_dict[category].format(**input_data)
+                    prompt = apply_chat_template(messages=messages_dict[category])
 
                     # score
-                    output_text = output.content if hasattr(output, 'content') else output
                     y_pred: str = pipe(
-                        output_text,
+                        output,
                         lambda x: text_formatter(x, task),
                         lambda x: x.split("\n\n")[0],
                         normalize,
@@ -294,7 +296,7 @@ def evaluate_n_shot(few_shots: bool):
                             "context_condition": sample["context_condition"],
                             "input": sample["input"],
                             "prompt": prompt,
-                            'raw_output': output_text,
+                            'raw_output': output,
                             "output": y_pred,
                             "expected_output": y_true,
                             "latency": latency,
@@ -302,6 +304,7 @@ def evaluate_n_shot(few_shots: bool):
                             "unk_label": sample["unk_label"],
                         }
                     )
+                    messages_dict[category].pop()
 
     # log table
     output_df = pd.DataFrame(evaluation_results)
@@ -318,7 +321,7 @@ def evaluate_n_shot(few_shots: bool):
         "acc_diff": score_dict[f"{dataset_name}_{num_few_shots}shot_dev_acc_diff"],
         "bias_score_dis": score_dict[f"{dataset_name}_{num_few_shots}shot_dev_biasscore_DIS"],
         "bias_score_amb": score_dict[f"{dataset_name}_{num_few_shots}shot_dev_biasscore_AMB"],
-        "avg_bias_score": score_dict[f"{dataset_name}_{num_few_shots}shot_dev_biasscore_ABS_AVG"]
+        "avg_abs_bias_score": score_dict[f"{dataset_name}_{num_few_shots}shot_dev_biasscore_ABS_AVG"]
     }])
 
     wandb.log(
