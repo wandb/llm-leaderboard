@@ -13,7 +13,6 @@ from .evaluate_utils import (
     get_few_shot_messages,
     get_system_message,
     jaster_metrics_dict,
-    LLMAsyncProcessor,
     normalize,
     text_formatter,
 )
@@ -25,6 +24,7 @@ def evaluate_n_shot(few_shots: bool):
     run = instance.run
     cfg = instance.config
     llm = instance.llm
+    api_type = cfg.api
 
     # download dataset
     dataset_name = "jaster"
@@ -73,7 +73,6 @@ def evaluate_n_shot(few_shots: bool):
                 "model_name": cfg.model.pretrained_model_name_or_path,
                 "dataset": dataset_name,
                 "task": task,
-                "language": language,
                 "num_few_shots": num_few_shots,
                 "subset": subset,
             }
@@ -103,8 +102,7 @@ def evaluate_n_shot(few_shots: bool):
                 num_samples = val_max_num_samples
             samples = task_data["samples"][:num_samples]
 
-            for idx, sample in enumerate(samples):
-                inputs = []
+            for idx, sample in tqdm(enumerate(samples)):
                 # compose messages
                 messages = []
 
@@ -127,27 +125,23 @@ def evaluate_n_shot(few_shots: bool):
                 messages.append({"role": "user", "content": sample["input"]})
 
                 # generate output
-                # start_time = time.time()
+                start_time = time.time()
                 prompt = apply_chat_template(messages=messages)
-                # output = None
-                # end_time = time.time()
-                # latency = end_time - start_time
+                output = llm.invoke(messages, max_tokens=task_data["output_length"]).content
+                end_time = time.time()
+                latency = end_time - start_time
 
-                # # score
-                # y_pred: str = pipe(
-                #     output,
-                #     lambda x: text_formatter(x, task),
-                #     lambda x: x.split("\n\n")[0],
-                #     normalize,
-                # )
-                y_pred = None
+                # score
+                y_pred: str = pipe(
+                    output,
+                    lambda x: text_formatter(x, task),
+                    lambda x: x.split("\n\n")[0],
+                    normalize,
+                )
                 y_true: str = pipe(sample["output"], normalize)
                 metrics: list[str] = task_data["metrics"][0]
                 metrics_func: callable = jaster_metrics_dict[metrics]
-                # score = metrics_func(y_pred, y_true)
-
-                generator_config = {"max_tokens": task_data["output_length"]}
-                inputs.extend([prompt, generator_config])
+                score = metrics_func(y_pred, y_true)
 
                 # collect data
                 evaluation_results.append(
@@ -155,43 +149,15 @@ def evaluate_n_shot(few_shots: bool):
                         **eval_matainfo,
                         "index": idx,
                         "input": sample["input"],
-                        "raw_output": None,  # to be filled
-                        "output": None,  # to be filled
+                        "raw_output": output,
+                        "output": y_pred,
                         "expected_output": y_true,
                         "prompt": prompt,
                         "metrics": metrics,
-                        "metrics_func": metrics_func,
-                        "score": None,  # to be filled
-                        "latency": None,  # to be filled
-                        "inputs": inputs,
+                        "score": score,
+                        "latency": latency,
                     }
                 )
-
-    all_inputs = [er["inputs"] for er in evaluation_results]
-    llm_ap = LLMAsyncProcessor(
-        llm=llm,
-        inputs=all_inputs,
-        batch_size=256,  # APIの場合変える必要あり
-    )
-    results = llm_ap.get_results()
-    for result, evaluation_result in tqdm(zip(results, evaluation_results)):
-        response, latency = result
-        raw_output = response.content
-        y_pred: str = pipe(
-            raw_output,
-            lambda x: text_formatter(x, task),
-            lambda x: x.split("\n\n")[0],
-            normalize,
-        )
-        metrics_func = evaluation_result["metrics_func"]
-        score = metrics_func(y_pred, evaluation_result["expected_output"])
-        evaluation_result["raw_output"] = raw_output
-        evaluation_result["output"] = y_pred
-        evaluation_result["score"] = score
-        evaluation_result["latency"] = latency
-        del evaluation_result["metrics_func"], evaluation_result["inputs"]
-
-    output_df = pd.DataFrame(evaluation_results)
 
     # log table
     output_df = pd.DataFrame(evaluation_results)
