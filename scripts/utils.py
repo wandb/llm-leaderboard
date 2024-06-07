@@ -72,16 +72,15 @@ def get_tokenizer_config(model_id=None, chat_template_name=None) -> dict[str, An
         cfg = instance.config
         model_id = cfg.model.pretrained_model_name_or_path
         chat_template_name = cfg.model.get("chat_template")
+    assert isinstance(model_id, str) and isinstance(chat_template_name, str)
 
     # get tokenizer_config
     tokenizer_config = hf_download(
         repo_id=model_id,
         filename="tokenizer_config.json",
     )
-
-    # get chat_template_name
-    if not isinstance(chat_template_name, str):
-        raise ValueError("Chat template is not set in the config file")
+    if chat_template_name.startswith("mistralai/"):
+        tokenizer_config.update({"raise_exception": lambda _: ""})
 
     # chat_template from local
     local_chat_template_path = Path(f"chat_templates/{chat_template_name}.jinja")
@@ -93,8 +92,7 @@ def get_tokenizer_config(model_id=None, chat_template_name=None) -> dict[str, An
         chat_template = hf_download(
             repo_id=chat_template_name, filename="tokenizer_config.json"
         ).get("chat_template")
-        if chat_template is None:
-            raise ValueError(f"Chat template {chat_template_name} is not found")
+        assert chat_template is not None
 
     # add chat_template to tokenizer_config
     tokenizer_config.update({"chat_template": chat_template})
