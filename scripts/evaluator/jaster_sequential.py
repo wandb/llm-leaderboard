@@ -2,10 +2,10 @@ import json
 import time
 from pathlib import Path
 
-import wandb
-from tqdm import tqdm
 import pandas as pd
 from toolz import pipe
+from tqdm import tqdm
+import wandb
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import (
@@ -27,14 +27,34 @@ def evaluate_n_shot(few_shots: bool):
     api_type = cfg.api
 
     # download dataset
-    dataset_name = "mmlu"
+    dataset_name = "jaster"
     artifact = run.use_artifact(cfg[dataset_name].artifacts_path, type="dataset")
     artifact_dir = artifact.download()
     dataset_dir = Path(artifact_dir) / cfg[dataset_name].dataset_dir
     if not dataset_dir.exists():
         print(f"skip {dataset_name} because it is not found in {artifact_dir}")
         raise FileNotFoundError(f"dataset_dir not found: {dataset_dir}")
-    tasks = sorted({p.stem for p in dataset_dir.glob("**/mmlu_en_*.json")})
+
+    tasks = [
+        "jamp",
+        "janli",
+        "jcommonsenseqa",
+        "jemhopqa",
+        "jnli",
+        "jsem",
+        "jsick",
+        "jsquad",
+        # "jsts",
+        "niilc",
+        "chabsa",
+        "mawps",
+        "commonsensemoralja",
+        "wiki_reading",
+        "wiki_ner",
+        "wiki_dependency",
+        "wiki_pas",
+        "wiki_coreference",
+    ]
 
     if few_shots:
         num_few_shots = cfg.get("num_few_shots", None)
@@ -52,18 +72,13 @@ def evaluate_n_shot(few_shots: bool):
                 "run_name": run.name,
                 "model_name": cfg.model.pretrained_model_name_or_path,
                 "dataset": dataset_name,
-                "task": task[len("mmlu_en_"):],
-                "language": language,
-                "num_few_shots": cfg.num_few_shots,
+                "task": task,
+                "num_few_shots": num_few_shots,
                 "subset": subset,
             }
 
             # read task data
-            task_data_path = (
-                dataset_dir
-                / subset
-                / f"{task}.json"
-            )
+            task_data_path = dataset_dir / subset / f"{task}.json"
             if not task_data_path.exists():
                 print(f"skip {task} because it is not found in {artifact_dir}")
                 continue
@@ -74,9 +89,12 @@ def evaluate_n_shot(few_shots: bool):
             if cfg.testmode:
                 test_max_num_samples = 1
                 val_max_num_samples = 1
+            elif "wiki" in task:
+                test_max_num_samples = 20
+                val_max_num_samples = 5
             else:
-                test_max_num_samples = 5
-                val_max_num_samples = 1
+                test_max_num_samples = 100
+                val_max_num_samples = 10
 
             if subset == "test":
                 num_samples = test_max_num_samples
@@ -131,7 +149,7 @@ def evaluate_n_shot(few_shots: bool):
                         **eval_matainfo,
                         "index": idx,
                         "input": sample["input"],
-                        'raw_output': output,
+                        "raw_output": output,
                         "output": y_pred,
                         "expected_output": y_true,
                         "prompt": prompt,
@@ -146,7 +164,11 @@ def evaluate_n_shot(few_shots: bool):
     dev_table = output_df.query("subset == 'dev'")
     test_table = output_df.query("subset == 'test'")
     leaderboard_table = pd.pivot_table(
-        data=test_table, values="score", index=['run_name', "model_name"], columns="dataset", aggfunc="mean"
+        data=test_table,
+        values="score",
+        index=["run_name", "model_name"],
+        columns="task",
+        aggfunc="mean",
     ).reset_index()
     wandb.log(
         {
@@ -155,6 +177,7 @@ def evaluate_n_shot(few_shots: bool):
             f"{dataset_name}_{num_few_shots}shot_leaderboard_table": leaderboard_table,
         }
     )
+
 
 def evaluate():
     evaluate_n_shot(few_shots=False)
