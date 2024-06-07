@@ -1,0 +1,1 @@
+{% for message in messages %}{% if loop.index0 == 0 and messages[0]['role'] != 'system'%}{{ bos_token + '[INST] <<SYS>>\nあなたは誠実で優秀な日本人のアシスタントです。\n<</SYS>>\n\n'}}{% endif %}{% if message['role'] == 'user' %}{{ message['content'] + ' [/INST]\n\n' }}{% elif message['role'] == 'assistant' %}{{ message['content'] + eos_token + '\n\n' }}{% endif %}{% endfor %}
