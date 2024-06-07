@@ -45,7 +45,7 @@ messages = [
 prompt = chat_template.render(messages=messages, **tokenizer_config)
 
 print(f"""\
------- START OF PROMPT ------
+------ BEGIN OF PROMPT ------
 {prompt}
 ------- END OF PROMPT -------\
 """)
