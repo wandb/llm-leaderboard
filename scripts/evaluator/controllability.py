@@ -1,3 +1,5 @@
+import time
+
 import wandb
 import pandas as pd
 
@@ -11,6 +13,7 @@ chatとcompletionの使い分け
 """
 
 def evaluate():
+    time.sleep(30)  # wait for upload dataset
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
 
