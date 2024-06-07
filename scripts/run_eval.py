@@ -1,14 +1,13 @@
 import wandb
-from wandb.sdk.wandb_run import Run
-import sys
-import os
+from pathlib import Path
+from argparse import ArgumentParser
+from omegaconf import OmegaConf
+import questionary
 
-from omegaconf import DictConfig, OmegaConf
 from mtbench_eval import mtbench_evaluate
 from toxicity_eval import toxicity_evaluate
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
-
 from evaluator import (
     bbq,
     jaster,
@@ -20,20 +19,33 @@ from evaluator import (
     lctg
 )
 
+# set config path
+parser = ArgumentParser()
+parser.add_argument("--config", "-c", type=str, default="config.yaml")
+parser.add_argument("--select-config", "-s", action="store_true", default=False)
+args = parser.parse_args()
+
+config_dir = Path("configs")
+if args.select_config:
+    selected_config = questionary.select(
+        "Select config",
+        choices=[p.name for p in config_dir.iterdir() if p.suffix == ".yaml"],
+        use_shortcuts=True,
+    ).ask()
+    cfg_path = config_dir / selected_config
+elif args.config is not None:
+    cfg_path = config_dir / args.config
+
+if cfg_path.suffix != ".yaml":
+    cfg_path = cfg_path.with_suffix(".yaml")
+assert cfg_path.exists(), f"Config file {cfg_path} does not exist"
+
+
 # Configuration loading
-if os.path.exists("configs/config.yaml"):
-    cfg = OmegaConf.load("configs/config.yaml")
-    cfg_dict = OmegaConf.to_container(cfg, resolve=True)
-    assert isinstance(cfg_dict, dict)
-else:
-    # Provide default settings in case config.yaml does not exist
-    cfg_dict = {
-        'wandb': {
-            'entity': 'default_entity',
-            'project': 'default_project',
-            'run_name': 'default_run_name'
-        }
-    }
+_cfg = OmegaConf.load(cfg_path)
+cfg_dict = OmegaConf.to_container(_cfg, resolve=True)
+assert isinstance(cfg_dict, dict), "instance.config must be a DictConfig"
+
 
 # W&B setup and artifact handling
 wandb.login()
@@ -50,21 +62,11 @@ WandbConfigSingleton.initialize(run, llm=None)
 cfg = WandbConfigSingleton.get_instance().config
 
 # Save configuration as artifact
-if cfg.wandb.log:
-    if os.path.exists("configs/config.yaml"):
-        artifact_config_path = "configs/config.yaml"
-    else:
-        # If "configs/config.yaml" does not exist, write the contents of run.config as a YAML configuration string
-        instance = WandbConfigSingleton.get_instance()
-        assert isinstance(instance.config, DictConfig), "instance.config must be a DictConfig"
-        with open("configs/config.yaml", 'w') as f:
-            f.write(OmegaConf.to_yaml(instance.config))
-        artifact_config_path = "configs/config.yaml"
+instance = WandbConfigSingleton.get_instance()
 
-    artifact = wandb.Artifact('config', type='config')
-    artifact.add_file(artifact_config_path)
-    run.log_artifact(artifact)
-
+artifact = wandb.Artifact('config', type='config')
+artifact.add_file(cfg_path)
+run.log_artifact(artifact)
 
 # 0. Start inference server
 llm = get_llm_inference_engine()
@@ -84,8 +86,8 @@ instance.llm = llm
 # mtbench_evaluate()
 
 # 3. bbq, jbbq
-# bbq.evaluate()
-jbbq.evaluate()
+# bbq_eval
+# jbbq.evaluate()
 
 # 4. lctg-bench
 # lctg.evaluate()
@@ -97,4 +99,4 @@ jbbq.evaluate()
 # sample_evaluate()
 
 # 6. Aggregation
-#aggregate()
+# aggregate()
