@@ -35,7 +35,8 @@ def evaluate():
     #############################################
     # initialization 
     #############################################
-    tasks = ["summary","ad_text","pros_and_cons"]
+    #tasks = ["summary","ad_text","pros_and_cons"]
+    tasks = ["summary"]
     limitation_type_list = ["format", "char_count", "keyword", "prohibited_word"]
     total_summary = pd.DataFrame()
     columns = [
@@ -58,6 +59,7 @@ def evaluate():
             prompt_list = master_df[f"prompt_{lmt_type}"].tolist()
 
             for prompt in tqdm(prompt_list):
+                
                 output_tokens_list = llm.invoke(prompt).content
                 all_results[lmt_type].append(output_tokens_list)
         data = {
@@ -94,10 +96,13 @@ def evaluate():
             }
         
         for validation in validation_functions:
-            df_ctg[validation] = df_ctg.apply(lambda x: validation_functions[validation](x), axis=1)
+            df_ctg[validation] = df_ctg.apply(lambda x: validation_functions[validation](x), axis=1).astype(int)
 
-        # Calculate scores
-        ctg_scores = {key: df_ctg[key].mean() for key in validation_functions.keys()}
+        sums = {key: df_ctg[key].sum() for key in validation_functions.keys()}
+
+        # Calculate the average score for each validation type
+        ctg_scores = {key: sums[key] / len(df_ctg) for key in validation_functions.keys()}
+
         for key, score in ctg_scores.items():
             print(f"{key.replace('is_valid_', '').replace('_', ' ').title()}: {score:.3f}")
 
@@ -109,8 +114,11 @@ def evaluate():
         ]
         columns = common_columns + (["title"] if "title" in df_ctg.columns else [])
         save_df = df_ctg[columns].copy()
-        result_columns = ["format_result", "format_result_wo_hf", "char_count_result", "char_count_result_wo_hf",
-                        "keyword_result", "keyword_result_wo_hf", "prohibited_word_result", "prohibited_word_result_wo_hf"]
+        result_columns = ["format_result", "format_result_wo_hf",
+                          "char_count_result", "char_count_result_wo_hf",
+                          "keyword_result", "keyword_result_wo_hf",
+                          "prohibited_word_result", "prohibited_word_result_wo_hf",
+                        ]
         for col in result_columns:
             save_df[col] = save_df[col].apply(lambda x: x)
 
@@ -130,7 +138,7 @@ def evaluate():
 
         # task base summary
         scores_list = list(ctg_scores.values())+quality_scores
-        task_summary_table = pd.DataFrame(data=[scores_list], columns=["Format-ctg", "Format-qual", "C-count-ctg", "C-count-qual", "Keyword-ctg", "Keyword-qual", "P-word-ctg", "P-word-qual"])
+        task_summary_table = pd.DataFrame(data=[scores_list], columns=["Format-ctg","C-count-ctg","Keyword-ctg","P-word-ctg","Format-qual","C-count-qual","Keyword-qual","P-word-qual"])
         task_summary_table["AVG-ctg"] = task_summary_table.apply(lambda row: (row["Format-ctg"] + row["C-count-ctg"] + row["Keyword-ctg"] + row["P-word-ctg"]) / 4, axis=1)
         task_summary_table["AVG-qual"] = task_summary_table.apply(lambda row: (row["Format-qual"] + row["C-count-qual"] + row["Keyword-qual"] + row["P-word-qual"]) / 4, axis=1)
         columns = ["AVG-ctg", "AVG-qual"] + [col for col in task_summary_table.columns if col not in ["AVG-ctg", "AVG-qual"]]
@@ -156,7 +164,6 @@ def evaluate():
     wandb.log({"lctg_overall_leaderboard_table": total_summary})
     wandb.log({"lctg_output_table": output_df})
     
-
     """
     contents of wandb.log
     "lctg_overall_leaderboard_table": leaderboard_table,
