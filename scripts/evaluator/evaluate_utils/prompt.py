@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from collections import defaultdict
+import random
 
 from jinja2 import Template
 
@@ -54,10 +55,16 @@ def get_few_shot_samples_by_bbq_category(target_dataset_path: Path, num_few_shot
     
     few_shot_samples = defaultdict(list)
     for category, samples in category_samples.items():
-        selected_samples = samples[:num_few_shots]
-        few_shot_samples[category].extend(selected_samples)
-    
+        if num_few_shots == 4:
+            selected_samples = [samples[i] for i in [0, 3, 9, 10, ] if i < len(samples)]
+        else:
+            selected_samples = sample[:num_few_shots]
+        for sample in selected_samples:
+            few_shot_samples[category].append({"role": "user", "content": sample.input})
+            few_shot_samples[category].append({"role": "assistant", "content": sample.output})
+
     return few_shot_samples
+
 
 
 def apply_chat_template(messages: list[dict[str, str]]) -> str:
