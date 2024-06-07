@@ -3,7 +3,6 @@ import time
 from pathlib import Path
 
 import wandb
-from langchain.prompts import BasePromptTemplate
 from tqdm import tqdm
 import pandas as pd
 from toolz import pipe
@@ -63,6 +62,7 @@ def evaluate_n_shot(few_shots: bool):
                     "run_name": run.name,
                     "model_name": cfg.model.pretrained_model_name_or_path,
                     "dataset": dataset_name_with_suffix,
+                    "language": language,
                     "task": task_without_prefix_and_suffix,
                     "num_few_shots": num_few_shots,
                     "subset": subset,
