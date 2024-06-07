@@ -3,7 +3,6 @@ import time
 from pathlib import Path
 
 import wandb
-from langchain.prompts import BasePromptTemplate
 from tqdm import tqdm
 import pandas as pd
 from toolz import pipe
@@ -54,6 +53,7 @@ def evaluate_n_shot(few_shots: bool):
                 "model_name": cfg.model.pretrained_model_name_or_path,
                 "dataset": dataset_name,
                 "task": task[len("mmlu_en_"):],
+                "language": language,
                 "num_few_shots": cfg.num_few_shots,
                 "subset": subset,
             }

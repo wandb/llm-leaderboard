@@ -1,10 +1,8 @@
-from pathlib import Path
 from config_singleton import WandbConfigSingleton
 import subprocess
 import time
 import requests
 import atexit
-import tempfile
 
 from utils import get_tokenizer_config
 
@@ -30,6 +28,7 @@ def start_vllm_server():
             "--dtype", dtype, 
             "--max-model-len", str(max_model_len),
             "--chat-template", chat_template,
+            "--max-num-seqs", '256',  # batch size
             "--seed", "42",
             "--disable-log-stats",
             "--disable-log-requests",

@@ -18,39 +18,45 @@ from evaluator import (
 )
 
 # set config path
+config_dir = Path("configs")
+default_cfg_name = "default_config.yaml"
 parser = ArgumentParser()
-parser.add_argument("--config", "-c", type=str, default="config.yaml")
+parser.add_argument("--config", "-c", type=str, default=default_cfg_name)
 parser.add_argument("--select-config", "-s", action="store_true", default=False)
 args = parser.parse_args()
 
-config_dir = Path("configs")
 if args.select_config:
-    selected_config = questionary.select(
+    custom_cfg_name = questionary.select(
         "Select config",
         choices=[p.name for p in config_dir.iterdir() if p.suffix == ".yaml"],
         use_shortcuts=True,
     ).ask()
-    cfg_path = config_dir / selected_config
-elif args.config is not None:
-    cfg_path = config_dir / args.config
+    custom_cfg_path = config_dir / custom_cfg_name
+# elif args.config is not None:
+else:
+    custom_cfg_path = config_dir / args.config
 
-if cfg_path.suffix != ".yaml":
-    cfg_path = cfg_path.with_suffix(".yaml")
-assert cfg_path.exists(), f"Config file {cfg_path} does not exist"
+if custom_cfg_path.suffix != ".yaml":
+    custom_cfg_path = custom_cfg_path.with_suffix(".yaml")
+assert custom_cfg_path.exists(), f"Config file {custom_cfg_path.resolve()} does not exist"
 
 
 # Configuration loading
-_cfg = OmegaConf.load(cfg_path)
-cfg_dict = OmegaConf.to_container(_cfg, resolve=True)
+custom_cfg = OmegaConf.load(custom_cfg_path)
+default_cfg_path = config_dir / default_cfg_name
+if custom_cfg_path.stem != default_cfg_path.stem:
+    default_cfg = OmegaConf.load(default_cfg_path)
+    custom_cfg = OmegaConf.merge(default_cfg, custom_cfg)
+cfg_dict = OmegaConf.to_container(custom_cfg, resolve=True)
 assert isinstance(cfg_dict, dict), "instance.config must be a DictConfig"
 
 
 # W&B setup and artifact handling
 wandb.login()
 run = wandb.init(
-    entity=cfg_dict['wandb']['entity'],
-    project=cfg_dict['wandb']['project'],
-    name=cfg_dict['wandb']['run_name'],
+    entity=cfg_dict["wandb"]["entity"],
+    project=cfg_dict["wandb"]["project"],
+    name=cfg_dict["wandb"]["run_name"],
     config=cfg_dict,
     job_type="evaluation",
 )
@@ -62,8 +68,8 @@ cfg = WandbConfigSingleton.get_instance().config
 # Save configuration as artifact
 instance = WandbConfigSingleton.get_instance()
 
-artifact = wandb.Artifact('config', type='config')
-artifact.add_file(cfg_path)
+artifact = wandb.Artifact("config", type="config")
+artifact.add_file(custom_cfg_path)
 run.log_artifact(artifact)
 
 # 0. Start inference server
