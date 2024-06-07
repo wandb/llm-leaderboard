@@ -63,7 +63,7 @@ def mtbench_evaluate():
 
     
     # 1. generate model answers
-    if cfg.api in ["openai","anthoropic","cohere","google","amazon_bedrock","mistral", "vllm"]:
+    if cfg.api in ["openai","anthropic","cohere","google","amazon_bedrock","mistral", "vllm"]:
         questions = load_questions(question_file, None, None)
         get_api_answer(
             question_file=question_file,
