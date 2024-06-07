@@ -1,0 +1,12 @@
+# t.ibi動作確認済み
+
+wandb:
+  run_name: "meta-llama/Meta-Llama-3-8B-Instruct" # use run_name defined above
+
+testmode: true
+
+api: vllm
+
+model:
+  pretrained_model_name_or_path: "meta-llama/Meta-Llama-3-8B-Instruct" #if you use openai api, put the name of model
+  chat_template: "meta-llama/Meta-Llama-3-8B-Instruct"
