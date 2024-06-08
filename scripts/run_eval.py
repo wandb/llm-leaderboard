@@ -80,8 +80,7 @@ instance.llm = llm
 # Evaluation phase
 # 1. llm-jp-eval evaluation (jmmlu含む)
 jaster.evaluate()
-controllability.evaluate()
-
+#controllability.evaluate()
 jmmlu.evaluate()
 robustness.evaluate()
 mmlu.evaluate()
@@ -90,13 +89,13 @@ mmlu.evaluate()
 mtbench_evaluate()
 
 # 3. bbq, jbbq
-# bbq_eval
+#bbq_eval
 
 # 4. lctg-bench
 lctg.evaluate()
 
 # 5. toxicity
-toxicity_evaluate()
+#toxicity_evaluate()
 
 # Sample
 # sample_evaluate()
