@@ -48,6 +48,7 @@ class LLMAsyncProcessor:
     async def _ainvoke(self, messages: Messages, **kwargs) -> Tuple[AIMessage, float]:
         # start = time.time()
         if self.api_type == "google":
+            self.llm.max_output_tokens = kwargs["max_tokens"]
             response = await self.llm.invoke(messages)
         else:
             response = await self.llm.ainvoke(messages, **kwargs)
