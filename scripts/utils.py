@@ -79,8 +79,6 @@ def get_tokenizer_config(model_id=None, chat_template_name=None) -> dict[str, An
         repo_id=model_id,
         filename="tokenizer_config.json",
     )
-    if chat_template_name.startswith("mistralai/"):
-        tokenizer_config.update({"raise_exception": lambda _: ""})
 
     # chat_template from local
     local_chat_template_path = Path(f"chat_templates/{chat_template_name}.jinja")

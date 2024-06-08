@@ -11,6 +11,7 @@ testmode: false
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
 api: openai
+batch_size: 256 # vllmは256, apiは32を推奨
 
 model:
   use_wandb_artifacts: false
@@ -72,7 +73,7 @@ custom_prompt_template_en: "The following text provides instructions for a certa
 num_few_shots: 4
 
 jaster:
-  system_message: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。"
+  message_intro: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。"
   artifacts_path: "t-ibi/llm-leaderboard/jaster:v0"
   dataset_dir: "jaster/1.2.6/evaluation"
   language: ja
