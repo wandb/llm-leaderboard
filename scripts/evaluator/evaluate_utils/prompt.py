@@ -33,6 +33,8 @@ def apply_chat_template(messages: list[dict[str, str]]) -> str:
 
     if cfg.api == "vllm":
         tokenizer_config = cfg.tokenizer_config
+        if cfg.model.chat_template.startswith("mistralai/"):
+            tokenizer_config.update({"raise_exception": lambda _: ""})
         chat_template = Template(cfg.tokenizer_config.chat_template)
         conversation_prompt = chat_template.render(
             messages=messages, add_generation_prompt=True, **tokenizer_config
