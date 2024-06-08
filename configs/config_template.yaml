@@ -11,6 +11,7 @@ testmode: false
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthropic", "google", "cohere", "mistral", "amazon_bedrock"
 api: false
+batch_size: 256 # vllmは256, apiは32を推奨
 
 model:
   use_wandb_artifacts: false
