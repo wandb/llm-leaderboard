@@ -5,6 +5,7 @@ from tqdm import tqdm
 import pandas as pd
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import (
+    apply_chat_template,
     get_generated_result_wo_header_footer,
     get_format_is_valid,
     get_keyword_is_valid,
@@ -13,6 +14,7 @@ from .evaluate_utils import (
     quality_process_results,
     calculate_true_proportions,
     transform_data,
+    LLMAsyncProcessor,
 )
 
 def evaluate():
@@ -50,18 +52,30 @@ def evaluate():
         master_df = pd.read_json(file, orient="records", lines=True)
         if cfg.testmode:
             master_df = master_df.head(2)
+        else:
+            master_df = master_df.head(30)
         #############################################
         # generation 
         #############################################
         all_results = {lmt_type: [] for lmt_type in limitation_type_list}
         for lmt_type in limitation_type_list:
             print(f"Perspective of controllability: {lmt_type}")
-            prompt_list = master_df[f"prompt_{lmt_type}"].tolist()
+            sample_list = master_df[f"prompt_{lmt_type}"].tolist()
+            inputs = []
+            for sample in tqdm(sample_list):
+                messages = []
+                messages.append({"role": "user", "content": sample})
+                prompt = apply_chat_template(messages=messages)
+                generator_config = {"max_tokens": 3500}
+                inputs.append([prompt, generator_config])
 
-            for prompt in tqdm(prompt_list):
-                
-                output_tokens_list = llm.invoke(prompt).content
-                all_results[lmt_type].append(output_tokens_list)
+            llm_ap = LLMAsyncProcessor(
+                llm=llm,
+                inputs=inputs,
+                batch_size=256,  # APIの場合変える必要あり
+            )
+            results = llm_ap.get_results()
+            all_results[lmt_type]=[message[0].content for message in results]
         data = {
             "generated_text_id": list(range(len(master_df["prompt_id"].tolist()))),
             "prompt_id":master_df["prompt_id"].tolist(),
