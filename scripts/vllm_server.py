@@ -28,7 +28,7 @@ def start_vllm_server():
             "--dtype", dtype, 
             "--max-model-len", str(max_model_len),
             "--chat-template", chat_template,
-            "--max-num-seqs", '128',  # batch size
+            "--max-num-seqs", str(cfg.batch_size),
             "--seed", "42",
             "--disable-log-stats",
             "--disable-log-requests",
