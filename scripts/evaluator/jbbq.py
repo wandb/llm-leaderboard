@@ -321,8 +321,8 @@ def evaluate_n_shot(few_shots: bool):
     wandb.log(
         {
             f"{dataset_name}_{num_few_shots}shot_output_table_dev": dev_table,
-            f"{dataset_name}_{num_few_shots}shot_output_table_test": test_table,
-            f"{dataset_name}_{num_few_shots}shot_leaderboard_table_dev": leaderboard_table,
+            f"{dataset_name}_{num_few_shots}shot_output_table": test_table,
+            f"{dataset_name}_{num_few_shots}shot_leaderboard_table": leaderboard_table,
         }
     )
 
