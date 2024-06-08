@@ -1,5 +1,3 @@
-base_config: base_config.yaml
-
 wandb:
   run_name: "cyberagent/calm2-7b-chat" # use run_name defined above
 
