@@ -1,6 +1,7 @@
 import asyncio
 import functools
-import time
+
+# import time
 import traceback
 from typing import Any, TypeAlias, List, Tuple
 
@@ -35,34 +36,24 @@ class LLMAsyncProcessor:
     """
 
     def __init__(self, llm: object, inputs: Inputs):
-        self.llm = llm
-        self.inputs = inputs
-
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config
-        api_type = cfg.api
-        if api_type == "vllm":
-            batch_size = 128
-        elif api_type == "openai":
-            batch_size = 8
-        elif api_type == "anthropic":
-            batch_size = 8
-        elif api_type == "google":
-            batch_size = 1
-        elif api_type == "mistral":
-            batch_size = 8
-        else:
-            raise ValueError
-        self.batch_size = batch_size
+        self.llm = llm
+        self.inputs = inputs
+        self.api_type = cfg.api
+        self.batch_size = cfg.batch_size
 
     @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
     @error_handler
     async def _ainvoke(self, messages: Messages, **kwargs) -> Tuple[AIMessage, float]:
-        start = time.time()
-        response = await self.llm.ainvoke(messages, **kwargs)
-        end = time.time()
-        latency = end - start
-        return response, latency
+        # start = time.time()
+        if self.api_type == "google":
+            response = await self.llm.invoke(messages)
+        else:
+            response = await self.llm.ainvoke(messages, **kwargs)
+        # end = time.time()
+        # latency = end - start # 非同期だとlatencyが取得できないのでコメントアウト
+        return response, 0
 
     async def _process_batch(self, batch: Inputs) -> List[Tuple[AIMessage, float]]:
         tasks = [
