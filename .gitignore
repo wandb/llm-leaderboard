@@ -113,3 +113,4 @@ configs/config.yaml
 # debug
 dataset/
 logs/
+fastchat/llm_judge/data/japanese_mt_bench
