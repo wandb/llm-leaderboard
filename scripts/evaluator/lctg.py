@@ -5,6 +5,7 @@ from tqdm import tqdm
 import pandas as pd
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import (
+    apply_chat_template,
     get_generated_result_wo_header_footer,
     get_format_is_valid,
     get_keyword_is_valid,
@@ -13,6 +14,7 @@ from .evaluate_utils import (
     quality_process_results,
     calculate_true_proportions,
     transform_data,
+    LLMAsyncProcessor,
 )
 
 def evaluate():
@@ -35,7 +37,8 @@ def evaluate():
     #############################################
     # initialization 
     #############################################
-    tasks = ["summary","ad_text","pros_and_cons"]
+    #tasks = ["summary","ad_text","pros_and_cons"]
+    tasks = ["summary"]
     limitation_type_list = ["format", "char_count", "keyword", "prohibited_word"]
     total_summary = pd.DataFrame()
     columns = [
@@ -49,17 +52,30 @@ def evaluate():
         master_df = pd.read_json(file, orient="records", lines=True)
         if cfg.testmode:
             master_df = master_df.head(2)
+        else:
+            master_df = master_df.head(30)
         #############################################
         # generation 
         #############################################
         all_results = {lmt_type: [] for lmt_type in limitation_type_list}
         for lmt_type in limitation_type_list:
             print(f"Perspective of controllability: {lmt_type}")
-            prompt_list = master_df[f"prompt_{lmt_type}"].tolist()
+            sample_list = master_df[f"prompt_{lmt_type}"].tolist()
+            inputs = []
+            for sample in tqdm(sample_list):
+                messages = []
+                messages.append({"role": "user", "content": sample})
+                prompt = apply_chat_template(messages=messages)
+                generator_config = {"max_tokens": 3500}
+                inputs.append([prompt, generator_config])
 
-            for prompt in tqdm(prompt_list):
-                output_tokens_list = llm.invoke(prompt).content
-                all_results[lmt_type].append(output_tokens_list)
+            llm_ap = LLMAsyncProcessor(
+                llm=llm,
+                inputs=inputs,
+                batch_size=256,  # APIの場合変える必要あり
+            )
+            results = llm_ap.get_results()
+            all_results[lmt_type]=[message[0].content for message in results]
         data = {
             "generated_text_id": list(range(len(master_df["prompt_id"].tolist()))),
             "prompt_id":master_df["prompt_id"].tolist(),
@@ -94,10 +110,13 @@ def evaluate():
             }
         
         for validation in validation_functions:
-            df_ctg[validation] = df_ctg.apply(lambda x: validation_functions[validation](x), axis=1)
+            df_ctg[validation] = df_ctg.apply(lambda x: validation_functions[validation](x), axis=1).astype(int)
 
-        # Calculate scores
-        ctg_scores = {key: df_ctg[key].mean() for key in validation_functions.keys()}
+        sums = {key: df_ctg[key].sum() for key in validation_functions.keys()}
+
+        # Calculate the average score for each validation type
+        ctg_scores = {key: sums[key] / len(df_ctg) for key in validation_functions.keys()}
+
         for key, score in ctg_scores.items():
             print(f"{key.replace('is_valid_', '').replace('_', ' ').title()}: {score:.3f}")
 
@@ -109,8 +128,11 @@ def evaluate():
         ]
         columns = common_columns + (["title"] if "title" in df_ctg.columns else [])
         save_df = df_ctg[columns].copy()
-        result_columns = ["format_result", "format_result_wo_hf", "char_count_result", "char_count_result_wo_hf",
-                        "keyword_result", "keyword_result_wo_hf", "prohibited_word_result", "prohibited_word_result_wo_hf"]
+        result_columns = ["format_result", "format_result_wo_hf",
+                          "char_count_result", "char_count_result_wo_hf",
+                          "keyword_result", "keyword_result_wo_hf",
+                          "prohibited_word_result", "prohibited_word_result_wo_hf",
+                        ]
         for col in result_columns:
             save_df[col] = save_df[col].apply(lambda x: x)
 
@@ -130,7 +152,7 @@ def evaluate():
 
         # task base summary
         scores_list = list(ctg_scores.values())+quality_scores
-        task_summary_table = pd.DataFrame(data=[scores_list], columns=["Format-ctg", "Format-qual", "C-count-ctg", "C-count-qual", "Keyword-ctg", "Keyword-qual", "P-word-ctg", "P-word-qual"])
+        task_summary_table = pd.DataFrame(data=[scores_list], columns=["Format-ctg","C-count-ctg","Keyword-ctg","P-word-ctg","Format-qual","C-count-qual","Keyword-qual","P-word-qual"])
         task_summary_table["AVG-ctg"] = task_summary_table.apply(lambda row: (row["Format-ctg"] + row["C-count-ctg"] + row["Keyword-ctg"] + row["P-word-ctg"]) / 4, axis=1)
         task_summary_table["AVG-qual"] = task_summary_table.apply(lambda row: (row["Format-qual"] + row["C-count-qual"] + row["Keyword-qual"] + row["P-word-qual"]) / 4, axis=1)
         columns = ["AVG-ctg", "AVG-qual"] + [col for col in task_summary_table.columns if col not in ["AVG-ctg", "AVG-qual"]]
@@ -156,7 +178,6 @@ def evaluate():
     wandb.log({"lctg_overall_leaderboard_table": total_summary})
     wandb.log({"lctg_output_table": output_df})
     
-
     """
     contents of wandb.log
     "lctg_overall_leaderboard_table": leaderboard_table,
