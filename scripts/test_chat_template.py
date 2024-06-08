@@ -45,7 +45,7 @@ messages = [
     {"role": "user", "content": "Where was it played?"},
 ]
 
-prompt = chat_template.render(messages=messages, **tokenizer_config)
+prompt = chat_template.render(messages=messages, add_generation_prompt=True, **tokenizer_config)
 
 print(f"""\
 ------ BEGIN OF PROMPT ------
