@@ -12,17 +12,14 @@ from evaluator import (
     bbq,
     jaster,
     jbbq,
-    jmmlu,
-    mmlu,
-    robustness,
     lctg
 )
 
 # set config path
 config_dir = Path("configs")
-default_cfg_name = "default_config.yaml"
+base_cfg_name = "base_config.yaml"
 parser = ArgumentParser()
-parser.add_argument("--config", "-c", type=str, default=default_cfg_name)
+parser.add_argument("--config", "-c", type=str)
 parser.add_argument("--select-config", "-s", action="store_true", default=False)
 args = parser.parse_args()
 
@@ -41,13 +38,11 @@ if custom_cfg_path.suffix != ".yaml":
     custom_cfg_path = custom_cfg_path.with_suffix(".yaml")
 assert custom_cfg_path.exists(), f"Config file {custom_cfg_path.resolve()} does not exist"
 
-
 # Configuration loading
 custom_cfg = OmegaConf.load(custom_cfg_path)
-default_cfg_path = config_dir / default_cfg_name
-if custom_cfg_path.stem != default_cfg_path.stem:
-    default_cfg = OmegaConf.load(default_cfg_path)
-    custom_cfg = OmegaConf.merge(default_cfg, custom_cfg)
+base_cfg_path = config_dir / base_cfg_name
+base_cfg = OmegaConf.load(base_cfg_path)
+custom_cfg = OmegaConf.merge(base_cfg, custom_cfg)
 cfg_dict = OmegaConf.to_container(custom_cfg, resolve=True)
 assert isinstance(cfg_dict, dict), "instance.config must be a DictConfig"
 
@@ -81,25 +76,22 @@ instance.llm = llm
 # Evaluation phase
 # 1. llm-jp-eval evaluation (jmmlu含む)
 jaster.evaluate()
-jmmlu.evaluate()
-robustness.evaluate()
-mmlu.evaluate()
 
 # 2. mt-bench evaluation
-# mtbench_evaluate()
+mtbench_evaluate()
 
 # 3. bbq, jbbq
 # bbq_eval
-# jbbq.evaluate()
+jbbq.evaluate()
 
 # 4. lctg-bench
-# lctg.evaluate()
+lctg.evaluate()
 
 # 5. toxicity
-#toxicity_evaluate()
+toxicity_evaluate()
 
 # Sample
 # sample_evaluate()
 
 # 6. Aggregation
-# aggregate()
+#aggregate()
