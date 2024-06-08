@@ -60,7 +60,7 @@ mtbench:
   judge_model: 'gpt-4o-2024-05-13'
   mode: 'single'
   baseline_model: null 
-  parallel: 1
+  parallel: 40
   first_n: null
 
 
