@@ -9,7 +9,9 @@ from toxicity_eval import toxicity_evaluate
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
 from evaluator import (
+    bbq,
     jaster,
+    jbbq,
     jmmlu,
     mmlu,
     robustness,
@@ -84,13 +86,14 @@ robustness.evaluate()
 mmlu.evaluate()
 
 # 2. mt-bench evaluation
-mtbench_evaluate()
+# mtbench_evaluate()
 
 # 3. bbq, jbbq
-#bbq_eval
+# bbq_eval
+# jbbq.evaluate()
 
 # 4. lctg-bench
-lctg.evaluate()
+# lctg.evaluate()
 
 # 5. toxicity
 #toxicity_evaluate()
