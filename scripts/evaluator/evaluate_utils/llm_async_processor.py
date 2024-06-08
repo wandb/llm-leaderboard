@@ -1,11 +1,14 @@
 import asyncio
 import time
 from typing import Any, TypeAlias, List, Tuple
+
+import backoff
 from langchain.schema import AIMessage
 
 Messages: TypeAlias = List[dict[str, str]]
 Inputs: TypeAlias = List[Tuple[Messages, dict[str, Any]]]
 
+MAX_TRIES = 100
 
 class LLMAsyncProcessor:
     """
@@ -17,7 +20,7 @@ class LLMAsyncProcessor:
         self.inputs = inputs
         self.batch_size = batch_size  # あとで引数ではないところで定義するようにします
 
-    # ここにretry用のdecoratorを追加予定
+    @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
     async def _ainvoke(self, messages: Messages, **kwargs) -> Tuple[AIMessage, float]:
         start = time.time()
         response = await self.llm.ainvoke(messages, **kwargs)
