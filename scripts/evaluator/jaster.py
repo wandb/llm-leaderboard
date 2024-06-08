@@ -12,6 +12,7 @@ from .evaluate_utils import (
     apply_chat_template,
     get_few_shot_messages,
     jaster_metrics_dict,
+    controllability_dict,
     LLMAsyncProcessor,
     normalize,
     text_formatter,
@@ -145,6 +146,8 @@ def evaluate_n_shot(few_shots: bool):
                 y_true: str = pipe(sample["output"], normalize)
                 metrics: list[str] = task_data["metrics"][0]
                 metrics_func: callable = jaster_metrics_dict[metrics]
+                control_method: str = controllability_dict[task].__name__
+                control_func: callable = controllability_dict[task]
                 # score = metrics_func(y_pred, y_true)
 
                 generator_config = {"max_tokens": task_data["output_length"]}
@@ -162,6 +165,8 @@ def evaluate_n_shot(few_shots: bool):
                         "prompt": prompt,
                         "metrics": metrics,
                         "metrics_func": metrics_func,
+                        "control_method": control_method,
+                        "control_func": control_func,
                         "score": None,  # to be filled
                         "latency": None,  # to be filled
                         "inputs": inputs,
@@ -173,6 +178,7 @@ def evaluate_n_shot(few_shots: bool):
         llm=llm,
         inputs=all_inputs,
     )
+
     results = llm_ap.get_results()
     for result, evaluation_result in tqdm(zip(results, evaluation_results)):
         response, latency = result
@@ -184,12 +190,16 @@ def evaluate_n_shot(few_shots: bool):
             normalize,
         )
         metrics_func = evaluation_result["metrics_func"]
+        control_func = evaluation_result["control_func"]
         score = metrics_func(y_pred, evaluation_result["expected_output"])
+        control_score = control_func(y_pred)
+
         evaluation_result["raw_output"] = raw_output
         evaluation_result["output"] = y_pred
         evaluation_result["score"] = score
+        evaluation_result["control_score"] = control_score
         evaluation_result["latency"] = latency
-        del evaluation_result["metrics_func"], evaluation_result["inputs"]
+        del evaluation_result["metrics_func"], evaluation_result["control_func"], evaluation_result["inputs"]
 
     output_df = pd.DataFrame(evaluation_results)
 
@@ -204,14 +214,23 @@ def evaluate_n_shot(few_shots: bool):
         columns="task",
         aggfunc="mean",
     ).reset_index()
+
+    leaderboard_table_control = pd.pivot_table(
+        data=test_table,
+        values="control_score",
+        index=["run_name", "model_name"],
+        columns="task",
+        aggfunc="mean",
+    ).reset_index()
+
     wandb.log(
         {
             f"{dataset_name}_{num_few_shots}shot_output_table_dev": dev_table,
             f"{dataset_name}_{num_few_shots}shot_output_table": test_table,
             f"{dataset_name}_{num_few_shots}shot_leaderboard_table": leaderboard_table,
+            f"{dataset_name}_{num_few_shots}shot_leaderboard_table_control": leaderboard_table_control,
         }
     )
-
 
 def evaluate():
     evaluate_n_shot(few_shots=False)

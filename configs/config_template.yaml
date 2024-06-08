@@ -95,3 +95,9 @@ mtbench:
   conv_stop_str: "###"
   conv_role_message_separator: ": \n"
   conv_role_only_separator: ": \n"
+
+# for bbq
+jbbq:
+  artifacts_path: 
+  dataset_dir: jbbq
+  language: ja
