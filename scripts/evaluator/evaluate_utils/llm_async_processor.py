@@ -1,5 +1,7 @@
 import asyncio
+import functools
 import time
+import traceback
 from typing import Any, TypeAlias, List, Tuple
 
 import backoff
@@ -8,11 +10,23 @@ from tqdm import tqdm
 
 from config_singleton import WandbConfigSingleton
 
+MAX_TRIES = 100
 
 Messages: TypeAlias = List[dict[str, str]]
 Inputs: TypeAlias = List[Tuple[Messages, dict[str, Any]]]
 
-MAX_TRIES = 100
+
+def error_handler(func: callable) -> callable:
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            error_message = traceback.format_exc()
+            print(error_message)
+            raise
+
+    return wrapper
 
 
 class LLMAsyncProcessor:
@@ -42,6 +56,7 @@ class LLMAsyncProcessor:
         self.batch_size = batch_size
 
     @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
+    @error_handler
     async def _ainvoke(self, messages: Messages, **kwargs) -> Tuple[AIMessage, float]:
         start = time.time()
         response = await self.llm.ainvoke(messages, **kwargs)
