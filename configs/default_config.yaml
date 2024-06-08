@@ -2,22 +2,22 @@ wandb:
   log: True
   entity: "wandb-japan"
   project: "llm-leaderboard3"
-  run_name: "gpt-4-1106-preview" # use run_name defined above
+  run_name: "cyberagent/calm2-7b-chat" # use run_name defined above
 
 github_version: v2.0.0 #for recording
 
-testmode: false
+testmode: true
 
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
-api: openai
+api: vllm
 batch_size: 256 # vllmは256, apiは32を推奨
 
 model:
   use_wandb_artifacts: false
   artifacts_path: ""
-  pretrained_model_name_or_path: "gpt-4-1106-preview" #if you use openai api, put the name of model
-  chat_template: ""
+  pretrained_model_name_or_path: "cyberagent/calm2-7b-chat" #if you use openai api, put the name of model
+  chat_template: "cyberagent/calm2-7b-chat"
   dtype: 'float16'
   max_model_len: 4096
   trust_remote_code: true
@@ -31,6 +31,36 @@ generator:
   temperature: 0.1
   # repetition_penalty: 1.0
   max_tokens: 128
+
+num_few_shots: 4
+
+jaster:
+  message_intro: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。"
+  artifacts_path: "wandb-japan/llm-leaderboard-test/jaster:v2"
+  dataset_dir: "jaster/evaluation"
+
+jmmlu_robustness: True
+
+lctg:
+  artifacts_path: "wandb-japan/llm-leaderboard3/lctg:v0"
+  dataset_dir: "lctg"
+
+bbq:
+  aaa: aaa
+
+sample_dataset:
+  artifacts_path: 't-ibi/llm-leaderboard/sample_dataset:v1'
+  dataset_dir: 'sample_dataset'
+  language: ja
+
+#jbbq:
+
+toxicity:
+  artifact_path: 'wandb-japan/toxicity-dataset-private/toxicity_dataset_subset:v1'
+  judge_prompts_path: 'wandb-japan/toxicity-dataset-private/toxicity_judge_prompts:v1'
+  max_workers: 5
+  judge_model: 'gpt-4o-2024-05-13'
+  visualize_ids: '[0, 1]'
 
 mtbench:
   temperature_override:
@@ -64,49 +94,3 @@ mtbench:
   parallel: 1
   first_n: null
 
-
-custom_system_message_ja: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。"
-custom_system_message_en: "The following text provides instructions for a certain task, along with accompanying input that offers further context. Please describe the appropriate response to complete the request."
-custom_prompt_template_ja: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。\n\n### 指示:\n{instruction}\n\n### 入力:\n{input}\n\n### 応答:"
-custom_prompt_template_en: "The following text provides instructions for a certain task, along with accompanying input that offers further context. Please describe the appropriate response to complete the request.\n\n ### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:"
-
-num_few_shots: 4
-
-jaster:
-  message_intro: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。"
-  artifacts_path: "t-ibi/llm-leaderboard/jaster:v0"
-  dataset_dir: "jaster/1.2.6/evaluation"
-  language: ja
-
-jmmlu:
-  system_message: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。"
-  artifacts_path: "t-ibi/llm-leaderboard/jmmlu:v5"
-  dataset_dir: "jmmlu/1.3.0/evaluation"
-  language: ja
-
-mmlu:
-  system_message: "The following text provides instructions for a certain task, along with accompanying input that offers further context. Please describe the appropriate response to complete the request."
-  artifacts_path: "t-ibi/llm-leaderboard/jaster:v0"
-  dataset_dir: "jaster/1.2.6/evaluation"
-  language: en
-
-lctg:
-  artifacts_path: "wandb-japan/llm-leaderboard3/lctg:v0"
-  dataset_dir: "lctg"
-
-bbq:
-  aaa: aaa
-
-sample_dataset:
-  artifacts_path: 't-ibi/llm-leaderboard/sample_dataset:v1'
-  dataset_dir: 'sample_dataset'
-  language: ja
-
-#jbbq:
-
-toxicity:
-  artifact_path: 'wandb-japan/toxicity-dataset-private/toxicity_dataset_subset:v1'
-  judge_prompts_path: 'wandb-japan/toxicity-dataset-private/toxicity_judge_prompts:v1'
-  max_workers: 5
-  judge_model: 'gpt-4o-2024-05-13'
-  visualize_ids: '[0, 1]'
