@@ -11,7 +11,6 @@ from config_singleton import WandbConfigSingleton
 from .evaluate_utils import (
     apply_chat_template,
     get_few_shot_messages,
-    get_system_message,
     jaster_metrics_dict,
     LLMAsyncProcessor,
     normalize,
@@ -25,6 +24,7 @@ def evaluate_n_shot(few_shots: bool):
     run = instance.run
     cfg = instance.config
     llm = instance.llm
+    api_type = cfg.api_type
 
     # download dataset
     dataset_name = "jaster"
@@ -108,13 +108,6 @@ def evaluate_n_shot(few_shots: bool):
                 # compose messages
                 messages = []
 
-                # system message
-                system_message = get_system_message(
-                    system_message_intro=cfg[dataset_name].system_message,
-                    instruction=task_data["instruction"],
-                )
-                messages.append({"role": "system", "content": system_message})
-
                 # add fewshots samples
                 if few_shots:
                     few_shot_messages = get_few_shot_messages(
@@ -125,6 +118,15 @@ def evaluate_n_shot(few_shots: bool):
 
                 # user input
                 messages.append({"role": "user", "content": sample["input"]})
+
+                # instruction message
+                instruction = "\n".join(
+                    cfg[dataset_name].message_intro, task_data["instruction"]
+                )
+
+                # Add instruction message at the beginning
+                first_content = messages[0]["content"]
+                messages[0]["content"] = f"{instruction}\n\n{first_content}"
 
                 # generate output
                 # start_time = time.time()
@@ -171,7 +173,7 @@ def evaluate_n_shot(few_shots: bool):
     llm_ap = LLMAsyncProcessor(
         llm=llm,
         inputs=all_inputs,
-        batch_size=256,  # APIの場合変える必要あり
+        api_type=api_type,  # APIの場合変える必要あり
     )
     results = llm_ap.get_results()
     for result, evaluation_result in tqdm(zip(results, evaluation_results)):
