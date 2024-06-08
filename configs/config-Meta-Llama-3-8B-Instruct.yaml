@@ -1,7 +1,7 @@
 base_config: base_config.yaml
 
 wandb:
-  run_name: "cyberagent/calm2-7b-chat" # use run_name defined above
+  run_name: "meta-llama/Meta-Llama-3-8B-Instruct" # use run_name defined above
 
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
@@ -10,6 +10,5 @@ batch_size: 256 # vllmは256, apiは32を推奨
 
 model:
   use_wandb_artifacts: false
-  pretrained_model_name_or_path: "cyberagent/calm2-7b-chat" #if you use openai api, put the name of model
-  chat_template: "cyberagent/calm2-7b-chat"
-
+  pretrained_model_name_or_path: "meta-llama/Meta-Llama-3-8B-Instruct" #if you use openai api, put the name of model
+  chat_template: "meta-llama/Meta-Llama-3-8B-Instruct"
