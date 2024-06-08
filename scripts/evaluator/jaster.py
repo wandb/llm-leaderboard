@@ -12,10 +12,12 @@ from .evaluate_utils import (
     apply_chat_template,
     get_few_shot_messages,
     jaster_metrics_dict,
+    jmmlu_dict,
     controllability_dict,
     LLMAsyncProcessor,
     normalize,
     text_formatter,
+    evaluate_robustness
 )
 
 
@@ -36,25 +38,38 @@ def evaluate_n_shot(few_shots: bool):
         raise FileNotFoundError(f"dataset_dir not found: {dataset_dir}")
 
     tasks = [
+        "aio",
+        "alt-e-to-j",
+        "alt-j-to-e",
+        "chabsa",
+        "commonsensemoralja",
         "jamp",
         "janli",
+        "jblimp",
+        "jcola-in-domain",
+        "jcola-out-of-domain",
         "jcommonsenseqa",
         "jemhopqa",
         "jnli",
         "jsem",
         "jsick",
         "jsquad",
-        # "jsts",
-        "niilc",
-        "chabsa",
+        #"jsts",
+        "kuci",
         "mawps",
-        "commonsensemoralja",
-        "wiki_reading",
-        "wiki_ner",
-        "wiki_dependency",
-        "wiki_pas",
+        #"mbpp",
+        "mgsm",
+        "niilc",
         "wiki_coreference",
+        "wiki_dependency",
+        "wiki_ner",
+        "wiki_pas",
+        "wiki_reading",
+        "wikicorpus-e-to-j",
+        "wikicorpus-j-to-e"
     ]
+    tasks.extend(sorted({p.stem for p in dataset_dir.glob("**/mmlu_en_*.json")}))
+    tasks.extend([p.stem for p in dataset_dir.glob("**/jmmlu*.json") if not p.stem.endswith("Choice")])
 
     if few_shots:
         num_few_shots = cfg.get("num_few_shots", None)
@@ -63,17 +78,18 @@ def evaluate_n_shot(few_shots: bool):
     else:
         num_few_shots = 0
 
+    if cfg.jmmlu_robustness and few_shots:
+        tasks.extend([p.stem for p in dataset_dir.glob("**/jmmlu*.json") if p.stem.endswith("Choice")])
+
     evaluation_results = []
     for task in tasks:
         # execute evaluation
-        language = cfg[dataset_name].language
         for subset in ("test", "dev"):
             eval_matainfo = {
                 "run_name": run.name,
                 "model_name": cfg.model.pretrained_model_name_or_path,
                 "dataset": dataset_name,
                 "task": task,
-                "language": language,
                 "num_few_shots": num_few_shots,
                 "subset": subset,
             }
@@ -93,6 +109,9 @@ def evaluate_n_shot(few_shots: bool):
             elif "wiki" in task:
                 test_max_num_samples = 20
                 val_max_num_samples = 5
+            elif "mmlu" in task:
+                test_max_num_samples = 5
+                val_max_num_samples = 1
             else:
                 test_max_num_samples = 100
                 val_max_num_samples = 10
@@ -120,8 +139,13 @@ def evaluate_n_shot(few_shots: bool):
                 messages.append({"role": "user", "content": sample["input"]})
 
                 # instruction message
+                if "mmlu_en" in task:
+                    message_intro = "The following text provides instructions for a certain task, along with accompanying input that offers further context. Please describe the appropriate response to complete the request."
+                else:
+                    message_intro = "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。"
+                
                 instruction = "\n".join(
-                    [cfg[dataset_name].message_intro, task_data["instruction"]]
+                    [message_intro, task_data["instruction"]]
                 )
 
                 # Add instruction message at the beginning
@@ -129,26 +153,14 @@ def evaluate_n_shot(few_shots: bool):
                 messages[0]["content"] = f"{instruction}\n\n{first_content}"
 
                 # generate output
-                # start_time = time.time()
                 prompt = apply_chat_template(messages=messages)
-                # output = None
-                # end_time = time.time()
-                # latency = end_time - start_time
-
-                # # score
-                # y_pred: str = pipe(
-                #     output,
-                #     lambda x: text_formatter(x, task),
-                #     lambda x: x.split("\n\n")[0],
-                #     normalize,
-                # )
                 y_pred = None
                 y_true: str = pipe(sample["output"], normalize)
                 metrics: list[str] = task_data["metrics"][0]
                 metrics_func: callable = jaster_metrics_dict[metrics]
-                control_method: str = controllability_dict[task].__name__
-                control_func: callable = controllability_dict[task]
-                # score = metrics_func(y_pred, y_true)
+                control_task = "mmlu_en" if "mmlu_en" in task else "jmmlu" if "jmmlu" in task else task
+                control_method: str = controllability_dict[control_task].__name__
+                control_func: callable = controllability_dict[control_task]
 
                 generator_config = {"max_tokens": task_data["output_length"]}
                 inputs.extend([prompt, generator_config])
@@ -202,11 +214,18 @@ def evaluate_n_shot(few_shots: bool):
         del evaluation_result["metrics_func"], evaluation_result["control_func"], evaluation_result["inputs"]
 
     output_df = pd.DataFrame(evaluation_results)
+    # group mmlu_en and jmmlu task category
+    output_df["task"] = output_df["task"].apply(lambda x: "mmlu_en" if x.startswith("mmlu_en") else x)
+    output_df['task'] = output_df['task'].apply(lambda x: jmmlu_dict.get(x, x))
 
     # log table
-    output_df = pd.DataFrame(evaluation_results)
+    if cfg.jmmlu_robustness and few_shots:
+        output_df = output_df[~output_df["task"].str.endswith("Choice")]
+        output_robust_df = output_df[output_df["task"].str.contains("jmmlu")]
+        
     dev_table = output_df.query("subset == 'dev'")
     test_table = output_df.query("subset == 'test'")
+    
     leaderboard_table = pd.pivot_table(
         data=test_table,
         values="score",
@@ -223,15 +242,33 @@ def evaluate_n_shot(few_shots: bool):
         aggfunc="mean",
     ).reset_index()
 
-    wandb.log(
+    leaderboard_table['jmmlu'] = leaderboard_table[['jmmlu_stem', 'jmmlu_social_sciences', 'jmmlu_humanities', 'jmmlu_other']].mean(axis=1)
+    leaderboard_table_control['jmmlu'] = leaderboard_table_control[['jmmlu_stem', 'jmmlu_social_sciences', 'jmmlu_humanities', 'jmmlu_other']].mean(axis=1)
+
+    run.log(
         {
             f"{dataset_name}_{num_few_shots}shot_output_table_dev": dev_table,
             f"{dataset_name}_{num_few_shots}shot_output_table": test_table,
             f"{dataset_name}_{num_few_shots}shot_leaderboard_table": leaderboard_table,
-            f"{dataset_name}_{num_few_shots}shot_leaderboard_table_control": leaderboard_table_control,
+            f"{dataset_name}_control_{num_few_shots}shot_leaderboard_table": leaderboard_table_control,
         }
     )
 
+    if cfg.jmmlu_robustness and few_shots:
+        # need to be updated
+        dev_robust_table = output_robust_df.query("subset == 'dev'")
+        test_robust_table= output_robust_df.query("subset == 'test'")
+        
+        dev_robust_table_for_log,_ = evaluate_robustness(num_few_shots=num_few_shots, subset="_dev", df=dev_robust_table)
+        test_robust_table_for_log, leaderboard_robust_table= evaluate_robustness(num_few_shots=num_few_shots, subset="", df=test_robust_table)
+        run.log(
+        {
+            f"jmmlu_robost_{num_few_shots}shot_output_table_dev": dev_robust_table_for_log,
+            f"jmmlu_robost_{num_few_shots}shot_output_table": test_robust_table_for_log,
+            f"jmmlu_robost_{num_few_shots}shot_leaderboard_table": leaderboard_robust_table
+        }
+    )
+        
 def evaluate():
     evaluate_n_shot(few_shots=False)
     evaluate_n_shot(few_shots=True)
