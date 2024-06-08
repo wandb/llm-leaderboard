@@ -1,5 +1,3 @@
-base_config: base_config.yaml
-
 wandb:
   run_name: "meta-llama/Meta-Llama-3-8B-Instruct" # use run_name defined above
 
@@ -13,4 +11,4 @@ model:
   pretrained_model_name_or_path: "meta-llama/Meta-Llama-3-8B-Instruct" #if you use openai api, put the name of model
   chat_template: "meta-llama/Meta-Llama-3-8B-Instruct"
   size: "10B<"
-  release_date: "5/17/2023"
+  release_date: "4/18/2024"
