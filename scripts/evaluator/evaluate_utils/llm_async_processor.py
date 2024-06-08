@@ -6,20 +6,27 @@ import backoff
 from langchain.schema import AIMessage
 from tqdm import tqdm
 
+from config_singleton import WandbConfigSingleton
+
+
 Messages: TypeAlias = List[dict[str, str]]
 Inputs: TypeAlias = List[Tuple[Messages, dict[str, Any]]]
 
 MAX_TRIES = 100
+
 
 class LLMAsyncProcessor:
     """
     LLMAsyncProcessorクラスは、指定されたLLM（大規模言語モデル）を使用して非同期にメッセージを処理するためのユーティリティクラスです。
     """
 
-    def __init__(self, llm: object, inputs: Inputs, api_type: str):
+    def __init__(self, llm: object, inputs: Inputs):
         self.llm = llm
         self.inputs = inputs
 
+        instance = WandbConfigSingleton.get_instance()
+        cfg = instance.config
+        api_type = cfg.api
         if api_type == "vllm":
             batch_size = 128
         elif api_type == "openai":

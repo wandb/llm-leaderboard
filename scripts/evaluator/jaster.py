@@ -172,7 +172,6 @@ def evaluate_n_shot(few_shots: bool):
     llm_ap = LLMAsyncProcessor(
         llm=llm,
         inputs=all_inputs,
-        api_type=cfg.api,
     )
     results = llm_ap.get_results()
     for result, evaluation_result in tqdm(zip(results, evaluation_results)):
