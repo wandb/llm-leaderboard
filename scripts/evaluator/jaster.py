@@ -24,7 +24,6 @@ def evaluate_n_shot(few_shots: bool):
     run = instance.run
     cfg = instance.config
     llm = instance.llm
-    api_type = cfg.api_type
 
     # download dataset
     dataset_name = "jaster"
@@ -121,7 +120,7 @@ def evaluate_n_shot(few_shots: bool):
 
                 # instruction message
                 instruction = "\n".join(
-                    cfg[dataset_name].message_intro, task_data["instruction"]
+                    [cfg[dataset_name].message_intro, task_data["instruction"]]
                 )
 
                 # Add instruction message at the beginning
@@ -173,7 +172,7 @@ def evaluate_n_shot(few_shots: bool):
     llm_ap = LLMAsyncProcessor(
         llm=llm,
         inputs=all_inputs,
-        api_type=api_type,  # APIの場合変える必要あり
+        api_type=cfg.api,
     )
     results = llm_ap.get_results()
     for result, evaluation_result in tqdm(zip(results, evaluation_results)):
