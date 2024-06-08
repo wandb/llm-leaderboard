@@ -12,7 +12,6 @@ from evaluator import (
     jaster,
     jmmlu,
     mmlu,
-    controllability,
     robustness,
     lctg
 )
@@ -80,7 +79,6 @@ instance.llm = llm
 # Evaluation phase
 # 1. llm-jp-eval evaluation (jmmlu含む)
 jaster.evaluate()
-#controllability.evaluate()
 jmmlu.evaluate()
 robustness.evaluate()
 mmlu.evaluate()
