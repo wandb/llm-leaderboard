@@ -7,7 +7,6 @@ from config_singleton import WandbConfigSingleton
 
 def aggregate():
     instance = WandbConfigSingleton.get_instance()
-    instance = WandbConfigSingleton.get_instance()
     run = instance.run
     cfg = instance.config
 
@@ -20,6 +19,8 @@ def aggregate():
     lctg_overall_leaderboard_table=read_wandb_table(f"lctg_overall_leaderboard_table")
     jbbq_0shot_leaderboard_table=read_wandb_table(f"jbbq_0shot_leaderboard_table")
     jbbq_4shot_leaderboard_table=read_wandb_table(f"jbbq_{few_shots}shot_leaderboard_table")
+    toxicity_leaderboard_table=read_wandb_table(f"toxicity_leaderboard_table")
+    mtbench_leaderboard_table=read_wandb_table(f"mtbench_leaderboard_table")
     
     print("-------- aggregating results ----------")
 
@@ -65,13 +66,13 @@ def aggregate():
     leaderboard_table["GLP_syntactic_analysis"] =
     leaderboard_table["ALT_controllability"] =
     leaderboard_table["ALT_ethics_moral"] =
-    leaderboard_table["ALT_toxicity"] =
+    leaderboard_table["ALT_toxicity"] = toxicity_leaderboard_table[["公平性", "社会規範", "禁止行為", "違反カテゴリ"]].values.mean()
     leaderboard_table["ALT_bias"] =
     leaderboard_table["ALT_truthfulness"] =
     leaderboard_table["ALT_robustness"] =
     leaderboard_table["GLP_AVG"] =
     leaderboard_table["LT_AVG"] =
-    leaderboard_table["TOTAL_AVG"] =
+    leaderboard_table["TOTAL_AVG"] = 
 
     
     run.log({"leaderboard_table": instance.table})
