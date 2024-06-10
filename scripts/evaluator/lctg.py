@@ -138,41 +138,47 @@ def evaluate():
         #############################################
         # calculate scores quality
         #############################################
-        df_quality = quality_process_results(result_df, task)
-        quality_scores = calculate_true_proportions(df_quality)
+        #df_quality = quality_process_results(result_df, task)
+        #quality_scores = calculate_true_proportions(df_quality)
 
     #############################################
     # Calculate scores
     #############################################
 
         # individual outputs
-        merged_df = pd.merge(df_quality,save_df, on='prompt_id', how='left')
-        output_df = transform_data(output_df, merged_df, task)
+        #merged_df = pd.merge(df_quality,save_df, on='prompt_id', how='left')
+        output_df = transform_data(output_df, save_df, task)
 
         # task base summary
-        scores_list = list(ctg_scores.values())+quality_scores
-        task_summary_table = pd.DataFrame(data=[scores_list], columns=["Format-ctg","C-count-ctg","Keyword-ctg","P-word-ctg","Format-qual","C-count-qual","Keyword-qual","P-word-qual"])
+        #scores_list = list(ctg_scores.values())+quality_scores
+        scores_list = list(ctg_scores.values())
+        #task_summary_table = pd.DataFrame(data=[scores_list], columns=["Format-ctg","C-count-ctg","Keyword-ctg","P-word-ctg","Format-qual","C-count-qual","Keyword-qual","P-word-qual"])
+        task_summary_table = pd.DataFrame(data=[scores_list], columns=["Format-ctg","C-count-ctg","Keyword-ctg","P-word-ctg"])
         task_summary_table["AVG-ctg"] = task_summary_table.apply(lambda row: (row["Format-ctg"] + row["C-count-ctg"] + row["Keyword-ctg"] + row["P-word-ctg"]) / 4, axis=1)
-        task_summary_table["AVG-qual"] = task_summary_table.apply(lambda row: (row["Format-qual"] + row["C-count-qual"] + row["Keyword-qual"] + row["P-word-qual"]) / 4, axis=1)
-        columns = ["AVG-ctg", "AVG-qual"] + [col for col in task_summary_table.columns if col not in ["AVG-ctg", "AVG-qual"]]
+        #task_summary_table["AVG-qual"] = task_summary_table.apply(lambda row: (row["Format-qual"] + row["C-count-qual"] + row["Keyword-qual"] + row["P-word-qual"]) / 4, axis=1)
+        #columns = ["AVG-ctg", "AVG-qual"] + [col for col in task_summary_table.columns if col not in ["AVG-ctg", "AVG-qual"]]
+        columns = ["AVG-ctg"] + [col for col in task_summary_table.columns if col not in ["AVG-ctg"]]
         task_summary_table = task_summary_table[columns]
+        print(task_summary_table)
 
         for col in list(task_summary_table.columns):
-            task_summary_table[col] = task_summary_table[col].map(lambda f: "{:.3f}".format(f))
+            task_summary_table[col] = task_summary_table[col].apply(lambda x: "{:.3f}".format(float(x)))
         wandb.log({f"lctg_{task}_leaderboard_table": task_summary_table})
 
-        total_summary[f"{task}_AVG-ctg"]=pd.to_numeric(task_summary_table['AVG-ctg'], errors='coerce')
-        total_summary[f"{task}_AVG-qual"]=pd.to_numeric(task_summary_table['AVG-qual'], errors='coerce')
+        total_summary[f"{task}_AVG-ctg"] = pd.to_numeric(task_summary_table['AVG-ctg'], errors='coerce')
+        #total_summary[f"{task}_AVG-qual"]=pd.to_numeric(task_summary_table['AVG-qual'], errors='coerce')
 
     # total summary
     AVG_columns_ctg = [f"{task}_AVG-ctg" for task in tasks]
     total_summary["Total-AVG-ctg"] = total_summary[AVG_columns_ctg].mean(axis=1)
-    AVG_columns_qual = [f"{task}_AVG-qual" for task in tasks]
-    total_summary["Total-AVG-qual"] = total_summary[AVG_columns_qual].mean(axis=1)
-    total_summary["AVG"] = (total_summary["Total-AVG-ctg"]+total_summary["Total-AVG-qual"])/2
-
-    columns = ['AVG'] + [col for col in total_summary.columns if col != 'AVG']
+    columns = ['Total-AVG-ctg'] + [col for col in total_summary.columns if col != 'Total-AVG-ctg']
     total_summary = total_summary[columns]
+    
+    #AVG_columns_qual = [f"{task}_AVG-qual" for task in tasks]
+    #total_summary["Total-AVG-qual"] = total_summary[AVG_columns_qual].mean(axis=1)
+    #total_summary["AVG"] = (total_summary["Total-AVG-ctg"]+total_summary["Total-AVG-qual"])/2
+    #columns = ['AVG'] + [col for col in total_summary.columns if col != 'AVG']
+    #total_summary = total_summary[columns]
 
     wandb.log({"lctg_overall_leaderboard_table": total_summary})
     wandb.log({"lctg_output_table": output_df})
