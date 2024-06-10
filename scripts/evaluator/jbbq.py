@@ -187,7 +187,7 @@ def evaluate_n_shot(few_shots: bool):
 
     # num_few_shots を正しいキーから取得
     if few_shots:
-        num_few_shots = cfg.get("metainfo", {}).get("num_few_shots", None)
+        num_few_shots = cfg.get("num_few_shots", 0)
     else:
         num_few_shots = 0
     

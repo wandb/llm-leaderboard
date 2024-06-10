@@ -167,7 +167,7 @@ def calculate_true_proportions(df):
 # Get scores
 ###########################################################
 
-def transform_data(output_df, merged_df, task):
+def transform_data(output_df, df, task):
 
     # Mapping data to the new structure
     categories = ['format', 'char_count', 'keyword', 'prohibited_word']
@@ -176,10 +176,10 @@ def transform_data(output_df, merged_df, task):
         'format_result_wo_hf', 'char_count_result_wo_hf', 'keyword_result_wo_hf', 'prohibited_word_result_wo_hf'
     ]
     ctgs = ['is_valid_format', 'is_valid_char_count', 'is_valid_keyword', 'is_valid_prohibited_word']
-    quals = ['format_wo_hf', 'char_count_wo_hf', 'keyword_wo_hf', 'prohibited_word_wo_hf']
+    #quals = ['format_wo_hf', 'char_count_wo_hf', 'keyword_wo_hf', 'prohibited_word_wo_hf']
     #reasons = ['format_wo_hf_reason', 'char_count_wo_hf_reason', 'keyword_wo_hf_reason', 'prohibited_word_wo_hf_reason']
     new_rows = []
-    for _, row in merged_df.iterrows():
+    for _, row in df.iterrows():
         for i, cat in enumerate(categories):
             # Prepare data for the current category based on the current row
             row_data = {
@@ -191,7 +191,7 @@ def transform_data(output_df, merged_df, task):
                 'output': row[outputs[i]],
                 'preprocessed_output': row[preprocessed_outputs[i]],
                 'ctg': row[ctgs[i]],
-                'qual': row[quals[i]],
+                #'qual': row[quals[i]],
                 #'reason': row[reasons[i]]
             }
             # Append row data for the current category
@@ -323,62 +323,3 @@ def get_header_footer_remover_prompt(task: str, generated_result: str) -> str:
 {generated_result}
 """
     return remove_prompt
-
-
-
-
-def get_quality_reason_check_prompt(task: str, generated_result: str, base_text: str = "") -> str:
-    if task == "summary":
-        quality_check_reason_prompt = f"""先ほど、私はあなたに以下のような質問をしました。
-"以下に要約した文章とその要約元の文章が提示されています。
-要約した文章は要約元の文章を適切に要約できているかを判断してください。
-適切に要約できている場合は「適切」、適切に要約できていない場合は「不適切」と回答してください。
-ただし、要約元の文章から断定できない情報が要約した文章に含まれている場合も「不適切」と回答してください。
-「適切」「不適切」のいずれかのみを出力し、説明文などは付与しないでください。
-【要約元の文章】
-{base_text}
-
-【要約した文章】
-{generated_result}"
-
-すると、あなたは以下のように答えました。
-"不適切"
-
-なぜ"不適切"と回答をしたのか、理由を教えてください。
-"""
-    elif task == "ad_text":
-        quality_check_reason_prompt = f"""先ほど、私はあなたに以下のような質問をしました。
-"以下に、ランディングページの説明文とその説明文をもとに作成した1つの広告文のタイトルがあります。
-説明文の内容に基づいているタイトルを作成できているかを判断してください。
-適切に作成できている場合は「適切」、適切に作成できていない場合は「不適切」と回答してください。
-ただし、説明文とタイトルが完全に一致している事例とタイトルとして長すぎる事例も「不適切」と回答してください。
-「適切」「不適切」のいずれかのみを出力し、説明文などは付与しないでください。
-
-【説明文】
-{base_text}
-
-【広告文のタイトル】
-{generated_result}
-"
-すると、あなたは以下のように答えました。
-"不適切"
-
-なぜ"不適切"と回答をしたのか、理由を教えてください。
-
-"""
-    elif task == "pros_and_cons":
-        quality_check_reason_prompt = f"""先ほど、私はあなたに以下のような質問をしました。
-"以下に提示している文章は、ある事象・事物についてのメリットとデメリットを生成AIに回答してもらった出力結果です。
-出力結果が、メリット・デメリットの双方について言及できているか否かを回答してください。
-言及できている場合は「適切」、言及できていない場合は「不適切」と回答してください。
-「適切」「不適切」のいずれかのみを出力し、説明文などは付与しないでください。
-
-【文章】
-{generated_result}
-"
-すると、あなたは以下のように答えました。
-"不適切"
-
-なぜ"不適切"と回答をしたのか、理由を教えてください。
-"""
-    return quality_check_reason_prompt

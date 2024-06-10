@@ -77,6 +77,7 @@ def get_answer(
         temperature = 0.7
 
     choices = []
+    chat_state = None  # for palm-2, gemini and bedrock-claude model
     for i in range(num_choices):
         conv = get_conversation_template(model)
 
@@ -86,9 +87,10 @@ def get_answer(
             conv.append_message(conv.roles[1], None)
 
             if cfg.api == "vllm":
-                output = chat_completion_vllm(model, conv, temperature, max_tokens)
-
-            elif model in ANTHROPIC_MODEL_LIST:
+                output = chat_completion_vllm(
+                    model, conv, temperature, max_tokens
+                )
+            elif cfg.api == "anthropic":
                 output = chat_completion_anthropic(
                     model, conv, temperature, max_tokens
                 )
@@ -98,7 +100,7 @@ def get_answer(
                 )
             elif cfg.api == "cohere":
                 output = chat_completion_cohere(
-                model, conv, temperature, max_tokens
+                    model, conv, temperature, max_tokens
                 ) 
             elif cfg.api == "google":
                 chat_state, output = chat_completion_gemini(
@@ -113,7 +115,9 @@ def get_answer(
                     chat_state, model, conv, temperature, max_tokens
                 )  
             else:
-                output = chat_completion_openai(model, conv, temperature, max_tokens)
+                output = chat_completion_openai(
+                    model, conv, temperature, max_tokens
+                )
 
             conv.update_last_message(output)
             turns.append(output)
