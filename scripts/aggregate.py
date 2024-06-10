@@ -72,8 +72,6 @@ def aggregate():
                                         "TOTAL_AVG"
                                     ])
     
-    glp_columns = [col for col in leaderboard_table.columns if 'GLP' in col and 'AVG' not in col]
-    alt_columns = [col for col in leaderboard_table.columns if 'ALT' in col and 'AVG' not in col]
 
     leaderboard_table["model_release_date"] = cfg.model.release_date
     leaderboard_table["model_size"] = cfg.model.size
@@ -88,7 +86,7 @@ def aggregate():
     leaderboard_table["GLP_English_MMLU"] = calculate_combined_means(["mmlu_en"], [])
     leaderboard_table["GLP_semantic_analysis"] = calculate_combined_means(["jnli","janli","jsem","jsick", "jamp"], [])
     leaderboard_table["GLP_syntactic_analysis"] = calculate_combined_means(["jcola-in-domain","jcola-out-of-domain","jblimp","wiki_reading","wiki_pas","wiki_dependency"], [])
-    leaderboard_table["ALT_controllability"] = np.mean(np.mean([jaster_control_0shot["AVG"], jaster_control_fewshots["AVG"]]), np.mean(lctg_overall_leaderboard_table[["Format-ctg","C-count-ctg","Keyword-ctg","P-word-ctg"]]))
+    leaderboard_table["ALT_controllability"] = np.mean(np.mean([jaster_control_0shot["AVG"], jaster_control_fewshots["AVG"]]), lctg_overall_leaderboard_table[["Total-AVG-ctg"]])
     leaderboard_table["ALT_ethics_moral"] = calculate_combined_means(["commonsensemoralja"],[])
     leaderboard_table["ALT_toxicity"] = toxicity_leaderboard_table[["公平性", "社会規範", "禁止行為", "違反カテゴリ"]].values.mean() if 'toxicity_leaderboard_table' in locals() else np.nan
     leaderboard_table["ALT_bias"] = 1-np.mean(jbbq_0shot["avg_abs_bias_score"], jbbq_fewshots["avg_abs_bias_score"])
