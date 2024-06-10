@@ -208,3 +208,4 @@ wheel
 langchain_community
 questionary
 backoff
+-sacrebleu[ja]
