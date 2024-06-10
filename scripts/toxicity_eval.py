@@ -75,7 +75,7 @@ def judge_answers(prompt, instruction, judge_model):
 def convert_bool_to_int(data):
     return {k: int(v) if isinstance(v, bool) else v for k, v in data.items()}
 
-@retry(stop=stop_after_attempt(5), wait=wait_fixed(30))
+@retry(stop=stop_after_attempt(30), wait=wait_fixed(5))
 def judge_extract_scores(prompt, instruction, judge_model):
     judge = judge_answers(prompt, instruction, judge_model)
     dict_regex = r"\{.*\}"
@@ -83,7 +83,9 @@ def judge_extract_scores(prompt, instruction, judge_model):
     if dict_match:
         dict_str = dict_match.group()
         scores = ast.literal_eval(dict_str.replace('true', 'True').replace('false', 'False'))
-        return convert_bool_to_int(scores)
+        score = convert_bool_to_int(scores)
+        score = translate_keys(score)
+        return score
     else:
         raise ValueError("No dictionary found in the judge's response")
 
@@ -105,23 +107,29 @@ key_translation = {
 def translate_keys(data, key_translation=key_translation):
     return {key_translation[k]: v for k, v in data.items()}
 
-def get_scores(questions, judge_prompts, judge_model):
+def get_scores(questions, judge_prompts, judge_model, max_workers):
     categories = {'禁止行為': 0, '社会規範': 1, '公平性': 2, '違反カテゴリ': 3}
     prompt_template = """### ユーザーの発言: 
 {user_prompt}
 ### 評価対象モデルの返答: 
 {answer}"""
-    for q in tqdm(questions):
+
+    def process_question(q):
         category_id = categories.get(q['category_1'], -1)
         if category_id == -1:
             print(f"Unknown category: {q['category_1']}")
-            continue
+            return q
         judge_prompt = judge_prompts[category_id]['system_prompt']
         user_prompt = prompt_template.format(user_prompt=q["user_prompt"], answer=q["answer"])
         score = judge_extract_scores(user_prompt, judge_prompt, judge_model)
-        score = translate_keys(score)
         q.update(score)
-    return questions
+        return q
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(process_question, q) for q in questions]
+        results = [future.result() for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures))]
+
+    return results
 
 
 def toxicity_evaluate():
@@ -137,7 +145,10 @@ def toxicity_evaluate():
     # Load questions
     artifact_path = cfg.toxicity.get("artifact_path")
     artifact_dir = run.use_artifact(artifact_path, type='dataset').download()
-    questions = load_questions(artifact_dir + "/toxicity_subset.jsonl", None, None)
+    questions = load_questions(artifact_dir + "/toxicity_full.jsonl", None, None)
+    if cfg.testmode==True:
+        questions = questions[:12]
+
 
     # Create model answers
     questions = parallel_process(questions, llm, max_workers)
@@ -148,12 +159,12 @@ def toxicity_evaluate():
     judge_prompts = load_questions(judge_dir + "/toxicity_judge_prompts.jsonl", None, None)
 
     # Evaluate models response to toxic inputs
-    questions = get_scores(questions, judge_prompts, judge_model)
+    questions = get_scores(questions, judge_prompts, judge_model, max_workers)
 
     # Convert json to pd.DataFrame/wandb.Table and logging
     # output table
     df_toxicity = pd.DataFrame(questions)
-    df_toxicity_sample = df_toxicity[df_toxicity.question_id.isin(visualize_ids)]
+    df_toxicity_sample = df_toxicity.iloc[:12]
     toxicity_output_table = wandb.Table(dataframe=df_toxicity_sample)
     # radar table
     use_col = ['category_1']+list(key_translation.values())
@@ -170,7 +181,6 @@ def toxicity_evaluate():
         "toxicity_leaderboard_table":toxicity_leaderboard_table,
         "toxicity_radar_table":toxicity_radar,
     })
-
 
 
 
