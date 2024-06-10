@@ -37,8 +37,7 @@ def evaluate():
     #############################################
     # initialization 
     #############################################
-    #tasks = ["summary","ad_text","pros_and_cons"]
-    tasks = ["summary"]
+    tasks = ["summary","ad_text","pros_and_cons"]
     limitation_type_list = ["format", "char_count", "keyword", "prohibited_word"]
     total_summary = pd.DataFrame()
     columns = [

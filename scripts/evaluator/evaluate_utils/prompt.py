@@ -7,6 +7,7 @@ from jinja2 import Template
 
 from config_singleton import WandbConfigSingleton
 
+
 def get_system_message(system_message_intro: str, instruction: str):
     system_message = ""
     system_message += system_message_intro
@@ -73,9 +74,16 @@ def apply_chat_template(messages: list[dict[str, str]]) -> str:
 
     if cfg.api == "vllm":
         tokenizer_config = cfg.tokenizer_config
-        chat_template = Template(cfg.tokenizer_config.chat_template)
+        if cfg.model.chat_template.startswith("mistralai/"):
+            kwargs = {
+                "raise_exception": lambda _: "",
+                **tokenizer_config,
+            }
+        else:
+            kwargs = tokenizer_config
+        chat_template = Template(tokenizer_config.chat_template)
         conversation_prompt = chat_template.render(
-            messages=messages, add_generation_prompt=True, **tokenizer_config
+            messages=messages, add_generation_prompt=True, **kwargs
         )
     else:
         conversation_prompt = json.dumps(

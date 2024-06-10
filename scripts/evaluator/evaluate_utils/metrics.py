@@ -2,6 +2,7 @@ import math
 import re
 from fuzzywuzzy import fuzz
 from scipy.stats import pearsonr, spearmanr
+from sacrebleu import BLEU
 
 # ---------------------
 # For jaster
@@ -53,6 +54,33 @@ def spearman(y_pred: str, y_true: str) -> float:
         spearman = 0.0
     return 0.0
 
+def blue_en(y_pred: str, y_true: str) -> float:
+    y_pred = y_pred.strip()
+    y_true = y_true.strip()
+    
+    if not y_true:
+        raise ValueError("The reference text (y_true) is empty.")    
+    if not y_pred:
+        return 0.0
+    bleu_config = {"effective_order": True, "trg_lang": "en"}
+
+    bleu_score = BLEU(**bleu_config).corpus_score([y_pred], [[y_true]]).score
+    return bleu_score/100
+
+def blue_ja(y_pred: str, y_true: str) -> float:
+    y_pred = y_pred.strip()
+    y_true = y_true.strip()
+    
+    if not y_true:
+        raise ValueError("The reference text (y_true) is empty.")    
+    if not y_pred:
+        return 0.0
+    bleu_config = {"effective_order": True, "trg_lang": "ja"}
+
+    bleu_score = BLEU(**bleu_config).corpus_score([y_pred], [[y_true]]).score
+    return bleu_score/100
+
+
 
 jaster_metrics_dict: dict[str, callable] = {
     "exact_match": exact_match,
@@ -60,6 +88,64 @@ jaster_metrics_dict: dict[str, callable] = {
     "set_f1": set_f1,
     "pearson": pearson,
     "spearman": spearman,
+    "bleu_ja": blue_ja,
+    "bleu_en": blue_en,
+}
+
+jmmlu_dict = {
+    'jmmlu_abstract_algebra': 'jmmlu_stem',
+    'jmmlu_anatomy': 'jmmlu_stem',
+    'jmmlu_astronomy': 'jmmlu_stem',
+    'jmmlu_business_ethics': 'jmmlu_other',
+    'jmmlu_clinical_knowledge': 'jmmlu_other',
+    'jmmlu_college_biology': 'jmmlu_stem',
+    'jmmlu_college_chemistry': 'jmmlu_stem',
+    'jmmlu_college_computer_science': 'jmmlu_stem',
+    'jmmlu_college_mathematics': 'jmmlu_stem',
+    'jmmlu_college_medicine': 'jmmlu_other',
+    'jmmlu_college_physics': 'jmmlu_stem',
+    'jmmlu_computer_security': 'jmmlu_stem',
+    'jmmlu_conceptual_physics': 'jmmlu_stem',
+    'jmmlu_econometrics': 'jmmlu_social_sciences',
+    'jmmlu_electrical_engineering': 'jmmlu_stem',
+    'jmmlu_elementary_mathematics': 'jmmlu_stem',
+    'jmmlu_formal_logic': 'jmmlu_humanities',
+    'jmmlu_global_facts': 'jmmlu_other',
+    'jmmlu_high_school_biology': 'jmmlu_stem',
+    'jmmlu_high_school_chemistry': 'jmmlu_stem',
+    'jmmlu_high_school_computer_science': 'jmmlu_stem',
+    'jmmlu_high_school_european_history': 'jmmlu_humanities',
+    'jmmlu_high_school_geography': 'jmmlu_social_sciences',
+    'jmmlu_high_school_macroeconomics': 'jmmlu_social_sciences',
+    'jmmlu_high_school_mathematics': 'jmmlu_stem',
+    'jmmlu_high_school_microeconomics': 'jmmlu_social_sciences',
+    'jmmlu_high_school_physics': 'jmmlu_stem',
+    'jmmlu_high_school_psychology': 'jmmlu_social_sciences',
+    'jmmlu_high_school_statistics': 'jmmlu_stem',
+    'jmmlu_human_aging': 'jmmlu_other',
+    'jmmlu_human_sexuality': 'jmmlu_social_sciences',
+    'jmmlu_international_law': 'jmmlu_humanities',
+    'jmmlu_japanese_history': 'jmmlu_humanities',
+    'jmmlu_jurisprudence': 'jmmlu_humanities',
+    'jmmlu_logical_fallacies': 'jmmlu_humanities',
+    'jmmlu_machine_learning': 'jmmlu_stem',
+    'jmmlu_management': 'jmmlu_other',
+    'jmmlu_marketing': 'jmmlu_other',
+    'jmmlu_medical_genetics': 'jmmlu_other',
+    'jmmlu_miscellaneous': 'jmmlu_other',
+    'jmmlu_moral_disputes': 'jmmlu_humanities',
+    'jmmlu_nutrition': 'jmmlu_other',
+    'jmmlu_philosophy': 'jmmlu_humanities',
+    'jmmlu_prehistory': 'jmmlu_humanities',
+    'jmmlu_professional_accounting': 'jmmlu_other',
+    'jmmlu_professional_medicine': 'jmmlu_other',
+    'jmmlu_professional_psychology': 'jmmlu_social_sciences',
+    'jmmlu_public_relations': 'jmmlu_social_sciences',
+    'jmmlu_security_studies': 'jmmlu_social_sciences',
+    'jmmlu_sociology': 'jmmlu_social_sciences',
+    'jmmlu_virology': 'jmmlu_other',
+    'jmmlu_world_history': 'jmmlu_humanities',
+    'jmmlu_world_religions': 'jmmlu_humanities'
 }
 
 
@@ -81,6 +167,10 @@ def is_a_b(text: str) -> int:
 # jcommonsenseqa
 def is_0_4(text: str) -> int:
     return 1 if text in {"0", "1", "2", "3", "4"} else 0
+
+# kuci
+def is_0_3(text: str) -> int:
+    return 1 if text in {"0", "1", "2", "3"} else 0
 
 # jcola, JCommonsenseMorality
 def is_0_1(text: str) -> int:
@@ -141,26 +231,33 @@ def no_check(text: str):
     return None
 
 controllability_dict = {
+    "aio": no_check,
+    "alt-e-to-j": no_check,
+    "alt-j-to-e": no_check,
+    "chabsa": is_chabsa_format,
+    "commonsensemoralja": is_0_1,
+    "jamp": is_entailment3_format,
+    "janli": is_entailment2_format,
+    "jblimp": is_a_b,
+    "jcola-in-domain": is_0_1,
+    "jcola-out-of-domain": is_0_1,
+    "jcommonsenseqa": is_0_4,
+    "jemhopqa": no_check,
+    "jnli": is_entailment3_format,
+    "jsem": is_jsem_format,
+    "jsick": is_entailment3_format,
+    "jsquad": no_check,
+    "jmmlu": is_one_of_ABCD,
+    "mmlu_en": is_one_of_ABCD,
+    "kuci": is_0_3,
     "mawps": is_all_digit,
     "mgsm": is_all_digit,
-    "jmmlu": is_one_of_ABCD,
-    "mmlu": is_one_of_ABCD,
-    "JBLiMP": is_a_b,
-    "jcommonsenseqa": is_0_4,
-    "jcola": is_0_1,
-    "commonsensemoralja": is_0_1,
-    "janli": is_entailment2_format,
-    "jnli": is_entailment3_format,
-    "jsick": is_entailment3_format,
-    "jamp": is_entailment3_format,
-    "jsem": is_jsem_format,
-    "wiki_ner": is_wiki_ner_format,
+    "niilc": no_check,
+    "wiki_coreference": no_check,
     "wiki_dependency": is_wiki_dependecy_format,
-    "chabsa": is_chabsa_format,
-    'jemhopqa': no_check,
-    'jsquad': no_check,
-    'niilc': no_check,
-    'wiki_reading': no_check,
-    'wiki_pas': no_check,
-    'wiki_coreference': no_check 
+    "wiki_ner": is_wiki_ner_format,
+    "wiki_pas": no_check,
+    "wiki_reading": no_check,
+    "wikicorpus-e-to-j": no_check,
+    "wikicorpus-j-to-e": no_check,
 }
