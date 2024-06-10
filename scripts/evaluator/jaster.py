@@ -241,7 +241,8 @@ def evaluate_n_shot(few_shots: bool):
         columns="task",
         aggfunc="mean",
     ).reset_index()
-
+    leaderboard_table_control['AVG'] = leaderboard_table.iloc[:, 2:].mean(axis=1)
+    leaderboard_table_control['AVG'] = leaderboard_table_control.iloc[:, 2:].mean(axis=1)
     leaderboard_table['jmmlu'] = leaderboard_table[['jmmlu_stem', 'jmmlu_social_sciences', 'jmmlu_humanities', 'jmmlu_other']].mean(axis=1)
     leaderboard_table_control['jmmlu'] = leaderboard_table_control[['jmmlu_stem', 'jmmlu_social_sciences', 'jmmlu_humanities', 'jmmlu_other']].mean(axis=1)
 
