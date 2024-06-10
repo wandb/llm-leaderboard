@@ -3,9 +3,9 @@ wandb:
   project: "llm-leaderboard3"
   #run: please set up run name in a model-base config
 
-github_version: v2.0.0 #for recording
+github_version: v3.0.0 #for recording
 
-testmode: false
+testmode: true
 
 model:
   dtype: 'float16'
