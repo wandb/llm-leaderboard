@@ -75,20 +75,20 @@ instance.llm = llm
 
 # Evaluation phase
 # 1. llm-jp-eval evaluation (jmmlu含む)
-jaster.evaluate()
+# jaster.evaluate()
 
 # 2. mt-bench evaluation
-mtbench_evaluate()
+# mtbench_evaluate()
 
 # 3. bbq, jbbq
 # bbq_eval
-jbbq.evaluate()
+# jbbq.evaluate()
 
 # 4. lctg-bench
 lctg.evaluate()
 
 # 5. toxicity
-toxicity_evaluate()
+# toxicity_evaluate()
 
 # Sample
 # sample_evaluate()
