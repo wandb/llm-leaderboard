@@ -5,7 +5,7 @@ wandb:
 
 github_version: v2.0.0 #for recording
 
-testmode: true
+testmode: false
 
 model:
   dtype: 'float16'
@@ -36,12 +36,14 @@ lctg:
   dataset_dir: "lctg"
 
 jbbq:
-  aaa: aaa
+  artifacts_path: 'wandb-japan/llm-leaderboard3-private/jbbq:v1'
+  dataset_dir: 'jbbq'
+  language: 'ja'
 
 sample_dataset:
   artifacts_path: 't-ibi/llm-leaderboard/sample_dataset:v1'
   dataset_dir: 'sample_dataset'
-  language: ja
+  language: 'ja'
 
 toxicity:
   artifact_path: 'wandb-japan/toxicity-dataset-private/toxicity_dataset_subset:v1'
@@ -60,10 +62,10 @@ mtbench:
     reasoning: 0.0
     stem: 0.1
     humanities": 0.1
-  question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_question:v0' # if testmode is true, small dataset will be used
-  question_artifacts_path_test: 'wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v0'
-  referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v0' # if testmode is true, small dataset will be used
-  referenceanswer_artifacts_path_test: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v0'
+  question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_question:v4' # if testmode is true, small dataset will be used
+  question_artifacts_path_test: 'wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v5'
+  referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v2' # if testmode is true, small dataset will be used
+  referenceanswer_artifacts_path_test: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v2'
   judge_prompt_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1' 
   bench_name: 'japanese_mt_bench'
   model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'

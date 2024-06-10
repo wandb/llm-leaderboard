@@ -61,7 +61,7 @@ def get_llm_inference_engine():
         #     safety_settings=safety_settings_NONE
         # )
 
-    elif api_type == "bedrock":
+    elif api_type == "amazon_bedrock":
         # LangChainのBedrockインテグレーションを使用
         llm = ChatBedrock(
             region_name=os.environ["AWS_DEFAULT_REGION"],
