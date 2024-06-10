@@ -36,7 +36,9 @@ lctg:
   dataset_dir: "lctg"
 
 jbbq:
-  aaa: aaa
+  artifacts_path: 
+  dataset_dir: "jbbq"
+  language: ja
 
 sample_dataset:
   artifacts_path: 't-ibi/llm-leaderboard/sample_dataset:v1'
@@ -79,5 +81,5 @@ mtbench:
   judge_model: 'gpt-4o-2024-05-13'
   mode: 'single'
   baseline_model: null 
-  parallel: 1
+  parallel: 80
   first_n: null
