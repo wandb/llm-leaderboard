@@ -71,7 +71,7 @@ def evaluate():
             llm_ap = LLMAsyncProcessor(
                 llm=llm,
                 inputs=inputs,
-                batch_size=256,  # APIの場合変える必要あり
+                # batch_size=256,  # APIの場合変える必要あり
             )
             results = llm_ap.get_results()
             all_results[lmt_type]=[message[0].content for message in results]
