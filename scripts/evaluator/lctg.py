@@ -1,8 +1,11 @@
 from pathlib import Path
 import os
+import concurrent.futures
+
 import wandb
 from tqdm import tqdm
 import pandas as pd
+
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import (
     apply_chat_template,
@@ -16,6 +19,19 @@ from .evaluate_utils import (
     transform_data,
     LLMAsyncProcessor,
 )
+
+
+def parallel_inference(inputs, lmt_type, llm):
+    llm_ap = LLMAsyncProcessor(
+        llm=llm,
+        inputs=inputs,
+        # batch_size=256,  # APIの場合変える必要あり
+    )
+    results = llm_ap.get_results()
+    results = [message[0].content for message in results]
+
+    return lmt_type, results
+
 
 def evaluate():
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
@@ -57,6 +73,8 @@ def evaluate():
         # generation 
         #############################################
         all_results = {lmt_type: [] for lmt_type in limitation_type_list}
+
+        # Generate samples for API parallel processing
         for lmt_type in limitation_type_list:
             print(f"Perspective of controllability: {lmt_type}")
             sample_list = master_df[f"prompt_{lmt_type}"].tolist()
@@ -70,11 +88,11 @@ def evaluate():
 
             llm_ap = LLMAsyncProcessor(
                 llm=llm,
-                inputs=inputs,
-                batch_size=256,  # APIの場合変える必要あり
+                inputs=inputs
             )
             results = llm_ap.get_results()
             all_results[lmt_type]=[message[0].content for message in results]
+
         data = {
             "generated_text_id": list(range(len(master_df["prompt_id"].tolist()))),
             "prompt_id":master_df["prompt_id"].tolist(),
@@ -93,6 +111,7 @@ def evaluate():
         #############################################        
         ctg_col_list = ["format_result", "char_count_result", "keyword_result", "prohibited_word_result"]
         for ctg_col in ctg_col_list:
+            print(f"Processing {ctg_col}")
             result_df[f"{ctg_col}_wo_hf"] = get_generated_result_wo_header_footer(result_df[ctg_col].tolist(), task)
 
         #############################################
@@ -138,6 +157,7 @@ def evaluate():
         #############################################
         # calculate scores quality
         #############################################
+        print("Calculating quality scores")
         df_quality = quality_process_results(result_df, task)
         quality_scores = calculate_true_proportions(df_quality)
 
