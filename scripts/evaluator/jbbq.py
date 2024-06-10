@@ -229,28 +229,13 @@ def evaluate_n_shot(few_shots: bool):
             # get fewshots samples by category
             few_shots_dict = get_few_shot_samples_by_bbq_category(task_data_path, num_few_shots, BBQSample)
 
-            # get prompt by category
-            messages_dict = {}
-            for category in categories:
-                # system message
-                messages = []
-                system_message = get_system_message(
-                    system_message_intro="",
-                    instruction=task_data["instruction"],
-                )
-                messages.append({"role": "system", "content": system_message})
-                for message in few_shots_dict[category]:
-                    messages.append(message)
-                messages_dict[category] = messages
-                apply_chat_template(messages=messages_dict[category])
-
             # number of evaluation samples
             if cfg.testmode:
                 test_max_num_samples = 1
                 val_max_num_samples = 1
             else:
-                test_max_num_samples = 24 # 各カテゴリからいくつのデータで推論するか。上から順にサンプリングする
-                val_max_num_samples = 24 # 各カテゴリからいくつのデータで推論するか。上から順にサンプリングする
+                test_max_num_samples = 4 # 各カテゴリからいくつのデータで推論するか。上から順にサンプリングする
+                val_max_num_samples = 4 # 各カテゴリからいくつのデータで推論するか。上から順にサンプリングする
 
             if subset == "test":
                 num_samples = test_max_num_samples
@@ -259,18 +244,28 @@ def evaluate_n_shot(few_shots: bool):
 
             # llm pipeline
             for category in categories:
+
                 # カテゴリごとにサンプルをフィルタリング
                 category_samples = [sample for sample in task_data["samples"] if sample["category"] == category]
                 selected_samples = category_samples[:num_samples]
 
                 for idx, sample in tqdm(enumerate(selected_samples)):
+
+                    # system message
+                    messages = []
+                    for message in few_shots_dict[category]:
+                        messages.append(message)
+                    messages.append({"role": "user", "content": sample["input"]})
+                    first_content = messages[0]["content"]
+                    instruction = task_data["instruction"]
+                    messages[0]["content"] = f"{instruction}\n\n{first_content}"
+
                     # generate output
-                    messages_dict[category].append({"role": "user", "content": sample["input"]})
                     start_time = time.time()
-                    output = llm.invoke(messages_dict[category]).content
+                    output = llm.invoke(messages).content
                     end_time = time.time()
                     latency = end_time - start_time
-                    prompt = apply_chat_template(messages=messages_dict[category])
+                    prompt = apply_chat_template(messages=messages)
 
                     # score
                     y_pred: str = pipe(
@@ -304,7 +299,6 @@ def evaluate_n_shot(few_shots: bool):
                             "unk_label": sample["unk_label"],
                         }
                     )
-                    messages_dict[category].pop()
 
     # log table
     output_df = pd.DataFrame(evaluation_results)
@@ -327,8 +321,8 @@ def evaluate_n_shot(few_shots: bool):
     wandb.log(
         {
             f"{dataset_name}_{num_few_shots}shot_output_table_dev": dev_table,
-            f"{dataset_name}_{num_few_shots}shot_output_table_test": test_table,
-            f"{dataset_name}_{num_few_shots}shot_leaderboard_table_dev": leaderboard_table,
+            f"{dataset_name}_{num_few_shots}shot_output_table": test_table,
+            f"{dataset_name}_{num_few_shots}shot_leaderboard_table": leaderboard_table,
         }
     )
 
