@@ -49,7 +49,6 @@ def get_llm_inference_engine():
             model=cfg.model.pretrained_model_name_or_path,
             api_key=os.environ["GOOGLE_API_KEY"],
             **cfg.generator,
-            max_output_tokens = cfg.generator.get("max_tokens"),
         )
         # safety_settings_NONE = [
         #     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},

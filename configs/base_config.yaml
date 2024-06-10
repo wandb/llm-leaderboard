@@ -1,5 +1,4 @@
 wandb:
-  log: True
   entity: "wandb-japan"
   project: "llm-leaderboard3"
   run_name: "cyberagent/calm2-7b-chat" # use run_name defined above
@@ -8,16 +7,7 @@ github_version: v2.0.0 #for recording
 
 testmode: true
 
-# if you don't use api, please set "api" as "false"
-# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
-api: vllm
-batch_size: 256 # vllmは256, apiは32を推奨
-
 model:
-  use_wandb_artifacts: false
-  artifacts_path: ""
-  pretrained_model_name_or_path: "cyberagent/calm2-7b-chat" #if you use openai api, put the name of model
-  chat_template: "cyberagent/calm2-7b-chat"
   dtype: 'float16'
   max_model_len: 4096
   trust_remote_code: true
@@ -45,15 +35,13 @@ lctg:
   artifacts_path: "wandb-japan/llm-leaderboard3/lctg:v0"
   dataset_dir: "lctg"
 
-bbq:
+jbbq:
   aaa: aaa
 
 sample_dataset:
   artifacts_path: 't-ibi/llm-leaderboard/sample_dataset:v1'
   dataset_dir: 'sample_dataset'
   language: ja
-
-#jbbq:
 
 toxicity:
   artifact_path: 'wandb-japan/toxicity-dataset-private/toxicity_dataset_subset:v1'
@@ -93,4 +81,3 @@ mtbench:
   baseline_model: null 
   parallel: 1
   first_n: null
-

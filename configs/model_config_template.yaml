@@ -1,0 +1,18 @@
+base_config: base_config.yaml
+
+wandb:
+  run_name: "" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+api: vllm
+batch_size: 256 # vllmは256, apiは32を推奨
+
+model:
+  use_wandb_artifacts: false
+  artifacts_path: "" # if you use model in wandb artifacts, put the artifacts path
+  pretrained_model_name_or_path: "" #put huggingface model id. if you use api, put the name of model
+  chat_template: "" # template here
+  size: "" #"10B<", "<10B", "api"
+  release_date: "4/18/2024"
+
