@@ -31,26 +31,31 @@ from fastchat.llm_judge.common import (
 from fastchat.llm_judge.gen_model_answer import reorg_answer_file
 from fastchat.model.model_adapter import get_conversation_template, ANTHROPIC_MODEL_LIST
 
-def get_api_answer(question_file, answer_file):
+
+def get_api_answer(question_file, answer_file, num_worker = 1):
     cfg = WandbConfigSingleton.get_instance().config
     questions = load_questions(question_file, None, None)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_worker) as executor:
         futures = []
         for question in questions:
             future = executor.submit(
-                    get_answer,
-                    question,
-                    cfg.model.pretrained_model_name_or_path,
-                    cfg.mtbench.num_choices,
-                    cfg.mtbench.max_new_token,
-                    answer_file,
-                )
+                get_answer,
+                question,
+                cfg.model.pretrained_model_name_or_path,
+                cfg.mtbench.num_choices,
+                cfg.mtbench.max_new_token,
+                answer_file,
+            )
             futures.append(future)
 
         for future in tqdm.tqdm(
             concurrent.futures.as_completed(futures), total=len(futures)
         ):
-            future.result()
+            try:
+                future.result()
+            except Exception as e:
+                print(f"Function raised an exception: {e}")
 
     reorg_answer_file(answer_file)
 

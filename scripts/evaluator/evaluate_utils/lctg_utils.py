@@ -1,6 +1,6 @@
 import os
 from typing import List
-from tqdm.asyncio import tqdm
+import concurrent.futures
 
 import openai
 from openai import OpenAI
@@ -12,10 +12,11 @@ from tqdm.asyncio import tqdm
 ###########################################################
 # Preprocess
 ###########################################################
-def get_generated_result_wo_header_footer(gr_list: List[str], task: str) -> List[List[str]]:
+def get_generated_result_wo_header_footer(gr_list: List[str], task: str) -> List[str]:
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-    gr_wo_hf_list = list()
-    for gr in tqdm(gr_list):
+    gr_wo_hf_list = []
+
+    def process_item(gr):
         completion = client.chat.completions.create(
             model="gpt-4o-2024-05-13",
             messages=[
@@ -29,8 +30,11 @@ def get_generated_result_wo_header_footer(gr_list: List[str], task: str) -> List
                 }
             ]
         )
-        output = completion.choices[0].message.content
-        gr_wo_hf_list.append(output)
+        return completion.choices[0].message.content
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+        gr_wo_hf_list = list(tqdm(executor.map(process_item, gr_list), total=len(gr_list)))
+
     return gr_wo_hf_list
 
 
@@ -98,29 +102,37 @@ def _delete_blank(s: str) -> str:
     s = s.replace("\t", "")
     return s
 
-def quality_process_results(df,task):
+def quality_process_results(df, task):
     result_dict = {"generated_text_id": df["generated_text_id"].tolist(), "prompt_id": df["prompt_id"].tolist()}
     ctg_cols = [col for col in df.columns if "wo_hf" in col]
+
+    def process_row(base_text, generated_text, task):
+        cr = check_generated_result(task, generated_text, base_text)
+        if (cr == "適切") or (cr == "不適切"):
+            label_map = {"適切": 1, "不適切": 0}
+            return label_map[cr]
+        else:
+            cr = check_generated_result(task, generated_text, base_text, is_bool=True)
+            if cr == "True" or cr == "False":
+                label_map = {"True": 1, "False": 0}
+                return label_map[cr]
+            else:
+                return cr
+
     for ctg_col in ctg_cols:
         ctg = ctg_col.replace("_result", "")
-        check_result_list = list()
-        for base_text, generated_text in tqdm(zip(df["base_text"].tolist(), df[ctg_col].tolist()), total=len(df)):
-            cr = check_generated_result(task, generated_text, base_text)
-            if (cr == "適切") or (cr == "不適切"):
-                label_map = {"適切": 1, "不適切": 0}
-                check_result_list.append(label_map[cr])
-            else:
-                cr = check_generated_result(task, generated_text, base_text, is_bool=True)
-                if cr == "True" or cr == "False":
-                    label_map = {"True": 1, "False": 0}
-                    check_result_list.append(label_map[cr])
-                else:
-                    check_result_list.append(cr)
-            
+        base_texts = df["base_text"].tolist()
+        generated_texts = df[ctg_col].tolist()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+            check_result_list = list(tqdm(executor.map(process_row, base_texts, generated_texts, [task]*len(base_texts)), total=len(base_texts)))
+
         result_dict[f"{ctg}"] = check_result_list
+
     return pd.DataFrame(result_dict)
 
 def check_generated_result(task: str, generated_result: str, base_text: str = None, is_bool: bool = False):
+
     if is_bool:
         user_content = get_quality_check_prompt_bool(task, generated_result, base_text)
     else:
@@ -141,8 +153,8 @@ def check_generated_result(task: str, generated_result: str, base_text: str = No
         ]
     )
     result = completion.choices[0].message.content
-    result = _delete_blank(result)
-    return result
+    
+    return _delete_blank(result)
 
 def check_label(cr):
     label_map = {"適切": True, "不適切": False, "True": True, "False": False}
