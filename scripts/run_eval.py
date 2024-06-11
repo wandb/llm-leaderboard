@@ -85,7 +85,6 @@ jaster.evaluate()
 mtbench_evaluate()
 
 # 3. bbq, jbbq
-# bbq_eval
 jbbq.evaluate()
 
 # 4. lctg-bench
@@ -98,4 +97,5 @@ toxicity_evaluate()
 # sample_evaluate()
 
 # 6. Aggregation
+
 aggregate()
