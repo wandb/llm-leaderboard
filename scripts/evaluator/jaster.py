@@ -264,9 +264,9 @@ def evaluate_n_shot(few_shots: bool):
         test_robust_table_for_log, leaderboard_robust_table= evaluate_robustness(num_few_shots=num_few_shots, subset="", df=test_robust_table)
         run.log(
         {
-            f"jmmlu_robost_{num_few_shots}shot_output_table_dev": dev_robust_table_for_log,
-            f"jmmlu_robost_{num_few_shots}shot_output_table": test_robust_table_for_log,
-            f"jmmlu_robost_{num_few_shots}shot_leaderboard_table": leaderboard_robust_table
+            f"jmmlu_robust_{num_few_shots}shot_output_table_dev": dev_robust_table_for_log,
+            f"jmmlu_robust_{num_few_shots}shot_output_table": test_robust_table_for_log,
+            f"jmmlu_robust_{num_few_shots}shot_leaderboard_table": leaderboard_robust_table
         }
     )
         
