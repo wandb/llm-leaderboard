@@ -41,7 +41,7 @@ class LLMAsyncProcessor:
         self.llm = llm
         self.inputs = inputs
         self.api_type = cfg.api
-        self.batch_size = cfg.batch_size
+        self.batch_size = cfg.batch_size if hasattr(cfg, "batch_size") else 256
 
     @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
     @error_handler
