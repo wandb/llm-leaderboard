@@ -1,0 +1,14 @@
+wandb:
+  run_name: "anthoropic/claude-3-opus-20240229-v1:0" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+api: "anthoropic"
+batch_size: 32 # vllmは256, apiは32を推奨
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "anthropic.claude-3-opus-20240229-v1:0" #if you use openai api, put the name of model
+  chat_template: null
+  size: null
+  release_date: "2/29/2024"
