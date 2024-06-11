@@ -21,6 +21,7 @@ from fastchat.conversation import initialize_vllm_custom_template
 from config_singleton import WandbConfigSingleton
 
 def mtbench_evaluate():
+    
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
@@ -34,7 +35,7 @@ def mtbench_evaluate():
     if cfg.mtbench.model_id == None:
         cfg.mtbench.model_id = f'{cfg.model.pretrained_model_name_or_path.replace("/", "--")}_hash_{hashed_string}' 
 
-    if cfg.api=='vllm':
+    if cfg.api == 'vllm':
         initialize_vllm_custom_template()
 
     if cfg.mtbench.num_gpus_total // cfg.mtbench.num_gpus_per_model > 1:
@@ -47,15 +48,13 @@ def mtbench_evaluate():
         artifact_dir = run.use_artifact(cfg.mtbench.question_artifacts_path_test, type='dataset').download()
     else:
         artifact_dir = run.use_artifact(cfg.mtbench.question_artifacts_path, type='dataset').download()
-    question_file = artifact_dir+f"/question.jsonl"
+    question_file = artifact_dir + f"/question.jsonl"
     
     #create answerfile and answerdir
     answer_file = f"fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl"
-    answer_dir = (
-        f"fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer"
-    )
+    answer_dir = f"fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_answer"
 
-    #refeerence answer
+    #reference answer
     if cfg.testmode:
         ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path_test, type='dataset').download()
     else:
@@ -67,19 +66,15 @@ def mtbench_evaluate():
         questions = load_questions(question_file, None, None)
         get_api_answer(
             question_file=question_file,
-            answer_file=answer_file
+            answer_file=answer_file,
+            num_worker=cfg.mtbench.parallel,
         )
 
     # 2. evaluate outputs
-    ## Load questions
     questions = load_questions(question_file, None, None)
-
-    ## Load answers
     model_answers = load_model_answers(answer_dir)
     model_answers = {cfg.mtbench.model_id: model_answers[cfg.mtbench.model_id]}
     ref_answers = load_model_answers(ref_answer_dir)
-
-    ## Load judge
     artifact_dir = run.use_artifact(cfg.mtbench.judge_prompt_artifacts_path, type='dataset').download()
     judge_prompts = load_judge_prompts(artifact_dir + "/judge_prompts.jsonl")
 
@@ -91,9 +86,7 @@ def mtbench_evaluate():
     #if cfg.mtbench.mode == "single":
     judges = make_judge_single(cfg.mtbench.judge_model, judge_prompts)
     play_a_match_func = play_a_match_single
-    output_file = (
-        f"fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_judgment/{cfg.mtbench.judge_model}_single"
-    )
+    output_file = f"fastchat/llm_judge/data/{cfg.mtbench.bench_name}/model_judgment/{cfg.mtbench.judge_model}_single"
     make_match_func = make_match_single
     baseline_model = None
 
@@ -152,32 +145,31 @@ def mtbench_evaluate():
     #input("Press Enter to confirm...")
 
     # Play matches
+    import concurrent.futures
+    from tqdm import tqdm
     if cfg.mtbench.parallel == 1:
-        for match in tqdm(matches):
+        for match in tqdm.tqdm(matches):
             play_a_match_func(match, output_file=output_file)
     else:
-
         def play_a_match_wrapper(match):
             play_a_match_func(match, output_file=output_file)
 
         np.random.seed(0)
         np.random.shuffle(matches)
 
-        with ThreadPoolExecutor(cfg.mtbench.parallel) as executor:
-            for match in tqdm(
-                executor.map(play_a_match_wrapper, matches), total=len(matches)
-            ):
-                pass
+        with concurrent.futures.ThreadPoolExecutor(max_workers=cfg.mtbench.parallel) as executor:
+            futures = [executor.submit(play_a_match_wrapper, match) for match in matches]
+            for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures)):
+                try:
+                    future.result()
+                except Exception as e:
+                    print(f"Function raised an exception: {e}")
 
     # 3. consolidate results and log as wandb.Table
     # load questions
     df_question = pd.read_json(question_file, lines=True)
     df_question_repeat = df_question.loc[df_question.index.repeat(judge_count)].reset_index(drop=True)
     # load answers
-    # Reason of using [df_answer.model_id == cfg.mtbench.model_id| (df_answer.model_id == cfg.model.pretrained_model_name_or_path
-    # The answer files generated through the API use the model name as the model ID. 
-    # However, for the answer files created by our local model implementation, the model ID is used as the model ID. 
-    # It will be necessary to make changes in the future to standardize this.
     df_answer = pd.read_json(answer_file, lines=True)
     df_answer = df_answer[(df_answer.model_id == cfg.mtbench.model_id)|(df_answer.model_id == cfg.model.pretrained_model_name_or_path)]
     df_answer = df_answer.sort_values(['question_id'])
@@ -197,16 +189,13 @@ def mtbench_evaluate():
     df_judge = df_judge.sort_values(['question_id', 'turn'])
 
     ## merge tables
-    #df_judge["question"] = np.nan
     df_judge["question"] = pd.Series(np.nan, dtype='object')
-    
     df_judge.loc[df_judge.turn == 1, 'question'] = df_question_repeat.turns.apply(lambda x: x[0]).values
     df_judge.loc[df_judge.turn == 2, 'question'] = df_question_repeat.turns.apply(lambda x: x[1]).values
 
-    #df_judge['answer'] = np.nan
     df_judge['answer'] = pd.Series(np.nan, dtype='object')
-    df_judge.loc[df_judge.turn == 1, 'answer'] = df_answer_repeat.choices.apply(lambda x: x[0][ 'turns'][0]).values
-    df_judge.loc[df_judge.turn == 2, 'answer'] = df_answer_repeat.choices.apply(lambda x: x[0][ 'turns'][1]).values
+    df_judge.loc[df_judge.turn == 1, 'answer'] = df_answer_repeat.choices.apply(lambda x: x[0]['turns'][0]).values
+    df_judge.loc[df_judge.turn == 2, 'answer'] = df_answer_repeat.choices.apply(lambda x: x[0]['turns'][1]).values
     df_judge = df_judge.merge(df_answer[['question_id', 'answer_id']], on='question_id', how='left')
     df_judge = df_judge.merge(df_question[['question_id', 'category']], on='question_id', how='left')
 
@@ -239,7 +228,4 @@ def mtbench_evaluate():
         "mtbench_radar_table":table_radar,
     })
 
-    
-    #run.finish()
     return
-
