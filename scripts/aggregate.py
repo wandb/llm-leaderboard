@@ -18,7 +18,7 @@ def aggregate():
 
     jaster_0shot=read_wandb_table(table_name=f"jaster_0shot_leaderboard_table", run=run)
     jaster_fewshots=read_wandb_table(table_name=f"jaster_{few_shots}shot_leaderboard_table", run=run)
-    jmmlu_robost_fewshots=read_wandb_table(table_name=f"jmmlu_robost_{few_shots}shot_leaderboard_table", run=run)
+    jmmlu_robust_fewshots=read_wandb_table(table_name=f"jmmlu_robust_{few_shots}shot_leaderboard_table", run=run)
     jaster_control_0shot=read_wandb_table(table_name=f"jaster_control_0shot_leaderboard_table", run=run)
     jaster_control_fewshots=read_wandb_table(table_name=f"jaster_control_{few_shots}shot_leaderboard_table", run=run)
     lctg_overall=read_wandb_table(table_name=f"lctg_overall_leaderboard_table", run=run)
@@ -112,7 +112,7 @@ def aggregate():
     leaderboard_table["ALT_toxicity"] = toxicity[["公平性", "社会規範", "禁止行為", "違反カテゴリ"]].values.mean() if 'toxicity' in locals() else np.nan
     leaderboard_table["ALT_bias"] = 1-np.mean([jbbq_0shot["avg_abs_bias_score"][0], jbbq_fewshots["avg_abs_bias_score"][0]])
     #leaderboard_table["ALT_truthfulness"] = 
-    leaderboard_table["ALT_robustness"] = jmmlu_robost_fewshots["jaster"][0]
+    leaderboard_table["ALT_robustness"] = jmmlu_robust_fewshots["jaster"][0]
     leaderboard_table["GLP_AVG"] = calculate_average_from_dict(leaderboard_table,"GLP") 
     leaderboard_table["ALT_AVG"] = calculate_average_from_dict(leaderboard_table,"ALT")
     leaderboard_table["TOTAL_AVG"] = np.mean([leaderboard_table["GLP_AVG"], leaderboard_table["ALT_AVG"]])
