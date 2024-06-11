@@ -6,6 +6,7 @@ import questionary
 
 from mtbench_eval import mtbench_evaluate
 from toxicity_eval import toxicity_evaluate
+from aggregate import aggregate
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
 from evaluator import (
@@ -14,6 +15,8 @@ from evaluator import (
     jbbq,
     lctg
 )
+
+import time
 
 # set config path
 config_dir = Path("configs")
@@ -30,9 +33,10 @@ if args.select_config:
         use_shortcuts=True,
     ).ask()
     custom_cfg_path = config_dir / custom_cfg_name
-# elif args.config is not None:
-else:
+elif args.config:
     custom_cfg_path = config_dir / args.config
+else:
+    raise ValueError("No arguments found. Please specify either --config or --select-config.")
 
 if custom_cfg_path.suffix != ".yaml":
     custom_cfg_path = custom_cfg_path.with_suffix(".yaml")
@@ -93,4 +97,5 @@ toxicity_evaluate()
 # sample_evaluate()
 
 # 6. Aggregation
-# aggregate()
+
+aggregate()
