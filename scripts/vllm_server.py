@@ -26,11 +26,12 @@ def start_vllm_server():
             "python3", "-m", "vllm.entrypoints.openai.api_server",
             "--model", model_id, 
             "--dtype", dtype, 
-            "--max-model-len", str(max_model_len),
+            "--max-model-len", "6000",
             "--chat-template", chat_template,
             "--max-num-seqs", str(cfg.batch_size),
+            "--tensor-parallel-size", str(cfg.num_gpus),
             "--seed", "42",
-            "--uvicorn-log-level", "warning"
+            "--uvicorn-log-level", "warning",
             "--disable-log-stats",
             "--disable-log-requests",
         ]
