@@ -241,7 +241,8 @@ def evaluate_n_shot(few_shots: bool):
         columns="task",
         aggfunc="mean",
     ).reset_index()
-
+    leaderboard_table_control['AVG'] = leaderboard_table.iloc[:, 2:].mean(axis=1)
+    leaderboard_table_control['AVG'] = leaderboard_table_control.iloc[:, 2:].mean(axis=1)
     leaderboard_table['jmmlu'] = leaderboard_table[['jmmlu_stem', 'jmmlu_social_sciences', 'jmmlu_humanities', 'jmmlu_other']].mean(axis=1)
     leaderboard_table_control['jmmlu'] = leaderboard_table_control[['jmmlu_stem', 'jmmlu_social_sciences', 'jmmlu_humanities', 'jmmlu_other']].mean(axis=1)
 
@@ -263,9 +264,9 @@ def evaluate_n_shot(few_shots: bool):
         test_robust_table_for_log, leaderboard_robust_table= evaluate_robustness(num_few_shots=num_few_shots, subset="", df=test_robust_table)
         run.log(
         {
-            f"jmmlu_robost_{num_few_shots}shot_output_table_dev": dev_robust_table_for_log,
-            f"jmmlu_robost_{num_few_shots}shot_output_table": test_robust_table_for_log,
-            f"jmmlu_robost_{num_few_shots}shot_leaderboard_table": leaderboard_robust_table
+            f"jmmlu_robust_{num_few_shots}shot_output_table_dev": dev_robust_table_for_log,
+            f"jmmlu_robust_{num_few_shots}shot_output_table": test_robust_table_for_log,
+            f"jmmlu_robust_{num_few_shots}shot_leaderboard_table": leaderboard_robust_table
         }
     )
         
