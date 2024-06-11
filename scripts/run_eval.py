@@ -33,9 +33,10 @@ if args.select_config:
         use_shortcuts=True,
     ).ask()
     custom_cfg_path = config_dir / custom_cfg_name
-# elif args.config is not None:
-else:
+elif args.config:
     custom_cfg_path = config_dir / args.config
+else:
+    raise ValueError("No arguments found. Please specify either --config or --select-config.")
 
 if custom_cfg_path.suffix != ".yaml":
     custom_cfg_path = custom_cfg_path.with_suffix(".yaml")
