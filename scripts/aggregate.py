@@ -61,7 +61,7 @@ def aggregate():
     leaderboard_table["GLP_reasoning"] = calculate_combined_means([], ["reasoning"])
     leaderboard_table["GLP_mathematical_reasoning"] = calculate_combined_means(["mawps", "jmmlu_stem"], ["math"])
     leaderboard_table["GLP_entity_extraction"] = calculate_combined_means(["wiki_ner", "wiki_coreference", "chabsa"], ["extraction"])
-    leaderboard_table["GLP_knowledge_QA"] = calculate_combined_means(["jcommonsenseqa","jemhopqa","jmmlu_humanities","jmmlu_social_sciences","jmmlu_other","niilc","aio"], [])
+    leaderboard_table["GLP_knowledge_QA"] = calculate_combined_means(["jcommonsenseqa","jemhopqa","jmmlu_humanities","jmmlu_social_sciences","jmmlu_other","niilc","aio"], ["stem"])
     leaderboard_table["GLP_English_MMLU"] = calculate_combined_means(["mmlu_en"], [])
     leaderboard_table["GLP_semantic_analysis"] = calculate_combined_means(["jnli","janli","jsem","jsick", "jamp"], [])
     leaderboard_table["GLP_syntactic_analysis"] = calculate_combined_means(["jcola-in-domain","jcola-out-of-domain","jblimp","wiki_reading","wiki_pas","wiki_dependency"], [])
