@@ -27,17 +27,13 @@ def cleanup_gpu():
 #@retry(stop=stop_after_attempt(10), wait=wait_fixed(10))
 def read_wandb_table(
     table_name: str,
-    run: object = None,
+    run: object,
     entity: str = None,
     project: str = None,
     run_id: str = None,
     version: str = "latest",
 ) -> pd.DataFrame:
-    if run is None:
-        assert isinstance(entity, str), "entity is not string"
-        assert isinstance(project, str), "project is not string"
-        assert isinstance(run_id, str), "run_id is not string"
-    else:
+    if entity is None or project is None or run_id is None:
         entity = run.entity
         project = run.project
         run_id = run.id
