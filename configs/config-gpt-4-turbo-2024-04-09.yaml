@@ -1,0 +1,15 @@
+wandb:
+  run_name: "openai/gpt-4-turbo-2024-04-09" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+api: openai
+batch_size: 32 # vllmは256, apiは32を推奨
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "gpt-4-turbo-2024-04-09" #if you use openai api, put the name of model
+  chat_template: null
+  size: "Commercial"
+  release_date: "4/9/2024"
+
