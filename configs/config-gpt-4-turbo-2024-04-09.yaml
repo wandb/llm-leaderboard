@@ -10,6 +10,6 @@ model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: "gpt-4-turbo-2024-04-09" #if you use openai api, put the name of model
   chat_template: null
-  size: null
+  size: "Commercial"
   release_date: "4/9/2024"
 
