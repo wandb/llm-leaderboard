@@ -26,11 +26,22 @@ def aggregate():
     jbbq_fewshots=read_wandb_table(table_name=f"jbbq_{few_shots}shot_leaderboard_table", run=run)
     toxicity=read_wandb_table(table_name=f"toxicity_leaderboard_table", run=run)
     mtbench=read_wandb_table(table_name=f"mtbench_leaderboard_table", run=run)
+    
+    print("jaster_0shot:")
+    print(jaster_0shot.head())
+    print("jaster_fewshots:")
+    print(jaster_fewshots.head())
+    print("jmmlu_robost_fewshots:")
+    print(jmmlu_robost_fewshots.head())
+    print("toxicity:")
+    print(toxicity.head())
+    print("mtbench:")
+    print(mtbench.head())
 
     print("-------- aggregating results ----------")
 
     # leaderboard_table
-    
+    """
     leaderboard_table = pd.DataFrame(columns=[
                                         "model_release_date",
                                         "model_size",
@@ -55,33 +66,37 @@ def aggregate():
                                         "ALT_AVG",
                                         "TOTAL_AVG"
                                     ])
+    """
     def calculate_combined_means(cols_jaster, cols_mtbench):
         means = []
         if cols_jaster:  # Check if cols_jaster is not empty
             for col in cols_jaster:
-                if col in jaster_0shot.columns and col in jaster_fewshots.columns:
-                    mean_value = (jaster_0shot[col].mean() + jaster_fewshots[col].mean()) / 2
-                    means.append(mean_value)
-                else:
-                    means.append(np.nan)  # Add NaN if column does not exist
-        else:
-            # Fill means with NaNs for the length of cols_mtbench if cols_jaster is empty
-            means = [np.nan] * len(cols_mtbench)
+                mean_value = (jaster_0shot[col][0] + jaster_fewshots[col][0]) / 2
+                means.append(mean_value)
 
-        combined_means = []
-        for i, col in enumerate(cols_mtbench):
-            if col in mtbench.columns:
-                mtbench_mean = mtbench[col].mean()
-                combined_mean = (means[i] + mtbench_mean) / 2 if not np.isnan(means[i]) else mtbench_mean
-                combined_means.append(combined_mean)
-            else:
-                combined_means.append(np.nan)  # Add NaN if column does not exist
-        return np.mean(combined_means)
+        if cols_mtbench:
+            for col in cols_mtbench:
+                means.append(mtbench[col][0]/10)
+        return np.mean(means)
+    
+    def calculate_average_from_dict(data_dict, prefix):
+        # Extract items with the specified prefix
+        relevant_items = {key: value for key, value in data_dict.items() if key.startswith(prefix)}
+        # Calculate the mean of these items' values
+        relevant_values = [value for value in relevant_items.values() if isinstance(value, (int, float))]
+        if relevant_values:
+            return sum(relevant_values) / len(relevant_values)
+        return float('nan')  # Return NaN if no relevant values
 
+    leaderboard_table = {}
 
     leaderboard_table["model_release_date"] = cfg.model.release_date
+    print(leaderboard_table)
     leaderboard_table["model_size"] = cfg.model.size
+    print(leaderboard_table)
+    print(calculate_combined_means([],["roleplay","writing","humanities"]))
     leaderboard_table["GLP_expression"] = calculate_combined_means([],["roleplay","writing","humanities"])
+    print(leaderboard_table)
     leaderboard_table["GLP_translation"] = calculate_combined_means(["alt-e-to-j","alt-j-to-e","wikicorpus-e-to-j","wikicorpus-j-to-e"], [])
     #leaderboard_table["GLP_summarization"] =
     leaderboard_table["GLP_information_extraction"] = calculate_combined_means(["jsquad"], [])
@@ -98,10 +113,10 @@ def aggregate():
     leaderboard_table["ALT_bias"] = 1-np.mean([jbbq_0shot["avg_abs_bias_score"][0], jbbq_fewshots["avg_abs_bias_score"][0]])
     #leaderboard_table["ALT_truthfulness"] = 
     leaderboard_table["ALT_robustness"] = jmmlu_robust_fewshots["jaster"][0]
-    leaderboard_table["GLP_AVG"] = leaderboard_table.filter(like='GLP').mean()
-    leaderboard_table["ALT_AVG"] = leaderboard_table.filter(like='ALT').mean()
+    leaderboard_table["GLP_AVG"] = calculate_average_from_dict(leaderboard_table,"GLP") 
+    leaderboard_table["ALT_AVG"] = calculate_average_from_dict(leaderboard_table,"ALT")
     leaderboard_table["TOTAL_AVG"] = np.mean([leaderboard_table["GLP_AVG"], leaderboard_table["ALT_AVG"]])
-    
-    run.log({"leaderboard_table": leaderboard_table})
+    leaderboard_table = pd.DataFrame([leaderboard_table])
+    run.log({"leaderboard_table":  wandb.Table(dataframe=leaderboard_table)})
     run.finish()
 
