@@ -225,11 +225,6 @@ def play_a_match_single(match: MatchSingle, output_file: str):
             "turn": turn,
             "tstamp": time.time(),
         }
-        print(
-            f"question: {question_id}, turn: {turn}, model: {model}, "
-            f"score: {score}, "
-            f"judge: {(judge.model_name, judge.prompt_template['name'])}"
-        )
     else:
         raise ValueError(f"invalid judge type: {judge['type']}")
 
