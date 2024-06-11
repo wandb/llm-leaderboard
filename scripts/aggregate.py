@@ -15,7 +15,6 @@ def aggregate():
     cfg = instance.config
 
     few_shots=cfg.num_few_shots
-
     jaster_0shot=read_wandb_table(table_name=f"jaster_0shot_leaderboard_table", run=run)
     jaster_fewshots=read_wandb_table(table_name=f"jaster_{few_shots}shot_leaderboard_table", run=run)
     jmmlu_robust_fewshots=read_wandb_table(table_name=f"jmmlu_robust_{few_shots}shot_leaderboard_table", run=run)
@@ -27,46 +26,9 @@ def aggregate():
     toxicity=read_wandb_table(table_name=f"toxicity_leaderboard_table", run=run)
     mtbench=read_wandb_table(table_name=f"mtbench_leaderboard_table", run=run)
     
-    print("jaster_0shot:")
-    print(jaster_0shot.head())
-    print("jaster_fewshots:")
-    print(jaster_fewshots.head())
-    print("jmmlu_robost_fewshots:")
-    print(jmmlu_robost_fewshots.head())
-    print("toxicity:")
-    print(toxicity.head())
-    print("mtbench:")
-    print(mtbench.head())
-
     print("-------- aggregating results ----------")
 
     # leaderboard_table
-    """
-    leaderboard_table = pd.DataFrame(columns=[
-                                        "model_release_date",
-                                        "model_size",
-                                        "GLP_expression",
-                                        "GLP_translation",
-                                        #"GLP_summarization",
-                                        "GLP_information_extraction",
-                                        "GLP_reasoning",
-                                        "GLP_mathematical_reasoning",
-                                        "GLP_entity_extraction",
-                                        "GLP_knowledge_QA",
-                                        "GLP_English_MMLU",
-                                        "GLP_semantic_analysis",
-                                        "GLP_syntactic_analysis",
-                                        "ALT_controllability",
-                                        "ALT_ethics_moral",
-                                        "ALT_toxicity",
-                                        "ALT_bias",
-                                        #"ALT_truthfulness",
-                                        "ALT_robustness",
-                                        "GLP_AVG",
-                                        "ALT_AVG",
-                                        "TOTAL_AVG"
-                                    ])
-    """
     def calculate_combined_means(cols_jaster, cols_mtbench):
         means = []
         if cols_jaster:  # Check if cols_jaster is not empty
@@ -91,12 +53,8 @@ def aggregate():
     leaderboard_table = {}
 
     leaderboard_table["model_release_date"] = cfg.model.release_date
-    print(leaderboard_table)
     leaderboard_table["model_size"] = cfg.model.size
-    print(leaderboard_table)
-    print(calculate_combined_means([],["roleplay","writing","humanities"]))
     leaderboard_table["GLP_expression"] = calculate_combined_means([],["roleplay","writing","humanities"])
-    print(leaderboard_table)
     leaderboard_table["GLP_translation"] = calculate_combined_means(["alt-e-to-j","alt-j-to-e","wikicorpus-e-to-j","wikicorpus-j-to-e"], [])
     #leaderboard_table["GLP_summarization"] =
     leaderboard_table["GLP_information_extraction"] = calculate_combined_means(["jsquad"], [])
