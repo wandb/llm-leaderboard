@@ -8,6 +8,7 @@ import pandas as pd
 from pathlib import Path
 import torch
 import wandb
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 from config_singleton import WandbConfigSingleton
 
@@ -23,7 +24,7 @@ def cleanup_gpu():
     gc.collect()
     torch.cuda.empty_cache()
 
-
+@retry(stop=stop_after_attempt(10), wait=wait_fixed(10))
 def read_wandb_table(
     table_name: str,
     run: object = None,
