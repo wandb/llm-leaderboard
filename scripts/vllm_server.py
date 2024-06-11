@@ -30,6 +30,7 @@ def start_vllm_server():
             "--chat-template", chat_template,
             "--max-num-seqs", str(cfg.batch_size),
             "--seed", "42",
+            "--uvicorn-log-level", "warning"
             "--disable-log-stats",
             "--disable-log-requests",
         ]
