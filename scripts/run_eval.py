@@ -6,6 +6,7 @@ import questionary
 
 from mtbench_eval import mtbench_evaluate
 from toxicity_eval import toxicity_evaluate
+from aggregate import aggregate
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
 from evaluator import (
@@ -14,6 +15,8 @@ from evaluator import (
     jbbq,
     lctg
 )
+
+import time
 
 # set config path
 config_dir = Path("configs")
@@ -94,4 +97,4 @@ toxicity_evaluate()
 # sample_evaluate()
 
 # 6. Aggregation
-#aggregate()
+aggregate()
