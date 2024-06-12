@@ -11,5 +11,5 @@ model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: "llm-jp/llm-jp-13b-instruct-full-dolly-ichikara_004_001_single-oasst-oasst2-v2.0" #if you use openai api, put the name of model
   chat_template: "llm-jp/llm-jp-13b-instruct-full-dolly-ichikara_004_001_single-oasst-oasst2-v2.0"
-  size: ">10B"
+  size: ">=10B"
   release_date: "4/30/2024"
