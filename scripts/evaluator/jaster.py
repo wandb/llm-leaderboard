@@ -156,7 +156,12 @@ def evaluate_n_shot(few_shots: bool):
                 prompt = apply_chat_template(messages=messages)
                 y_pred = None
                 y_true: str = pipe(sample["output"], normalize)
-                metrics: list[str] = task_data["metrics"][0]
+                metrics: str = task_data["metrics"][0]
+                #metrics: str = (
+                #               "bert_score_en_f1" if task in ["alt-j-to-e", "wikicorpus-j-to-e"] else
+                #                "bert_score_ja_f1" if task in ["alt-e-to-j", "wikicorpus-e-to-j"] else
+                #                task_data["metrics"][0]
+                #                )
                 metrics_func: callable = jaster_metrics_dict[metrics]
                 control_task = "mmlu_en" if "mmlu_en" in task else "jmmlu" if "jmmlu" in task else task
                 control_method: str = controllability_dict[control_task].__name__
