@@ -10,6 +10,6 @@ model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: "cyberagent/calm2-7b-chat" #if you use openai api, put the name of model
   chat_template: "cyberagent/calm2-7b-chat"
-  size: "10B<"
+  size: "<10B"
   release_date: "5/17/2023"
 
