@@ -24,7 +24,7 @@ def cleanup_gpu():
     gc.collect()
     torch.cuda.empty_cache()
 
-#@retry(stop=stop_after_attempt(10), wait=wait_fixed(10))
+@retry(stop=stop_after_attempt(10), wait=wait_fixed(10))
 def read_wandb_table(
     table_name: str,
     run: object = None,
