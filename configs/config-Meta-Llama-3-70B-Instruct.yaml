@@ -4,11 +4,12 @@ wandb:
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
 api: vllm
+num_gpus: 2
 batch_size: 256 # vllmは256, apiは32を推奨
 
 model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: "meta-llama/Meta-Llama-3-70B-Instruct" #if you use openai api, put the name of model
   chat_template: "meta-llama/Meta-Llama-3-70B-Instruct"
-  size: ">10B"
+  size: ">=30B"
   release_date: "4/18/2024"
