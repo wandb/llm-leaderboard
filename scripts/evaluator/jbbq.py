@@ -252,20 +252,24 @@ def evaluate_n_shot(few_shots: bool):
             for category in categories:
 
                 # カテゴリごとにサンプルをフィルタリング
+                count = 0
                 category_samples = [sample for sample in task_data["samples"] if sample["category"] == category]
                 selected_samples = category_samples[:num_samples]
 
                 for idx, sample in tqdm(enumerate(selected_samples)):
 
-                    # system message
+                    # 新しいメッセージリストを作成
                     messages = []
                     for message in few_shots_dict[category]:
-                        messages.append(message)
+                        messages.append(message.copy())
                     messages.append({"role": "user", "content": sample["input"]})
+                    
+                    # 最初のシステムメッセージにインストラクションを追加
                     first_content = messages[0]["content"]
                     instruction = task_data["instruction"]
                     messages[0]["content"] = f"{instruction}\n\n{first_content}"
                     
+                    # メッセージの内容を文字列に変換
                     for message in messages:
                         message["content"] = str(message["content"])
 
