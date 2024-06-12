@@ -197,7 +197,7 @@ def evaluate_n_shot(few_shots: bool):
         raw_output = response.content
         y_pred: str = pipe(
             raw_output,
-            lambda x: text_formatter(x, task),
+            lambda x: text_formatter(x, evaluation_result["task"]),
             lambda x: x.split("\n\n")[0],
             normalize,
         )
