@@ -128,7 +128,8 @@ def evaluate():
             }
         
         for validation in validation_functions:
-            df_ctg[validation] = df_ctg.apply(lambda x: validation_functions[validation](x), axis=1).astype(int)
+            df_ctg[validation] = df_ctg.apply(lambda x: validation_functions[validation](x) if x is not None else 0, axis=1)
+            #df_ctg[validation] = df_ctg.apply(lambda x: validation_functions[validation](x), axis=1).astype(int)
 
         sums = {key: df_ctg[key].sum() for key in validation_functions.keys()}
 
