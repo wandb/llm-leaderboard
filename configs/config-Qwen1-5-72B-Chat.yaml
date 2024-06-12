@@ -4,6 +4,7 @@ wandb:
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
 api: vllm
+num_gpus: 2
 batch_size: 256 # vllmは256, apiは32を推奨
 
 model:
