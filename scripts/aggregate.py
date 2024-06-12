@@ -66,9 +66,9 @@ def aggregate():
     # leaderboard_dict["GLP_summarization"] =
     leaderboard_dict["GLP_information_extraction"] = calculate_combined_means(["jsquad"], [])
     leaderboard_dict["GLP_reasoning"] = calculate_combined_means([], ["reasoning"])
-    leaderboard_dict["GLP_mathematical_reasoning"] = calculate_combined_means(["mawps", "jmmlu_stem"], ["math"])
+    leaderboard_dict["GLP_mathematical_reasoning"] = calculate_combined_means(["mawps"], ["math"])
     leaderboard_dict["GLP_entity_extraction"] = calculate_combined_means(["wiki_ner", "wiki_coreference", "chabsa"], ["extraction"])
-    leaderboard_dict["GLP_knowledge_QA"] = calculate_combined_means(["jcommonsenseqa","jemhopqa","jmmlu_humanities","jmmlu_social_sciences","jmmlu_other","niilc","aio"], ["stem"])
+    leaderboard_dict["GLP_knowledge_QA"] = calculate_combined_means(["jcommonsenseqa","jemhopqa", "jmmlu_stem","jmmlu_humanities","jmmlu_social_sciences","jmmlu_other","niilc","aio"], ["stem"])
     leaderboard_dict["GLP_English_MMLU"] = calculate_combined_means(["mmlu_en"], [])
     leaderboard_dict["GLP_semantic_analysis"] = calculate_combined_means(["jnli","janli","jsem","jsick", "jamp"], [])
     leaderboard_dict["GLP_syntactic_analysis"] = calculate_combined_means(["jcola-in-domain","jcola-out-of-domain","jblimp","wiki_reading","wiki_pas","wiki_dependency"], [])
