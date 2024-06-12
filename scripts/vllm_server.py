@@ -13,23 +13,24 @@ def start_vllm_server():
     cfg = instance.config
     model_id = cfg.model.pretrained_model_name_or_path
     dtype = cfg.model.dtype
-    max_model_len = cfg.model.max_model_len
+    # max_model_len = cfg.model.max_model_len
 
-    def run_vllm_server(model_id, dtype, max_model_len=2048):
+    def run_vllm_server(model_id: str, dtype: str, max_model_len: int = 2048):
         # set tokenizer_config
         tokenizer_config = get_tokenizer_config()
         cfg.update({"tokenizer_config": tokenizer_config})
-        chat_template = cfg.tokenizer_config.get("chat_template")
+        chat_template: str = cfg.tokenizer_config.get("chat_template")
+        num_gpus = cfg.get("num_gpus", 1)
 
         # サーバーを起動するためのコマンド
         command = [
             "python3", "-m", "vllm.entrypoints.openai.api_server",
             "--model", model_id, 
             "--dtype", dtype, 
-            "--max-model-len", "6000",
+            "--max-model-len", str(max_model_len),
             "--chat-template", chat_template,
             "--max-num-seqs", str(cfg.batch_size),
-            "--tensor-parallel-size", str(cfg.num_gpus),
+            "--tensor-parallel-size", str(num_gpus),
             "--seed", "42",
             "--uvicorn-log-level", "warning",
             "--disable-log-stats",
@@ -57,10 +58,10 @@ def start_vllm_server():
                     print(f"Health check failed with status code: {response.status_code}")
             except requests.ConnectionError:
                 print("Failed to connect to the server. Retrying...")
-            time.sleep(5)  # 5秒待機してから再試行
+            time.sleep(10)  # 待機してから再試行
 
     # サーバーを起動
-    server_process = run_vllm_server(model_id, dtype, max_model_len)
+    server_process = run_vllm_server(model_id, dtype)
     print("vLLM server is starting...")
 
     # スクリプト終了時にサーバーを終了する
