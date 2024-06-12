@@ -3,12 +3,14 @@ from pathlib import Path
 from argparse import ArgumentParser
 from omegaconf import OmegaConf
 import questionary
+import pandas as pd
 
 from mtbench_eval import mtbench_evaluate
 from toxicity_eval import toxicity_evaluate
 from aggregate import aggregate
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
+from blend_run import blend_run
 from evaluator import (
     bbq,
     jaster,
@@ -72,6 +74,9 @@ artifact = wandb.Artifact("config", type="config")
 artifact.add_file(custom_cfg_path)
 run.log_artifact(artifact)
 
+# Inherit old runs
+blend_run(run_chain=True)
+
 # 0. Start inference server
 llm = get_llm_inference_engine()
 instance = WandbConfigSingleton.get_instance()
@@ -97,5 +102,4 @@ toxicity_evaluate()
 # sample_evaluate()
 
 # 6. Aggregation
-
 aggregate()
