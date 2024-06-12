@@ -58,6 +58,8 @@ def get_few_shot_samples_by_bbq_category(target_dataset_path: Path, num_few_shot
     for category, samples in category_samples.items():
         if num_few_shots == 4:
             selected_samples = [samples[i] for i in [0, 3, 9, 10, ] if i < len(samples)]
+        elif num_few_shots == 2:
+            selected_samples = [samples[i] for i in [0, 9] if i < len(samples)]
         else:
             selected_samples = sample[:num_few_shots]
         for sample in selected_samples:
