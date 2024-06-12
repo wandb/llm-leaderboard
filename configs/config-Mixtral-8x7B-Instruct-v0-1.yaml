@@ -11,5 +11,5 @@ model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: "mistralai/Mixtral-8x7B-Instruct-v0.1" #if you use openai api, put the name of model
   chat_template: "mistralai/Mixtral-8x7B-Instruct-v0.1"
-  size: ">=30B"
+  size: "30B≤"
   release_date: "3/11/2024"
