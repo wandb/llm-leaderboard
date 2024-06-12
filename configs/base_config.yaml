@@ -5,7 +5,7 @@ wandb:
 
 github_version: v3.0.0 #for recording
 
-testmode: true
+testmode: false
 
 model:
   dtype: 'float16'
