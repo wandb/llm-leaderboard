@@ -1,0 +1,2 @@
+model_release_date,model_size,GLP_expression,GLP_translation,GLP_information_extraction,GLP_reasoning,GLP_mathematical_reasoning,GLP_entity_extraction,GLP_knowledge_QA,GLP_English_MMLU,GLP_semantic_analysis,GLP_syntactic_analysis,ALT_controllability,ALT_ethics_moral,ALT_toxicity,ALT_bias,ALT_robustness,GLP_AVG,ALT_AVG,TOTAL_AVG
+5/17/2023,10B<,4.833333333333333,0.06392514758610066,0.0,2.0,0.5087719298245614,1.125,0.08432900432900434,0.0,0.0,0.28305555555555556,0.3882924632880984,1.0,0.4999999999999999,0.825,0.0,,,
