@@ -3,6 +3,7 @@ import re
 from fuzzywuzzy import fuzz
 from scipy.stats import pearsonr, spearmanr
 from sacrebleu import BLEU
+import bert_score
 
 # ---------------------
 # For jaster
@@ -80,6 +81,11 @@ def blue_ja(y_pred: str, y_true: str) -> float:
     bleu_score = BLEU(**bleu_config).corpus_score([y_pred], [[y_true]]).score
     return bleu_score/100
 
+def bert_score_en_f1(y_pred:str, y_true:str) -> float:
+    return bert_score.score([y_pred], [y_true], lang="en")[2].tolist()[0] #[2]=f1
+
+def bert_score_ja_f1(y_pred:str, y_true:str) -> float:
+    return bert_score.score([y_pred], [y_true], lang="ja")[2].tolist()[0] #[2]=f1
 
 
 jaster_metrics_dict: dict[str, callable] = {
@@ -90,6 +96,8 @@ jaster_metrics_dict: dict[str, callable] = {
     "spearman": spearman,
     "bleu_ja": blue_ja,
     "bleu_en": blue_en,
+    "bert_score_en_f1": bert_score_en_f1,
+    "bert_score_ja_f1": bert_score_ja_f1
 }
 
 jmmlu_dict = {
