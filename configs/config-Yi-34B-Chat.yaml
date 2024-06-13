@@ -4,11 +4,12 @@ wandb:
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
 api: vllm
+num_gpus: 2
 batch_size: 256 # vllmは256, apiは32を推奨
 
 model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: "01-ai/Yi-34B-Chat" #if you use openai api, put the name of model
   chat_template: "01-ai/Yi-34B-Chat"
-  size: ">10B"
+  size: "30B≤"
   release_date: "11/23/2023"
