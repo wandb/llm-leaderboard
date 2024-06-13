@@ -12,6 +12,7 @@ from utils import read_wandb_table
 
 from config_singleton import WandbConfigSingleton
 
+# TODO: configでtaskを選択できるようになったら、blendしたtaskの総数チェック機能を追加
 # TASK_DICT = {
 #     "run_llm_jp_eval_ja_0_shot": "jaster_0_shot",
 #     "run_llm_jp_eval_ja_few_shots": "jaster_4_shot",
@@ -31,30 +32,12 @@ from config_singleton import WandbConfigSingleton
 #     return None
 
 
-# def get_output_table(
-#     run_path: str,
-#     table_name: str,
-#     run: Run,
-# ) -> pd.DataFrame:
-#     entity, project, run_id = run_path.split("/")
-#     art_path = f"{entity}/{project}/run-{run_id}-{table_name}:latest"
-#     artifact = run.use_artifact(art_path)
-#     artifact_dir = artifact.download()
-#     with open(f"{artifact_dir}/{table_name}.table.json") as f:
-#         tjs = json.load(f)
-#     old_table = wandb.Table.from_json(json_obj=tjs, source_artifact=artifact)
-#     df = pd.DataFrame(data=old_table.data, columns=old_table.columns)
-
-#     return df
-
-
 def process_task(
     dataset_name: str,
     task_name: str,
     old_run: dict[str, Union[str, list[str]]],
-    # leaderboard_tables: list[pd.DataFrame],
     run: Run,
-) -> list[pd.DataFrame]:
+) -> None:
     if dataset_name == "jaster":
         if "control" in task_name:
             prefix, _, num_fewshots, _ = task_name.split("_")
@@ -107,11 +90,6 @@ def process_task(
         raise ValueError(f"Invalid task name: {task_name}")
 
     for table_name in table_names:
-        # output_table = get_output_table(
-        #     run_path=old_run.run_path,
-        #     table_name=table_name,
-        #     run=run,
-        # )
         output_table = read_wandb_table(
             run_path=old_run.run_path,
             table_name=table_name,
@@ -141,16 +119,12 @@ def process_task(
                 raise ValueError(f"Invalid dataset name: {dataset_name}")
             
             output_table.columns = new_cols
-            # leaderboard_tables.append(output_table)
-
-    # return leaderboard_tables
 
 
 def blend_tables(
     old_runs: dict[str, Union[str, list[str]]],
-    # leaderboard_tables: list[pd.DataFrame],
     run: Run,
-) -> list[pd.DataFrame]:
+) -> None:
     for old_run in old_runs:
         for task_name in old_run.tasks:
             if task_name.startswith("jaster"):
@@ -167,27 +141,27 @@ def blend_tables(
                 dataset_name = "toxicity"
             else:
                 raise ValueError(f"Invalid task name: {task_name}")
-            leaderboard_tables = process_task(
+            process_task(
                 dataset_name=dataset_name,
                 task_name=task_name,
                 old_run=old_run,
-                # leaderboard_tables=leaderboard_tables,
                 run=run,
             )
-    # leaderboard_table = pd.concat(leaderboard_tables, axis=1)
-
-    # return leaderboard_table
 
 
 def blend_run(run_chain: bool) -> None:
-    # set config path
     blend_cfg_path = Path("blend_run_configs/config.yaml")
 
-    with blend_cfg_path.open() as f:
-        blend_cfg = OmegaConf.create(yaml.safe_load(f))
-    blend_cfg_dict = OmegaConf.to_container(blend_cfg, resolve=True)
-    old_runs: list[dict[str, Union[str, list[str]]]] = blend_cfg.old_runs
-
+    # config check
+    if not blend_cfg_path.exists():
+        print("Blend run skipped.")
+        return None
+    else:
+        with blend_cfg_path.open() as f:
+            blend_cfg = OmegaConf.create(yaml.safe_load(f))
+        blend_cfg_dict = OmegaConf.to_container(blend_cfg, resolve=True)
+        old_runs: list[dict[str, Union[str, list[str]]]] = blend_cfg.old_runs
+    
     # check mode
     if not run_chain:
         pass
@@ -200,7 +174,6 @@ def blend_run(run_chain: bool) -> None:
         instance = WandbConfigSingleton.get_instance()
         run = instance.run
         cfg = instance.config
-        old_leaderboard_table = instance.table
     else:
         wandb.login()
         run = wandb.init(
@@ -210,17 +183,14 @@ def blend_run(run_chain: bool) -> None:
             config=blend_cfg_dict,
             job_type="evaluation",
         )
-
         WandbConfigSingleton.initialize(run, llm=None)
-        # instance = WandbConfigSingleton.get_instance()
-        # cfg = instance.config
 
     # log config
     artifact = wandb.Artifact(blend_cfg_path.stem, type="config")
     artifact.add_file(blend_cfg_path)
     run.log_artifact(artifact)
 
-    # test
+    # task_check
     # all_tasks = []
     # if run_chain:
     #     for k, v in TASK_DICT.items():
@@ -228,23 +198,11 @@ def blend_run(run_chain: bool) -> None:
     #             all_tasks.append(v)
     # test_task_name(old_runs=old_runs, all_tasks=all_tasks)
 
-    # log tables and update tables
-    # if run_chain:
-    #     leaderboard_tables = [old_leaderboard_table.get_dataframe()]
-    # else:
-    #     leaderboard_tables = []
-    leaderboard_table = blend_tables(
-        old_runs=old_runs,
-        # leaderboard_tables=leaderboard_tables,
-        run=run,
-    )
+    blend_tables(old_runs=old_runs, run=run)
 
     # finish
     if not run_chain:
-        # aggregateをする
         aggregate()
-        # run.log({"leaderboard_table": leaderboard_table})
-        # run.finish()
 
 
 if __name__ == "__main__":
