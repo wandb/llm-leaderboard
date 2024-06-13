@@ -169,7 +169,7 @@ def evaluate_n_shot(few_shots: bool):
                 control_func: callable = controllability_dict[control_task]
 
                 generator_config = {"max_tokens": task_data["output_length"]}
-                inputs.extend([prompt, generator_config])
+                inputs.extend([messages, generator_config])
 
                 # collect data
                 evaluation_results.append(
