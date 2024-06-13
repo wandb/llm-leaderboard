@@ -84,6 +84,10 @@ def aggregate():
     leaderboard_dict["ALT_AVG"] = calculate_average_from_dict(leaderboard_dict,"ALT")
     leaderboard_dict["TOTAL_AVG"] = np.mean([leaderboard_dict["GLP_AVG"], leaderboard_dict["ALT_AVG"]])
     leaderboard_table = pd.DataFrame([leaderboard_dict])
+    cols = leaderboard_table.columns
+    avg_cols = ["TOTAL_AVG", "GLP_AVG", "ALT_AVG"]
+    new_cols = avg_cols + [c for c in cols if c not in avg_cols]
+    leaderboard_table = leaderboard_table[new_cols]
     # Radar table
     glp_radar_table = pd.DataFrame(
         data=radar_contents(
