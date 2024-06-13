@@ -17,9 +17,8 @@ from .evaluate_utils import (
     LLMAsyncProcessor,
     normalize,
     text_formatter,
-    evaluate_robustness
+    evaluate_robustness,
 )
-
 
 def evaluate_n_shot(few_shots: bool):
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
@@ -195,8 +194,8 @@ def evaluate_n_shot(few_shots: bool):
         llm=llm,
         inputs=all_inputs,
     )
-
     results = llm_ap.get_results()
+
     for result, evaluation_result in tqdm(zip(results, evaluation_results)):
         response, latency = result
         raw_output = response.content
@@ -219,15 +218,14 @@ def evaluate_n_shot(few_shots: bool):
         del evaluation_result["metrics_func"], evaluation_result["control_func"], evaluation_result["inputs"]
 
     output_df = pd.DataFrame(evaluation_results)
-    # group mmlu_en and jmmlu task category
-    output_df["task"] = output_df["task"].apply(lambda x: "mmlu_en" if x.startswith("mmlu_en") else x)
-    output_df['task'] = output_df['task'].apply(lambda x: jmmlu_dict.get(x, x))
+    output_df["task"] = output_df["task"].apply(lambda x: "mmlu_en" if x.startswith("mmlu_en") else x)    
 
     # log table
     if cfg.jmmlu_robustness and few_shots:
-        output_df = output_df[~output_df["task"].str.endswith("Choice")]
         output_robust_df = output_df[output_df["task"].str.contains("jmmlu")]
-        
+
+    # group mmlu_en and jmmlu task 
+    output_df['task'] = output_df['task'].apply(lambda x: jmmlu_dict.get(x, x))        
     dev_table = output_df.query("subset == 'dev'")
     test_table = output_df.query("subset == 'test'")
     
@@ -250,7 +248,6 @@ def evaluate_n_shot(few_shots: bool):
     leaderboard_table_control['AVG'] = leaderboard_table_control.iloc[:, 2:].mean(axis=1)
     leaderboard_table['jmmlu'] = leaderboard_table[['jmmlu_stem', 'jmmlu_social_sciences', 'jmmlu_humanities', 'jmmlu_other']].mean(axis=1)
     leaderboard_table_control['jmmlu'] = leaderboard_table_control[['jmmlu_stem', 'jmmlu_social_sciences', 'jmmlu_humanities', 'jmmlu_other']].mean(axis=1)
-
     run.log(
         {
             f"{dataset_name}_{num_few_shots}shot_output_table_dev": dev_table,
@@ -264,7 +261,6 @@ def evaluate_n_shot(few_shots: bool):
         # need to be updated
         dev_robust_table = output_robust_df.query("subset == 'dev'")
         test_robust_table= output_robust_df.query("subset == 'test'")
-        
         dev_robust_table_for_log,_ = evaluate_robustness(num_few_shots=num_few_shots, subset="_dev", df=dev_robust_table)
         test_robust_table_for_log, leaderboard_robust_table= evaluate_robustness(num_few_shots=num_few_shots, subset="", df=test_robust_table)
         run.log(
