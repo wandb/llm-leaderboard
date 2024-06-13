@@ -14,6 +14,7 @@ from .evaluate_utils import (
     jaster_metrics_dict,
     jmmlu_dict,
     controllability_dict,
+    task_to_sub_category,
     LLMAsyncProcessor,
     normalize,
     text_formatter,
@@ -222,6 +223,7 @@ def evaluate_n_shot(few_shots: bool):
     # group mmlu_en and jmmlu task category
     output_df["task"] = output_df["task"].apply(lambda x: "mmlu_en" if x.startswith("mmlu_en") else x)
     output_df['task'] = output_df['task'].apply(lambda x: jmmlu_dict.get(x, x))
+    output_df['sub_category'] = output_df['task'].map(task_to_sub_category)
 
     # log table
     if cfg.jmmlu_robustness and few_shots:
