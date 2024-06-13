@@ -5,20 +5,17 @@ from omegaconf import OmegaConf
 import questionary
 import pandas as pd
 
-from mtbench_eval import mtbench_evaluate
 from toxicity_eval import toxicity_evaluate
 from aggregate import aggregate
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
 from blend_run import blend_run
 from evaluator import (
-    bbq,
     jaster,
     jbbq,
-    lctg
+    lctg,
+    mtbench,
 )
-
-import time
 
 # set config path
 config_dir = Path("configs")
@@ -87,7 +84,7 @@ instance.llm = llm
 jaster.evaluate()
 
 # 2. mt-bench evaluation
-mtbench_evaluate()
+mtbench.evaluate()
 
 # 3. bbq, jbbq
 jbbq.evaluate()
