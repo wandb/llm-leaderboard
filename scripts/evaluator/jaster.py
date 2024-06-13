@@ -14,6 +14,7 @@ from .evaluate_utils import (
     jaster_metrics_dict,
     jmmlu_dict,
     controllability_dict,
+    task_to_sub_category,
     LLMAsyncProcessor,
     normalize,
     text_formatter,
@@ -167,7 +168,7 @@ def evaluate_n_shot(few_shots: bool):
                 control_func: callable = controllability_dict[control_task]
 
                 generator_config = {"max_tokens": task_data["output_length"]}
-                inputs.extend([prompt, generator_config])
+                inputs.extend([messages, generator_config])
 
                 # collect data
                 evaluation_results.append(
@@ -201,8 +202,9 @@ def evaluate_n_shot(few_shots: bool):
         raw_output = response.content
         y_pred: str = pipe(
             raw_output,
-            lambda x: text_formatter(x, task),
+            lambda x: text_formatter(x, evaluation_result["task"]),
             lambda x: x.split("\n\n")[0],
+            lambda x: x.strip("'").strip('"'),
             normalize,
         )
         metrics_func = evaluation_result["metrics_func"]
@@ -218,14 +220,16 @@ def evaluate_n_shot(few_shots: bool):
         del evaluation_result["metrics_func"], evaluation_result["control_func"], evaluation_result["inputs"]
 
     output_df = pd.DataFrame(evaluation_results)
-    output_df["task"] = output_df["task"].apply(lambda x: "mmlu_en" if x.startswith("mmlu_en") else x)    
+    # group mmlu_en and jmmlu task category
+    output_df["task"] = output_df["task"].apply(lambda x: "mmlu_en" if x.startswith("mmlu_en") else x)
 
     # log table
     if cfg.jmmlu_robustness and few_shots:
         output_robust_df = output_df[output_df["task"].str.contains("jmmlu")]
 
     # group mmlu_en and jmmlu task 
-    output_df['task'] = output_df['task'].apply(lambda x: jmmlu_dict.get(x, x))        
+    output_df['task'] = output_df['task'].apply(lambda x: jmmlu_dict.get(x, x))
+    output_df['sub_category'] = output_df['task'].map(task_to_sub_category)  
     dev_table = output_df.query("subset == 'dev'")
     test_table = output_df.query("subset == 'test'")
     
