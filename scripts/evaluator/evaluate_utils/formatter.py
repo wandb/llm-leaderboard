@@ -61,7 +61,7 @@ def text_formatter(input_str: str, dataset: str) -> str:
 
 def symbol_to_ABCD(input_str):
     mapping = {"$": "A", "&": "B", "#": "C", "@": "D"}
-    return mapping.get(input_str, "")
+    return mapping.get(input_str, input_str)
 
 
 def incorrect_to_ABCD(input_str):
@@ -71,4 +71,13 @@ def incorrect_to_ABCD(input_str):
         "A,B,D": "C",
         "A,B,C": "D",
     }
-    return mapping.get(input_str, "")
+    return mapping.get(input_str, input_str)
+
+def ABCD_to_incorrect(input_str):
+    mapping = {
+        "A": "B,C,D",
+        "B": "A,C,D",
+        "C": "A,B,D",
+        "D": "A,B,C",
+    }
+    return mapping.get(input_str, input_str)
