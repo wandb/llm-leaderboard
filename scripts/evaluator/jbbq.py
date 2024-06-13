@@ -312,6 +312,7 @@ def evaluate_n_shot(few_shots: bool):
     # log table
     output_df = pd.DataFrame(evaluation_results)
     output_df = output_df.drop(columns=['stereotype_label', 'unk_label'], errors='ignore')
+    output_df["sub_category"] = "ALT_bias"
     dev_table = output_df.query("subset == 'dev'")
     test_table = output_df.query("subset == 'test'")
 
