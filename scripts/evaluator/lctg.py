@@ -1,10 +1,10 @@
 from pathlib import Path
 import os
 import concurrent.futures
-
 import wandb
 from tqdm import tqdm
 import pandas as pd
+import numpy as np
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import (
@@ -14,8 +14,6 @@ from .evaluate_utils import (
     get_keyword_is_valid,
     get_prohibited_word_is_valid,
     get_char_count_is_valid,
-    quality_process_results,
-    calculate_true_proportions,
     transform_data,
     LLMAsyncProcessor,
 )
@@ -32,6 +30,11 @@ def parallel_inference(inputs, lmt_type, llm):
 
     return lmt_type, results
 
+def radar_contents(leaderboard_dict, categories: list[str]) -> list[list[str, float]]:
+    ret = []
+    for cat in categories:
+        ret.append([cat[4:], leaderboard_dict[cat]])
+    return ret
 
 def evaluate():
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
@@ -61,6 +64,10 @@ def evaluate():
         'output', 'preprocessed_output', 'ctg', 'qual'
     ]
     output_df = pd.DataFrame(columns=columns)
+    Format_ctg=[]
+    C_count_ctg=[]
+    Keyword_ctg=[]
+    P_word_ctg=[]
 
     for task in tasks:
         file = f"{artifact_dir}/lctg/{task}_prompts_v1.jsonl"
@@ -83,7 +90,7 @@ def evaluate():
                 messages = []
                 messages.append({"role": "user", "content": sample})
                 prompt = apply_chat_template(messages=messages)
-                generator_config = {"max_tokens": 3500}
+                generator_config = {"max_tokens": 1500}
                 inputs.append([messages, generator_config])
 
             llm_ap = LLMAsyncProcessor(
@@ -164,7 +171,6 @@ def evaluate():
     #############################################
     # Calculate scores
     #############################################
-
         # individual outputs
         #merged_df = pd.merge(df_quality,save_df, on='prompt_id', how='left')
         output_df = transform_data(output_df, save_df, task)
@@ -172,98 +178,77 @@ def evaluate():
         # task base summary
         #scores_list = list(ctg_scores.values())+quality_scores
         scores_list = list(ctg_scores.values())
-        #task_summary_table = pd.DataFrame(data=[scores_list], columns=["Format-ctg","C-count-ctg","Keyword-ctg","P-word-ctg","Format-qual","C-count-qual","Keyword-qual","P-word-qual"])
-        task_summary_table = pd.DataFrame(data=[scores_list], columns=["Format-ctg","C-count-ctg","Keyword-ctg","P-word-ctg"])
-        task_summary_table["AVG-ctg"] = task_summary_table.apply(lambda row: (row["Format-ctg"] + row["C-count-ctg"] + row["Keyword-ctg"] + row["P-word-ctg"]) / 4, axis=1)
-        #task_summary_table["AVG-qual"] = task_summary_table.apply(lambda row: (row["Format-qual"] + row["C-count-qual"] + row["Keyword-qual"] + row["P-word-qual"]) / 4, axis=1)
-        #columns = ["AVG-ctg", "AVG-qual"] + [col for col in task_summary_table.columns if col not in ["AVG-ctg", "AVG-qual"]]
-        columns = ["AVG-ctg"] + [col for col in task_summary_table.columns if col not in ["AVG-ctg"]]
+        #task_summary_table = pd.DataFrame(data=[scores_list], columns=["Format_ctg","C_count_ctg","Keyword_ctg","P_word_ctg","Format-qual","C-count-qual","Keyword-qual","P-word-qual"])
+        task_summary_table = pd.DataFrame(data=[scores_list], columns=["Format_ctg","C_count_ctg","Keyword_ctg","P_word_ctg"])
+        task_summary_table["AVG_ctg"] = task_summary_table.apply(lambda row: (row["Format_ctg"] + row["C_count_ctg"] + row["Keyword_ctg"] + row["P_word_ctg"]) / 4, axis=1)
+        #task_summary_table["AVG_qual"] = task_summary_table.apply(lambda row: (row["Format-qual"] + row["C-count-qual"] + row["Keyword-qual"] + row["P-word-qual"]) / 4, axis=1)
+        #columns = ["AVG_ctg", "AVG_qual"] + [col for col in task_summary_table.columns if col not in ["AVG_ctg", "AVG_qual"]]
+        columns = ["AVG_ctg"] + [col for col in task_summary_table.columns if col not in ["AVG_ctg"]]
         task_summary_table = task_summary_table[columns]
         print(task_summary_table)
 
-        for col in list(task_summary_table.columns):
-            task_summary_table[col] = task_summary_table[col].apply(lambda x: "{:.3f}".format(float(x)))
+        #for col in list(task_summary_table.columns):
+        #    task_summary_table[col] = task_summary_table[col].apply(lambda x: "{:.3f}".format(float(x)))
         wandb.log({f"lctg_{task}_leaderboard_table": task_summary_table})
 
-        total_summary[f"{task}_AVG-ctg"] = pd.to_numeric(task_summary_table['AVG-ctg'], errors='coerce')
-        #total_summary[f"{task}_AVG-qual"]=pd.to_numeric(task_summary_table['AVG-qual'], errors='coerce')
+        total_summary[f"AVG_{task}_ctg"] = pd.to_numeric(task_summary_table['AVG_ctg'], errors='coerce')
+        
+        #total_summary[f"{task}_AVG_qual"]=pd.to_numeric(task_summary_table['AVG_qual'], errors='coerce')
+
+        Format_ctg.append(task_summary_table["Format_ctg"].iloc[0])
+        C_count_ctg.append(task_summary_table["C_count_ctg"].iloc[0])
+        Keyword_ctg.append(task_summary_table["Keyword_ctg"].iloc[0])
+        P_word_ctg.append(task_summary_table["P_word_ctg"].iloc[0])
 
     # total summary
-    AVG_columns_ctg = [f"{task}_AVG-ctg" for task in tasks]
-    total_summary["Total-AVG-ctg"] = total_summary[AVG_columns_ctg].mean(axis=1)
-    columns = ['Total-AVG-ctg'] + [col for col in total_summary.columns if col != 'Total-AVG-ctg']
+    AVG_columns_ctg = [f"AVG_{task}_ctg" for task in tasks]
+    total_summary["AVG_Total_ctg"] = total_summary[AVG_columns_ctg].mean(axis=1)
+    print(Format_ctg)
+    total_summary["AVG_Format_ctg"] = np.mean(Format_ctg)
+    total_summary["AVG_C_count_ctg"] = np.mean(C_count_ctg)
+    total_summary["AVG_Keyword_ctg"] = np.mean(Keyword_ctg)
+    total_summary["AVG_P_word_ctg"] = np.mean(P_word_ctg)
+    columns = ['AVG_Total_ctg'] + [col for col in total_summary.columns if col != 'AVG_Total-ctg']
     total_summary = total_summary[columns]
     
-    #AVG_columns_qual = [f"{task}_AVG-qual" for task in tasks]
-    #total_summary["Total-AVG-qual"] = total_summary[AVG_columns_qual].mean(axis=1)
-    #total_summary["AVG"] = (total_summary["Total-AVG-ctg"]+total_summary["Total-AVG-qual"])/2
+    #AVG_columns_qual = [f"{task}_AVG_qual" for task in tasks]
+    #total_summary["Total-AVG_qual"] = total_summary[AVG_columns_qual].mean(axis=1)
+    #total_summary["AVG"] = (total_summary["Total-AVG_ctg"]+total_summary["Total-AVG_qual"])/2
     #columns = ['AVG'] + [col for col in total_summary.columns if col != 'AVG']
     #total_summary = total_summary[columns]
 
-    wandb.log({"lctg_overall_leaderboard_table": total_summary})
-    wandb.log({"lctg_output_table": output_df})
-    
-    """
-    contents of wandb.log
-    "lctg_overall_leaderboard_table": leaderboard_table,
-        # model_name 
-        # AVG : 全てのAVG
-        # Total-AVG-ctg : summary, ad_text, pros_and_consのAVG-ctgの平均
-        # Total-AVG-qual : summary, ad_text, pros_and_consのAVG-qualの平均
-        # summary-AVG-ctg : summaryのCTGスコアの平均 (Format-ctg, C-count-ctg, Keyword-ctg, P-word-ctgの平均)
-        # summary-AVG-qual : summaryの品質スコアの平均 (Format-qual, C-count-qual, Keyword-qual, P-word-qualの平均)
-        # ad_text-AVG-ctg : ad_textのCTGスコアの平均 (Format-ctg, C-count-ctg, Keyword-ctg, P-word-ctgの平均)
-        # ad_text-AVG-qual : ad_textの品質スコアの平均 (Format-qual, C-count-qual, Keyword-qual, P-word-qualの平均)
-        # pros_and_cons-AVG-ctg : pros_and_consのCTGスコアの平均 (Format-ctg, C-count-ctg, Keyword-ctg, P-word-ctgの平均)
-        # pros_and_cons-AVG-qual : pros_and_consの品質スコアの平均 (Format-qual, C-count-qual, Keyword-qual, P-word-qualの平均)
-
-    "lctg_summary_leaderboard_table": summary_leaderboard_table,
-        # AVG-ctg : CTGスコアの平均 (Format-ctg, C-count-ctg, Keyword-ctg, P-word-ctgの平均)
-        # AVG-qual : 品質スコアの平均 (Format-qual, C-count-qual, Keyword-qual, P-word-qualの平均)
-        # Format-ctg : FormatのCTGスコア
-        # Format-qual : Formatの品質スコア
-        # C-count-ctg : Char countのCTGスコア
-        # C-count-qual : Char countの品質スコア
-        # Keyword-ctg : KeywordのCTGスコア
-        # Keyword-qual : Keywordの品質スコア
-        # P-word-ctg : Prohibited wordのCTGスコア
-        # P-word-qual : Prohibited wordの品質スコア
-    "lctg_ad_text_leaderboard_table": ad_text_leaderboard_table,
-        # AVG-ctg : CTGスコアの平均 (Format-ctg, C-count-ctg, Keyword-ctg, P-word-ctgの平均)
-        # AVG-qual : 品質スコアの平均 (Format-qual, C-count-qual, Keyword-qual, P-word-qualの平均)
-        # Format-ctg : FormatのCTGスコア
-        # Format-qual : Formatの品質スコア
-        # C-count-ctg : Char countのCTGスコア
-        # C-count-qual : Char countの品質スコア
-        # Keyword-ctg : KeywordのCTGスコア
-        # Keyword-qual : Keywordの品質スコア
-        # P-word-ctg : Prohibited wordのCTGスコア
-        # P-word-qual : Prohibited wordの品質スコア
-    "lctg_pros_and_cons_table": pros_and_cons_leaderboard_table,
-        # AVG-ctg : CTGスコアの平均 (Format-ctg, C-count-ctg, Keyword-ctg, P-word-ctgの平均)
-        # AVG-qual : 品質スコアの平均 (Format-qual, C-count-qual, Keyword-qual, P-word-qualの平均)
-        # Format-ctg : FormatのCTGスコア
-        # Format-qual : Formatの品質スコア
-        # C-count-ctg : Char countのCTGスコア
-        # C-count-qual : Char countの品質スコア
-        # Keyword-ctg : KeywordのCTGスコア
-        # Keyword-qual : Keywordの品質スコア
-        # P-word-ctg : Prohibited wordのCTGスコア
-        # P-word-qual : Prohibited wordの品質スコア
-    "lctg_output_table": output_df,
-        # modle_name
-        # qustion_id
-        # task
-        # category
-        # requirement
-        # input
-        # output
-        # preprocessed
-        # ctg 
-        # qual
-
-    """
-
-            
+    lctg_task_radar_table = total_summary[['AVG_summary_ctg','AVG_ad_text_ctg','AVG_pros_and_cons_ctg']]
+    lctg_subtask_radar_table = total_summary[['AVG_Format_ctg','AVG_C_count_ctg','AVG_Keyword_ctg','AVG_P_word_ctg']] 
 
 
+    lctg_task_radar_table = pd.DataFrame(
+        data=radar_contents(
+            leaderboard_dict=lctg_task_radar_table.to_dict('dict'),
+            categories=['AVG_summary_ctg','AVG_ad_text_ctg','AVG_pros_and_cons_ctg'],
+        ),
+        columns=["category", "score"],
+    )
+    lctg_task_radar_table['category'] = lctg_task_radar_table['category'].replace({
+        'summary_AVG-ctg': 'summary',
+        'ad_text_AVG-ctg': 'ad_text',
+        'pros_and_cons_AVG-ctg': 'pros_and_cons'
+    })
+    lctg_subtask_radar_table = pd.DataFrame(
+        data=radar_contents(
+            leaderboard_dict=lctg_subtask_radar_table.to_dict('dict'),
+            categories=['AVG_Format_ctg','AVG_C_count_ctg','AVG_Keyword_ctg','AVG_P_word_ctg'],
+        ),
+        columns=["category", "score"],
+    )
+
+    lctg_subtask_radar_table['category'] = lctg_subtask_radar_table['category'].replace({
+        'AVG_Format_ctg': 'format',
+        'AVG_C_count_ctg': 'c_count',
+        'AVG_Keyword_ctg': 'keyword',
+        'AVG_P_word_ctg': 'p_word',
+    })
+
+    wandb.log({"lctg_overall_leaderboard_table": wandb.Table(dataframe=total_summary)})
+    wandb.log({"lctg_output_table": wandb.Table(dataframe=output_df)})
+    wandb.log({"lctg_task_radar_table": wandb.Table(dataframe=lctg_task_radar_table )})
+    wandb.log({"lctg_subtask_radar_table": wandb.Table(dataframe=lctg_subtask_radar_table)})
