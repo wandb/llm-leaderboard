@@ -84,7 +84,7 @@ def evaluate():
                 messages.append({"role": "user", "content": sample})
                 prompt = apply_chat_template(messages=messages)
                 generator_config = {"max_tokens": 3500}
-                inputs.append([prompt, generator_config])
+                inputs.append([messages, generator_config])
 
             llm_ap = LLMAsyncProcessor(
                 llm=llm,

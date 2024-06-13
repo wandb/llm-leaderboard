@@ -17,10 +17,13 @@ from fastchat.llm_judge.common import (
         play_a_match_single,
         NEED_REF_CATS,
     )
+from .evaluate_utils import (
+    task_to_sub_category,
+)
 from fastchat.conversation import initialize_vllm_custom_template
 from config_singleton import WandbConfigSingleton
 
-def mtbench_evaluate():
+def evaluate():
     
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()
@@ -207,7 +210,10 @@ def mtbench_evaluate():
     ]
     df_judge = df_judge[use_col]
 
+    df_judge['sub_category'] = df_judge['category'].map(task_to_sub_category)
+
     table_log = wandb.Table(dataframe=df_judge)
+    
 
     # table for radar chart
     _df_judge = df_judge.query('score != -1').groupby(['question_id', 'turn', 'category'], as_index=False).score.mean()
