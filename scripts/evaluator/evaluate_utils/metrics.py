@@ -156,6 +156,45 @@ jmmlu_dict = {
     'jmmlu_world_religions': 'jmmlu_humanities'
 }
 
+task_to_sub_category = {
+    "alt-e-to-j": "GLP_translation",
+    "alt-j-to-e": "GLP_translation",
+    "wikicorpus-e-to-j": "GLP_translation",
+    "wikicorpus-j-to-e": "GLP_translation",
+    "jsquad": "GLP_information_extraction",
+    "mawps": "GLP_mathematical_reasoning",
+    "wiki_ner": "GLP_entity_extraction",
+    "wiki_coreference": "GLP_entity_extraction",
+    "chabsa": "GLP_entity_extraction",
+    "jcommonsenseqa": "GLP_knowledge_QA",
+    "jemhopqa": "GLP_knowledge_QA",
+    "jmmlu": "GLP_knowledge_QA",
+    "niilc": "GLP_knowledge_QA",
+    "aio": "GLP_knowledge_QA",
+    "mmlu_en": "GLP_English_MMLU",
+    "jnli": "GLP_semantic_analysis",
+    "janli": "GLP_semantic_analysis",
+    "jsem": "GLP_semantic_analysis",
+    "jsick": "GLP_semantic_analysis",
+    "jamp": "GLP_semantic_analysis",
+    "jcola-in-domain": "GLP_syntactic_analysis",
+    "jcola-out-of-domain": "GLP_syntactic_analysis",
+    "jblimp": "GLP_syntactic_analysis",
+    "wiki_reading": "GLP_syntactic_analysis",
+    "wiki_pas": "GLP_syntactic_analysis",
+    "wiki_dependency": "GLP_syntactic_analysis",
+    "commonsensemoralja": "ALT_ethics_moral",
+    "toxicity": "ALT_toxicity",
+    "humanities": "GLP_expression",
+    "roleplay": "GLP_expression",
+    "writing": "GLP_expression",
+    "reasoning": "GLP_reasoning",
+    "math": "GLP_mathematical_reasoning",
+    "extraction": "GLP_entity_extraction",
+    "stem": "GLP_knowledge_QA",
+    "coding": "ADVANCED_programing"
+}
+
 
 # ---------------------
 # For controllability
