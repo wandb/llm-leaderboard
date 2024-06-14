@@ -58,7 +58,7 @@ def aggregate():
 
     leaderboard_dict = {}
 
-    leaderboard_dict["model_release_date"] = cfg.model.release_date
+    leaderboard_dict["model_release_date"] = pd.to_datetime(cfg.model.release_date, format='%m/%d/%Y')
     leaderboard_dict["model_size"] = cfg.model.size
     leaderboard_dict["GLP_expression"] = calculate_combined_means([],["roleplay","writing","humanities"])
     leaderboard_dict["GLP_translation"] = calculate_combined_means(["alt-e-to-j","alt-j-to-e","wikicorpus-e-to-j","wikicorpus-j-to-e"], [])
