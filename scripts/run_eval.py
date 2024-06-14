@@ -8,11 +8,13 @@ from toxicity_eval import toxicity_evaluate
 from aggregate import aggregate
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
+from vllm_server import shutdown_vllm_server
 from evaluator import (
     jaster,
     jbbq,
     lctg,
     mtbench,
+    jaster_translation,
 )
 
 # set config path
@@ -93,6 +95,11 @@ toxicity_evaluate()
 # Sample
 # sample_evaluate()
 
-# 6. Aggregation
 
+#### open weight model base evaluation
+# 1. evaluation for translation task in jaster with comet
+shutdown_vllm_server()
+jaster_translation.evaluate()
+
+# 6. Aggregation
 aggregate()
