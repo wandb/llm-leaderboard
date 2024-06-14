@@ -208,7 +208,7 @@ def evaluate():
     total_summary["AVG_C_count_ctg"] = np.mean(C_count_ctg)
     total_summary["AVG_Keyword_ctg"] = np.mean(Keyword_ctg)
     total_summary["AVG_P_word_ctg"] = np.mean(P_word_ctg)
-    columns = ['AVG_Total_ctg'] + [col for col in total_summary.columns if col != 'AVG_Total-ctg']
+    columns = ['AVG_Total_ctg'] + [col for col in total_summary.columns if col != 'AVG_Total_ctg']
     total_summary = total_summary[columns]
     
     #AVG_columns_qual = [f"{task}_AVG_qual" for task in tasks]
