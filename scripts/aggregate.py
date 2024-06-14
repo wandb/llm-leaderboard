@@ -90,6 +90,10 @@ def aggregate():
     leaderboard_dict["AVG_lctg"] = lctg_overall["Total-AVG-ctg"][0]
     leaderboard_dict["AVG_mtbench"] = mtbench["AVG_mtbench"][0]
     leaderboard_table = pd.DataFrame([leaderboard_dict])
+    cols = leaderboard_table.columns
+    avg_cols = ["TOTAL_AVG", "GLP_AVG", "ALT_AVG"]
+    new_cols = avg_cols + [c for c in cols if c not in avg_cols]
+    leaderboard_table = leaderboard_table[new_cols]
     # Radar table
     glp_radar_table = pd.DataFrame(
         data=radar_contents(
