@@ -9,18 +9,17 @@ from utils import get_tokenizer_config
 
 
 def start_vllm_server():
-
     instance = WandbConfigSingleton.get_instance()
     cfg = instance.config
     model_id = cfg.model.pretrained_model_name_or_path
     dtype = cfg.model.dtype
-    # max_model_len = cfg.model.max_model_len
 
-    def run_vllm_server(model_id: str, dtype: str, max_model_len: int = 2048):
+    def run_vllm_server(model_id: str, dtype: str):
         # set tokenizer_config
         tokenizer_config = get_tokenizer_config()
         cfg.update({"tokenizer_config": tokenizer_config})
         chat_template: str = cfg.tokenizer_config.get("chat_template")
+        max_model_len = cfg.model.get("max_model_len", 2048)
         num_gpus = cfg.get("num_gpus", 1)
 
         with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
