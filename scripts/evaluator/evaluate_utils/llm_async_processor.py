@@ -46,14 +46,11 @@ class LLMAsyncProcessor:
     @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
     @error_handler
     async def _ainvoke(self, messages: Messages, **kwargs) -> Tuple[AIMessage, float]:
-        # start = time.time()
         if self.api_type == "google":
             self.llm.max_output_tokens = kwargs["max_tokens"]
             response = await self.llm.invoke(messages)
         else:
             response = await self.llm.ainvoke(messages, **kwargs)
-        # end = time.time()
-        # latency = end - start # 非同期だとlatencyが取得できないのでコメントアウト
         return response, 0
 
     async def _process_batch(self, batch: Inputs) -> List[Tuple[AIMessage, float]]:
@@ -63,7 +60,23 @@ class LLMAsyncProcessor:
         ]
         return await asyncio.gather(*tasks)
 
+    def _assert_messages_format(self, data: Messages):
+        # データがリストであることを確認
+        assert isinstance(data, list), "Data should be a list"
+        # 各要素が辞書であることを確認
+        for item in data:
+            assert isinstance(item, dict), "Each item should be a dictionary"
+            # 'role'キーと'content'キーが存在することを確認
+            assert 'role' in item, "'role' key is missing in an item"
+            assert 'content' in item, "'content' key is missing in an item"
+            # 'role'の値が'system', 'assistant', 'user'のいずれかであることを確認
+            assert item['role'] in ['system', 'assistant', 'user'], "'role' should be one of ['system', 'assistant', 'user']"
+            # 'content'の値が文字列であることを確認
+            assert isinstance(item['content'], str), "'content' should be a string"
+
     async def _gather_tasks(self) -> List[Tuple[AIMessage, float]]:
+        for messages, _ in self.inputs:
+            self._assert_messages_format(data=messages)
         results = []
         for i in tqdm(range(0, len(self.inputs), self.batch_size)):
             batch = self.inputs[i : i + self.batch_size]
