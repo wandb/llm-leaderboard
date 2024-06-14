@@ -64,25 +64,25 @@ def aggregate():
     leaderboard_dict["model_size"] = cfg.model.size
     avg_cols = []
     
-    if cfg.run.GLP:
-        leaderboard_dict["GLP_expression"] = calculate_combined_means([], ["roleplay", "writing", "humanities"])
-        leaderboard_dict["GLP_translation"] = calculate_combined_means(["alt-e-to-j", "alt-j-to-e", "wikicorpus-e-to-j", "wikicorpus-j-to-e"], [])
+    if cfg.run.GLP: 
+        leaderboard_dict["GLP_expression"] = calculate_combined_means([],["roleplay","writing","humanities"])
+        leaderboard_dict["GLP_translation"] = calculate_combined_means(["alt-e-to-j","alt-j-to-e","wikicorpus-e-to-j","wikicorpus-j-to-e"], [])
         leaderboard_dict["GLP_information_extraction"] = calculate_combined_means(["jsquad"], [])
         leaderboard_dict["GLP_reasoning"] = calculate_combined_means([], ["reasoning"])
         leaderboard_dict["GLP_mathematical_reasoning"] = calculate_combined_means(["mawps"], ["math"])
         leaderboard_dict["GLP_entity_extraction"] = calculate_combined_means(["wiki_ner", "wiki_coreference", "chabsa"], ["extraction"])
-        leaderboard_dict["GLP_knowledge_QA"] = calculate_combined_means(["jcommonsenseqa", "jemhopqa", "jmmlu_stem", "jmmlu_humanities", "jmmlu_social_sciences", "jmmlu_other", "niilc", "aio"], ["stem"])
+        leaderboard_dict["GLP_knowledge_QA"] = calculate_combined_means(["jcommonsenseqa","jemhopqa", "jmmlu","niilc","aio"], ["stem"])
         leaderboard_dict["GLP_English_MMLU"] = calculate_combined_means(["mmlu_en"], [])
-        leaderboard_dict["GLP_semantic_analysis"] = calculate_combined_means(["jnli", "janli", "jsem", "jsick", "jamp"], [])
-        leaderboard_dict["GLP_syntactic_analysis"] = calculate_combined_means(["jcola-in-domain", "jcola-out-of-domain", "jblimp", "wiki_reading", "wiki_pas", "wiki_dependency"], [])
+        leaderboard_dict["GLP_semantic_analysis"] = calculate_combined_means(["jnli","janli","jsem","jsick", "jamp"], [])
+        leaderboard_dict["GLP_syntactic_analysis"] = calculate_combined_means(["jcola-in-domain","jcola-out-of-domain","jblimp","wiki_reading","wiki_pas","wiki_dependency"], [])    
         leaderboard_dict["GLP_AVG"] = calculate_average_from_dict(leaderboard_dict, "GLP")
         avg_cols.append("GLP_AVG")
     
     if cfg.run.ALT:
-        leaderboard_dict["ALT_controllability"] = np.mean([np.mean([jaster_control_0shot["AVG"][0], jaster_control_fewshots["AVG"][0]]), lctg_overall["AVG_Total_ctg"][0]]) if not jaster_control_0shot.empty and not jaster_control_fewshots.empty and not lctg_overall.empty else np.nan
-        leaderboard_dict["ALT_ethics_moral"] = calculate_combined_means(["commonsensemoralja"], [])
-        leaderboard_dict["ALT_toxicity"] = toxicity[["公平性", "社会規範", "禁止行為", "違反カテゴリ"]].values.mean() if toxicity is not None else np.nan
-        leaderboard_dict["ALT_bias"] = 1 - np.mean([jbbq_0shot["avg_abs_bias_score"][0], jbbq_fewshots["avg_abs_bias_score"][0]]) if not jbbq_0shot.empty and not jbbq_fewshots.empty else np.nan
+        leaderboard_dict["ALT_controllability"] = np.mean([np.mean([jaster_control_0shot["AVG"][0], jaster_control_fewshots["AVG"][0]]), lctg_overall["AVG_Total_ctg"][0]])
+        leaderboard_dict["ALT_ethics_moral"] = calculate_combined_means(["commonsensemoralja"],[])
+        leaderboard_dict["ALT_toxicity"] = toxicity[["公平性", "社会規範", "禁止行為", "違反カテゴリ"]].values.mean() if 'toxicity' in locals() else np.nan
+        leaderboard_dict["ALT_bias"] = 1-np.mean([jbbq_0shot["avg_abs_bias_score"][0], jbbq_fewshots["avg_abs_bias_score"][0]])
         leaderboard_dict["ALT_robustness"] = jmmlu_robust_fewshots["jaster"][0]
         leaderboard_dict["ALT_AVG"] = calculate_average_from_dict(leaderboard_dict, "ALT")
         avg_cols.append("ALT_AVG")
