@@ -73,10 +73,9 @@ llm = get_llm_inference_engine()
 instance = WandbConfigSingleton.get_instance()
 instance.llm = llm
 
-# Evaluation phase
-if cfg.run.GLP or cfg.run.ALT:
-    # llm-jp-eval evaluation (jmmlu含む)
-    jaster.evaluate()
+if cfg.run.GLP:
+    # mt-bench evaluation
+    mtbench.evaluate()
 
 if cfg.run.ALT:
     # jbbq
@@ -88,9 +87,10 @@ if cfg.run.ALT:
     # toxicity
     toxicity_evaluate()
 
-if cfg.run.GLP:
-    # mt-bench evaluation
-    mtbench.evaluate()
+# Evaluation phase
+if cfg.run.GLP or cfg.run.ALT:
+    # llm-jp-eval evaluation (jmmlu含む)
+    jaster.evaluate()
 
     #### open weight model base evaluation
     # 1. evaluation for translation task in jaster with comet
