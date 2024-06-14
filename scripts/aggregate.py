@@ -68,7 +68,7 @@ def aggregate():
     leaderboard_dict["GLP_reasoning"] = calculate_combined_means([], ["reasoning"])
     leaderboard_dict["GLP_mathematical_reasoning"] = calculate_combined_means(["mawps"], ["math"])
     leaderboard_dict["GLP_entity_extraction"] = calculate_combined_means(["wiki_ner", "wiki_coreference", "chabsa"], ["extraction"])
-    leaderboard_dict["GLP_knowledge_QA"] = calculate_combined_means(["jcommonsenseqa","jemhopqa", "jmmlu_stem","jmmlu_humanities","jmmlu_social_sciences","jmmlu_other","niilc","aio"], ["stem"])
+    leaderboard_dict["GLP_knowledge_QA"] = calculate_combined_means(["jcommonsenseqa","jemhopqa", "jmmlu","niilc","aio"], ["stem"])
     leaderboard_dict["GLP_English_MMLU"] = calculate_combined_means(["mmlu_en"], [])
     leaderboard_dict["GLP_semantic_analysis"] = calculate_combined_means(["jnli","janli","jsem","jsick", "jamp"], [])
     leaderboard_dict["GLP_syntactic_analysis"] = calculate_combined_means(["jcola-in-domain","jcola-out-of-domain","jblimp","wiki_reading","wiki_pas","wiki_dependency"], [])
@@ -87,7 +87,7 @@ def aggregate():
     jaster_agg_cols = [c for c in jaster_0shot if not c.startswith("jmmlu_") and c not in ["run_name", "model_name"]]
     leaderboard_dict["AVG_jaster_0shot"] = jaster_0shot[jaster_agg_cols].mean(axis=1)[0]
     leaderboard_dict[f"AVG_jaster_{num_few_shots}shots"] = jaster_fewshots[jaster_agg_cols].mean(axis=1)[0]
-    leaderboard_dict["AVG_lctg"] = lctg_overall["Total-AVG-ctg"][0]
+    leaderboard_dict["AVG_lctg"] = lctg_overall["AVG_Total_ctg"][0]
     leaderboard_dict["AVG_mtbench"] = mtbench["AVG_mtbench"][0]
     leaderboard_table = pd.DataFrame([leaderboard_dict])
     cols = leaderboard_table.columns
