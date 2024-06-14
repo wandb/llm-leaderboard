@@ -17,25 +17,25 @@ def aggregate():
     run = instance.run
     cfg = instance.config
 
-    few_shots = cfg.num_few_shots
+    num_few_shots = cfg.num_few_shots
     
     # Initialize empty variables
     if cfg.run.GLP or cfg.run.ALT:
         jaster_0shot = jaster_fewshots = jmmlu_robust_fewshots = jaster_control_0shot = None
         jaster_control_fewshots = lctg_overall = jbbq_0shot = jbbq_fewshots = toxicity = mtbench = None
         jaster_0shot = read_wandb_table(table_name=f"jaster_0shot_leaderboard_table", run=run)
-        jaster_fewshots = read_wandb_table(table_name=f"jaster_{few_shots}shot_leaderboard_table", run=run)
+        jaster_fewshots = read_wandb_table(table_name=f"jaster_{num_few_shots}shot_leaderboard_table", run=run)
 
     if cfg.run.GLP:
         mtbench = read_wandb_table(table_name=f"mtbench_leaderboard_table", run=run)
     
     if cfg.run.ALT:
         lctg_overall = read_wandb_table(table_name=f"lctg_overall_leaderboard_table", run=run)
-        jmmlu_robust_fewshots = read_wandb_table(table_name=f"jmmlu_robust_{few_shots}shot_leaderboard_table", run=run)
+        jmmlu_robust_fewshots = read_wandb_table(table_name=f"jmmlu_robust_{num_few_shots}shot_leaderboard_table", run=run)
         jaster_control_0shot = read_wandb_table(table_name=f"jaster_control_0shot_leaderboard_table", run=run)
-        jaster_control_fewshots = read_wandb_table(table_name=f"jaster_control_{few_shots}shot_leaderboard_table", run=run)
+        jaster_control_fewshots = read_wandb_table(table_name=f"jaster_control_{num_few_shots}shot_leaderboard_table", run=run)
         jbbq_0shot = read_wandb_table(table_name=f"jbbq_0shot_leaderboard_table", run=run)
-        jbbq_fewshots = read_wandb_table(table_name=f"jbbq_{few_shots}shot_leaderboard_table", run=run)
+        jbbq_fewshots = read_wandb_table(table_name=f"jbbq_{num_few_shots}shot_leaderboard_table", run=run)
         toxicity = read_wandb_table(table_name=f"toxicity_leaderboard_table", run=run)
 
     print("-------- aggregating results ----------")
@@ -61,7 +61,7 @@ def aggregate():
 
     leaderboard_dict = {}
 
-    leaderboard_dict["model_release_date"] = cfg.model.release_date
+    leaderboard_dict["model_release_date"] = pd.to_datetime(cfg.model.release_date, format='%m/%d/%Y')
     leaderboard_dict["model_size"] = cfg.model.size
     
     if cfg.run.GLP:
@@ -82,13 +82,24 @@ def aggregate():
         leaderboard_dict["ALT_ethics_moral"] = calculate_combined_means(["commonsensemoralja"], [])
         leaderboard_dict["ALT_toxicity"] = toxicity[["公平性", "社会規範", "禁止行為", "違反カテゴリ"]].values.mean() if toxicity is not None else np.nan
         leaderboard_dict["ALT_bias"] = 1 - np.mean([jbbq_0shot["avg_abs_bias_score"][0], jbbq_fewshots["avg_abs_bias_score"][0]]) if not jbbq_0shot.empty and not jbbq_fewshots.empty else np.nan
-        leaderboard_dict["ALT_robustness"] = jmmlu_robust_fewshots["jaster"][0] if jmmlu_robust_fewshots is not None else np.nan
+        leaderboard_dict["ALT_robustness"] = jmmlu_robust_fewshots["jaster"][0]
         leaderboard_dict["ALT_AVG"] = calculate_average_from_dict(leaderboard_dict, "ALT")
 
     if cfg.run.GLP and cfg.run.ALT:
         leaderboard_dict["TOTAL_AVG"] = np.mean([leaderboard_dict["GLP_AVG"], leaderboard_dict["ALT_AVG"]])
 
+    # Average of each dataset
+    jaster_agg_cols = [c for c in jaster_0shot if not c.startswith("jmmlu_") and c not in ["run_name", "model_name"]]
+    leaderboard_dict["AVG_jaster_0shot"] = jaster_0shot[jaster_agg_cols].mean(axis=1)[0]
+    leaderboard_dict[f"AVG_jaster_{num_few_shots}shots"] = jaster_fewshots[jaster_agg_cols].mean(axis=1)[0]
+    leaderboard_dict["AVG_lctg"] = lctg_overall["Total-AVG-ctg"][0]
+    leaderboard_dict["AVG_mtbench"] = mtbench["AVG_mtbench"][0]
     leaderboard_table = pd.DataFrame([leaderboard_dict])
+    cols = leaderboard_table.columns
+    avg_cols = ["TOTAL_AVG", "GLP_AVG", "ALT_AVG"]
+    new_cols = avg_cols + [c for c in cols if c not in avg_cols]
+    leaderboard_table = leaderboard_table[new_cols]
+    # Radar table
 
     glp_radar_table = pd.DataFrame(
         data=radar_contents(
