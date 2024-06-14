@@ -232,7 +232,6 @@ def evaluate_n_shot(few_shots: bool):
                                     else 'jmmlu_IncorrectChoice' if task.endswith('_IncorrectChoice') 
                                     else task
                                     )
-    output_df.to_csv("check.csv")
 
     # log table
     if cfg.jmmlu_robustness and few_shots:
@@ -240,7 +239,6 @@ def evaluate_n_shot(few_shots: bool):
         output_robust_df.loc[:,"sub_category"] = "robust"
     output_df = output_df[~output_df['task'].isin(['jmmlu_SymbolChoice', 'jmmlu_IncorrectChoice'])]
 
-    output_df.to_csv("check.csv")
 
     # group mmlu_en and jmmlu task
     output_df['sub_category'] = output_df['task'].map(task_to_sub_category)  
