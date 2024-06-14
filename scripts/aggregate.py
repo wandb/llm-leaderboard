@@ -20,15 +20,15 @@ def aggregate():
     run = instance.run
     cfg = instance.config
 
-    few_shots=cfg.num_few_shots
+    num_few_shots=cfg.num_few_shots
     jaster_0shot=read_wandb_table(table_name=f"jaster_0shot_leaderboard_table", run=run)
-    jaster_fewshots=read_wandb_table(table_name=f"jaster_{few_shots}shot_leaderboard_table", run=run)
-    jmmlu_robust_fewshots=read_wandb_table(table_name=f"jmmlu_robust_{few_shots}shot_leaderboard_table", run=run)
+    jaster_fewshots=read_wandb_table(table_name=f"jaster_{num_few_shots}shot_leaderboard_table", run=run)
+    jmmlu_robust_fewshots=read_wandb_table(table_name=f"jmmlu_robust_{num_few_shots}shot_leaderboard_table", run=run)
     jaster_control_0shot=read_wandb_table(table_name=f"jaster_control_0shot_leaderboard_table", run=run)
-    jaster_control_fewshots=read_wandb_table(table_name=f"jaster_control_{few_shots}shot_leaderboard_table", run=run)
+    jaster_control_fewshots=read_wandb_table(table_name=f"jaster_control_{num_few_shots}shot_leaderboard_table", run=run)
     lctg_overall=read_wandb_table(table_name=f"lctg_overall_leaderboard_table", run=run)
     jbbq_0shot=read_wandb_table(table_name=f"jbbq_0shot_leaderboard_table", run=run)
-    jbbq_fewshots=read_wandb_table(table_name=f"jbbq_{few_shots}shot_leaderboard_table", run=run)
+    jbbq_fewshots=read_wandb_table(table_name=f"jbbq_{num_few_shots}shot_leaderboard_table", run=run)
     toxicity=read_wandb_table(table_name=f"toxicity_leaderboard_table", run=run)
     mtbench=read_wandb_table(table_name=f"mtbench_leaderboard_table", run=run)
 
@@ -83,6 +83,12 @@ def aggregate():
     leaderboard_dict["GLP_AVG"] = calculate_average_from_dict(leaderboard_dict,"GLP") 
     leaderboard_dict["ALT_AVG"] = calculate_average_from_dict(leaderboard_dict,"ALT")
     leaderboard_dict["TOTAL_AVG"] = np.mean([leaderboard_dict["GLP_AVG"], leaderboard_dict["ALT_AVG"]])
+    # Average of each dataset
+    jaster_agg_cols = [c for c in jaster_0shot if not c.startswith("jmmlu_") and c not in ["run_name", "model_name"]]
+    leaderboard_dict["AVG_jaster_0shot"] = jaster_0shot[jaster_agg_cols].mean(axis=1)[0]
+    leaderboard_dict[f"AVG_jaster_{num_few_shots}shots"] = jaster_fewshots[jaster_agg_cols].mean(axis=1)[0]
+    leaderboard_dict["AVG_lctg"] = lctg_overall["Total-AVG-ctg"][0]
+    leaderboard_dict["AVG_mtbench"] = mtbench["AVG_mtbench"][0]
     leaderboard_table = pd.DataFrame([leaderboard_dict])
     # Radar table
     glp_radar_table = pd.DataFrame(
