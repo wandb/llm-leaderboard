@@ -3,7 +3,9 @@ import re
 from fuzzywuzzy import fuzz
 from scipy.stats import pearsonr, spearmanr
 from sacrebleu import BLEU
-import bert_score
+#import bert_score
+import shutil
+from comet import download_model, load_from_checkpoint
 
 # ---------------------
 # For jaster
@@ -81,11 +83,39 @@ def blue_ja(y_pred: str, y_true: str) -> float:
     bleu_score = BLEU(**bleu_config).corpus_score([y_pred], [[y_true]]).score
     return bleu_score/100
 
+"""
 def bert_score_en_f1(y_pred:str, y_true:str) -> float:
     return bert_score.score([y_pred], [y_true], lang="en")[2].tolist()[0] #[2]=f1
 
 def bert_score_ja_f1(y_pred:str, y_true:str) -> float:
     return bert_score.score([y_pred], [y_true], lang="ja")[2].tolist()[0] #[2]=f1
+"""
+
+def comet_wmt22(): #this is fake func
+    pass
+
+def commet_score(commet_srcs, commet_mt, commet_ref):
+    print("--------downloading comet model to evaluate translation task--------")
+    comet_model_path = download_model("Unbabel/wmt22-comet-da")
+    comet_model = load_from_checkpoint(comet_model_path)
+    comet_data = []
+    for i in range(len(commet_srcs)):
+        comet_instance = {}
+        comet_instance["src"] = commet_srcs[i]
+        comet_instance["mt"] = commet_mt[i]
+        comet_instance["ref"] = commet_ref[i]
+        comet_data.append(comet_instance)
+    scores = comet_model.predict(comet_data, batch_size=8, gpus=1, progress_bar=False).scores
+    #delete_model_directory(comet_model_path)
+    return scores
+    
+def delete_model_directory(directory):
+    """Deletes the specified directory."""
+    try:
+        shutil.rmtree(directory)
+        print(f"The directory containing the model at {directory} has been successfully deleted.")
+    except Exception as e:
+        print(f"An error occurred while trying to delete the directory: {e}")
 
 
 jaster_metrics_dict: dict[str, callable] = {
@@ -96,64 +126,9 @@ jaster_metrics_dict: dict[str, callable] = {
     "spearman": spearman,
     "bleu_ja": blue_ja,
     "bleu_en": blue_en,
-    "bert_score_en_f1": bert_score_en_f1,
-    "bert_score_ja_f1": bert_score_ja_f1
-}
-
-jmmlu_dict = {
-    'jmmlu_abstract_algebra': 'jmmlu_stem',
-    'jmmlu_anatomy': 'jmmlu_stem',
-    'jmmlu_astronomy': 'jmmlu_stem',
-    'jmmlu_business_ethics': 'jmmlu_other',
-    'jmmlu_clinical_knowledge': 'jmmlu_other',
-    'jmmlu_college_biology': 'jmmlu_stem',
-    'jmmlu_college_chemistry': 'jmmlu_stem',
-    'jmmlu_college_computer_science': 'jmmlu_stem',
-    'jmmlu_college_mathematics': 'jmmlu_stem',
-    'jmmlu_college_medicine': 'jmmlu_other',
-    'jmmlu_college_physics': 'jmmlu_stem',
-    'jmmlu_computer_security': 'jmmlu_stem',
-    'jmmlu_conceptual_physics': 'jmmlu_stem',
-    'jmmlu_econometrics': 'jmmlu_social_sciences',
-    'jmmlu_electrical_engineering': 'jmmlu_stem',
-    'jmmlu_elementary_mathematics': 'jmmlu_stem',
-    'jmmlu_formal_logic': 'jmmlu_humanities',
-    'jmmlu_global_facts': 'jmmlu_other',
-    'jmmlu_high_school_biology': 'jmmlu_stem',
-    'jmmlu_high_school_chemistry': 'jmmlu_stem',
-    'jmmlu_high_school_computer_science': 'jmmlu_stem',
-    'jmmlu_high_school_european_history': 'jmmlu_humanities',
-    'jmmlu_high_school_geography': 'jmmlu_social_sciences',
-    'jmmlu_high_school_macroeconomics': 'jmmlu_social_sciences',
-    'jmmlu_high_school_mathematics': 'jmmlu_stem',
-    'jmmlu_high_school_microeconomics': 'jmmlu_social_sciences',
-    'jmmlu_high_school_physics': 'jmmlu_stem',
-    'jmmlu_high_school_psychology': 'jmmlu_social_sciences',
-    'jmmlu_high_school_statistics': 'jmmlu_stem',
-    'jmmlu_human_aging': 'jmmlu_other',
-    'jmmlu_human_sexuality': 'jmmlu_social_sciences',
-    'jmmlu_international_law': 'jmmlu_humanities',
-    'jmmlu_japanese_history': 'jmmlu_humanities',
-    'jmmlu_jurisprudence': 'jmmlu_humanities',
-    'jmmlu_logical_fallacies': 'jmmlu_humanities',
-    'jmmlu_machine_learning': 'jmmlu_stem',
-    'jmmlu_management': 'jmmlu_other',
-    'jmmlu_marketing': 'jmmlu_other',
-    'jmmlu_medical_genetics': 'jmmlu_other',
-    'jmmlu_miscellaneous': 'jmmlu_other',
-    'jmmlu_moral_disputes': 'jmmlu_humanities',
-    'jmmlu_nutrition': 'jmmlu_other',
-    'jmmlu_philosophy': 'jmmlu_humanities',
-    'jmmlu_prehistory': 'jmmlu_humanities',
-    'jmmlu_professional_accounting': 'jmmlu_other',
-    'jmmlu_professional_medicine': 'jmmlu_other',
-    'jmmlu_professional_psychology': 'jmmlu_social_sciences',
-    'jmmlu_public_relations': 'jmmlu_social_sciences',
-    'jmmlu_security_studies': 'jmmlu_social_sciences',
-    'jmmlu_sociology': 'jmmlu_social_sciences',
-    'jmmlu_virology': 'jmmlu_other',
-    'jmmlu_world_history': 'jmmlu_humanities',
-    'jmmlu_world_religions': 'jmmlu_humanities'
+    #"bert_score_en_f1": bert_score_en_f1,
+    #"bert_score_ja_f1": bert_score_ja_f1,
+    "comet_wmt22": comet_wmt22,
 }
 
 task_to_sub_category = {
@@ -194,7 +169,6 @@ task_to_sub_category = {
     "stem": "GLP_knowledge_QA",
     "coding": "ADVANCED_programing"
 }
-
 
 # ---------------------
 # For controllability
@@ -307,4 +281,61 @@ controllability_dict = {
     "wiki_reading": no_check,
     "wikicorpus-e-to-j": no_check,
     "wikicorpus-j-to-e": no_check,
+}
+
+
+jmmlu_dict = {
+    'jmmlu_abstract_algebra': 'jmmlu',
+    'jmmlu_anatomy': 'jmmlu',
+    'jmmlu_astronomy': 'jmmlu',
+    'jmmlu_business_ethics': 'jmmlu',
+    'jmmlu_clinical_knowledge': 'jmmlu',
+    'jmmlu_college_biology': 'jmmlu',
+    'jmmlu_college_chemistry': 'jmmlu',
+    'jmmlu_college_computer_science': 'jmmlu',
+    'jmmlu_college_mathematics': 'jmmlu',
+    'jmmlu_college_medicine': 'jmmlu',
+    'jmmlu_college_physics': 'jmmlu',
+    'jmmlu_computer_security': 'jmmlu',
+    'jmmlu_conceptual_physics': 'jmmlu',
+    'jmmlu_econometrics': 'jmmlu',
+    'jmmlu_electrical_engineering': 'jmmlu',
+    'jmmlu_elementary_mathematics': 'jmmlu',
+    'jmmlu_formal_logic': 'jmmlu',
+    'jmmlu_global_facts': 'jmmlu',
+    'jmmlu_high_school_biology': 'jmmlu',
+    'jmmlu_high_school_chemistry': 'jmmlu',
+    'jmmlu_high_school_computer_science': 'jmmlu',
+    'jmmlu_high_school_european_history': 'jmmlu',
+    'jmmlu_high_school_geography': 'jmmlu',
+    'jmmlu_high_school_macroeconomics': 'jmmlu',
+    'jmmlu_high_school_mathematics': 'jmmlu',
+    'jmmlu_high_school_microeconomics': 'jmmlu',
+    'jmmlu_high_school_physics': 'jmmlu',
+    'jmmlu_high_school_psychology': 'jmmlu',
+    'jmmlu_high_school_statistics': 'jmmlu',
+    'jmmlu_human_aging': 'jmmlu',
+    'jmmlu_human_sexuality': 'jmmlu',
+    'jmmlu_international_law': 'jmmlu',
+    'jmmlu_japanese_history': 'jmmlu',
+    'jmmlu_jurisprudence': 'jmmlu',
+    'jmmlu_logical_fallacies': 'jmmlu',
+    'jmmlu_machine_learning': 'jmmlu',
+    'jmmlu_management': 'jmmlu',
+    'jmmlu_marketing': 'jmmlu',
+    'jmmlu_medical_genetics': 'jmmlu',
+    'jmmlu_miscellaneous': 'jmmlu',
+    'jmmlu_moral_disputes': 'jmmlu',
+    'jmmlu_nutrition': 'jmmlu',
+    'jmmlu_philosophy': 'jmmlu',
+    'jmmlu_prehistory': 'jmmlu',
+    'jmmlu_professional_accounting': 'jmmlu',
+    'jmmlu_professional_medicine': 'jmmlu',
+    'jmmlu_professional_psychology': 'jmmlu',
+    'jmmlu_public_relations': 'jmmlu',
+    'jmmlu_security_studies': 'jmmlu',
+    'jmmlu_sociology': 'jmmlu',
+    'jmmlu_virology': 'jmmlu',
+    'jmmlu_world_history': 'jmmlu',
+    'jmmlu_world_religions': 'jmmlu'
 }
