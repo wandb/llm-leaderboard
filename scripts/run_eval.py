@@ -47,7 +47,6 @@ custom_cfg = OmegaConf.merge(base_cfg, custom_cfg)
 cfg_dict = OmegaConf.to_container(custom_cfg, resolve=True)
 assert isinstance(cfg_dict, dict), "instance.config must be a DictConfig"
 
-
 # W&B setup and artifact handling
 wandb.login()
 run = wandb.init(
@@ -75,24 +74,42 @@ instance = WandbConfigSingleton.get_instance()
 instance.llm = llm
 
 # Evaluation phase
+tasks = cfg_dict.get("run_tasks", {})
+
 # 1. llm-jp-eval evaluation (jmmlu含む)
-jaster.evaluate()
+if tasks.get("jaster", False):
+    print("Evaluating Jaster")
+    jaster.evaluate()
+else:
+    print("Skipping Jaster evaluation")
 
 # 2. mt-bench evaluation
-mtbench.evaluate()
+if tasks.get("mtbench", False):
+    print("Evaluating mtbench")
+    mtbench.evaluate()
+else:
+    print("Skipping mtbench evaluation")
 
-# 3. bbq, jbbq
-jbbq.evaluate()
+# 3. jbbq
+if tasks.get("jbbq", False):
+    print("Evaluating jbbq")
+    jbbq.evaluate()
+else:
+    print("Skipping jbbq evaluation")
 
 # 4. lctg-bench
-lctg.evaluate()
+if tasks.get("lctg", False):
+    print("Evaluating lctg")
+    lctg.evaluate()
+else:
+    print("Skipping lctg evaluation")
 
 # 5. toxicity
-toxicity_evaluate()
-
-# Sample
-# sample_evaluate()
+if tasks.get("toxicity", False):
+    print("Evaluating toxicity")
+    toxicity_evaluate()
+else:
+    print("Skipping toxicity evaluation")
 
 # 6. Aggregation
-
 aggregate()
