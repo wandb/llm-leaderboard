@@ -1,6 +1,7 @@
 import json
 import time
 from pathlib import Path
+import numpy as np
 
 import pandas as pd
 from toolz import pipe
@@ -12,9 +13,9 @@ from .evaluate_utils import (
     apply_chat_template,
     get_few_shot_messages,
     jaster_metrics_dict,
-    jmmlu_dict,
     controllability_dict,
     task_to_sub_category,
+    jmmlu_dict,
     LLMAsyncProcessor,
     normalize,
     text_formatter,
@@ -156,12 +157,12 @@ def evaluate_n_shot(few_shots: bool):
                 prompt = apply_chat_template(messages=messages)
                 y_pred = None
                 y_true: str = pipe(sample["output"], normalize)
-                metrics: str = task_data["metrics"][0]
-                #metrics: str = (
-                #               "bert_score_en_f1" if task in ["alt-j-to-e", "wikicorpus-j-to-e"] else
-                #                "bert_score_ja_f1" if task in ["alt-e-to-j", "wikicorpus-e-to-j"] else
-                #                task_data["metrics"][0]
-                #                )
+                #metrics: str = task_data["metrics"][0]
+                metrics: str = (
+                               "comet_wmt22" if task in ["alt-j-to-e", "wikicorpus-j-to-e"] else
+                                "comet_wmt22" if task in ["alt-e-to-j", "wikicorpus-e-to-j"] else
+                                task_data["metrics"][0]
+                                )
                 metrics_func: callable = jaster_metrics_dict[metrics]
                 control_task = "mmlu_en" if "mmlu_en" in task else "jmmlu" if "jmmlu" in task else task
                 control_method: str = controllability_dict[control_task].__name__
@@ -209,37 +210,49 @@ def evaluate_n_shot(few_shots: bool):
         )
         metrics_func = evaluation_result["metrics_func"]
         control_func = evaluation_result["control_func"]
-        score = metrics_func(y_pred, evaluation_result["expected_output"])
+        if evaluation_result["metrics"] == "comet_wmt22":
+            score = np.nan
+        else:
+            metrics_func = evaluation_result["metrics_func"]
+            score = metrics_func(y_pred, evaluation_result["expected_output"])        
         control_score = control_func(y_pred)
-
         evaluation_result["raw_output"] = raw_output
         evaluation_result["output"] = y_pred
         evaluation_result["score"] = score
         evaluation_result["control_score"] = control_score
         evaluation_result["latency"] = latency
         del evaluation_result["metrics_func"], evaluation_result["control_func"], evaluation_result["inputs"]
-
+        
     output_df = pd.DataFrame(evaluation_results)
     # group mmlu_en and jmmlu task category
     output_df["task"] = output_df["task"].apply(lambda x: "mmlu_en" if x.startswith("mmlu_en") else x)
+    output_df['task'] = output_df['task'].apply(lambda x: jmmlu_dict.get(x, x))
+    output_df['task'] = output_df['task'].apply(
+                                    lambda task: 'jmmlu_SymbolChoice' if task.endswith('_SymbolChoice') 
+                                    else 'jmmlu_IncorrectChoice' if task.endswith('_IncorrectChoice') 
+                                    else task
+                                    )
 
     # log table
     if cfg.jmmlu_robustness and few_shots:
-        output_robust_df = output_df[output_df["task"].str.contains("jmmlu")]
+        output_robust_df = output_df[output_df["task"].str.contains("jmmlu")].copy()
+        output_robust_df.loc[:,"sub_category"] = "robust"
+    output_df = output_df[~output_df['task'].isin(['jmmlu_SymbolChoice', 'jmmlu_IncorrectChoice'])]
 
-    # group mmlu_en and jmmlu task 
-    output_df['task'] = output_df['task'].apply(lambda x: jmmlu_dict.get(x, x))
+
+    # group mmlu_en and jmmlu task
     output_df['sub_category'] = output_df['task'].map(task_to_sub_category)  
     dev_table = output_df.query("subset == 'dev'")
     test_table = output_df.query("subset == 'test'")
-    
-    leaderboard_table = pd.pivot_table(
-        data=test_table,
-        values="score",
-        index=["run_name", "model_name"],
-        columns="task",
-        aggfunc="mean",
-    ).reset_index()
+
+    # calculate later in jaster_translation.py
+    #leaderboard_table = pd.pivot_table(
+    #    data=test_table,
+    #    values="score",
+    #    index=["run_name", "model_name"],
+    #    columns="task",
+    #    aggfunc="mean",
+    #).reset_index()
 
     leaderboard_table_control = pd.pivot_table(
         data=test_table,
@@ -248,18 +261,18 @@ def evaluate_n_shot(few_shots: bool):
         columns="task",
         aggfunc="mean",
     ).reset_index()
-    leaderboard_table_control['AVG'] = leaderboard_table.iloc[:, 2:].mean(axis=1)
+
+    #leaderboard_table['AVG'] = leaderboard_table.iloc[:, 2:].mean(axis=1) # calculate later in jaster_translation.py
     leaderboard_table_control['AVG'] = leaderboard_table_control.iloc[:, 2:].mean(axis=1)
-    leaderboard_table['jmmlu'] = leaderboard_table[['jmmlu_stem', 'jmmlu_social_sciences', 'jmmlu_humanities', 'jmmlu_other']].mean(axis=1)
-    leaderboard_table_control['jmmlu'] = leaderboard_table_control[['jmmlu_stem', 'jmmlu_social_sciences', 'jmmlu_humanities', 'jmmlu_other']].mean(axis=1)
     run.log(
         {
             f"{dataset_name}_{num_few_shots}shot_output_table_dev": dev_table,
             f"{dataset_name}_{num_few_shots}shot_output_table": test_table,
-            f"{dataset_name}_{num_few_shots}shot_leaderboard_table": leaderboard_table,
+            #f"{dataset_name}_{num_few_shots}shot_leaderboard_table": leaderboard_table,  # log later in jaster_translation.py
             f"{dataset_name}_control_{num_few_shots}shot_leaderboard_table": leaderboard_table_control,
         }
     )
+    
 
     if cfg.jmmlu_robustness and few_shots:
         # need to be updated
