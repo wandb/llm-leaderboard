@@ -3,42 +3,45 @@ import subprocess
 import time
 import requests
 import atexit
+import tempfile
 
 from utils import get_tokenizer_config
 
 
 def start_vllm_server():
-
     instance = WandbConfigSingleton.get_instance()
     cfg = instance.config
     model_id = cfg.model.pretrained_model_name_or_path
     dtype = cfg.model.dtype
-    # max_model_len = cfg.model.max_model_len
 
-    def run_vllm_server(model_id: str, dtype: str, max_model_len: int = 2048):
+    def run_vllm_server(model_id: str, dtype: str):
         # set tokenizer_config
         tokenizer_config = get_tokenizer_config()
         cfg.update({"tokenizer_config": tokenizer_config})
         chat_template: str = cfg.tokenizer_config.get("chat_template")
+        max_model_len = cfg.model.get("max_model_len", 2048)
         num_gpus = cfg.get("num_gpus", 1)
 
-        # サーバーを起動するためのコマンド
-        command = [
-            "python3", "-m", "vllm.entrypoints.openai.api_server",
-            "--model", model_id, 
-            "--dtype", dtype, 
-            "--max-model-len", str(max_model_len),
-            "--chat-template", chat_template,
-            "--max-num-seqs", str(cfg.batch_size),
-            "--tensor-parallel-size", str(num_gpus),
-            "--seed", "42",
-            "--uvicorn-log-level", "warning",
-            "--disable-log-stats",
-            "--disable-log-requests",
-        ]
-
-        # subprocessでサーバーをバックグラウンドで実行
-        process = subprocess.Popen(command)
+        with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
+            # chat_templateをファイルに書き込んでパスを取得
+            temp_file.write(chat_template)
+            chat_template_path = temp_file.name
+            # サーバーを起動するためのコマンド
+            command = [
+                "python3", "-m", "vllm.entrypoints.openai.api_server",
+                "--model", model_id, 
+                "--dtype", dtype, 
+                "--chat-template", chat_template_path,
+                "--max-model-len", str(max_model_len),
+                "--max-num-seqs", str(cfg.batch_size),
+                "--tensor-parallel-size", str(num_gpus),
+                "--seed", "42",
+                "--uvicorn-log-level", "warning",
+                "--disable-log-stats",
+                "--disable-log-requests",
+            ]
+            # subprocessでサーバーをバックグラウンドで実行
+            process = subprocess.Popen(command)
 
         # サーバーが起動するのを待つ
         time.sleep(10)
