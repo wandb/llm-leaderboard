@@ -4,7 +4,6 @@ from argparse import ArgumentParser
 from omegaconf import OmegaConf
 import questionary
 
-from toxicity_eval import toxicity_evaluate
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
 from vllm_server import shutdown_vllm_server
@@ -14,6 +13,7 @@ from evaluator import (
     lctg,
     mtbench,
     jaster_translation,
+    toxicity,
     aggregate,
 )
 
@@ -85,7 +85,7 @@ if cfg.run.ALT:
     lctg.evaluate()
 
     # toxicity
-    toxicity_evaluate()
+    toxicity.evaluate()
 
 # Evaluation phase
 if cfg.run.GLP or cfg.run.ALT:
