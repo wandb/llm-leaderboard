@@ -15,15 +15,14 @@ def start_vllm_server():
     instance = WandbConfigSingleton.get_instance()
     cfg = instance.config
     model_id = cfg.model.pretrained_model_name_or_path
-    dtype = cfg.model.dtype
 
-    def run_vllm_server(model_id: str, dtype: str):
+    def run_vllm_server(model_id: str):
         # set tokenizer_config
         tokenizer_config = get_tokenizer_config()
         cfg.update({"tokenizer_config": tokenizer_config})
-        chat_template: str = cfg.tokenizer_config.get("chat_template")
-        max_model_len = cfg.model.get("max_model_len", 3000)
-        num_gpus = cfg.get("num_gpus", 1)
+        chat_template: str = cfg.tokenizer_config.get("chat_template", None)
+        if chat_template is None:
+            raise ValueError("chat_template is None. Please provide a valid chat_template in the configuration.")
 
         with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
             # chat_templateをファイルに書き込んでパスを取得
@@ -33,11 +32,11 @@ def start_vllm_server():
             command = [
                 "python3", "-m", "vllm.entrypoints.openai.api_server",
                 "--model", model_id, 
-                "--dtype", dtype, 
+                "--dtype", cfg.model.dtype, 
                 "--chat-template", chat_template_path,
-                "--max-model-len", str(max_model_len),
+                "--max-model-len", str(cfg.model.max_model_len),
                 "--max-num-seqs", str(cfg.batch_size),
-                "--tensor-parallel-size", str(num_gpus),
+                "--tensor-parallel-size", str(cfg.get("num_gpus", 1)),
                 "--seed", "42",
                 "--uvicorn-log-level", "warning",
                 "--disable-log-stats",
@@ -70,7 +69,7 @@ def start_vllm_server():
             time.sleep(10)  # 待機してから再試行
 
     # サーバーを起動
-    server_process = run_vllm_server(model_id, dtype)
+    server_process = run_vllm_server(model_id)
     print("vLLM server is starting...")
 
     # スクリプト終了時にサーバーを終了する
