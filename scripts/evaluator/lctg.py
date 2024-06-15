@@ -33,7 +33,7 @@ def parallel_inference(inputs, lmt_type, llm):
 def radar_contents(leaderboard_dict, categories: list[str]) -> list[list[str, float]]:
     ret = []
     for cat in categories:
-        ret.append([cat[4:], leaderboard_dict[cat]])
+        ret.append([cat[4:], leaderboard_dict[cat][0]])
     return ret
 
 def evaluate():
@@ -60,7 +60,7 @@ def evaluate():
     limitation_type_list = ["format", "char_count", "keyword", "prohibited_word"]
     total_summary = pd.DataFrame()
     columns = [
-        'question_id', 'task', 'category', 'requirement', 'base_text', 'request',
+        'question_id', 'task', 'category', 'requirement', 'base_text', 'request', 'prompt',
         'output', 'preprocessed_output', 'ctg', 'qual'
     ]
     output_df = pd.DataFrame(columns=columns)
@@ -69,6 +69,7 @@ def evaluate():
     Keyword_ctg=[]
     P_word_ctg=[]
 
+    prompt_table_data = []
     for task in tasks:
         file = f"{artifact_dir}/lctg/{task}_prompts_v1.jsonl"
         master_df = pd.read_json(file, orient="records", lines=True)
@@ -86,12 +87,16 @@ def evaluate():
             print(f"Perspective of controllability: {lmt_type}")
             sample_list = master_df[f"prompt_{lmt_type}"].tolist()
             inputs = []
-            for sample in tqdm(sample_list):
+            for i, sample in tqdm(enumerate(sample_list)):
                 messages = []
                 messages.append({"role": "user", "content": sample})
                 prompt = apply_chat_template(messages=messages)
                 generator_config = {"max_tokens": 1500}
                 inputs.append([messages, generator_config])
+                prompt_table_data.append({
+                    "question_id": master_df["prompt_id"][i],
+                    "category": lmt_type,
+                    "_prompt": prompt})
 
             llm_ap = LLMAsyncProcessor(
                 llm=llm,
@@ -143,9 +148,6 @@ def evaluate():
         # Calculate the average score for each validation type
         ctg_scores = {key: sums[key] / len(df_ctg) for key in validation_functions.keys()}
 
-        for key, score in ctg_scores.items():
-            print(f"{key.replace('is_valid_', '').replace('_', ' ').title()}: {score:.3f}")
-
         common_columns = [
             "prompt_id", "base_text", "char_count", "char_count_result", "char_count_result_wo_hf",
             "is_valid_char_count", "keyword", "keyword_result", "keyword_result_wo_hf", "is_valid_keyword",
@@ -185,10 +187,10 @@ def evaluate():
         #columns = ["AVG_ctg", "AVG_qual"] + [col for col in task_summary_table.columns if col not in ["AVG_ctg", "AVG_qual"]]
         columns = ["AVG_ctg"] + [col for col in task_summary_table.columns if col not in ["AVG_ctg"]]
         task_summary_table = task_summary_table[columns]
-        print(task_summary_table)
 
-        #for col in list(task_summary_table.columns):
-        #    task_summary_table[col] = task_summary_table[col].apply(lambda x: "{:.3f}".format(float(x)))
+        numeric_columns = task_summary_table.select_dtypes(include=['number']).columns
+        for col in numeric_columns:
+            task_summary_table[col] = task_summary_table[col].apply(lambda x: round(x, 3))
         wandb.log({f"lctg_{task}_leaderboard_table": task_summary_table})
 
         total_summary[f"AVG_{task}_ctg"] = pd.to_numeric(task_summary_table['AVG_ctg'], errors='coerce')
@@ -203,14 +205,16 @@ def evaluate():
     # total summary
     AVG_columns_ctg = [f"AVG_{task}_ctg" for task in tasks]
     total_summary["AVG_Total_ctg"] = total_summary[AVG_columns_ctg].mean(axis=1)
-    print(Format_ctg)
     total_summary["AVG_Format_ctg"] = np.mean(Format_ctg)
     total_summary["AVG_C_count_ctg"] = np.mean(C_count_ctg)
     total_summary["AVG_Keyword_ctg"] = np.mean(Keyword_ctg)
     total_summary["AVG_P_word_ctg"] = np.mean(P_word_ctg)
     columns = ['AVG_Total_ctg'] + [col for col in total_summary.columns if col != 'AVG_Total_ctg']
     total_summary = total_summary[columns]
-    
+
+    numeric_columns = total_summary.select_dtypes(include=['number']).columns
+    for col in numeric_columns:
+        total_summary[col] = total_summary[col].apply(lambda x: round(x, 3))
     #AVG_columns_qual = [f"{task}_AVG_qual" for task in tasks]
     #total_summary["Total-AVG_qual"] = total_summary[AVG_columns_qual].mean(axis=1)
     #total_summary["AVG"] = (total_summary["Total-AVG_ctg"]+total_summary["Total-AVG_qual"])/2
@@ -247,6 +251,12 @@ def evaluate():
         'AVG_Keyword_ctg': 'keyword',
         'AVG_P_word_ctg': 'p_word',
     })
+
+    # add prompt to output table
+    prompt_table = pd.DataFrame(prompt_table_data)
+    output_df = output_df.merge(prompt_table, how="left", on=["question_id", "category"])
+    output_df["prompt"] = output_df["_prompt"]
+    output_df.drop("_prompt", axis=1, inplace=True)
 
     wandb.log({"lctg_overall_leaderboard_table": wandb.Table(dataframe=total_summary)})
     wandb.log({"lctg_output_table": wandb.Table(dataframe=output_df)})
