@@ -4,6 +4,9 @@ import time
 import requests
 import atexit
 import tempfile
+import os
+import signal
+import torch
 
 from utils import get_tokenizer_config
 
@@ -43,6 +46,9 @@ def start_vllm_server():
             # subprocessでサーバーをバックグラウンドで実行
             process = subprocess.Popen(command)
 
+        # プロセスIDをファイルに保存
+        with open('vllm_server.pid', 'w') as pid_file:
+            pid_file.write(str(process.pid))
         # サーバーが起動するのを待つ
         time.sleep(10)
 
@@ -77,3 +83,14 @@ def start_vllm_server():
 
     # サーバーが完全に起動するのを待つ
     health_check()
+
+
+def shutdown_vllm_server():
+    try:
+        with open('vllm_server.pid', 'r') as pid_file:
+            pid = int(pid_file.read().strip())
+        os.kill(pid, signal.SIGTERM)
+        print(f"vLLM server with PID {pid} has been terminated.")
+    except Exception as e:
+        print(f"Failed to shutdown vLLM server: {e}")
+    torch.cuda.empty_cache()
