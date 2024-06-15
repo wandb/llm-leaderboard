@@ -3,17 +3,20 @@ from config_singleton import WandbConfigSingleton
 from . import symbol_to_ABCD, incorrect_to_ABCD, ABCD_to_incorrect
 
 def eval_robustness(row):
-    score = 0.0
-    if not str(row["normal_output"]) in {"A", "B", "C", "D"}:
-        return score
+    matches = sum([
+        row["output_normal"] == row["output_IncorrectChoice"],
+        row["output_normal"] == row["output_SymbolChoice"],
+        row["output_IncorrectChoice"] == row["output_SymbolChoice"]
+    ])
+    
+    if matches == 3:
+        return 1.0
+    elif matches == 2:
+        return 0.5
     else:
-        if row["normal_output"] == row["output_IncorrectChoice"]:
-            score += 0.5
-        if row["normal_output"] == row["output_SymbolChoice"]:
-            score += 0.5
-        return score
+        return 0.0
 
-def evaluate_robustness(num_few_shots: int, subset: str, df: pd.DataFrame):
+def evaluate_robustness(subset: str, df: pd.DataFrame):
     use_cols = [
         "run_name",
         "model_name",
@@ -28,7 +31,7 @@ def evaluate_robustness(num_few_shots: int, subset: str, df: pd.DataFrame):
 
     # normal
     normal_df = df[~df["task"].str.endswith('Choice')]
-    normal_df = normal_df[use_cols + ["output"]].rename(columns={"output": "normal_output"})
+    normal_df = normal_df[use_cols + ["output"]].rename(columns={"output": "output_normal"})
 
     # symbol
     symbol_suffix = "_SymbolChoice"
@@ -64,8 +67,10 @@ def evaluate_robustness(num_few_shots: int, subset: str, df: pd.DataFrame):
 
             normal_df.loc[normal_row.name, f"input{symbol_suffix}"] = symbol_row["input"]
             normal_df.loc[normal_row.name, f"output{symbol_suffix}"] = symbol_row[f"output{symbol_suffix}"]
+            normal_df.loc[normal_row.name, f"expected_output{symbol_suffix}"] = symbol_row["expected_output"]
             normal_df.loc[normal_row.name, f"input{incorrect_suffix}"] = incorrect_row["input"]
             normal_df.loc[normal_row.name, f"output{incorrect_suffix}"] = incorrect_row[f"output{incorrect_suffix}"]
+            normal_df.loc[normal_row.name, f"expected_output{incorrect_suffix}"] = incorrect_row["expected_output"]
 
     # スコアの計算
     normal_df["score"] = normal_df.apply(eval_robustness, axis=1)
@@ -73,8 +78,18 @@ def evaluate_robustness(num_few_shots: int, subset: str, df: pd.DataFrame):
     # scoreの計算のためのoutput_IncorrectChoiceを複数選択から単一の回答に変換しているので、元に戻す
     normal_df[f"output{incorrect_suffix}"] = normal_df[f"output{incorrect_suffix}"].apply(ABCD_to_incorrect)
 
+    # 列のrename & 列の順番を並び替える
+    normal_df = normal_df.rename(columns={"input": "input_normal","expected_output":"expected_output_normal"})
+    new_order=["run_name","index","score",
+               "input_normal","output_normal","expected_output_normal",
+               "input_SymbolChoice","output_SymbolChoice","expected_output_SymbolChoice",
+               "input_IncorrectChoice","output_IncorrectChoice","expected_output_IncorrectChoice",
+               "model_name","dataset","task","num_few_shots","subset"
+               ]
+    normal_df = normal_df[new_order]
+
     # データの確認
-    if subset == "":
+    if subset == "test":
         leaderboard_table = pd.pivot_table(
             data=normal_df,
             values="score",
@@ -82,7 +97,10 @@ def evaluate_robustness(num_few_shots: int, subset: str, df: pd.DataFrame):
             columns="dataset",
             aggfunc="mean",
         ).reset_index()
+
+        leaderboard_table = leaderboard_table.rename(columns={"jaster": "robust_score"})
     else:
         leaderboard_table = []
+    
 
     return normal_df, leaderboard_table
