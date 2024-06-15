@@ -60,7 +60,7 @@ def evaluate():
     limitation_type_list = ["format", "char_count", "keyword", "prohibited_word"]
     total_summary = pd.DataFrame()
     columns = [
-        'question_id', 'task', 'category', 'requirement', 'base_text', 'request', 'prompt',
+        'question_id', 'task', 'category', 'requirement', 'base_text', 'request',
         'output', 'preprocessed_output', 'ctg', 'qual'
     ]
     output_df = pd.DataFrame(columns=columns)
@@ -82,7 +82,6 @@ def evaluate():
         all_results = {lmt_type: [] for lmt_type in limitation_type_list}
 
         # Generate samples for API parallel processing
-        prompts = []
         for lmt_type in limitation_type_list:
             print(f"Perspective of controllability: {lmt_type}")
             sample_list = master_df[f"prompt_{lmt_type}"].tolist()
@@ -91,7 +90,6 @@ def evaluate():
                 messages = []
                 messages.append({"role": "user", "content": sample})
                 prompt = apply_chat_template(messages=messages)
-                prompts.append(prompt)
                 generator_config = {"max_tokens": 1500}
                 inputs.append([messages, generator_config])
 
@@ -106,7 +104,6 @@ def evaluate():
             "generated_text_id": list(range(len(master_df["prompt_id"].tolist()))),
             "prompt_id":master_df["prompt_id"].tolist(),
             "base_text": master_df["base_text"].tolist(),
-            "prompt": prompts,
             "format_result": all_results["format"],
             "char_count_result": all_results["char_count"],
             "keyword_result": all_results["keyword"],
@@ -127,7 +124,7 @@ def evaluate():
         #############################################
         # calculate score ctg  
         #############################################
-        result_df2 = result_df[["prompt_id", "prompt", "format_result", "format_result_wo_hf", "char_count_result", "char_count_result_wo_hf", "keyword_result", "keyword_result_wo_hf", "prohibited_word_result", "prohibited_word_result_wo_hf"]]
+        result_df2 = result_df[["prompt_id", "format_result", "format_result_wo_hf", "char_count_result", "char_count_result_wo_hf", "keyword_result", "keyword_result_wo_hf", "prohibited_word_result", "prohibited_word_result_wo_hf"]]
         df_ctg = pd.merge(master_df, result_df2, on="prompt_id")
 
         validation_functions = {
@@ -150,7 +147,7 @@ def evaluate():
             print(f"{key.replace('is_valid_', '').replace('_', ' ').title()}: {score:.3f}")
 
         common_columns = [
-            "prompt_id", "base_text", "prompt", "char_count", "char_count_result", "char_count_result_wo_hf",
+            "prompt_id", "base_text", "char_count", "char_count_result", "char_count_result_wo_hf",
             "is_valid_char_count", "keyword", "keyword_result", "keyword_result_wo_hf", "is_valid_keyword",
             "prohibited_word", "prohibited_word_result", "prohibited_word_result_wo_hf",
             "is_valid_prohibited_word", "format", "format_result", "format_result_wo_hf", "is_valid_format"
@@ -227,30 +224,14 @@ def evaluate():
     lctg_task_radar_table = total_summary[['AVG_summary_ctg','AVG_ad_text_ctg','AVG_pros_and_cons_ctg']]
     lctg_subtask_radar_table = total_summary[['AVG_Format_ctg','AVG_C_count_ctg','AVG_Keyword_ctg','AVG_P_word_ctg']] 
 
-    data=radar_contents(
-                leaderboard_dict=lctg_task_radar_table.to_dict('dict'),
-                categories=['AVG_summary_ctg','AVG_ad_text_ctg','AVG_pros_and_cons_ctg'],
-            )
-    print(data)
+
     lctg_task_radar_table = pd.DataFrame(
         data=radar_contents(
             leaderboard_dict=lctg_task_radar_table.to_dict('dict'),
             categories=['AVG_summary_ctg','AVG_ad_text_ctg','AVG_pros_and_cons_ctg'],
-        ), # TODO dataに渡していてる引数のチェック
+        ),
         columns=["category", "score"],
     )
-    print(lctg_task_radar_table)
-
-    lctg_task_radar_table = pd.DataFrame(
-        data=radar_contents(
-            leaderboard_dict=lctg_task_radar_table.to_dict('dict'),
-            categories=['AVG_summary_ctg','AVG_ad_text_ctg','AVG_pros_and_cons_ctg'],
-        ), # TODO dataに渡していてる引数のチェック
-    )
-    print(lctg_task_radar_table)
-
-    # TODO log前のtableのチェック
-    # TODO 最終手段としてカラムを書き換え
     lctg_task_radar_table['category'] = lctg_task_radar_table['category'].replace({
         'summary_AVG-ctg': 'summary',
         'ad_text_AVG-ctg': 'ad_text',

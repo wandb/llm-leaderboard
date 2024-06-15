@@ -188,10 +188,9 @@ def transform_data(output_df, df, task):
                 'category': cat,
                 'request': row[categories[i]],  # Assuming request is the same as category; adjust if different
                 'base_text': row['base_text'],
-                'prompt': row['prompt'],
                 'output': row[outputs[i]],
                 'preprocessed_output': row[preprocessed_outputs[i]],
-                'ctg': row[ctgs[i]] * 1,
+                'ctg': row[ctgs[i]]*1,
                 #'qual': row[quals[i]],
                 #'reason': row[reasons[i]]
             }
