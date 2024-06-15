@@ -187,8 +187,9 @@ def evaluate():
         task_summary_table = task_summary_table[columns]
         print(task_summary_table)
 
-        #for col in list(task_summary_table.columns):
-        #    task_summary_table[col] = task_summary_table[col].apply(lambda x: "{:.3f}".format(float(x)))
+        numeric_columns = task_summary_table.select_dtypes(include=['number']).columns
+        for col in numeric_columns:
+            task_summary_table[col] = task_summary_table[col].apply(lambda x: round(x, 3))
         wandb.log({f"lctg_{task}_leaderboard_table": task_summary_table})
 
         total_summary[f"AVG_{task}_ctg"] = pd.to_numeric(task_summary_table['AVG_ctg'], errors='coerce')
@@ -210,7 +211,10 @@ def evaluate():
     total_summary["AVG_P_word_ctg"] = np.mean(P_word_ctg)
     columns = ['AVG_Total_ctg'] + [col for col in total_summary.columns if col != 'AVG_Total_ctg']
     total_summary = total_summary[columns]
-    
+
+    numeric_columns = total_summary.select_dtypes(include=['number']).columns
+    for col in numeric_columns:
+        total_summary[col] = total_summary[col].apply(lambda x: round(x, 3))
     #AVG_columns_qual = [f"{task}_AVG_qual" for task in tasks]
     #total_summary["Total-AVG_qual"] = total_summary[AVG_columns_qual].mean(axis=1)
     #total_summary["AVG"] = (total_summary["Total-AVG_ctg"]+total_summary["Total-AVG_qual"])/2
