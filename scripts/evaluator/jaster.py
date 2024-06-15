@@ -141,7 +141,7 @@ def evaluate_n_shot(few_shots: bool):
 
                 # instruction message
                 if "mmlu_en" in task:
-                    message_intro = "The following text provides instructions for a certain task, along with accompanying input that offers further context. Please describe the appropriate response to complete the request."
+                    message_intro = "The following text provides instructions for a certain task."
                 else:
                     message_intro = "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。"
                 
