@@ -22,7 +22,7 @@ def start_vllm_server():
         tokenizer_config = get_tokenizer_config()
         cfg.update({"tokenizer_config": tokenizer_config})
         chat_template: str = cfg.tokenizer_config.get("chat_template")
-        max_model_len = cfg.model.get("max_model_len", 2048)
+        max_model_len = cfg.model.get("max_model_len", 3000)
         num_gpus = cfg.get("num_gpus", 1)
 
         with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
