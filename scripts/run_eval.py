@@ -17,7 +17,7 @@ from evaluator import (
     jaster_translation,
 )
 
-# set config path
+# Set config path
 config_dir = Path("configs")
 base_cfg_name = "base_config.yaml"
 parser = ArgumentParser()
@@ -49,7 +49,6 @@ custom_cfg = OmegaConf.merge(base_cfg, custom_cfg)
 cfg_dict = OmegaConf.to_container(custom_cfg, resolve=True)
 assert isinstance(cfg_dict, dict), "instance.config must be a DictConfig"
 
-
 # W&B setup and artifact handling
 wandb.login()
 run = wandb.init(
@@ -65,41 +64,38 @@ WandbConfigSingleton.initialize(run, llm=None)
 cfg = WandbConfigSingleton.get_instance().config
 
 # Save configuration as artifact
-instance = WandbConfigSingleton.get_instance()
-
 artifact = wandb.Artifact("config", type="config")
 artifact.add_file(custom_cfg_path)
 run.log_artifact(artifact)
 
-# 0. Start inference server
+# Start inference server
 llm = get_llm_inference_engine()
 instance = WandbConfigSingleton.get_instance()
 instance.llm = llm
 
+if cfg.run.GLP:
+    # mt-bench evaluation
+    mtbench.evaluate()
+
+if cfg.run.ALT:
+    # jbbq
+    jbbq.evaluate()
+
+    # lctg-bench
+    lctg.evaluate()
+
+    # toxicity
+    toxicity_evaluate()
+
 # Evaluation phase
-# 1. llm-jp-eval evaluation (jmmlu含む)
-jaster.evaluate()
+if cfg.run.GLP or cfg.run.ALT:
+    # llm-jp-eval evaluation (jmmlu含む)
+    jaster.evaluate()
 
-# 2. mt-bench evaluation
-mtbench.evaluate()
-
-# 3. bbq, jbbq
-jbbq.evaluate()
-
-# 4. lctg-bench
-lctg.evaluate()
-
-# 5. toxicity
-toxicity_evaluate()
-
-# Sample
-# sample_evaluate()
-
-
-#### open weight model base evaluation
-# 1. evaluation for translation task in jaster with comet
-shutdown_vllm_server()
-jaster_translation.evaluate()
+    #### open weight model base evaluation
+    # 1. evaluation for translation task in jaster with comet
+    shutdown_vllm_server()
+    jaster_translation.evaluate()
 
 # 6. Aggregation
 aggregate()
