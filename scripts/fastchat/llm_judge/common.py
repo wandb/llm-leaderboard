@@ -13,7 +13,7 @@ from typing import Optional
 
 import openai
 import anthropic
-import cohere
+#import cohere
 import google.generativeai as genai
 
 from fastchat.model.model_adapter import (
@@ -563,6 +563,7 @@ def chat_completion_anthropic(model, conv, temperature, max_tokens, api_dict=Non
                 time.sleep(API_RETRY_SLEEP)
     return output.strip()
 
+"""
 def chat_completion_cohere(model, conv, temperature, max_tokens):
     output = API_ERROR_OUTPUT
     for _ in range(API_MAX_RETRY):
@@ -581,7 +582,7 @@ def chat_completion_cohere(model, conv, temperature, max_tokens):
             print(type(e), e)
             time.sleep(API_RETRY_SLEEP)
     return output.strip()
-
+"""
 
 def chat_completion_palm(chat_state, model, conv, temperature, max_tokens):
     from fastchat.serve.api_provider import init_palm_chat
