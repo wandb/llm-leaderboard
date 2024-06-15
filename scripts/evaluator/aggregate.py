@@ -12,7 +12,7 @@ def radar_contents(leaderboard_dict, categories: list[str]) -> list[list[str, fl
         ret.append([cat[4:], leaderboard_dict[cat]])
     return ret
 
-def aggregate():
+def evaluate():
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
     cfg = instance.config
@@ -34,7 +34,6 @@ def aggregate():
         jmmlu_robust_fewshots = read_wandb_table(table_name=f"jmmlu_robust_{num_few_shots}shot_leaderboard_table", run=run)
         jaster_control_0shot = read_wandb_table(table_name=f"jaster_control_0shot_leaderboard_table", run=run)
         jaster_control_fewshots = read_wandb_table(table_name=f"jaster_control_{num_few_shots}shot_leaderboard_table", run=run)
-        jbbq_0shot = read_wandb_table(table_name=f"jbbq_0shot_leaderboard_table", run=run)
         jbbq_fewshots = read_wandb_table(table_name=f"jbbq_{num_few_shots}shot_leaderboard_table", run=run)
         toxicity = read_wandb_table(table_name=f"toxicity_leaderboard_table", run=run)
 
@@ -59,60 +58,40 @@ def aggregate():
         if other is None:
             if cols_jaster:
                 for col in cols_jaster:
-                    mean_value_0shot = jaster_0shot[col].mean()
-                    mean_value_fewshot = jaster_fewshots[col].mean()
-                    data[f"{col}_0shot"] = mean_value_0shot
-                    data[f"{col}_fewshot"] = mean_value_fewshot
-                
+                    data[f"{col}_0shot"] =  jaster_0shot[col][0]
+                    data[f"{col}_{num_few_shots}shot"] = jaster_fewshots[col][0]
             if cols_mtbench:
                 for col in cols_mtbench:
-                    mean_value = mtbench[col].mean() / 10
-                    data[f"{col}_mtbench"] = mean_value
-
-            all_means = [value for key, value in data.items()]
-            overall_mean = np.mean(all_means) if all_means else float('nan')
-            data["AVG"] = overall_mean
-            data["run_name"] = cfg.wandb.run_name
+                    data[f"{col}_mtbench"] = mtbench[col][0] / 10
+            data["AVG"] = calculate_combined_means(cols_jaster, cols_mtbench)
 
         elif other == "control":
-            jaster_control_mean = np.mean([jaster_control_0shot["AVG"].mean(), jaster_control_fewshots["AVG"].mean()])
-            lctg_mean = lctg_overall["AVG_Total_ctg"].mean()
-            overall_mean = np.mean([jaster_control_mean, lctg_mean])
             data = {
-                "run_name": cfg.wandb.run_name,
-                "AVG": overall_mean,
-                "jaster_control_mean": jaster_control_mean,
-                "lctg_mean": lctg_mean,
+                "AVG": np.mean([np.mean([jaster_control_0shot["AVG"][0], jaster_control_fewshots["AVG"][0]]), lctg_overall["AVG_Total_ctg"][0]]),
+                "jaster_control_0shot":jaster_control_0shot["AVG"][0],
+                "jaster_control_2shot":jaster_control_fewshots["AVG"][0],
+                "lctg_avg_score": lctg_overall["AVG_Total_ctg"][0],
             }
 
         elif other == "toxicity":
-            overall_mean = toxicity[["公平性", "社会規範", "禁止行為", "違反カテゴリ"]].values.mean()
             data = {
-                "run_name": cfg.wandb.run_name,
-                "AVG": overall_mean,
-                "公平性": toxicity["公平性"].mean(),
-                "社会規範": toxicity["社会規範"].mean(),
-                "禁止行為": toxicity["禁止行為"].mean(),
-                "違反カテゴリ": toxicity["違反カテゴリ"].mean(),
+                "AVG": toxicity[["公平性", "社会規範", "禁止行為", "違反カテゴリ"]].values.mean(),
+                "公平性": toxicity["公平性"][0],
+                "社会規範": toxicity["社会規範"][0],
+                "禁止行為": toxicity["禁止行為"][0],
+                "違反カテゴリ": toxicity["違反カテゴリ"][0],
             }
 
         elif other == "bias":
-            jbbq_mean = np.mean([jbbq_0shot["avg_abs_bias_score"].mean(), jbbq_fewshots["avg_abs_bias_score"].mean()])
-            overall_mean = 1 - jbbq_mean
             data = {
-                "run_name": cfg.wandb.run_name,
-                "AVG": overall_mean,
-                "avg_abs_bias_score_0shot": jbbq_0shot["avg_abs_bias_score"].mean(),
-                "avg_abs_bias_score_fewshot": jbbq_fewshots["avg_abs_bias_score"].mean(),
+                "AVG": 1 - jbbq_fewshots["avg_abs_bias_score"][0],
+                "abs_bias_score_fewshot": jbbq_fewshots["avg_abs_bias_score"][0],
             }
 
         elif other == "robust":
-            jaster_mean = jmmlu_robust_fewshots["jaster"].mean()
-            overall_mean = jaster_mean
             data = {
-                "run_name": cfg.wandb.run_name,
-                "AVG": overall_mean,
-                "jmmlu_robust_fewshots": jaster_mean,
+                "AVG": jmmlu_robust_fewshots["robust_score"][0],
+                "jmmlu_robust_fewshots": jmmlu_robust_fewshots["robust_score"][0],
             }
 
         # Convert data to DataFrame
@@ -163,9 +142,9 @@ def aggregate():
         create_subcategory_table("ethics", ["commonsensemoralja"], [])
         leaderboard_dict["ALT_毒性"] = toxicity[["公平性", "社会規範", "禁止行為", "違反カテゴリ"]].values.mean() if 'toxicity' in locals() else np.nan
         create_subcategory_table("toxicity", [], [], "toxicity")
-        leaderboard_dict["ALT_バイアス"] = 1 - np.mean([jbbq_0shot["avg_abs_bias_score"][0], jbbq_fewshots["avg_abs_bias_score"][0]])
+        leaderboard_dict["ALT_バイアス"] = 1 - jbbq_fewshots["avg_abs_bias_score"][0]
         create_subcategory_table("bias", [], [], "bias")
-        leaderboard_dict["ALT_堅牢性"] = jmmlu_robust_fewshots["jaster"][0]
+        leaderboard_dict["ALT_堅牢性"] = jmmlu_robust_fewshots["robust_score"][0]
         create_subcategory_table("robustness", [], [], "robust")
         leaderboard_dict["ALT_AVG"] = calculate_average_from_dict(leaderboard_dict, "ALT")
         avg_cols.append("ALT_AVG")
