@@ -29,6 +29,9 @@ def evaluate():
         ).reset_index()
 
         leaderboard_table['AVG'] = leaderboard_table.iloc[:, 2:].mean(axis=1)
+        new_cols = ['AVG'] + [c for c in leaderboard_table.columns if c not in ['AVG']]
+        leaderboard_table = leaderboard_table[new_cols]
+
         run.log(
             {
                 f"{dataset_name}_{i}shot_output_table_dev": updated_output_table_dev,
