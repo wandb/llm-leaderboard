@@ -227,7 +227,11 @@ def evaluate():
     lctg_task_radar_table = total_summary[['AVG_summary_ctg','AVG_ad_text_ctg','AVG_pros_and_cons_ctg']]
     lctg_subtask_radar_table = total_summary[['AVG_Format_ctg','AVG_C_count_ctg','AVG_Keyword_ctg','AVG_P_word_ctg']] 
 
-
+    data=radar_contents(
+                leaderboard_dict=lctg_task_radar_table.to_dict('dict'),
+                categories=['AVG_summary_ctg','AVG_ad_text_ctg','AVG_pros_and_cons_ctg'],
+            )
+    print(data)
     lctg_task_radar_table = pd.DataFrame(
         data=radar_contents(
             leaderboard_dict=lctg_task_radar_table.to_dict('dict'),
@@ -235,6 +239,16 @@ def evaluate():
         ), # TODO dataに渡していてる引数のチェック
         columns=["category", "score"],
     )
+    print(lctg_task_radar_table)
+
+    lctg_task_radar_table = pd.DataFrame(
+        data=radar_contents(
+            leaderboard_dict=lctg_task_radar_table.to_dict('dict'),
+            categories=['AVG_summary_ctg','AVG_ad_text_ctg','AVG_pros_and_cons_ctg'],
+        ), # TODO dataに渡していてる引数のチェック
+    )
+    print(lctg_task_radar_table)
+
     # TODO log前のtableのチェック
     # TODO 最終手段としてカラムを書き換え
     lctg_task_radar_table['category'] = lctg_task_radar_table['category'].replace({
