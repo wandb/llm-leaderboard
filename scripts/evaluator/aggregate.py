@@ -12,7 +12,7 @@ def radar_contents(leaderboard_dict, categories: list[str]) -> list[list[str, fl
         ret.append([cat[4:], leaderboard_dict[cat]])
     return ret
 
-def evaluate():
+def aggregate():
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
     cfg = instance.config
@@ -22,7 +22,7 @@ def evaluate():
     # Initialize empty variables
     if cfg.run.GLP or cfg.run.ALT:
         jaster_0shot = jaster_fewshots = jmmlu_robust_fewshots = jaster_control_0shot = None
-        jaster_control_fewshots = lctg_overall = jbbq_fewshots = toxicity = mtbench = None
+        jaster_control_fewshots = lctg_overall = jbbq_0shot = jbbq_fewshots = toxicity = mtbench = None
         jaster_0shot = read_wandb_table(table_name=f"jaster_0shot_leaderboard_table", run=run)
         jaster_fewshots = read_wandb_table(table_name=f"jaster_{num_few_shots}shot_leaderboard_table", run=run)
 
@@ -34,6 +34,7 @@ def evaluate():
         jmmlu_robust_fewshots = read_wandb_table(table_name=f"jmmlu_robust_{num_few_shots}shot_leaderboard_table", run=run)
         jaster_control_0shot = read_wandb_table(table_name=f"jaster_control_0shot_leaderboard_table", run=run)
         jaster_control_fewshots = read_wandb_table(table_name=f"jaster_control_{num_few_shots}shot_leaderboard_table", run=run)
+        jbbq_0shot = read_wandb_table(table_name=f"jbbq_0shot_leaderboard_table", run=run)
         jbbq_fewshots = read_wandb_table(table_name=f"jbbq_{num_few_shots}shot_leaderboard_table", run=run)
         toxicity = read_wandb_table(table_name=f"toxicity_leaderboard_table", run=run)
 
@@ -51,6 +52,74 @@ def evaluate():
                 means.append(mtbench[col][0] / 10)
         return np.mean(means)
 
+    def create_subcategory_table(category, cols_jaster, cols_mtbench, other=None):
+        table_name = f"subcategory_table_{category}"
+        data = {}
+
+        if other is None:
+            if cols_jaster:
+                for col in cols_jaster:
+                    mean_value_0shot = jaster_0shot[col].mean()
+                    mean_value_fewshot = jaster_fewshots[col].mean()
+                    data[f"{col}_0shot"] = mean_value_0shot
+                    data[f"{col}_fewshot"] = mean_value_fewshot
+                
+            if cols_mtbench:
+                for col in cols_mtbench:
+                    mean_value = mtbench[col].mean() / 10
+                    data[f"{col}_mtbench"] = mean_value
+
+            all_means = [value for key, value in data.items()]
+            overall_mean = np.mean(all_means) if all_means else float('nan')
+            data["AVG"] = overall_mean
+            data["run_name"] = cfg.wandb.run_name
+
+        elif other == "control":
+            jaster_control_mean = np.mean([jaster_control_0shot["AVG"].mean(), jaster_control_fewshots["AVG"].mean()])
+            lctg_mean = lctg_overall["AVG_Total_ctg"].mean()
+            overall_mean = np.mean([jaster_control_mean, lctg_mean])
+            data = {
+                "run_name": cfg.wandb.run_name,
+                "AVG": overall_mean,
+                "jaster_control_mean": jaster_control_mean,
+                "lctg_mean": lctg_mean,
+            }
+
+        elif other == "toxicity":
+            overall_mean = toxicity[["公平性", "社会規範", "禁止行為", "違反カテゴリ"]].values.mean()
+            data = {
+                "run_name": cfg.wandb.run_name,
+                "AVG": overall_mean,
+                "公平性": toxicity["公平性"].mean(),
+                "社会規範": toxicity["社会規範"].mean(),
+                "禁止行為": toxicity["禁止行為"].mean(),
+                "違反カテゴリ": toxicity["違反カテゴリ"].mean(),
+            }
+
+        elif other == "bias":
+            jbbq_mean = np.mean([jbbq_0shot["avg_abs_bias_score"].mean(), jbbq_fewshots["avg_abs_bias_score"].mean()])
+            overall_mean = 1 - jbbq_mean
+            data = {
+                "run_name": cfg.wandb.run_name,
+                "AVG": overall_mean,
+                "avg_abs_bias_score_0shot": jbbq_0shot["avg_abs_bias_score"].mean(),
+                "avg_abs_bias_score_fewshot": jbbq_fewshots["avg_abs_bias_score"].mean(),
+            }
+
+        elif other == "robust":
+            jaster_mean = jmmlu_robust_fewshots["jaster"].mean()
+            overall_mean = jaster_mean
+            data = {
+                "run_name": cfg.wandb.run_name,
+                "AVG": overall_mean,
+                "jmmlu_robust_fewshots": jaster_mean,
+            }
+
+        # Convert data to DataFrame
+        subcategory_table = pd.DataFrame([data])
+        run.log({table_name: wandb.Table(dataframe=subcategory_table)})
+
+
     def calculate_average_from_dict(data_dict, prefix):
         relevant_items = {key: value for key, value in data_dict.items() if key.startswith(prefix)}
         relevant_values = [value for value in relevant_items.values() if isinstance(value, (int, float))]
@@ -64,25 +133,40 @@ def evaluate():
     avg_cols = []
     
     if cfg.run.GLP: 
-        leaderboard_dict["GLP_expression"] = calculate_combined_means([],["roleplay","writing","humanities"])
-        leaderboard_dict["GLP_translation"] = calculate_combined_means(["alt-e-to-j","alt-j-to-e","wikicorpus-e-to-j","wikicorpus-j-to-e"], [])
-        leaderboard_dict["GLP_information_extraction"] = calculate_combined_means(["jsquad"], [])
-        leaderboard_dict["GLP_reasoning"] = calculate_combined_means([], ["reasoning"])
-        leaderboard_dict["GLP_mathematical_reasoning"] = calculate_combined_means(["mawps"], ["math"])
-        leaderboard_dict["GLP_entity_extraction"] = calculate_combined_means(["wiki_ner", "wiki_coreference", "chabsa"], ["extraction"])
-        leaderboard_dict["GLP_knowledge_QA"] = calculate_combined_means(["jcommonsenseqa","jemhopqa", "jmmlu","niilc","aio"], ["stem"])
-        leaderboard_dict["GLP_English_MMLU"] = calculate_combined_means(["mmlu_en"], [])
-        leaderboard_dict["GLP_semantic_analysis"] = calculate_combined_means(["jnli","janli","jsem","jsick", "jamp"], [])
-        leaderboard_dict["GLP_syntactic_analysis"] = calculate_combined_means(["jcola-in-domain","jcola-out-of-domain","jblimp","wiki_reading","wiki_pas","wiki_dependency"], [])    
+        leaderboard_dict["GLP_表現"] = calculate_combined_means([],["roleplay","writing","humanities"])
+        create_subcategory_table("expression", [], ["roleplay","writing","humanities"])
+        leaderboard_dict["GLP_翻訳"] = calculate_combined_means(["alt-e-to-j","alt-j-to-e","wikicorpus-e-to-j","wikicorpus-j-to-e"], [])
+        create_subcategory_table("translation", ["alt-e-to-j","alt-j-to-e","wikicorpus-e-to-j","wikicorpus-j-to-e"], [])
+        leaderboard_dict["GLP_情報検索"] = calculate_combined_means(["jsquad"], [])
+        create_subcategory_table("information extraction", ["jsquad"], [])
+        leaderboard_dict["GLP_推論"] = calculate_combined_means([], ["reasoning"])
+        create_subcategory_table("reasoning", [], ["reasoning"])
+        leaderboard_dict["GLP_数学的推論"] = calculate_combined_means(["mawps"], ["math"])
+        create_subcategory_table("mathematical reasoning", ["mawps"], ["math"])
+        leaderboard_dict["GLP_抽出"] = calculate_combined_means(["wiki_ner", "wiki_coreference", "chabsa"], ["extraction"])
+        create_subcategory_table("entity extraction", ["wiki_ner", "wiki_coreference", "chabsa"], ["extraction"])
+        leaderboard_dict["GLP_知識・質問応答"] = calculate_combined_means(["jcommonsenseqa","jemhopqa", "jmmlu","niilc","aio"], ["stem"])
+        create_subcategory_table("knowledge/QA", ["jcommonsenseqa","jemhopqa", "jmmlu","niilc","aio"], ["stem"])
+        leaderboard_dict["GLP_英語"] = calculate_combined_means(["mmlu_en"], [])
+        create_subcategory_table("english", ["mmlu_en"], [])
+        leaderboard_dict["GLP_意味解析"] = calculate_combined_means(["jnli","janli","jsem","jsick", "jamp"], [])
+        create_subcategory_table("semantic analysis", ["jnli","janli","jsem","jsick", "jamp"], [])
+        leaderboard_dict["GLP_構文解析"] = calculate_combined_means(["jcola-in-domain","jcola-out-of-domain","jblimp","wiki_reading","wiki_pas","wiki_dependency"], [])   
+        create_subcategory_table("syntactic analysis", ["jcola-in-domain","jcola-out-of-domain","jblimp","wiki_reading","wiki_pas","wiki_dependency"], []) 
         leaderboard_dict["GLP_AVG"] = calculate_average_from_dict(leaderboard_dict, "GLP")
         avg_cols.append("GLP_AVG")
-    
+
     if cfg.run.ALT:
-        leaderboard_dict["ALT_controllability"] = np.mean([np.mean([jaster_control_0shot["AVG"][0], jaster_control_fewshots["AVG"][0]]), lctg_overall["AVG_Total_ctg"][0]])
-        leaderboard_dict["ALT_ethics_moral"] = calculate_combined_means(["commonsensemoralja"],[])
-        leaderboard_dict["ALT_toxicity"] = toxicity[["公平性", "社会規範", "禁止行為", "違反カテゴリ"]].values.mean() if 'toxicity' in locals() else np.nan
-        leaderboard_dict["ALT_bias"] = 1-jbbq_fewshots["avg_abs_bias_score"][0]
-        leaderboard_dict["ALT_robustness"] = jmmlu_robust_fewshots["robust_score"][0]
+        leaderboard_dict["ALT_制御性"] = np.mean([np.mean([jaster_control_0shot["AVG"][0], jaster_control_fewshots["AVG"][0]]), lctg_overall["AVG_Total_ctg"][0]])
+        create_subcategory_table("controllability", [], [], "control")
+        leaderboard_dict["ALT_倫理・道徳"] = calculate_combined_means(["commonsensemoralja"],[])
+        create_subcategory_table("ethics", ["commonsensemoralja"], [])
+        leaderboard_dict["ALT_毒性"] = toxicity[["公平性", "社会規範", "禁止行為", "違反カテゴリ"]].values.mean() if 'toxicity' in locals() else np.nan
+        create_subcategory_table("toxicity", [], [], "toxicity")
+        leaderboard_dict["ALT_バイアス"] = 1 - np.mean([jbbq_0shot["avg_abs_bias_score"][0], jbbq_fewshots["avg_abs_bias_score"][0]])
+        create_subcategory_table("bias", [], [], "bias")
+        leaderboard_dict["ALT_堅牢性"] = jmmlu_robust_fewshots["jaster"][0]
+        create_subcategory_table("robustness", [], [], "robust")
         leaderboard_dict["ALT_AVG"] = calculate_average_from_dict(leaderboard_dict, "ALT")
         avg_cols.append("ALT_AVG")
 
@@ -112,14 +196,14 @@ def evaluate():
         data=radar_contents(
             leaderboard_dict=leaderboard_dict,
             categories=[
-                "GLP_information_extraction",
-                "GLP_reasoning",
-                "GLP_mathematical_reasoning",
-                "GLP_entity_extraction",
-                "GLP_knowledge_QA",
-                "GLP_English_MMLU",
-                "GLP_semantic_analysis",
-                "GLP_syntactic_analysis",
+                "GLP_情報検索",
+                "GLP_推論",
+                "GLP_数学的推論",
+                "GLP_抽出",
+                "GLP_知識・質問応答",
+                "GLP_英語",
+                "GLP_意味解析",
+                "GLP_構文解析",
             ],
         ),
         columns=["category", "score"],
@@ -129,11 +213,11 @@ def evaluate():
         data=radar_contents(
             leaderboard_dict=leaderboard_dict,
             categories=[
-                "ALT_controllability",
-                "ALT_ethics_moral",
-                "ALT_toxicity",
-                "ALT_bias",
-                "ALT_robustness",
+                "ALT_制御性",
+                "ALT_倫理・道徳",
+                "ALT_毒性",
+                "ALT_バイアス",
+                "ALT_堅牢性",
             ],
         ),
         columns=["category", "score"],
