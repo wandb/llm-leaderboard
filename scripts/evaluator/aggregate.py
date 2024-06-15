@@ -96,6 +96,8 @@ def evaluate():
 
         # Convert data to DataFrame
         subcategory_table = pd.DataFrame([data])
+        columns = ["AVG"] + [col for col in subcategory_table.columns if col != "AVG"]
+        subcategory_table = subcategory_table[columns]
         run.log({table_name: wandb.Table(dataframe=subcategory_table)})
 
 
