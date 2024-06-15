@@ -264,6 +264,15 @@ def evaluate_n_shot(few_shots: bool):
 
     #leaderboard_table['AVG'] = leaderboard_table.iloc[:, 2:].mean(axis=1) # calculate later in jaster_translation.py
     leaderboard_table_control['AVG'] = leaderboard_table_control.iloc[:, 2:].mean(axis=1)
+    new_cols = ['AVG'] + [c for c in leaderboard_table_control.columns if c not in ['AVG']]
+    leaderboard_table_control = leaderboard_table_control[new_cols]
+
+    new_order=["run_name","task","index","input","raw_output","output","expected_output",
+               "prompt","score","control_score","metrics","control_method",
+               "model_name","dataset","num_few_shots","latency","subset","sub_category"]
+    dev_table = dev_table[new_order]
+    test_table = test_table[new_order]
+
     run.log(
         {
             f"{dataset_name}_{num_few_shots}shot_output_table_dev": dev_table,
@@ -278,8 +287,8 @@ def evaluate_n_shot(few_shots: bool):
         # need to be updated
         dev_robust_table = output_robust_df.query("subset == 'dev'")
         test_robust_table= output_robust_df.query("subset == 'test'")
-        dev_robust_table_for_log,_ = evaluate_robustness(num_few_shots=num_few_shots, subset="_dev", df=dev_robust_table)
-        test_robust_table_for_log, leaderboard_robust_table= evaluate_robustness(num_few_shots=num_few_shots, subset="", df=test_robust_table)
+        dev_robust_table_for_log,_ = evaluate_robustness(subset="dev", df=dev_robust_table)
+        test_robust_table_for_log, leaderboard_robust_table= evaluate_robustness(subset="test", df=test_robust_table)
         run.log(
         {
             f"jmmlu_robust_{num_few_shots}shot_output_table_dev": dev_robust_table_for_log,
