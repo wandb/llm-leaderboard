@@ -33,7 +33,7 @@ def parallel_inference(inputs, lmt_type, llm):
 def radar_contents(leaderboard_dict, categories: list[str]) -> list[list[str, float]]:
     ret = []
     for cat in categories:
-        ret.append([cat[4:], leaderboard_dict[cat]])
+        ret.append([cat[4:], leaderboard_dict[cat][0]])
     return ret
 
 def evaluate():
@@ -244,6 +244,8 @@ def evaluate():
         ),
         columns=["category", "score"],
     )
+    print(lctg_subtask_radar_table.shape)
+    print(lctg_subtask_radar_table.columns)
 
     lctg_subtask_radar_table['category'] = lctg_subtask_radar_table['category'].replace({
         'AVG_Format_ctg': 'format',
