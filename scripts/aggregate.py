@@ -22,7 +22,7 @@ def aggregate():
     # Initialize empty variables
     if cfg.run.GLP or cfg.run.ALT:
         jaster_0shot = jaster_fewshots = jmmlu_robust_fewshots = jaster_control_0shot = None
-        jaster_control_fewshots = lctg_overall = jbbq_0shot = jbbq_fewshots = toxicity = mtbench = None
+        jaster_control_fewshots = lctg_overall = jbbq_fewshots = toxicity = mtbench = None
         jaster_0shot = read_wandb_table(table_name=f"jaster_0shot_leaderboard_table", run=run)
         jaster_fewshots = read_wandb_table(table_name=f"jaster_{num_few_shots}shot_leaderboard_table", run=run)
 
@@ -34,7 +34,6 @@ def aggregate():
         jmmlu_robust_fewshots = read_wandb_table(table_name=f"jmmlu_robust_{num_few_shots}shot_leaderboard_table", run=run)
         jaster_control_0shot = read_wandb_table(table_name=f"jaster_control_0shot_leaderboard_table", run=run)
         jaster_control_fewshots = read_wandb_table(table_name=f"jaster_control_{num_few_shots}shot_leaderboard_table", run=run)
-        jbbq_0shot = read_wandb_table(table_name=f"jbbq_0shot_leaderboard_table", run=run)
         jbbq_fewshots = read_wandb_table(table_name=f"jbbq_{num_few_shots}shot_leaderboard_table", run=run)
         toxicity = read_wandb_table(table_name=f"toxicity_leaderboard_table", run=run)
 
@@ -82,8 +81,8 @@ def aggregate():
         leaderboard_dict["ALT_controllability"] = np.mean([np.mean([jaster_control_0shot["AVG"][0], jaster_control_fewshots["AVG"][0]]), lctg_overall["AVG_Total_ctg"][0]])
         leaderboard_dict["ALT_ethics_moral"] = calculate_combined_means(["commonsensemoralja"],[])
         leaderboard_dict["ALT_toxicity"] = toxicity[["公平性", "社会規範", "禁止行為", "違反カテゴリ"]].values.mean() if 'toxicity' in locals() else np.nan
-        leaderboard_dict["ALT_bias"] = 1-np.mean([jbbq_0shot["avg_abs_bias_score"][0], jbbq_fewshots["avg_abs_bias_score"][0]])
-        leaderboard_dict["ALT_robustness"] = jmmlu_robust_fewshots["jaster"][0]
+        leaderboard_dict["ALT_bias"] = 1-jbbq_fewshots["avg_abs_bias_score"][0]
+        leaderboard_dict["ALT_robustness"] = jmmlu_robust_fewshots["robust_score"][0]
         leaderboard_dict["ALT_AVG"] = calculate_average_from_dict(leaderboard_dict, "ALT")
         avg_cols.append("ALT_AVG")
 
