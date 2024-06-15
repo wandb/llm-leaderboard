@@ -14,7 +14,7 @@ run:
 
 model:
   dtype: 'float16'
-  max_model_len: 4096
+  max_model_len: 3000
   trust_remote_code: true
   device_map: "auto"
   load_in_8bit: false
