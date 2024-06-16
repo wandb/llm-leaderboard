@@ -132,7 +132,7 @@ def get_scores(questions, judge_prompts, judge_model, max_workers):
     return results
 
 
-def toxicity_evaluate():
+def evaluate():
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
