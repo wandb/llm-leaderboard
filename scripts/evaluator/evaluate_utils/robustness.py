@@ -18,7 +18,6 @@ def eval_robustness(row):
 
 def evaluate_robustness(subset: str, df: pd.DataFrame):
     use_cols = [
-        "run_name",
         "model_name",
         "dataset",
         "task",
@@ -80,11 +79,10 @@ def evaluate_robustness(subset: str, df: pd.DataFrame):
 
     # 列のrename & 列の順番を並び替える
     normal_df = normal_df.rename(columns={"input": "input_normal","expected_output":"expected_output_normal"})
-    new_order=["run_name","index","score",
+    new_order=["model_name","index","score",
                "input_normal","output_normal","expected_output_normal",
                "input_SymbolChoice","output_SymbolChoice","expected_output_SymbolChoice",
-               "input_IncorrectChoice","output_IncorrectChoice","expected_output_IncorrectChoice",
-               "model_name","dataset","task","num_few_shots","subset"
+               "input_IncorrectChoice","output_IncorrectChoice","expected_output_IncorrectChoice","dataset","task","num_few_shots","subset"
                ]
     normal_df = normal_df[new_order]
 
@@ -93,7 +91,7 @@ def evaluate_robustness(subset: str, df: pd.DataFrame):
         leaderboard_table = pd.pivot_table(
             data=normal_df,
             values="score",
-            index=["run_name", "model_name"],
+            index=["model_name"],
             columns="dataset",
             aggfunc="mean",
         ).reset_index()

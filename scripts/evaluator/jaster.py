@@ -87,7 +87,6 @@ def evaluate_n_shot(few_shots: bool):
         # execute evaluation
         for subset in ("test", "dev"):
             eval_matainfo = {
-                "run_name": run.name,
                 "model_name": cfg.model.pretrained_model_name_or_path,
                 "dataset": dataset_name,
                 "task": task,
@@ -257,19 +256,19 @@ def evaluate_n_shot(few_shots: bool):
     leaderboard_table_control = pd.pivot_table(
         data=test_table,
         values="control_score",
-        index=["run_name", "model_name"],
+        index="model_name",
         columns="task",
         aggfunc="mean",
     ).reset_index()
 
     #leaderboard_table['AVG'] = leaderboard_table.iloc[:, 2:].mean(axis=1) # calculate later in jaster_translation.py
-    leaderboard_table_control['AVG'] = leaderboard_table_control.iloc[:, 2:].mean(axis=1)
-    new_cols = ['AVG'] + [c for c in leaderboard_table_control.columns if c not in ['AVG']]
-    leaderboard_table_control = leaderboard_table_control[new_cols]
-
-    new_order=["run_name","task","index","input","raw_output","output","expected_output",
+    leaderboard_table_control.insert(0, 'AVG', leaderboard_table_control.iloc[:, 2:].mean(axis=1))
+    leaderboard_table_control.drop(columns=["model_name"], inplace=True)
+    leaderboard_table_control.insert(0, 'model_name', cfg.model.pretrained_model_name_or_path)
+    
+    new_order=["model_name","task","index","input","raw_output","output","expected_output",
                "prompt","score","control_score","metrics","control_method",
-               "model_name","dataset","num_few_shots","latency","subset","sub_category"]
+               "dataset","num_few_shots","latency","subset","sub_category"]
     dev_table = dev_table[new_order]
     test_table = test_table[new_order]
 
