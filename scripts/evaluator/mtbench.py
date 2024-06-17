@@ -204,7 +204,7 @@ def evaluate():
 
     ## clean dataframe up
     use_col = [
-        'question_id', 'category', 'answer_id', 'model', 'question', 
+        'model','question_id', 'category', 'question', 
         'answer', 'judge', 'user_prompt', 'judgment', 
         'score', 'turn', 'tstamp'
     ]
@@ -221,12 +221,10 @@ def evaluate():
     table_radar = wandb.Table(dataframe=df_summary)
 
     ## table for LB mtbench
-    columns = ['basemodel_name'] + df_summary.category.values.tolist()
-    data = [[cfg.model.pretrained_model_name_or_path] + df_summary.score.values.tolist()]
-    mtbench_df = pd.DataFrame(data, columns=columns)
-    mtbench_df["AVG_mtbench"] = mtbench_df.mean(axis=1, numeric_only=True)
+    mtbench_df = pd.DataFrame([df_summary.score.values.tolist()], columns=df_summary.category.values.tolist())
+    mtbench_df.insert(0, "AVG_mtbench",  mtbench_df.mean(axis=1, numeric_only=True))
+    mtbench_df.insert(0, "model_name",  cfg.model.pretrained_model_name_or_path)
     table_metric = wandb.Table(dataframe=mtbench_df)
-
 
     run.log({
         "mtbench_output_table":table_log,

@@ -22,7 +22,7 @@ def evaluate():
     # Initialize empty variables
     if cfg.run.GLP or cfg.run.ALT:
         jaster_0shot = jaster_fewshots = jmmlu_robust_fewshots = jaster_control_0shot = None
-        jaster_control_fewshots = lctg_overall = jbbq_0shot = jbbq_fewshots = toxicity = mtbench = None
+        jaster_control_fewshots = lctg_overall = jbbq_fewshots = toxicity = mtbench = None
         jaster_0shot = read_wandb_table(table_name=f"jaster_0shot_leaderboard_table", run=run)
         jaster_fewshots = read_wandb_table(table_name=f"jaster_{num_few_shots}shot_leaderboard_table", run=run)
 
@@ -56,6 +56,8 @@ def evaluate():
         data = {}
 
         if other is None:
+            data["model_name"]=cfg.model.pretrained_model_name_or_path
+            data["AVG"] = calculate_combined_means(cols_jaster, cols_mtbench)
             if cols_jaster:
                 for col in cols_jaster:
                     data[f"{col}_0shot"] =  jaster_0shot[col][0]
@@ -63,10 +65,10 @@ def evaluate():
             if cols_mtbench:
                 for col in cols_mtbench:
                     data[f"{col}_mtbench"] = mtbench[col][0] / 10
-            data["AVG"] = calculate_combined_means(cols_jaster, cols_mtbench)
-
+        
         elif other == "control":
             data = {
+                "model_name": cfg.model.pretrained_model_name_or_path,
                 "AVG": np.mean([np.mean([jaster_control_0shot["AVG"][0], jaster_control_fewshots["AVG"][0]]), lctg_overall["AVG_Total_ctg"][0]]),
                 "jaster_control_0shot":jaster_control_0shot["AVG"][0],
                 "jaster_control_2shot":jaster_control_fewshots["AVG"][0],
@@ -75,6 +77,7 @@ def evaluate():
 
         elif other == "toxicity":
             data = {
+                "model_name": cfg.model.pretrained_model_name_or_path,
                 "AVG": toxicity[["公平性", "社会規範", "禁止行為", "違反カテゴリ"]].values.mean(),
                 "公平性": toxicity["公平性"][0],
                 "社会規範": toxicity["社会規範"][0],
@@ -84,22 +87,21 @@ def evaluate():
 
         elif other == "bias":
             data = {
+                "model_name": cfg.model.pretrained_model_name_or_path,
                 "AVG": 1 - jbbq_fewshots["avg_abs_bias_score"][0],
                 "abs_bias_score_fewshot": jbbq_fewshots["avg_abs_bias_score"][0],
             }
 
         elif other == "robust":
             data = {
+                "model_name": cfg.model.pretrained_model_name_or_path,
                 "AVG": jmmlu_robust_fewshots["robust_score"][0],
                 "jmmlu_robust_fewshots": jmmlu_robust_fewshots["robust_score"][0],
             }
 
         # Convert data to DataFrame
         subcategory_table = pd.DataFrame([data])
-        columns = ["AVG"] + [col for col in subcategory_table.columns if col != "AVG"]
-        subcategory_table = subcategory_table[columns]
         run.log({table_name: wandb.Table(dataframe=subcategory_table)})
-
 
     def calculate_average_from_dict(data_dict, prefix):
         relevant_items = {key: value for key, value in data_dict.items() if key.startswith(prefix)}
@@ -109,9 +111,11 @@ def evaluate():
         return float('nan')
 
     leaderboard_dict = {}
-    leaderboard_dict["model_release_date"] = pd.to_datetime(cfg.model.release_date, format='%m/%d/%Y')
+    leaderboard_dict["model_name"] = cfg.model.pretrained_model_name_or_path
+    leaderboard_dict["model_size_category"] = cfg.model.size_category
     leaderboard_dict["model_size"] = cfg.model.size
-    avg_cols = []
+    leaderboard_dict["model_release_date"] = pd.to_datetime(cfg.model.release_date, format='%m/%d/%Y')
+    first_cols = ["model_name","model_size_category"]
     
     if cfg.run.GLP: 
         leaderboard_dict["GLP_表現"] = calculate_combined_means([],["roleplay","writing","humanities"])
@@ -122,7 +126,7 @@ def evaluate():
         create_subcategory_table("information extraction", ["jsquad"], [])
         leaderboard_dict["GLP_推論"] = calculate_combined_means([], ["reasoning"])
         create_subcategory_table("reasoning", [], ["reasoning"])
-        leaderboard_dict["GLP_数学的推論"] = calculate_combined_means(["mawps"], ["math"])
+        leaderboard_dict["GLP_数学的推論"] = calculate_combined_means(["mawps","mgsm"], ["math"])
         create_subcategory_table("mathematical reasoning", ["mawps", "mgsm"], ["math"])
         leaderboard_dict["GLP_抽出"] = calculate_combined_means(["wiki_ner", "wiki_coreference", "chabsa"], ["extraction"])
         create_subcategory_table("entity extraction", ["wiki_ner", "wiki_coreference", "chabsa"], ["extraction"])
@@ -134,8 +138,8 @@ def evaluate():
         create_subcategory_table("semantic analysis", ["jnli","janli","jsem","jsick", "jamp"], [])
         leaderboard_dict["GLP_構文解析"] = calculate_combined_means(["jcola-in-domain","jcola-out-of-domain","jblimp","wiki_reading","wiki_pas","wiki_dependency"], [])   
         create_subcategory_table("syntactic analysis", ["jcola-in-domain","jcola-out-of-domain","jblimp","wiki_reading","wiki_pas","wiki_dependency"], []) 
-        leaderboard_dict["GLP_AVG"] = calculate_average_from_dict(leaderboard_dict, "GLP")
-        avg_cols.append("GLP_AVG")
+        leaderboard_dict["汎用的言語性能(GLP)_AVG"] = calculate_average_from_dict(leaderboard_dict, "GLP")
+        first_cols.append("汎用的言語性能(GLP)_AVG")
 
     if cfg.run.ALT:
         leaderboard_dict["ALT_制御性"] = np.mean([np.mean([jaster_control_0shot["AVG"][0], jaster_control_fewshots["AVG"][0]]), lctg_overall["AVG_Total_ctg"][0]])
@@ -148,12 +152,12 @@ def evaluate():
         create_subcategory_table("bias", [], [], "bias")
         leaderboard_dict["ALT_堅牢性"] = jmmlu_robust_fewshots["robust_score"][0]
         create_subcategory_table("robustness", [], [], "robust")
-        leaderboard_dict["ALT_AVG"] = calculate_average_from_dict(leaderboard_dict, "ALT")
-        avg_cols.append("ALT_AVG")
+        leaderboard_dict["アラインメント(ALT)_AVG"] = calculate_average_from_dict(leaderboard_dict, "ALT")
+        first_cols.append("アラインメント(ALT)_AVG")
 
     if cfg.run.GLP and cfg.run.ALT:
-        leaderboard_dict["TOTAL_AVG"] = np.mean([leaderboard_dict["GLP_AVG"], leaderboard_dict["ALT_AVG"]])
-        avg_cols.append("TOTAL_AVG")
+        leaderboard_dict["TOTAL_AVG"] = np.mean([leaderboard_dict["汎用的言語性能(GLP)_AVG"], leaderboard_dict["アラインメント(ALT)_AVG"]])
+        first_cols.append("TOTAL_AVG")
 
     # Average of each dataset
     if cfg.run.GLP or cfg.run.ALT:
@@ -167,9 +171,11 @@ def evaluate():
     if cfg.run.ALT:
         leaderboard_dict["AVG_lctg"] = lctg_overall["AVG_Total_ctg"][0]
 
+    
+
     leaderboard_table = pd.DataFrame([leaderboard_dict])
     cols = leaderboard_table.columns
-    new_cols = avg_cols + [c for c in cols if c not in avg_cols]
+    new_cols = first_cols + [c for c in cols if c not in first_cols]
     leaderboard_table = leaderboard_table[new_cols]
     # Radar table
 
