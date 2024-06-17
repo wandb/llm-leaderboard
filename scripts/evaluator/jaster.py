@@ -70,7 +70,7 @@ def evaluate_n_shot(few_shots: bool):
         "wikicorpus-j-to-e"
     ]
     tasks.extend(sorted({p.stem for p in dataset_dir.glob("**/mmlu_en_*.json")}))
-    tasks.extend([p.stem for p in dataset_dir.glob("**/jmmlu*.json") if not p.stem.endswith("Choice")])
+    tasks.extend(sorted({p.stem for p in dataset_dir.glob("**/jmmlu*.json") if not p.stem.endswith("Choice")}))
 
     if few_shots:
         num_few_shots = cfg.get("num_few_shots", None)
@@ -80,7 +80,7 @@ def evaluate_n_shot(few_shots: bool):
         num_few_shots = 0
 
     if cfg.jmmlu_robustness and few_shots:
-        tasks.extend([p.stem for p in dataset_dir.glob("**/jmmlu*.json") if p.stem.endswith("Choice")])
+        tasks.extend(sorted({p.stem for p in dataset_dir.glob("**/jmmlu*.json") if p.stem.endswith("Choice")}))
 
     evaluation_results = []
     for task in tasks:
