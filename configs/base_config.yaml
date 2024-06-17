@@ -13,8 +13,10 @@ run:
   ALT: true
 
 model:
-  dtype: 'float16'
+  use_wandb_artifacts: false
   max_model_len: 3000
+  chat_template: null
+  dtype: 'float16'
   trust_remote_code: true
   device_map: "auto"
   load_in_8bit: false
