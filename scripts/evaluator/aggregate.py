@@ -123,7 +123,7 @@ def evaluate():
         leaderboard_dict["GLP_推論"] = calculate_combined_means([], ["reasoning"])
         create_subcategory_table("reasoning", [], ["reasoning"])
         leaderboard_dict["GLP_数学的推論"] = calculate_combined_means(["mawps"], ["math"])
-        create_subcategory_table("mathematical reasoning", ["mawps"], ["math"])
+        create_subcategory_table("mathematical reasoning", ["mawps", "mgsm"], ["math"])
         leaderboard_dict["GLP_抽出"] = calculate_combined_means(["wiki_ner", "wiki_coreference", "chabsa"], ["extraction"])
         create_subcategory_table("entity extraction", ["wiki_ner", "wiki_coreference", "chabsa"], ["extraction"])
         leaderboard_dict["GLP_知識・質問応答"] = calculate_combined_means(["jcommonsenseqa","jemhopqa", "jmmlu","niilc","aio"], ["stem"])
