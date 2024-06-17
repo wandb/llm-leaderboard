@@ -9,7 +9,7 @@ batch_size: 256 # vllmは256, apiは32を推奨
 model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: "tokyotech-llm/Swallow-MS-7b-v0.1" #if you use openai api, put the name of model
-  chat_template: "tokyotech-llm/Swallow-MS-7b-v0.1"
+  chat_template: "tokyotech-llm/Swallow-MS-7b-instruct-v0.1"
   size: "<10B"
   release_date: "3/11/2024"
 
