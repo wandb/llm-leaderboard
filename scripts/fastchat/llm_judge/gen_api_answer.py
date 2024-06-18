@@ -27,6 +27,7 @@ from fastchat.llm_judge.common import (
     chat_completion_bedrock,
     chat_completion_mistral,
     chat_completion_vllm,
+    chat_completion_upstage,
 )
 from fastchat.llm_judge.gen_model_answer import reorg_answer_file
 from fastchat.model.model_adapter import get_conversation_template, ANTHROPIC_MODEL_LIST
@@ -114,6 +115,10 @@ def get_answer(
                 chat_state, output = chat_completion_mistral(
                     chat_state, model, conv, temperature, max_tokens
                 )  
+            elif cfg.api == "upstage":
+                output = chat_completion_upstage(
+                    model, conv, temperature, max_tokens
+                )
             else:
                 output = chat_completion_openai(
                     model, conv, temperature, max_tokens
