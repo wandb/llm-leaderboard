@@ -11,6 +11,7 @@ model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: "meta-llama/Meta-Llama-3-70B-Instruct" #if you use openai api, put the name of model
   chat_template: "meta-llama/Meta-Llama-3-70B-Instruct"
-  size: "30B≤"
+  size_category: "30B≤"
+  size: 70553706496
   release_date: "4/18/2024"
   max_model_len: 2500

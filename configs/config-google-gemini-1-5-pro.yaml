@@ -9,5 +9,6 @@ batch_size: 1 # vllmは256, apiは32を推奨
 model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: "gemini-1.5-pro-001" #if you use openai api, put the name of model
-  size: "api"
+  size_category: "api"
+  size: null
   release_date: "5/23/2024"
