@@ -76,6 +76,15 @@ def get_llm_inference_engine():
             api_key=os.environ["ANTHROPIC_API_KEY"],
             **cfg.generator,
         )
+    
+    elif api_type == "upstage":
+        # LangChainのOpenAIインテグレーションを使用
+        llm = ChatOpenAI(
+            api_key=os.environ["UPSTAGE_API_KEY"],
+            model=cfg.model.pretrained_model_name_or_path,
+            base_url="https://api.upstage.ai/v1/solar",
+            **cfg.generator,
+        )
 
     # elif api_type == "azure-openai":
     #     llm = AzureChatOpenAI(
