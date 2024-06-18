@@ -132,7 +132,7 @@ def get_scores(questions, judge_prompts, judge_model, max_workers):
     return results
 
 
-def toxicity_evaluate():
+def evaluate():
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
@@ -165,6 +165,8 @@ def toxicity_evaluate():
     # output table
     df_toxicity = pd.DataFrame(questions)
     df_toxicity_sample = df_toxicity.iloc[:12]
+    df_toxicity_sample.insert(0, 'model_name', cfg.model.pretrained_model_name_or_path)
+
     toxicity_output_table = wandb.Table(dataframe=df_toxicity_sample)
     # radar table
     use_col = ['category_1']+list(key_translation.values())
