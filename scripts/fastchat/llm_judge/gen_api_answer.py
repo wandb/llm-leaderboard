@@ -21,7 +21,7 @@ from fastchat.llm_judge.common import (
     temperature_config,
     chat_completion_openai,
     chat_completion_anthropic,
-    chat_completion_cohere,
+#   chat_completion_cohere,
     chat_completion_palm,
     chat_completion_gemini,
     chat_completion_bedrock,
@@ -99,10 +99,10 @@ def get_answer(
                 chat_state, output = chat_completion_palm(
                     chat_state, model, conv, temperature, max_tokens
                 )
-            elif cfg.api == "cohere":
-                output = chat_completion_cohere(
-                    model, conv, temperature, max_tokens
-                ) 
+            #elif cfg.api == "cohere":
+            #    output = chat_completion_cohere(
+            #        model, conv, temperature, max_tokens
+            #    ) 
             elif cfg.api == "google":
                 chat_state, output = chat_completion_gemini(
                     chat_state, model, conv, temperature, max_tokens

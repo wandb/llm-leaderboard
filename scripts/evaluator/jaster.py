@@ -70,7 +70,7 @@ def evaluate_n_shot(few_shots: bool):
         "wikicorpus-j-to-e"
     ]
     tasks.extend(sorted({p.stem for p in dataset_dir.glob("**/mmlu_en_*.json")}))
-    tasks.extend([p.stem for p in dataset_dir.glob("**/jmmlu*.json") if not p.stem.endswith("Choice")])
+    tasks.extend(sorted({p.stem for p in dataset_dir.glob("**/jmmlu*.json") if not p.stem.endswith("Choice")}))
 
     if few_shots:
         num_few_shots = cfg.get("num_few_shots", None)
@@ -80,14 +80,13 @@ def evaluate_n_shot(few_shots: bool):
         num_few_shots = 0
 
     if cfg.jmmlu_robustness and few_shots:
-        tasks.extend([p.stem for p in dataset_dir.glob("**/jmmlu*.json") if p.stem.endswith("Choice")])
+        tasks.extend(sorted({p.stem for p in dataset_dir.glob("**/jmmlu*.json") if p.stem.endswith("Choice")}))
 
     evaluation_results = []
     for task in tasks:
         # execute evaluation
         for subset in ("test", "dev"):
             eval_matainfo = {
-                "run_name": run.name,
                 "model_name": cfg.model.pretrained_model_name_or_path,
                 "dataset": dataset_name,
                 "task": task,
@@ -141,7 +140,7 @@ def evaluate_n_shot(few_shots: bool):
 
                 # instruction message
                 if "mmlu_en" in task:
-                    message_intro = "The following text provides instructions for a certain task, along with accompanying input that offers further context. Please describe the appropriate response to complete the request."
+                    message_intro = "The following text provides instructions for a certain task."
                 else:
                     message_intro = "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。"
                 
@@ -257,13 +256,22 @@ def evaluate_n_shot(few_shots: bool):
     leaderboard_table_control = pd.pivot_table(
         data=test_table,
         values="control_score",
-        index=["run_name", "model_name"],
+        index="model_name",
         columns="task",
         aggfunc="mean",
     ).reset_index()
 
     #leaderboard_table['AVG'] = leaderboard_table.iloc[:, 2:].mean(axis=1) # calculate later in jaster_translation.py
-    leaderboard_table_control['AVG'] = leaderboard_table_control.iloc[:, 2:].mean(axis=1)
+    leaderboard_table_control.insert(0, 'AVG', leaderboard_table_control.iloc[:, 2:].mean(axis=1))
+    leaderboard_table_control.drop(columns=["model_name"], inplace=True)
+    leaderboard_table_control.insert(0, 'model_name', cfg.model.pretrained_model_name_or_path)
+    
+    new_order=["model_name","task","index","input","raw_output","output","expected_output",
+               "prompt","score","control_score","metrics","control_method",
+               "dataset","num_few_shots","latency","subset","sub_category"]
+    dev_table = dev_table[new_order]
+    test_table = test_table[new_order]
+
     run.log(
         {
             f"{dataset_name}_{num_few_shots}shot_output_table_dev": dev_table,
@@ -278,8 +286,8 @@ def evaluate_n_shot(few_shots: bool):
         # need to be updated
         dev_robust_table = output_robust_df.query("subset == 'dev'")
         test_robust_table= output_robust_df.query("subset == 'test'")
-        dev_robust_table_for_log,_ = evaluate_robustness(num_few_shots=num_few_shots, subset="_dev", df=dev_robust_table)
-        test_robust_table_for_log, leaderboard_robust_table= evaluate_robustness(num_few_shots=num_few_shots, subset="", df=test_robust_table)
+        dev_robust_table_for_log,_ = evaluate_robustness(subset="dev", df=dev_robust_table)
+        test_robust_table_for_log, leaderboard_robust_table= evaluate_robustness(subset="test", df=test_robust_table)
         run.log(
         {
             f"jmmlu_robust_{num_few_shots}shot_output_table_dev": dev_robust_table_for_log,
