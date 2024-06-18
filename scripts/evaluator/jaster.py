@@ -158,8 +158,9 @@ def evaluate_n_shot(few_shots: bool):
                 y_true: str = pipe(sample["output"], normalize)
                 #metrics: str = task_data["metrics"][0]
                 metrics: str = (
-                               "comet_wmt22" if task in ["alt-j-to-e", "wikicorpus-j-to-e"] else
+                                "comet_wmt22" if task in ["alt-j-to-e", "wikicorpus-j-to-e"] else
                                 "comet_wmt22" if task in ["alt-e-to-j", "wikicorpus-e-to-j"] else
+                                "exact_match_figure" if task in ["mawps", "mgsm"] else
                                 task_data["metrics"][0]
                                 )
                 metrics_func: callable = jaster_metrics_dict[metrics]
