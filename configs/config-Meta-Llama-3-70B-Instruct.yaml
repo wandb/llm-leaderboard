@@ -13,3 +13,4 @@ model:
   chat_template: "meta-llama/Meta-Llama-3-70B-Instruct"
   size: "30B≤"
   release_date: "4/18/2024"
+  max_model_len: 2500

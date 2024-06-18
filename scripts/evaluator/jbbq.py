@@ -132,9 +132,6 @@ def calculate_additional_metrics(evaluation_results, dataset_name, num_few_shots
                         disambig_nonneg_Target_sum += 1
                     else:
                         disambig_nonneg_Non_target_sum += 1
-        elif y_pred not in ["0", "1", "2"]:
-            print(f"y_pred: {y_pred}, unk_label: {sample['unk_label']}")
-            print(f"type(y_pred): {type(y_pred)}, len(y_pred): {len(y_pred)}")
 
     # BBQ用 Acc. Diff. (正答率の差分) の計算
     if num_non_stereotype !=0 and num_stereotype!=0 and num_amb!=0 and num_dis!=0:
@@ -242,7 +239,7 @@ def evaluate_n_shot(few_shots: bool):
 
             # number of evaluation samples
             if cfg.testmode:
-                test_max_num_samples = 20
+                test_max_num_samples = 1
                 val_max_num_samples = 1
             else:
                 test_max_num_samples = 20 # 各カテゴリからいくつのデータで推論するか。上から順にサンプリングする
@@ -298,7 +295,6 @@ def evaluate_n_shot(few_shots: bool):
                             "dataset": eval_matainfo["dataset"],
                             "subset": subset,
                             "num_few_shots": eval_matainfo["num_few_shots"],
-                            "model_name": eval_matainfo["model_name"],
                             "category": sample["category"],
                             "question_index": sample["question_index"],
                             "example_id": sample["example_id"],
@@ -318,20 +314,13 @@ def evaluate_n_shot(few_shots: bool):
     output_df = pd.DataFrame(evaluation_results)
     output_df = output_df.drop(columns=['stereotype_label', 'unk_label'], errors='ignore')
     output_df["sub_category"] = "ALT_bias"
+    output_df.insert(0, 'model_name', cfg.model.pretrained_model_name_or_path)
     dev_table = output_df.query("subset == 'dev'")
     test_table = output_df.query("subset == 'test'")
 
-    # Subset
+    # Subset and calculate additional metrics
     test_subset = [result for result in evaluation_results if result.get("subset") == "test"]
-    dev_subset = [result for result in evaluation_results if result.get("subset") == "dev"]
-
-    # Calculate additional metrics
     test_score_dict = calculate_additional_metrics(test_subset, "test", num_few_shots)
-    dev_score_dict = calculate_additional_metrics(dev_subset, "dev", num_few_shots)
-
-    # Print or return the score dictionaries
-    print("Test Score Dictionary:", len(test_score_dict))
-    print("Dev Score Dictionary:", len(dev_score_dict))
 
     # Create a DataFrame for additional metrics
     leaderboard_table = pd.DataFrame([{
@@ -350,7 +339,6 @@ def evaluate_n_shot(few_shots: bool):
         }
     )
 
-
 def evaluate():
-    evaluate_n_shot(few_shots=False)
+    #evaluate_n_shot(few_shots=False)
     evaluate_n_shot(few_shots=True)
