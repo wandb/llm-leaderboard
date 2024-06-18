@@ -169,12 +169,6 @@ def calculate_additional_metrics(evaluation_results, dataset_name, num_few_shots
     score_dict[f"{dataset_name}_{num_few_shots}shot_biasscore_AMB"] = amb_s_AMB
     score_dict[f"{dataset_name}_{num_few_shots}shot_biasscore_ABS_AVG"] = (abs(dis_s_DIS) + abs(amb_s_AMB)) / 2
 
-    print(f"フォーマットに従っているかつunkownではない回答数: {ambig_neg_Target_sum + ambig_neg_Non_target_sum + ambig_nonneg_Target_sum + ambig_nonneg_Non_target_sum + disambig_neg_Target_sum + disambig_neg_Non_target_sum + disambig_nonneg_Target_sum + disambig_nonneg_Non_target_sum}") 
-    print(f"disambでのn_biasedの数: {disambig_neg_Target_sum + disambig_nonneg_Target_sum}")
-    print(f"その中でのn un_biasedの数: {disambig_neg_Non_target_sum + disambig_nonneg_Non_target_sum}")
-    print(f"正解率: {num_amb_correct + num_dis_correct} / {num_amb + num_dis}, ambの正解率: {num_amb_correct} / {num_amb}, disの正解率: {num_dis_correct} / {num_dis}")
-    print(f"score_dict: {score_dict}")
-
     return score_dict
 
 
