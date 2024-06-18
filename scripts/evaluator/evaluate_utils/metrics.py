@@ -25,6 +25,13 @@ def exact_match(y_pred: str, y_true: str) -> float:
     return (y_pred == y_true) * 1.0
 
 
+def exact_match_figure(y_pred: str, y_true: str) -> float:
+    try:
+        return (float(y_pred) == float(y_true)) * 1.0
+    except ValueError:
+        return 0.0
+
+
 def char_f1(y_pred: str, y_true: str) -> float:
     return fuzz.token_sort_ratio(y_pred, y_true) / 100.0
 
@@ -120,6 +127,7 @@ def delete_model_directory(directory):
 
 jaster_metrics_dict: dict[str, callable] = {
     "exact_match": exact_match,
+    "exact_match_figure": exact_match_figure,
     "char_f1": char_f1,
     "set_f1": set_f1,
     "pearson": pearson,
@@ -175,7 +183,11 @@ task_to_sub_category = {
 # ---------------------
 # mawps, mgsm
 def is_all_digit(text: str) -> int:
-    return 1 if text.isdigit() else 0
+    try:
+        float(text)
+        return 1
+    except ValueError:
+        return 0
 
 # jmmlu, mmlu
 def is_one_of_ABCD(text: str) -> int:
