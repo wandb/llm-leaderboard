@@ -110,7 +110,10 @@ artifacts/
 # config
 configs/config.yaml
 
-# debug
+# generated data
 dataset/
 logs/
 fastchat/llm_judge/data/japanese_mt_bench
+
+# vllm
+*.pid
