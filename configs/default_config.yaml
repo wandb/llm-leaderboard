@@ -14,7 +14,7 @@ run:
   ALT: true
 
 # if you don't use api, please set "api" as "false"
-# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+# if you use api, please select from "openai", "anthoropic", "google", "cohere", "upstage", "vllm"
 api: vllm
 batch_size: 256 # vllmは256, apiは32を推奨
 
