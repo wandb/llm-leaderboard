@@ -65,7 +65,7 @@ def evaluate():
 
     
     # 1. generate model answers
-    if cfg.api in ["openai","anthropic","cohere","google","amazon_bedrock","mistral", "vllm"]:
+    if cfg.api in ["openai","anthropic","cohere","google","amazon_bedrock","mistral","upstage","vllm"]:
         questions = load_questions(question_file, None, None)
         get_api_answer(
             question_file=question_file,
