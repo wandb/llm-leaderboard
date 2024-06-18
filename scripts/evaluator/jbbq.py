@@ -293,7 +293,6 @@ def evaluate_n_shot(few_shots: bool):
                             "dataset": eval_matainfo["dataset"],
                             "subset": subset,
                             "num_few_shots": eval_matainfo["num_few_shots"],
-                            "model_name": eval_matainfo["model_name"],
                             "category": sample["category"],
                             "question_index": sample["question_index"],
                             "example_id": sample["example_id"],
@@ -313,6 +312,7 @@ def evaluate_n_shot(few_shots: bool):
     output_df = pd.DataFrame(evaluation_results)
     output_df = output_df.drop(columns=['stereotype_label', 'unk_label'], errors='ignore')
     output_df["sub_category"] = "ALT_bias"
+    output_df.insert(0, 'model_name', cfg.model.pretrained_model_name_or_path)
     dev_table = output_df.query("subset == 'dev'")
     test_table = output_df.query("subset == 'test'")
 
@@ -321,6 +321,7 @@ def evaluate_n_shot(few_shots: bool):
 
     # Create a DataFrame for additional metrics
     leaderboard_table = pd.DataFrame([{
+        "model_name": cfg.model.pretrained_model_name_or_path,
         "acc": score_dict[f"{dataset_name}_{num_few_shots}shot_dev_acc"],
         "acc_diff": score_dict[f"{dataset_name}_{num_few_shots}shot_dev_acc_diff"],
         "bias_score_dis": score_dict[f"{dataset_name}_{num_few_shots}shot_dev_biasscore_DIS"],
