@@ -112,8 +112,8 @@ def evaluate():
 
     leaderboard_dict = {}
     leaderboard_dict["model_name"] = cfg.model.pretrained_model_name_or_path
-    leaderboard_dict["model_size_category"] = cfg.model.size_category
-    leaderboard_dict["model_size"] = cfg.model.size
+    leaderboard_dict["model_size_category"] = cfg.model.get("size_category", np.nan)
+    leaderboard_dict["model_size"] = cfg.model.get("size", np.nan)
     leaderboard_dict["model_release_date"] = pd.to_datetime(cfg.model.release_date, format='%m/%d/%Y')
     first_cols = ["model_name","model_size_category"]
     
