@@ -187,6 +187,7 @@ def evaluate():
         #columns = ["AVG_ctg", "AVG_qual"] + [col for col in task_summary_table.columns if col not in ["AVG_ctg", "AVG_qual"]]
         columns = ["AVG_ctg"] + [col for col in task_summary_table.columns if col not in ["AVG_ctg"]]
         task_summary_table = task_summary_table[columns]
+        task_summary_table.insert(0, 'model_name', cfg.model.pretrained_model_name_or_path)
 
         numeric_columns = task_summary_table.select_dtypes(include=['number']).columns
         for col in numeric_columns:
@@ -204,13 +205,12 @@ def evaluate():
 
     # total summary
     AVG_columns_ctg = [f"AVG_{task}_ctg" for task in tasks]
-    total_summary["AVG_Total_ctg"] = total_summary[AVG_columns_ctg].mean(axis=1)
     total_summary["AVG_Format_ctg"] = np.mean(Format_ctg)
     total_summary["AVG_C_count_ctg"] = np.mean(C_count_ctg)
     total_summary["AVG_Keyword_ctg"] = np.mean(Keyword_ctg)
     total_summary["AVG_P_word_ctg"] = np.mean(P_word_ctg)
-    columns = ['AVG_Total_ctg'] + [col for col in total_summary.columns if col != 'AVG_Total_ctg']
-    total_summary = total_summary[columns]
+    total_summary.insert(0, 'AVG_Total_ctg', total_summary[AVG_columns_ctg].mean(axis=1))
+    total_summary.insert(0, 'model_name', cfg.model.pretrained_model_name_or_path)
 
     numeric_columns = total_summary.select_dtypes(include=['number']).columns
     for col in numeric_columns:
@@ -220,6 +220,7 @@ def evaluate():
     #total_summary["AVG"] = (total_summary["Total-AVG_ctg"]+total_summary["Total-AVG_qual"])/2
     #columns = ['AVG'] + [col for col in total_summary.columns if col != 'AVG']
     #total_summary = total_summary[columns]
+
 
     lctg_task_radar_table = total_summary[['AVG_summary_ctg','AVG_ad_text_ctg','AVG_pros_and_cons_ctg']]
     lctg_subtask_radar_table = total_summary[['AVG_Format_ctg','AVG_C_count_ctg','AVG_Keyword_ctg','AVG_P_word_ctg']] 
@@ -257,6 +258,7 @@ def evaluate():
     output_df = output_df.merge(prompt_table, how="left", on=["question_id", "category"])
     output_df["prompt"] = output_df["_prompt"]
     output_df.drop("_prompt", axis=1, inplace=True)
+    output_df.insert(0, 'model_name', cfg.model.pretrained_model_name_or_path)
 
     wandb.log({"lctg_overall_leaderboard_table": wandb.Table(dataframe=total_summary)})
     wandb.log({"lctg_output_table": wandb.Table(dataframe=output_df)})
