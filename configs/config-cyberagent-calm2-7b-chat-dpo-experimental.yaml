@@ -11,5 +11,5 @@ model:
   pretrained_model_name_or_path: "cyberagent/calm2-7b-chat-dpo-experimental" #if you use openai api, put the name of model
   chat_template: "cyberagent/calm2-7b-chat-dpo-experimental"
   size: "<10B"
-  release_date: "5/17/2023"
+  release_date: "1/24/2024"
 
