@@ -11,5 +11,6 @@ model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: "01-ai/Yi-34B-Chat" #if you use openai api, put the name of model
   chat_template: "01-ai/Yi-34B-Chat"
-  size: "30B≤"
+  size_category: "30B≤"
+  size: 34388917248
   release_date: "11/4/2023"
