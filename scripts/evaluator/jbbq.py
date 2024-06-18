@@ -240,7 +240,7 @@ def evaluate_n_shot(few_shots: bool):
                 test_max_num_samples = 1
                 val_max_num_samples = 1
             else:
-                test_max_num_samples = 4 # 各カテゴリからいくつのデータで推論するか。上から順にサンプリングする
+                test_max_num_samples = 20 # 各カテゴリからいくつのデータで推論するか。上から順にサンプリングする
                 val_max_num_samples = 4 # 各カテゴリからいくつのデータで推論するか。上から順にサンプリングする
 
             if subset == "test":
@@ -252,7 +252,6 @@ def evaluate_n_shot(few_shots: bool):
             for category in categories:
 
                 # カテゴリごとにサンプルをフィルタリング
-                count = 0
                 category_samples = [sample for sample in task_data["samples"] if sample["category"] == category]
                 selected_samples = category_samples[:num_samples]
 
@@ -287,6 +286,13 @@ def evaluate_n_shot(few_shots: bool):
                     y_true: str = pipe(str(sample["output"]), normalize)
 
                     # collect data
+                    error = 0
+                    if y_pred not in ["0", "1", "2"]:
+                        error = 1
+                    correct = 0
+                    if y_pred == y_true:
+                        correct = 1
+
                     evaluation_results.append(
                         {
                             "index": idx,
@@ -298,19 +304,21 @@ def evaluate_n_shot(few_shots: bool):
                             "example_id": sample["example_id"],
                             "question_polarity": sample["question_polarity"],
                             "context_condition": sample["context_condition"],
+                            "stereotype_label": sample["stereotype_label"],
                             "input": sample["input"],
                             "prompt": prompt,
                             'raw_output': output,
                             "output": y_pred,
                             "expected_output": y_true,
-                            "stereotype_label": sample["stereotype_label"],
+                            "correct": correct,
                             "unk_label": sample["unk_label"],
+                            "format_error": error
                         }
                     )
 
     # log table
     output_df = pd.DataFrame(evaluation_results)
-    output_df = output_df.drop(columns=['stereotype_label', 'unk_label'], errors='ignore')
+    output_df = output_df.drop(columns=['unk_label'], errors='ignore')
     output_df["sub_category"] = "ALT_bias"
     output_df.insert(0, 'model_name', cfg.model.pretrained_model_name_or_path)
     dev_table = output_df.query("subset == 'dev'")
