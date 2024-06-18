@@ -1,0 +1,14 @@
+wandb:
+  run_name: "elyza/ELYZA-japanese-Llama-2-13b-instruct" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+api: vllm
+num_gpus: 2
+batch_size: 256 # vllmは256, apiは32を推奨
+
+model:
+  pretrained_model_name_or_path: "elyza/ELYZA-japanese-Llama-2-13b-instruct" #if you use openai api, put the name of model
+  chat_template: "elyza/ELYZA-japanese-Llama-2-13b-instruct"
+  size_category: "10B≤ <30B"
+  release_date: "12/27/2023"
