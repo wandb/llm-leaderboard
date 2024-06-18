@@ -8,5 +8,6 @@ batch_size: 1 # vllmは256, apiは32を推奨
 
 model:
   pretrained_model_name_or_path: "mistral-large" #if you use openai api, put the name of model
-  size: "api"
+  size_category: "api"
+  size: null
   release_date: "2/26/2024"
