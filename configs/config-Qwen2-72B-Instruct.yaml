@@ -1,0 +1,15 @@
+wandb:
+  run_name: "Qwen/Qwen2-72B-Instruct" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+api: vllm
+num_gpus: 2
+batch_size: 256 # vllmは256, apiは32を推奨
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "Qwen/Qwen2-72B-Instruct" #if you use openai api, put the name of model
+  chat_template: "Qwen/Qwen2-72B-Instruct"
+  size: "30B≤"
+  release_date: "3/28/2024"
