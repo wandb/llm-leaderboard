@@ -1,5 +1,3 @@
-import os
-import wandb
 import pandas as pd
 from utils import read_wandb_table
 from config_singleton import WandbConfigSingleton
@@ -23,15 +21,15 @@ def evaluate():
         leaderboard_table = pd.pivot_table(
             data=updated_output_table_test,
             values="score",
-            index=["run_name", "model_name"],
+            index="model_name",
             columns="task",
             aggfunc="mean",
         ).reset_index()
 
-        leaderboard_table['AVG'] = leaderboard_table.iloc[:, 2:].mean(axis=1)
-        new_cols = ['AVG'] + [c for c in leaderboard_table.columns if c not in ['AVG']]
-        leaderboard_table = leaderboard_table[new_cols]
-
+        leaderboard_table.drop(columns=["model_name"], inplace=True)
+        leaderboard_table.insert(0, 'AVG', leaderboard_table.iloc[:, 2:].mean(axis=1))
+        leaderboard_table.insert(0, 'model_name', cfg.model.pretrained_model_name_or_path)
+    
         run.log(
             {
                 f"{dataset_name}_{i}shot_output_table_dev": updated_output_table_dev,
