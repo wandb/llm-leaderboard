@@ -1,7 +1,5 @@
 import asyncio
 import functools
-
-# import time
 import traceback
 from typing import Any, TypeAlias, List, Tuple
 
@@ -45,10 +43,27 @@ class LLMAsyncProcessor:
 
     @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
     @error_handler
-    async def _ainvoke(self, messages: Messages, **kwargs) -> Tuple[AIMessage, float]:
+    def _invoke(self, messages: Messages, **kwargs) -> Tuple[AIMessage, float]:
         if self.api_type == "google":
             self.llm.max_output_tokens = kwargs["max_tokens"]
-            response = await self.llm.invoke(messages)
+            for i in range(10):
+                response = self.llm.invoke(messages)
+                if response.content.strip():
+                   break
+                else:
+                    print(f"Try {i+1}")
+        else:
+            raise NotImplementedError(
+                "Synchronous invoke is only implemented for Google API"
+            )
+        return response, 0
+
+    @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
+    @error_handler
+    async def _ainvoke(self, messages: Messages, **kwargs) -> Tuple[AIMessage, float]:
+        if self.api_type == "google":
+            # Synchronous call for Google API
+            return await asyncio.to_thread(self._invoke, messages, **kwargs)
         else:
             response = await self.llm.ainvoke(messages, **kwargs)
         return response, 0
