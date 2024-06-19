@@ -1,3 +1,4 @@
+from copy import copy
 import json
 from pathlib import Path
 from collections import defaultdict
@@ -81,6 +82,10 @@ def apply_chat_template(messages: list[dict[str, str]]) -> str:
                 "raise_exception": lambda _: "",
                 **tokenizer_config,
             }
+        elif cfg.model.chat_template.startswith("tokyotech-llm/Swallow") and cfg.model.chat_template.endswith("instruct-v0.1"):
+            kwargs = copy(tokenizer_config)
+            for key in ["bos_token", "eos_token", "unk_token"]:
+                kwargs[key] = kwargs[key]["content"]
         else:
             kwargs = tokenizer_config
         chat_template = Template(tokenizer_config.chat_template)
