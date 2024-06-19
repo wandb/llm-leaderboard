@@ -3,7 +3,7 @@ wandb:
 
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthropic", "google", "cohere", "vllm", "mistral", "bedrock"
-api: bedrock
+api: "amazon_bedrock"
 batch_size: 1 # vllmは256, apiは32を推奨
 
 model:

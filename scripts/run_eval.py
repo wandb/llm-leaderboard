@@ -27,7 +27,7 @@ parser.add_argument("--select-config", "-s", action="store_true", default=False)
 args = parser.parse_args()
 
 if args.select_config:
-    choices = [p.name for p in config_dir.iterdir() if p.suffix == ".yaml"]
+    choices = sorted([p.name for p in config_dir.iterdir() if p.suffix == ".yaml"])
     if len(choices) > 36:
         custom_cfg_name = paginate_choices(choices)
     else:
