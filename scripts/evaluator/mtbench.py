@@ -209,7 +209,7 @@ def evaluate():
         'score', 'turn', 'tstamp'
     ]
     df_judge = df_judge[use_col]
-
+    df_judge.rename(columns={'model': 'model_name'}, inplace=True)
     df_judge['sub_category'] = df_judge['category'].map(task_to_sub_category)
 
     table_log = wandb.Table(dataframe=df_judge)
