@@ -191,7 +191,7 @@ def transform_data(output_df, df, task):
                 'prompt': "",
                 'output': row[outputs[i]],
                 'preprocessed_output': row[preprocessed_outputs[i]],
-                'ctg': row[ctgs[i]],
+                'ctg':  int(row[ctgs[i]]),
                 #'qual': row[quals[i]],
                 #'reason': row[reasons[i]]
             }
