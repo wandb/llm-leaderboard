@@ -53,10 +53,9 @@ def _is_valid_format(s: str, s_wo_hf) -> bool:
     s = _delete_blank(s)
     s_wo_hf = _delete_blank(s_wo_hf)
     if len(s_wo_hf) > 10:
-        if (s[:10] == s_wo_hf[:10]) and (s[-10:] == s_wo_hf[-10:]):
-            return True
-        else:
-            return False
+        return (s[:10] == s_wo_hf[:10]) and (s[-10:] == s_wo_hf[-10:])
+    # 文字列の長さが10以下の場合の比較
+    return s == s_wo_hf
 
 
 def _is_valid_keyword(s: str, keyword: str) -> bool:
