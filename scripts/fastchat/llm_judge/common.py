@@ -644,7 +644,7 @@ def chat_completion_gemini(chat_state, model, conv, temperature, max_tokens):
                             { "category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
                         ]
 
-    assert model == "gemini-pro"
+    # assert model == "gemini-pro"
 
     if chat_state is None:
         gemini = genai.GenerativeModel(
