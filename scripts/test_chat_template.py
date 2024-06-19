@@ -33,8 +33,15 @@ if chat_template_name is None:
     chat_template_name = model_id
 
 tokenizer_config = get_tokenizer_config(model_id, chat_template_name)
+
 if chat_template_name.startswith("mistralai/"):
     tokenizer_config.update({"raise_exception": lambda _: ""})
+elif chat_template_name.startswith("tokyotech-llm/Swallow") and chat_template_name.endswith("instruct-v0.1"):
+    for key in ["bos_token", "eos_token", "unk_token"]:
+        if isinstance(tokenizer_config[key], dict):
+            tokenizer_config[key] = tokenizer_config[key]["content"]
+        else:
+            pass
 
 chat_template = Template(tokenizer_config.get("chat_template"))
 
