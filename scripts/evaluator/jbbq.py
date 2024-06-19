@@ -326,6 +326,7 @@ def evaluate_n_shot(few_shots: bool):
 
     # Create a DataFrame for additional metrics
     leaderboard_table = pd.DataFrame([{
+        "model_name":cfg.model.pretrained_model_name_or_path,
         "acc": test_score_dict[f"test_{num_few_shots}shot_acc"],
         "acc_diff": test_score_dict[f"test_{num_few_shots}shot_acc_diff"],
         "bias_score_dis": test_score_dict[f"test_{num_few_shots}shot_biasscore_DIS"],
