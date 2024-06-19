@@ -2,8 +2,11 @@ import os
 from config_singleton import WandbConfigSingleton
 from langchain_openai import ChatOpenAI, AzureChatOpenAI
 from langchain_mistralai.chat_models import ChatMistralAI
-from langchain_google_genai import ChatGoogleGenerativeAI
-import google.generativeai as genai
+from langchain_google_genai import (
+    ChatGoogleGenerativeAI,
+    HarmBlockThreshold,
+    HarmCategory,
+)
 from langchain_aws import ChatBedrock
 from langchain_anthropic import ChatAnthropic
 
@@ -45,21 +48,20 @@ def get_llm_inference_engine():
 
     elif api_type == "google":
         # LangChainのGoogleGenerativeAIインテグレーションを使用
+        categories = [
+            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+            HarmCategory.HARM_CATEGORY_HARASSMENT,
+            HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        ]
+        safety_settings = {cat: HarmBlockThreshold.BLOCK_NONE for cat in categories}
+        
         llm = ChatGoogleGenerativeAI(
             model=cfg.model.pretrained_model_name_or_path,
             api_key=os.environ["GOOGLE_API_KEY"],
+            safety_settings=safety_settings,
             **cfg.generator,
         )
-        # safety_settings_NONE = [
-        #     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-        #     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-        #     {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-        #     {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-        # ]
-        # llm.client = genai.GenerativeModel(
-        #     model_name=cfg.model.pretrained_model_name_or_path, 
-        #     safety_settings=safety_settings_NONE
-        # )
 
     elif api_type == "amazon_bedrock":
         # LangChainのBedrockインテグレーションを使用
