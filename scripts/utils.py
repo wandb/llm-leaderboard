@@ -9,6 +9,7 @@ from pathlib import Path
 import torch
 import wandb
 from tenacity import retry, stop_after_attempt, wait_fixed
+import questionary
 
 from config_singleton import WandbConfigSingleton
 
@@ -93,3 +94,28 @@ def get_tokenizer_config(model_id=None, chat_template_name=None) -> dict[str, An
     tokenizer_config.update({"chat_template": chat_template})
 
     return tokenizer_config
+
+def paginate_choices(choices, page_size=36):
+    page = 0
+    while True:
+        start = page * page_size
+        end = start + page_size
+        current_choices = choices[start:end]
+        
+        if page > 0:
+            current_choices.append("< Previous Page")
+        
+        if end < len(choices):
+            current_choices.append("Next Page >")
+            
+        selected = questionary.select(
+            f"Select config (Page {page + 1})",
+            choices=current_choices
+        ).ask()
+        
+        if selected == "Next Page >":
+            page += 1
+        elif selected == "< Previous Page":
+            page -= 1
+        else:
+            return selected
