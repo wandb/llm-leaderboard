@@ -16,6 +16,7 @@ from evaluator import (
     toxicity,
     aggregate,
 )
+from utils import paginate_choices
 
 # Set config path
 config_dir = Path("configs")
@@ -26,11 +27,15 @@ parser.add_argument("--select-config", "-s", action="store_true", default=False)
 args = parser.parse_args()
 
 if args.select_config:
-    custom_cfg_name = questionary.select(
-        "Select config",
-        choices=[p.name for p in config_dir.iterdir() if p.suffix == ".yaml"],
-        use_shortcuts=True,
-    ).ask()
+    choices = [p.name for p in config_dir.iterdir() if p.suffix == ".yaml"]
+    if len(choices) > 36:
+        custom_cfg_name = paginate_choices(choices)
+    else:
+        custom_cfg_name = questionary.select(
+            "Select config",
+            choices=choices,
+            use_shortcuts=True,
+        ).ask()
     custom_cfg_path = config_dir / custom_cfg_name
 elif args.config:
     custom_cfg_path = config_dir / args.config
