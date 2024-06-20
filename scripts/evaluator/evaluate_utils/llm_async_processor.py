@@ -10,7 +10,8 @@ from tqdm import tqdm
 from config_singleton import WandbConfigSingleton
 from chat_bedrock import chat_bedrock
 
-MAX_TRIES = 100
+instance = WandbConfigSingleton.get_instance()
+cfg = instance.config
 
 Messages: TypeAlias = List[dict[str, str]]
 Inputs: TypeAlias = List[Tuple[Messages, dict[str, Any]]]
@@ -35,14 +36,12 @@ class LLMAsyncProcessor:
     """
 
     def __init__(self, llm: object, inputs: Inputs):
-        instance = WandbConfigSingleton.get_instance()
-        cfg = instance.config
         self.llm = llm
         self.inputs = inputs
         self.api_type = cfg.api
-        self.batch_size = cfg.batch_size if hasattr(cfg, "batch_size") else 256
+        self.batch_size = cfg.get("batch_size", 256)
 
-    @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
+    @backoff.on_exception(backoff.expo, Exception, max_tries=cfg.max_tries)
     @error_handler
     def _invoke(self, messages: Messages, **kwargs) -> Tuple[AIMessage, float]:
         if self.api_type == "google":
@@ -59,9 +58,10 @@ class LLMAsyncProcessor:
             )
         return response, 0
 
-    @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
+    @backoff.on_exception(backoff.expo, Exception, max_tries=cfg.max_tries)
     @error_handler
     async def _ainvoke(self, messages: Messages, **kwargs) -> Tuple[AIMessage, float]:
+        await asyncio.sleep(cfg.inference_interval)
         if self.api_type == "google":
             # Synchronous call for Google API
             return await asyncio.to_thread(self._invoke, messages, **kwargs)
