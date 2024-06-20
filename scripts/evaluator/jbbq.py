@@ -271,12 +271,13 @@ def evaluate_n_shot(few_shots: bool):
                     # generate output
                     inputs = [(messages, {"max_tokens": task_data["output_length"]})]
                     llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
-                    output, _ = llm_ap.get_results()
+                    results = llm_ap.get_results()
+                    output = results[0][0].content
                     prompt = apply_chat_template(messages=messages)
 
                     # score
                     y_pred: str = pipe(
-                        output.content,
+                        output,
                         lambda x: text_formatter(x, task),
                         lambda x: x.split("\n\n")[0],
                         normalize,
