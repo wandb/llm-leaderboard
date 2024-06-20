@@ -109,4 +109,5 @@ if cfg.run.jaster:
     jaster_translation.evaluate()
 
 # 6. Aggregation
-aggregate.evaluate()
+if cfg.run.aggregate:
+    aggregate.evaluate()
