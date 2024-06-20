@@ -1,0 +1,38 @@
+run_chain: false # If you want to reuse past evaluation results in a new run, please set it to true.
+
+num_few_shots: 4
+
+model:
+  size: "your/model/size"
+  release_date: "your/model/release_date"
+
+new_run: # This setting is for blending runs without running new evaluations. If run_chain is set to true, this setting is disabled.
+  entity: "your/WANDB/entity"
+  project: "your/WANDB/project"
+  run_name: "your/WANDB/run_name"
+
+old_runs: # Please specify the tasks you want to carry over from past runs. Multiple runs are permissible.
+  - run_path: "your/WANDB/run_path"
+    tasks: # The list of tasks to take over. Please comment out tasks that do not need to be taken over.
+      - jaster_0_shot
+      - jaster_4_shot
+      - jaster_control_0_shot
+      - jaster_control_4_shot
+      - jmmlu_robust_4_shot
+      - mtbench
+      - jbbq_0_shot
+      - jbbq_4_shot
+      - lctg
+      - toxicity
+  # - run_path: "your/WANDB/run_path"
+  #   tasks:
+  #    - jaster_0_shot
+  #    - jaster_4_shot
+  #    - jaster_control_0_shot
+  #    - jaster_control_4_shot
+  #    - jmmlu_robust_4_shot
+  #    - mtbench
+  #    - jbbq_0_shot
+  #    - jbbq_4_shot
+  #    - lctg
+  #    - toxicity
