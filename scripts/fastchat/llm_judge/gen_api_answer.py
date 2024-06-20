@@ -49,6 +49,8 @@ def get_api_answer(question_file, answer_file, num_worker = 1):
                 answer_file,
             )
             futures.append(future)
+            import time
+            time.sleep(5)
 
         for future in tqdm.tqdm(
             concurrent.futures.as_completed(futures), total=len(futures)
@@ -110,7 +112,7 @@ def get_answer(
             elif cfg.api == "amazon_bedrock":
                 chat_state, output = chat_completion_bedrock(
                     chat_state, model, conv, temperature, max_tokens
-                )  
+                ) 
             elif cfg.api == "mistral":
                 chat_state, output = chat_completion_mistral(
                     chat_state, model, conv, temperature, max_tokens
@@ -141,4 +143,3 @@ def get_answer(
     os.makedirs(os.path.dirname(answer_file), exist_ok=True)
     with open(answer_file, "a") as fout:
         fout.write(json.dumps(ans, ensure_ascii=False) + "\n")
-
