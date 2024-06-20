@@ -186,7 +186,6 @@ def evaluate_n_shot(few_shots: bool):
                         "control_method": control_method,
                         "control_func": control_func,
                         "score": None,  # to be filled
-                        "latency": None,  # to be filled
                         "inputs": inputs,
                     }
                 )
@@ -198,8 +197,7 @@ def evaluate_n_shot(few_shots: bool):
     )
     results = llm_ap.get_results()
 
-    for result, evaluation_result in tqdm(zip(results, evaluation_results)):
-        response, latency = result
+    for response, evaluation_result in tqdm(zip(results, evaluation_results)):
         raw_output = response.content
         y_pred: str = pipe(
             raw_output,
@@ -220,7 +218,6 @@ def evaluate_n_shot(few_shots: bool):
         evaluation_result["output"] = y_pred
         evaluation_result["score"] = score
         evaluation_result["control_score"] = control_score
-        evaluation_result["latency"] = latency
         del evaluation_result["metrics_func"], evaluation_result["control_func"], evaluation_result["inputs"]
         
     output_df = pd.DataFrame(evaluation_results)
