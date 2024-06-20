@@ -16,6 +16,7 @@ from .evaluate_utils import (
     Sample,
     normalize,
     text_formatter,
+    LLMAsyncProcessor,
 )
 
 """
@@ -268,12 +269,14 @@ def evaluate_n_shot(few_shots: bool):
                         message["content"] = str(message["content"])
 
                     # generate output
-                    output = llm.invoke(messages, task_data["output_length"]).content
+                    inputs = [(messages, {"max_tokens": task_data["output_length"]})]
+                    llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
+                    output, _ = llm_ap.get_results()
                     prompt = apply_chat_template(messages=messages)
 
                     # score
                     y_pred: str = pipe(
-                        output,
+                        output.content,
                         lambda x: text_formatter(x, task),
                         lambda x: x.split("\n\n")[0],
                         normalize,

@@ -8,6 +8,7 @@ from langchain.schema import AIMessage
 from tqdm import tqdm
 
 from config_singleton import WandbConfigSingleton
+
 # from .chat_bedrock import chat_bedrock
 
 MAX_TRIES = 100
@@ -86,12 +87,13 @@ class LLMAsyncProcessor:
         for item in data:
             assert isinstance(item, dict), "Each item should be a dictionary"
             # 'role'キーと'content'キーが存在することを確認
-            assert 'role' in item, "'role' key is missing in an item"
-            assert 'content' in item, "'content' key is missing in an item"
+            assert "role" in item, "'role' key is missing in an item"
+            assert "content" in item, "'content' key is missing in an item"
             # 'role'の値が'system', 'assistant', 'user'のいずれかであることを確認
-            assert item['role'] in ['system', 'assistant', 'user'], "'role' should be one of ['system', 'assistant', 'user']"
+            roles = {"system", "assistant", "user"}
+            assert item["role"] in roles, f"'role' should be one of {str(roles)}"
             # 'content'の値が文字列であることを確認
-            assert isinstance(item['content'], str), "'content' should be a string"
+            assert isinstance(item["content"], str), "'content' should be a string"
 
     async def _gather_tasks(self) -> List[Tuple[AIMessage, float]]:
         for messages, _ in self.inputs:
