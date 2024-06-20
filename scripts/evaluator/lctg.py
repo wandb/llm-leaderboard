@@ -26,7 +26,7 @@ def parallel_inference(inputs, lmt_type, llm):
         # batch_size=256,  # APIの場合変える必要あり
     )
     results = llm_ap.get_results()
-    results = [message[0].content for message in results]
+    results = [response.content for response in results]
 
     return lmt_type, results
 
