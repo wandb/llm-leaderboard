@@ -8,7 +8,6 @@ from config_singleton import WandbConfigSingleton
 import wandb
 import yaml
 
-
 def process_task(
     dataset: str,
     old_run: dict[str, Union[str, list[str]]],
@@ -98,19 +97,9 @@ def blend_tables(
     num_few_shots: int,
 ) -> None:
     for old_run in old_runs:
+        if old_run.dataset is None:
+            raise ValueError(f"dataset is None")
         for dataset in old_run.dataset:
-            # if task_name.startswith("mtbench"):
-            #     dataset = "mtbench"
-            # elif task_name.startswith("jbbq"):
-            #     dataset = "jbbq"
-            # elif task_name.startswith("lctg"):
-            #     dataset = "lctg"
-            # elif task_name.startswith("toxicity"):
-            #     dataset = "toxicity"
-            # elif task_name.startswith("jaster"):
-            #     dataset = "jaster"
-            # else:
-            #     raise ValueError(f"Invalid task name: {task_name}")
             process_task(
                 dataset=dataset,
                 old_run=old_run,
@@ -120,7 +109,7 @@ def blend_tables(
 
 
 def blend_run(run_chain: bool) -> None:
-    blend_cfg_path = Path("blend_run_configs/config.yaml")
+    blend_cfg_path = Path("blend_run_configs/blend_config.yaml")
 
     # config check
     if not blend_cfg_path.exists():
@@ -144,6 +133,7 @@ def blend_run(run_chain: bool) -> None:
         instance = WandbConfigSingleton.get_instance()
         run = instance.run
         cfg = instance.config
+        instance.blend_config = blend_cfg
     else:
         wandb.login()
         run = wandb.init(
@@ -156,6 +146,7 @@ def blend_run(run_chain: bool) -> None:
         WandbConfigSingleton.initialize(run, llm=None)
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config
+        instance.blend_config = blend_cfg
 
     # log config
     artifact = wandb.Artifact(blend_cfg_path.stem, type="config")
