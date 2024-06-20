@@ -29,7 +29,9 @@ import concurrent.futures
 from tqdm import tqdm
 
 def process_question(q, llm):
-    ans = llm.invoke(q['user_prompt']).content
+    messages = [{"role": "user", "content": q['user_prompt']}]
+    max_tokens = 128
+    ans = llm.invoke(messages, max_tokens).content
     return ans
 
 
