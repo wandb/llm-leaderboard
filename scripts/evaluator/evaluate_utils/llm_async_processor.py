@@ -61,7 +61,7 @@ class LLMAsyncProcessor:
             raise NotImplementedError(
                 "Synchronous invoke is only implemented for Google API"
             )
-        return response, 0
+        return response
 
     @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
     @error_handler
@@ -71,7 +71,7 @@ class LLMAsyncProcessor:
             return await asyncio.to_thread(self._invoke, messages, **kwargs)
         else:
             response = await self.llm.ainvoke(messages, **kwargs)
-        return response, 0
+        return response
 
     async def _process_batch(self, batch: Inputs) -> List[Tuple[AIMessage, float]]:
         tasks = [
