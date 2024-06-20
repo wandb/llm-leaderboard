@@ -31,7 +31,7 @@ def process_question(q, llm):
     inputs = [(messages, {"max_tokens": max_tokens})]
     llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
     results = llm_ap.get_results()
-    ans =  results[0][0].content
+    ans =  results[0].content
     return ans
 
 
