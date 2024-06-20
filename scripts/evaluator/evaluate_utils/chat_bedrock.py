@@ -2,9 +2,14 @@ import logging
 import json
 from botocore.exceptions import ClientError
 import boto3
+from dataclasses import dataclass
+
 
 from config_singleton import WandbConfigSingleton
 
+@dataclass
+class BedrockResponse:
+    content: str
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -56,10 +61,16 @@ def chat_bedrock(messages: list[dict[str, str]], max_tokens: int):
             generator_config=generator_config,
         )
         try:
-            text = response["content"][0]["text"]
-            return text
+            if response["content"]:
+                return BedrockResponse(content=response["content"][0]["text"]), 0
+            else:
+                return BedrockResponse(content=""), 0
+
         except:
-            print(response)
+            print("--- prompt ---")
+            print(messages)
+            print("--- response ---")
+            print(repr(response))
             raise ValueError
 
     except ClientError as err:
