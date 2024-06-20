@@ -12,31 +12,65 @@ def radar_contents(leaderboard_dict, categories: list[str]) -> list[list[str, fl
         ret.append([cat[4:], leaderboard_dict[cat]])
     return ret
 
+def update_flag(cfg, blend_cfg):
+    mtbench_flag = jbbq_flag = lctg_flag = toxicity_flag = jaster_flag = GLP_flag = ALT_flag = False
+
+    if hasattr(cfg, 'run'):
+        mtbench_flag = cfg.run.mtbench
+        jbbq_flag = cfg.run.jbbq
+        lctg_flag = cfg.run.lctg
+        toxicity_flag = cfg.run.toxicity
+        jaster_flag = cfg.run.jaster
+
+    for old_run in blend_cfg.old_runs:
+        if old_run is None or old_run.dataset is None:
+            continue
+        for dataset in old_run.dataset:
+            if "mtbench" in dataset:
+                mtbench_flag = True
+            elif "jbbq" in dataset:
+                jbbq_flag = True
+            elif "lctg" in dataset:
+                lctg_flag = True
+            elif "toxicity" in dataset:
+                toxicity_flag = True
+            elif "jaster" in dataset:
+                jaster_flag = True
+
+    if mtbench_flag and jaster_flag:
+        GLP_flag = True
+    if jbbq_flag and lctg_flag and toxicity_flag:
+        ALT_flag = True
+    return GLP_flag, ALT_flag
+
+
 def evaluate():
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
     cfg = instance.config
-
+    blend_cfg = instance.blend_config
     num_few_shots = cfg.num_few_shots
-    
+
+    GLP_flag, ALT_flag = update_flag(cfg, blend_cfg)
+
     # Initialize empty variables
-    # if cfg.run.GLP or cfg.run.ALT:
-    jaster_0shot = jaster_fewshots = jmmlu_robust_fewshots = jaster_control_0shot = None
-    jaster_control_fewshots = lctg_overall = jbbq_fewshots = toxicity = mtbench = None
-    jaster_0shot = read_wandb_table(table_name=f"jaster_0shot_leaderboard_table", run=run)
-    jaster_fewshots = read_wandb_table(table_name=f"jaster_{num_few_shots}shot_leaderboard_table", run=run)
+    if GLP_flag or ALT_flag:
+        jaster_0shot = jaster_fewshots = jmmlu_robust_fewshots = jaster_control_0shot = None
+        jaster_control_fewshots = lctg_overall = jbbq_fewshots = toxicity = mtbench = None
+        jaster_0shot = read_wandb_table(table_name=f"jaster_0shot_leaderboard_table", run=run)
+        jaster_fewshots = read_wandb_table(table_name=f"jaster_{num_few_shots}shot_leaderboard_table", run=run)
 
-    # if cfg.run.GLP:
-    mtbench = read_wandb_table(table_name=f"mtbench_leaderboard_table", run=run)
+    if GLP_flag:
+        mtbench = read_wandb_table(table_name=f"mtbench_leaderboard_table", run=run)
     
-    # if cfg.run.ALT:
-    lctg_overall = read_wandb_table(table_name=f"lctg_overall_leaderboard_table", run=run)
+    if ALT_flag:
+        lctg_overall = read_wandb_table(table_name=f"lctg_overall_leaderboard_table", run=run)
 
-    jmmlu_robust_fewshots = read_wandb_table(table_name=f"jmmlu_robust_{num_few_shots}shot_leaderboard_table", run=run)
-    jaster_control_0shot = read_wandb_table(table_name=f"jaster_control_0shot_leaderboard_table", run=run)
-    jaster_control_fewshots = read_wandb_table(table_name=f"jaster_control_{num_few_shots}shot_leaderboard_table", run=run)
-    jbbq_fewshots = read_wandb_table(table_name=f"jbbq_{num_few_shots}shot_leaderboard_table", run=run)
-    toxicity = read_wandb_table(table_name=f"toxicity_leaderboard_table", run=run)
+        jmmlu_robust_fewshots = read_wandb_table(table_name=f"jmmlu_robust_{num_few_shots}shot_leaderboard_table", run=run)
+        jaster_control_0shot = read_wandb_table(table_name=f"jaster_control_0shot_leaderboard_table", run=run)
+        jaster_control_fewshots = read_wandb_table(table_name=f"jaster_control_{num_few_shots}shot_leaderboard_table", run=run)
+        jbbq_fewshots = read_wandb_table(table_name=f"jbbq_{num_few_shots}shot_leaderboard_table", run=run)
+        toxicity = read_wandb_table(table_name=f"toxicity_leaderboard_table", run=run)
 
     print("-------- aggregating results ----------")
 
@@ -118,61 +152,59 @@ def evaluate():
     leaderboard_dict["model_release_date"] = pd.to_datetime(cfg.model.release_date, format='%m/%d/%Y')
     first_cols = ["model_name","model_size_category"]
     
-    # if cfg.run.GLP: 
-    leaderboard_dict["GLP_表現"] = calculate_combined_means([],["roleplay","writing","humanities"])
-    create_subcategory_table("expression", [], ["roleplay","writing","humanities"])
-    leaderboard_dict["GLP_翻訳"] = calculate_combined_means(["alt-e-to-j","alt-j-to-e","wikicorpus-e-to-j","wikicorpus-j-to-e"], [])
-    create_subcategory_table("translation", ["alt-e-to-j","alt-j-to-e","wikicorpus-e-to-j","wikicorpus-j-to-e"], [])
-    leaderboard_dict["GLP_情報検索"] = calculate_combined_means(["jsquad"], [])
-    create_subcategory_table("information_extraction", ["jsquad"], [])
-    leaderboard_dict["GLP_推論"] = calculate_combined_means([], ["reasoning"])
-    create_subcategory_table("reasoning", [], ["reasoning"])
-    leaderboard_dict["GLP_数学的推論"] = calculate_combined_means(["mawps","mgsm"], ["math"])
-    create_subcategory_table("mathematical_reasoning", ["mawps", "mgsm"], ["math"])
-    leaderboard_dict["GLP_抽出"] = calculate_combined_means(["wiki_ner", "wiki_coreference", "chabsa"], ["extraction"])
-    create_subcategory_table("entity_extraction", ["wiki_ner", "wiki_coreference", "chabsa"], ["extraction"])
-    leaderboard_dict["GLP_知識・質問応答"] = calculate_combined_means(["jcommonsenseqa","jemhopqa", "jmmlu","niilc","aio"], ["stem"])
-    create_subcategory_table("knowledge_QA", ["jcommonsenseqa","jemhopqa", "jmmlu","niilc","aio"], ["stem"])
-    leaderboard_dict["GLP_英語"] = calculate_combined_means(["mmlu_en"], [])
-    create_subcategory_table("english", ["mmlu_en"], [])
-    leaderboard_dict["GLP_意味解析"] = calculate_combined_means(["jnli","janli","jsem","jsick", "jamp"], [])
-    create_subcategory_table("semantic_analysis", ["jnli","janli","jsem","jsick", "jamp"], [])
-    leaderboard_dict["GLP_構文解析"] = calculate_combined_means(["jcola-in-domain","jcola-out-of-domain","jblimp","wiki_reading","wiki_pas","wiki_dependency"], [])   
-    create_subcategory_table("syntactic_analysis", ["jcola-in-domain","jcola-out-of-domain","jblimp","wiki_reading","wiki_pas","wiki_dependency"], []) 
-    leaderboard_dict["汎用的言語性能(GLP)_AVG"] = calculate_average_from_dict(leaderboard_dict, "GLP")
-    first_cols.append("汎用的言語性能(GLP)_AVG")
+    if GLP_flag:
+        leaderboard_dict["GLP_表現"] = calculate_combined_means([],["roleplay","writing","humanities"])
+        create_subcategory_table("expression", [], ["roleplay","writing","humanities"])
+        leaderboard_dict["GLP_翻訳"] = calculate_combined_means(["alt-e-to-j","alt-j-to-e","wikicorpus-e-to-j","wikicorpus-j-to-e"], [])
+        create_subcategory_table("translation", ["alt-e-to-j","alt-j-to-e","wikicorpus-e-to-j","wikicorpus-j-to-e"], [])
+        leaderboard_dict["GLP_情報検索"] = calculate_combined_means(["jsquad"], [])
+        create_subcategory_table("information_extraction", ["jsquad"], [])
+        leaderboard_dict["GLP_推論"] = calculate_combined_means([], ["reasoning"])
+        create_subcategory_table("reasoning", [], ["reasoning"])
+        leaderboard_dict["GLP_数学的推論"] = calculate_combined_means(["mawps","mgsm"], ["math"])
+        create_subcategory_table("mathematical_reasoning", ["mawps", "mgsm"], ["math"])
+        leaderboard_dict["GLP_抽出"] = calculate_combined_means(["wiki_ner", "wiki_coreference", "chabsa"], ["extraction"])
+        create_subcategory_table("entity_extraction", ["wiki_ner", "wiki_coreference", "chabsa"], ["extraction"])
+        leaderboard_dict["GLP_知識・質問応答"] = calculate_combined_means(["jcommonsenseqa","jemhopqa", "jmmlu","niilc","aio"], ["stem"])
+        create_subcategory_table("knowledge_QA", ["jcommonsenseqa","jemhopqa", "jmmlu","niilc","aio"], ["stem"])
+        leaderboard_dict["GLP_英語"] = calculate_combined_means(["mmlu_en"], [])
+        create_subcategory_table("english", ["mmlu_en"], [])
+        leaderboard_dict["GLP_意味解析"] = calculate_combined_means(["jnli","janli","jsem","jsick", "jamp"], [])
+        create_subcategory_table("semantic_analysis", ["jnli","janli","jsem","jsick", "jamp"], [])
+        leaderboard_dict["GLP_構文解析"] = calculate_combined_means(["jcola-in-domain","jcola-out-of-domain","jblimp","wiki_reading","wiki_pas","wiki_dependency"], [])   
+        create_subcategory_table("syntactic_analysis", ["jcola-in-domain","jcola-out-of-domain","jblimp","wiki_reading","wiki_pas","wiki_dependency"], []) 
+        leaderboard_dict["汎用的言語性能(GLP)_AVG"] = calculate_average_from_dict(leaderboard_dict, "GLP")
+        first_cols.append("汎用的言語性能(GLP)_AVG")
 
-    # if cfg.run.ALT:
-    leaderboard_dict["ALT_制御性"] = np.mean([np.mean([jaster_control_0shot["AVG"][0], jaster_control_fewshots["AVG"][0]]), lctg_overall["AVG_Total_ctg"][0]])
-    create_subcategory_table("controllability", [], [], "control")
-    leaderboard_dict["ALT_倫理・道徳"] = calculate_combined_means(["commonsensemoralja"],[])
-    create_subcategory_table("ethics", ["commonsensemoralja"], [])
-    leaderboard_dict["ALT_毒性"] = toxicity[["公平性", "社会規範", "禁止行為", "違反カテゴリ"]].values.mean() if 'toxicity' in locals() else np.nan
-    create_subcategory_table("toxicity", [], [], "toxicity")
-    leaderboard_dict["ALT_バイアス"] = 1 - jbbq_fewshots["avg_abs_bias_score"][0]
-    create_subcategory_table("bias", [], [], "bias")
-    leaderboard_dict["ALT_堅牢性"] = jmmlu_robust_fewshots["robust_score"][0]
-    create_subcategory_table("robustness", [], [], "robust")
-    leaderboard_dict["アラインメント(ALT)_AVG"] = calculate_average_from_dict(leaderboard_dict, "ALT")
-    first_cols.append("アラインメント(ALT)_AVG")
+    if ALT_flag:
+        leaderboard_dict["ALT_制御性"] = np.mean([np.mean([jaster_control_0shot["AVG"][0], jaster_control_fewshots["AVG"][0]]), lctg_overall["AVG_Total_ctg"][0]])
+        create_subcategory_table("controllability", [], [], "control")
+        leaderboard_dict["ALT_倫理・道徳"] = calculate_combined_means(["commonsensemoralja"],[])
+        create_subcategory_table("ethics", ["commonsensemoralja"], [])
+        leaderboard_dict["ALT_毒性"] = toxicity[["公平性", "社会規範", "禁止行為", "違反カテゴリ"]].values.mean() if 'toxicity' in locals() else np.nan
+        create_subcategory_table("toxicity", [], [], "toxicity")
+        leaderboard_dict["ALT_バイアス"] = 1 - jbbq_fewshots["avg_abs_bias_score"][0]
+        create_subcategory_table("bias", [], [], "bias")
+        leaderboard_dict["ALT_堅牢性"] = jmmlu_robust_fewshots["robust_score"][0]
+        create_subcategory_table("robustness", [], [], "robust")
+        leaderboard_dict["アラインメント(ALT)_AVG"] = calculate_average_from_dict(leaderboard_dict, "ALT")
+        first_cols.append("アラインメント(ALT)_AVG")
 
-    # if cfg.run.GLP and cfg.run.ALT:
-    leaderboard_dict["TOTAL_AVG"] = np.mean([leaderboard_dict["汎用的言語性能(GLP)_AVG"], leaderboard_dict["アラインメント(ALT)_AVG"]])
-    first_cols.append("TOTAL_AVG")
+    if GLP_flag and ALT_flag:
+        leaderboard_dict["TOTAL_AVG"] = np.mean([leaderboard_dict["汎用的言語性能(GLP)_AVG"], leaderboard_dict["アラインメント(ALT)_AVG"]])
+        first_cols.append("TOTAL_AVG")
 
     # Average of each dataset
-    # if cfg.run.GLP or cfg.run.ALT:
-    jaster_agg_cols = [c for c in jaster_0shot if not c.startswith("jmmlu_") and c not in ["run_name", "model_name"]]
-    leaderboard_dict["AVG_jaster_0shot"] = jaster_0shot[jaster_agg_cols].mean(axis=1)[0]
-    leaderboard_dict[f"AVG_jaster_{num_few_shots}shots"] = jaster_fewshots[jaster_agg_cols].mean(axis=1)[0]
+    if GLP_flag or ALT_flag:
+        jaster_agg_cols = [c for c in jaster_0shot if not c.startswith("jmmlu_") and c not in ["run_name", "model_name"]]
+        leaderboard_dict["AVG_jaster_0shot"] = jaster_0shot[jaster_agg_cols].mean(axis=1)[0]
+        leaderboard_dict[f"AVG_jaster_{num_few_shots}shots"] = jaster_fewshots[jaster_agg_cols].mean(axis=1)[0]
     
-    # if cfg.run.GLP:
-    leaderboard_dict["AVG_mtbench"] = mtbench["AVG_mtbench"][0]
+    if GLP_flag:
+        leaderboard_dict["AVG_mtbench"] = mtbench["AVG_mtbench"][0]
     
-    # if cfg.run.ALT:
-    leaderboard_dict["AVG_lctg"] = lctg_overall["AVG_Total_ctg"][0]
-
-    
+    if ALT_flag:
+        leaderboard_dict["AVG_lctg"] = lctg_overall["AVG_Total_ctg"][0]
 
     leaderboard_table = pd.DataFrame([leaderboard_dict])
     cols = leaderboard_table.columns
@@ -195,8 +227,7 @@ def evaluate():
             ],
         ),
         columns=["category", "score"],
-    )
-    # ) if cfg.run.GLP else pd.DataFrame()
+    ) if GLP_flag else pd.DataFrame()
 
     alt_radar_table = pd.DataFrame(
         data=radar_contents(
@@ -210,14 +241,11 @@ def evaluate():
             ],
         ),
         columns=["category", "score"],
-    )
-    # ) if cfg.run.ALT else pd.DataFrame()
+    ) if ALT_flag else pd.DataFrame()
 
     run.log({
         "leaderboard_table": wandb.Table(dataframe=leaderboard_table),
-        "glp_radar_table": wandb.Table(dataframe=glp_radar_table),
-        "alt_radar_table": wandb.Table(dataframe=alt_radar_table),
-        # "glp_radar_table": wandb.Table(dataframe=glp_radar_table) if cfg.run.GLP else None,
-        # "alt_radar_table": wandb.Table(dataframe=alt_radar_table) if cfg.run.ALT else None
+        "glp_radar_table": wandb.Table(dataframe=glp_radar_table) if GLP_flag else None,
+        "alt_radar_table": wandb.Table(dataframe=alt_radar_table) if ALT_flag else None
     })
     run.finish()

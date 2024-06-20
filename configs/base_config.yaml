@@ -13,6 +13,7 @@ run:
   lctg: true
   toxicity: true
   jaster: true
+  aggregate: true
 
 model:
   use_wandb_artifacts: false
