@@ -8,7 +8,7 @@ from langchain.schema import AIMessage
 from tqdm import tqdm
 
 from config_singleton import WandbConfigSingleton
-from .chat_bedrock import chat_bedrock
+# from .chat_bedrock import chat_bedrock
 
 MAX_TRIES = 100
 
@@ -54,6 +54,8 @@ class LLMAsyncProcessor:
                     break
                 else:
                     print(f"Try {i+1}")
+        elif self.api_type == "amazon_bedrock":
+            response = self.llm.invoke(messages, **kwargs)
         else:
             raise NotImplementedError(
                 "Synchronous invoke is only implemented for Google API"
@@ -64,11 +66,8 @@ class LLMAsyncProcessor:
     @error_handler
     async def _ainvoke(self, messages: Messages, **kwargs) -> Tuple[AIMessage, float]:
         await asyncio.sleep(self.inference_interval)
-        if self.api_type == "google":
-            # Synchronous call for Google API
+        if self.api_type in ["google", "amazon_bedrock"]:
             return await asyncio.to_thread(self._invoke, messages, **kwargs)
-        elif self.api_type == "amazon_bedrock":
-            return await asyncio.to_thread(chat_bedrock, messages, **kwargs)
         else:
             response = await self.llm.ainvoke(messages, **kwargs)
         return response, 0
