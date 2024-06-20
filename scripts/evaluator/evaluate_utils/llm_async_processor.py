@@ -8,6 +8,7 @@ from langchain.schema import AIMessage
 from tqdm import tqdm
 
 from config_singleton import WandbConfigSingleton
+from chat_bedrock import chat_bedrock
 
 MAX_TRIES = 100
 
@@ -49,7 +50,7 @@ class LLMAsyncProcessor:
             for i in range(10):
                 response = self.llm.invoke(messages)
                 if response.content.strip():
-                   break
+                    break
                 else:
                     print(f"Try {i+1}")
         else:
@@ -64,6 +65,8 @@ class LLMAsyncProcessor:
         if self.api_type == "google":
             # Synchronous call for Google API
             return await asyncio.to_thread(self._invoke, messages, **kwargs)
+        elif self.api_type == "amazon_bedrock":
+            return await asyncio.to_thread(chat_bedrock, messages, **kwargs)
         else:
             response = await self.llm.ainvoke(messages, **kwargs)
         return response, 0
