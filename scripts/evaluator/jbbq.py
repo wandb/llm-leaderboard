@@ -272,7 +272,7 @@ def evaluate_n_shot(few_shots: bool):
                     inputs = [(messages, {"max_tokens": task_data["output_length"]})]
                     llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
                     results = llm_ap.get_results()
-                    output = results[0][0].content
+                    output = results[0].content
                     prompt = apply_chat_template(messages=messages)
 
                     # score
