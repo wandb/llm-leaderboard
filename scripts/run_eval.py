@@ -82,22 +82,24 @@ llm = get_llm_inference_engine()
 instance = WandbConfigSingleton.get_instance()
 instance.llm = llm
 
-if cfg.run.GLP:
-    # mt-bench evaluation
+# mt-bench evaluation
+if cfg.run.mtbench:
     mtbench.evaluate()
 
-if cfg.run.ALT:
-    # jbbq
+# jbbq
+if cfg.run.jbbq:
     jbbq.evaluate()
 
-    # lctg-bench
+# lctg-bench
+if cfg.run.lctg:
     lctg.evaluate()
 
-    # toxicity
+# toxicity
+if cfg.run.toxicity:
     toxicity.evaluate()
 
 # Evaluation phase
-if cfg.run.GLP or cfg.run.ALT:
+if cfg.run.jaster:
     # llm-jp-eval evaluation (jmmlu含む)
     jaster.evaluate()
 
