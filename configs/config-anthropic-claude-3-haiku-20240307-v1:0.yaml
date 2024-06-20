@@ -6,7 +6,6 @@ wandb:
 api: "amazon_bedrock"
 batch_size: 1 # vllmは256, apiは32を推奨
 inference_interval: 1 # seconds
-testmode: true
 
 model:
   pretrained_model_name_or_path: "anthropic.claude-3-haiku-20240307-v1:0" #if you use openai api, put the name of model
