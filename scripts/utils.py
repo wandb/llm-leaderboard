@@ -29,12 +29,15 @@ def cleanup_gpu():
 def read_wandb_table(
     table_name: str,
     run: object,
+    run_path: str = None,
     entity: str = None,
     project: str = None,
     run_id: str = None,
     version: str = "latest",
 ) -> pd.DataFrame:
-    if entity is None or project is None or run_id is None:
+    if run_path is not None:
+        entity, project, run_id = run_path.split("/")
+    elif entity is None or project is None or run_id is None:
         entity = run.entity
         project = run.project
         run_id = run.id
