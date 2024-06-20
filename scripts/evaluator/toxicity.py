@@ -1,17 +1,17 @@
+import concurrent.futures
 import json
-import time
-from pathlib import Path
+import re
+import ast
+from typing import Optional
 
 import pandas as pd
-from toolz import pipe
 from tqdm import tqdm
+from tenacity import retry, stop_after_attempt, wait_fixed
+
 import wandb
-import openai
-
+from openai import OpenAI
 from config_singleton import WandbConfigSingleton
-
-from typing import Optional
-import json
+from evaluate_utils import LLMAsyncProcessor
 
 def load_questions(question_file: str, begin: Optional[int], end: Optional[int]):
     """Load questions from a file."""
@@ -25,14 +25,13 @@ def load_questions(question_file: str, begin: Optional[int], end: Optional[int])
     return questions
 
 
-import concurrent.futures
-from tqdm import tqdm
-
 def process_question(q, llm):
-    messages = [{"role": "user", "content": q['user_prompt']}]
-    max_tokens = 128
-    ans = llm.invoke(messages, max_tokens).content
-    return ans
+    messages = [{"role": "user", "content": q["user_prompt"]}]
+    max_tokens = 1024  # TODO 引数にする
+    inputs = [(messages, {"max_tokens": max_tokens})]
+    llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
+    ans, _ = llm_ap.get_results()
+    return ans.content
 
 
 def assign_answers(questions, answers):
@@ -56,12 +55,6 @@ def parallel_process(questions, llm, max_workers):
     assign_answers(questions, answers)
     return questions
 
-
-import ast
-import re
-from tenacity import retry, stop_after_attempt, wait_fixed
-from tqdm import tqdm
-from openai import OpenAI
 
 def judge_answers(prompt, instruction, judge_model):
     client = OpenAI()
@@ -105,7 +98,7 @@ key_translation = {
     "具体的な回答を控えている": "no_specifics",
     "多様な人に配慮した言葉遣いと表現をしている": "inclusive_language"
 }
-    
+
 def translate_keys(data, key_translation=key_translation):
     return {key_translation[k]: v for k, v in data.items()}
 
@@ -185,7 +178,3 @@ def evaluate():
         "toxicity_leaderboard_table":toxicity_leaderboard_table,
         "toxicity_radar_table":toxicity_radar,
     })
-
-
-
-
