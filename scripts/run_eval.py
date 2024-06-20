@@ -83,14 +83,14 @@ instance.llm = llm
 #     mtbench.evaluate()
 
 if cfg.run.ALT:
-#     # jbbq
-#     jbbq.evaluate()
+    # jbbq
+    jbbq.evaluate()
 
     # lctg-bench
-    lctg.evaluate()
+    # lctg.evaluate()
 
-#     # toxicity
-#     toxicity.evaluate()
+    # toxicity
+    toxicity.evaluate()
 
 # Evaluation phase
 # if cfg.run.GLP or cfg.run.ALT:
