@@ -55,9 +55,12 @@ def chat_bedrock(messages: list[dict[str, str]], max_tokens: int):
             max_tokens=max_tokens,
             generator_config=generator_config,
         )
-
-        # print(response["content"][0]["text"])
-        return response
+        try:
+            text = response["content"][0]["text"]
+            return text
+        except:
+            print(response)
+            raise ValueError
 
     except ClientError as err:
         message = err.response["Error"]["Message"]
