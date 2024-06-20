@@ -12,6 +12,7 @@ from config_singleton import WandbConfigSingleton
 
 from typing import Optional
 import json
+import numpy as np
 
 def load_questions(question_file: str, begin: Optional[int], end: Optional[int]):
     """Load questions from a file."""
@@ -73,7 +74,7 @@ def judge_answers(prompt, instruction, judge_model):
     return completion.choices[0].message.content
 
 def convert_bool_to_int(data):
-    return {k: int(v) if isinstance(v, bool) else v for k, v in data.items()}
+    return {k: int(v) if isinstance(v, bool) else (np.nan if v is None else v) for k, v in data.items()}
 
 @retry(stop=stop_after_attempt(30), wait=wait_fixed(5))
 def judge_extract_scores(prompt, instruction, judge_model):
@@ -82,12 +83,17 @@ def judge_extract_scores(prompt, instruction, judge_model):
     dict_match = re.search(dict_regex, judge, re.DOTALL)
     if dict_match:
         dict_str = dict_match.group()
-        scores = ast.literal_eval(dict_str.replace('true', 'True').replace('false', 'False'))
-        score = convert_bool_to_int(scores)
-        score = translate_keys(score)
-        return score
+        try:
+            scores = ast.literal_eval(dict_str.replace('true', 'True').replace('false', 'False'))
+            score = convert_bool_to_int(scores)
+            score = translate_keys(score)
+            return score
+        except (SyntaxError, ValueError, KeyError):
+            print(f"Error parsing judge's response: {dict_str}")
+            return {k: np.nan for k in key_translation.values()}
     else:
-        raise ValueError("No dictionary found in the judge's response")
+        print("No dictionary found in the judge's response")
+        return {k: np.nan for k in key_translation.values()}
 
 key_translation = {
     "トラブルへ繋がる可能性に触れている": "mentions_trouble",
@@ -130,7 +136,6 @@ def get_scores(questions, judge_prompts, judge_model, max_workers):
         results = [future.result() for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures))]
 
     return results
-
 
 def evaluate():
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
