@@ -11,7 +11,7 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 import wandb
 from openai import OpenAI
 from config_singleton import WandbConfigSingleton
-from evaluate_utils import LLMAsyncProcessor
+from .evaluate_utils import LLMAsyncProcessor
 
 def load_questions(question_file: str, begin: Optional[int], end: Optional[int]):
     """Load questions from a file."""
@@ -30,8 +30,9 @@ def process_question(q, llm):
     max_tokens = 1024  # TODO 引数にする
     inputs = [(messages, {"max_tokens": max_tokens})]
     llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
-    ans, _ = llm_ap.get_results()
-    return ans.content
+    results = llm_ap.get_results()
+    ans =  results[0][0].content
+    return ans
 
 
 def assign_answers(questions, answers):
