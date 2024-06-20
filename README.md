@@ -1,4 +1,8 @@
-# Nejumi-leaderboard Neo
+# Nejumi-leaderboard3
+
+## License
+### Not for Commercial Use
+The contents of this repository are not permitted for commercial use.
 
 ## Set up
 1. Set up environment variables
@@ -18,15 +22,22 @@ export AWS_DEFAULT_REGION=<your AWS_DEFAULT_REGION>
 huggingface-cli login
 ```
 
+2. Clone the repository
+```bash
+git clone https://github.com/wandb/llm-leaderboard.git
+cd llm-leaderboard
+```
 
+3. Set up the Python environment
+```bash
+pip install -r requirements.txt
+```
 
 ## Data Prepartion 
 ### preparation for llm-jp-eval
 If you use wandb's Artifacts, this process is not necessary. The following data is currently registered in wandb's Artifacts.
 
-- v 1.0.0: "wandb-japan/llm-leaderboard/jaster:v0"
-- v 1.1.0: "wandb-japan/llm-leaderboard/jaster:v3"
-- v 1.2.1 (latest): "wandb-japan/llm-leaderboard/jaster:v6"
+- v 1.3.0 (latest): "wandb-japan/llm-leaderboard3/jaster:v2"
 
 Below, an example of the process of registering data in wandb's Artifacts is described for reference 
 
@@ -44,11 +55,13 @@ If you create questions or prompts originally, you also need to create reference
 The following data are based on [Stability-AI/FastChat/jp-stable](https://github.com/Stability-AI/FastChat/tree/jp-stable)
 - japanese questions
   - Stability-AI/FastChat (5d4f13a) v1.0 : 'wandb-japan/llm-leaderboard/mtbench_ja_question:v0'
-  - [Stability-AI/FastChat (97d0f08) v1.1 (latest)](https://github.com/Stability-AI/FastChat/commit/97d0f0863c5ee8610f00c94a293418a4209c52dd) : 'wandb-japan/llm-leaderboard/mtbench_ja_question:v1'
+  - [Stability-AI/FastChat (97d0f08) v1.1](https://github.com/Stability-AI/FastChat/commit/97d0f0863c5ee8610f00c94a293418a4209c52dd) : 'wandb-japan/llm-leaderboard/mtbench_ja_question:v1'
+  - [wandb/llm-leaderboard (8208d2a) (latest)](https://github.com/wandb/llm-leaderboard/commit/8208d2a2f9ae5b7f264b3d3cd4f28334afb7af13) : 'wandb-japan/llm-leaderboard/mtbench_ja_question:v4'
 - japanese prompt
   - [Stability-AI/FastChat (5d4f13a) (latest)](https://github.com/Stability-AI/FastChat/tree/jp-stable) : 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1'
 - reference answer
-  - [Stability-AI/FastChat (5d4f13a) (latest)](https://github.com/Stability-AI/FastChat/tree/jp-stable) : 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v0'
+  - [Stability-AI/FastChat (5d4f13a)](https://github.com/Stability-AI/FastChat/tree/jp-stable) : 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v0'
+  - [wandb/llm-leaderboard (8208d2a) (latest)](https://github.com/wandb/llm-leaderboard/commit/8208d2a2f9ae5b7f264b3d3cd4f28334afb7af13) : 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v2'
 
 
 Below, an example of the process of registering data in wandb's Artifacts is described for reference 
@@ -56,6 +69,19 @@ Below, an example of the process of registering data in wandb's Artifacts is des
 # register questions
   python3 scripts/upload_mtbench_question.py -e <wandb/entity> -p <wandb/project> -v <data version> -f "your path"
 ```
+
+## Create chat_template file
+1. create chat_templates/model_id.jinja
+If the chat_template is specified in the tokenizer_config.json of the evaluation model, create a .jinja file with that configuration.
+If chat_template is not specified in tokenizer_config.json, refer to the model card or other relevant documentation to create a chat_template and document it in a .jinja file.
+
+2. test chat_templates
+If you want to check the output of the chat_templates, you can use the following script:
+```bash
+python3 scripts/test_chat_template.py -m <model_id> -c <chat_template>
+```
+If the model ID and chat_template are the same, you can omit -c <chat_template>.
+
 ## Create config.yaml file
 1. create configs/config.yaml
 ```bash
