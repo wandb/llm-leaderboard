@@ -4,7 +4,6 @@ import time
 from pathlib import Path
 
 import wandb
-from langchain.prompts import BasePromptTemplate
 from tqdm import tqdm
 import pandas as pd
 from toolz import pipe
@@ -269,7 +268,7 @@ def evaluate_n_shot(few_shots: bool):
                         message["content"] = str(message["content"])
 
                     # generate output
-                    output = llm.invoke(messages).content
+                    output = llm.invoke(messages, task_data["output_length"]).content
                     prompt = apply_chat_template(messages=messages)
 
                     # score
