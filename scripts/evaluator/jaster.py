@@ -266,7 +266,7 @@ def evaluate_n_shot(few_shots: bool):
     
     new_order=["model_name","task","index","input","raw_output","output","expected_output",
                "prompt","score","control_score","metrics","control_method",
-               "dataset","num_few_shots","latency","subset","sub_category"]
+               "dataset","num_few_shots","subset","sub_category"]
     dev_table = dev_table[new_order]
     test_table = test_table[new_order]
 
