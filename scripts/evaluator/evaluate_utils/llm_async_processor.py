@@ -9,6 +9,7 @@ from tqdm import tqdm
 
 from config_singleton import WandbConfigSingleton
 
+
 MAX_TRIES = 100
 
 Messages: TypeAlias = List[dict[str, str]]
@@ -39,34 +40,36 @@ class LLMAsyncProcessor:
         self.llm = llm
         self.inputs = inputs
         self.api_type = cfg.api
-        self.batch_size = cfg.batch_size if hasattr(cfg, "batch_size") else 256
+        self.batch_size = cfg.get("batch_size", 256)
+        self.inference_interval = cfg.inference_interval
 
-    @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
     @error_handler
+    @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
     def _invoke(self, messages: Messages, **kwargs) -> Tuple[AIMessage, float]:
         if self.api_type == "google":
             self.llm.max_output_tokens = kwargs["max_tokens"]
-            for i in range(10):
+            for i in range(n:=10):
                 response = self.llm.invoke(messages)
                 if response.content.strip():
-                   break
+                    break
                 else:
-                    print(f"Try {i+1}")
+                    print(f"Retrying request due to empty content. Retry attempt {i+1} of {n}.")
+        elif self.api_type == "amazon_bedrock":
+            response = self.llm.invoke(messages, **kwargs)
         else:
             raise NotImplementedError(
                 "Synchronous invoke is only implemented for Google API"
             )
-        return response, 0
+        return response
 
-    @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
     @error_handler
+    @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
     async def _ainvoke(self, messages: Messages, **kwargs) -> Tuple[AIMessage, float]:
-        if self.api_type == "google":
-            # Synchronous call for Google API
+        await asyncio.sleep(self.inference_interval)
+        if self.api_type in ["google", "amazon_bedrock"]:
             return await asyncio.to_thread(self._invoke, messages, **kwargs)
         else:
-            response = await self.llm.ainvoke(messages, **kwargs)
-        return response, 0
+            return await self.llm.ainvoke(messages, **kwargs)
 
     async def _process_batch(self, batch: Inputs) -> List[Tuple[AIMessage, float]]:
         tasks = [
@@ -82,12 +85,13 @@ class LLMAsyncProcessor:
         for item in data:
             assert isinstance(item, dict), "Each item should be a dictionary"
             # 'role'キーと'content'キーが存在することを確認
-            assert 'role' in item, "'role' key is missing in an item"
-            assert 'content' in item, "'content' key is missing in an item"
+            assert "role" in item, "'role' key is missing in an item"
+            assert "content" in item, "'content' key is missing in an item"
             # 'role'の値が'system', 'assistant', 'user'のいずれかであることを確認
-            assert item['role'] in ['system', 'assistant', 'user'], "'role' should be one of ['system', 'assistant', 'user']"
+            roles = {"system", "assistant", "user"}
+            assert item["role"] in roles, f"'role' should be one of {str(roles)}"
             # 'content'の値が文字列であることを確認
-            assert isinstance(item['content'], str), "'content' should be a string"
+            assert isinstance(item["content"], str), "'content' should be a string"
 
     async def _gather_tasks(self) -> List[Tuple[AIMessage, float]]:
         for messages, _ in self.inputs:

@@ -4,7 +4,8 @@ wandb:
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
 api: "amazon_bedrock"
-batch_size: 2 # vllmは256, apiは32を推奨
+batch_size: 1 # vllmは256, apiは32を推奨
+inference_interval: 5 # seconds
 
 model:
   pretrained_model_name_or_path: "anthropic.claude-3-sonnet-20240229-v1:0" #if you use openai api, put the name of model
