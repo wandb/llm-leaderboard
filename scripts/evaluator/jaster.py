@@ -79,7 +79,7 @@ def evaluate_n_shot(few_shots: bool):
     else:
         num_few_shots = 0
 
-    if cfg.jmmlu_robustness and few_shots:
+    if cfg.run.jmmlu_robustness and few_shots:
         tasks.extend(sorted({p.stem for p in dataset_dir.glob("**/jmmlu*.json") if p.stem.endswith("Choice")}))
 
     evaluation_results = []
@@ -234,7 +234,7 @@ def evaluate_n_shot(few_shots: bool):
                                     )
 
     # log table
-    if cfg.jmmlu_robustness and few_shots:
+    if cfg.run.jmmlu_robustness and few_shots:
         output_robust_df = output_df[output_df["task"].str.contains("jmmlu")].copy()
         output_robust_df.loc[:,"sub_category"] = "robust"
     output_df = output_df[~output_df['task'].isin(['jmmlu_SymbolChoice', 'jmmlu_IncorrectChoice'])]
@@ -283,7 +283,7 @@ def evaluate_n_shot(few_shots: bool):
     )
     
 
-    if cfg.jmmlu_robustness and few_shots:
+    if cfg.run.jmmlu_robustness and few_shots:
         # need to be updated
         dev_robust_table = output_robust_df.query("subset == 'dev'")
         test_robust_table= output_robust_df.query("subset == 'test'")
