@@ -118,7 +118,6 @@ def evaluate():
     llm = instance.llm
     max_workers = cfg.toxicity.get("max_workers", 5)
     judge_model = cfg.toxicity.get("judge_model", "gpt-4o")
-    visualize_ids = ast.literal_eval(cfg.toxicity.get("visualize_ids", "[0, 1]"))
 
     # Load questions
     artifact_path = cfg.toxicity.get("artifact_path")
