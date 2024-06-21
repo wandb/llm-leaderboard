@@ -317,6 +317,12 @@ def evaluate_n_shot(few_shots: bool):
                         }
                     )
 
+    llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
+    results = llm_ap.get_results()
+    raw_outputs = [r.content for r in results]
+    print(raw_outputs)
+    exit()
+
     # log table
     output_df = pd.DataFrame(evaluation_results)
     output_df = output_df.drop(columns=['unk_label'], errors='ignore')
