@@ -9,5 +9,7 @@ inference_interval: 1 # seconds
 
 model:
   pretrained_model_name_or_path: "anthropic.claude-3-haiku-20240307-v1:0" #if you use openai api, put the name of model
-  size: "api"
+  size_category: "api"
+  size: null 
   release_date: "2/29/2024"
+s
