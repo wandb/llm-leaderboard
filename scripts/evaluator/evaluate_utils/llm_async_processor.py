@@ -44,17 +44,17 @@ class LLMAsyncProcessor:
         self.batch_size = cfg.get("batch_size", 256)
         self.inference_interval = cfg.inference_interval
 
-    @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
     @error_handler
+    @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
     def _invoke(self, messages: Messages, **kwargs) -> Tuple[AIMessage, float]:
         if self.api_type == "google":
             self.llm.max_output_tokens = kwargs["max_tokens"]
-            for i in range(10):
+            for i in range(n:=10):
                 response = self.llm.invoke(messages)
                 if response.content.strip():
                     break
                 else:
-                    print(f"Try {i+1}")
+                    print(f"Retrying request due to empty content. Retry attempt {i+1} of {n}.")
         elif self.api_type == "amazon_bedrock":
             response = self.llm.invoke(messages, **kwargs)
         else:
@@ -63,8 +63,8 @@ class LLMAsyncProcessor:
             )
         return response
 
-    @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
     @error_handler
+    @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
     async def _ainvoke(self, messages: Messages, **kwargs) -> Tuple[AIMessage, float]:
         await asyncio.sleep(self.inference_interval)
         if self.api_type in ["google", "amazon_bedrock"]:
