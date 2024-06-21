@@ -49,8 +49,6 @@ def get_api_answer(question_file, answer_file, num_worker = 1):
                 answer_file,
             )
             futures.append(future)
-            import time
-            time.sleep(5)
 
         for future in tqdm.tqdm(
             concurrent.futures.as_completed(futures), total=len(futures)
@@ -86,6 +84,7 @@ def get_answer(
 
         turns = []
         for j in range(len(question["turns"])):
+            time.sleep(cfg.inference_interval)
             conv.append_message(conv.roles[0], question["turns"][j])
             conv.append_message(conv.roles[1], None)
 
