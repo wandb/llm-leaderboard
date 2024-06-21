@@ -11,5 +11,6 @@ model:
   max_model_len: 3500 # update 
   pretrained_model_name_or_path: "SakanaAI/EvoLLM-JP-v1-7B" #if you use openai api, put the name of model
   chat_template: "SakanaAI/EvoLLM-JP-v1-7B"
-  size: "<10B"
+  size_category: "<10B"
+  size: 7241732096
   release_date: "3/21/2024"
