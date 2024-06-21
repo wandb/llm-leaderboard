@@ -170,6 +170,31 @@ def calculate_additional_metrics(evaluation_results, dataset_name, num_few_shots
 
     return score_dict
 
+def process_results(results, evaluation_results):
+    for r, e_r in zip(results, evaluation_results):
+        raw_output = r.content
+        y_pred: str = pipe(
+            raw_output,
+            lambda x: text_formatter(x, e_r["dataset"]),
+            lambda x: x.split("\n\n")[0],
+            normalize,
+            lambda x: x.replace(" ", "")
+        )
+        # collect data
+        error = 0
+        if y_pred not in ["0", "1", "2"]:
+            error = 1
+        correct = 0
+        if y_pred == e_r["expected_output"]:
+            correct = 1
+        e_r.update({
+            'raw_output': raw_output,
+            "output": y_pred,
+            "correct": correct,
+            "format_error": error
+
+        })
+    return evaluation_results
 
 def evaluate_n_shot(few_shots: bool):
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
@@ -278,7 +303,7 @@ def evaluate_n_shot(few_shots: bool):
                     #     normalize,
                     #     lambda x: x.replace(" ", "")
                     # )
-                    # y_true: str = pipe(str(sample["output"]), normalize)
+                    y_true: str = pipe(str(sample["output"]), normalize)
 
                     # # collect data
                     # error = 0
@@ -310,7 +335,7 @@ def evaluate_n_shot(few_shots: bool):
                             # "format_error": error
                             'raw_output': None,
                             "output": None,
-                            "expected_output": None,
+                            "expected_output": y_true,
                             "correct": None,
                             "unk_label": sample["unk_label"],
                             "format_error": None
@@ -319,9 +344,7 @@ def evaluate_n_shot(few_shots: bool):
 
     llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
     results = llm_ap.get_results()
-    raw_outputs = [r.content for r in results]
-    print(raw_outputs)
-    exit()
+    processed_results = process_results(results=results, evaluation_results=evaluation_results)
 
     # log table
     output_df = pd.DataFrame(evaluation_results)
