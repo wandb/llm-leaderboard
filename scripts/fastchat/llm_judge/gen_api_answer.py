@@ -84,7 +84,6 @@ def get_answer(
 
         turns = []
         for j in range(len(question["turns"])):
-            time.sleep(cfg.inference_interval)
             conv.append_message(conv.roles[0], question["turns"][j])
             conv.append_message(conv.roles[1], None)
 
