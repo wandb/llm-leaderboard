@@ -1,6 +1,5 @@
 # for test
 import json
-import time
 from pathlib import Path
 
 import wandb
@@ -202,7 +201,6 @@ def evaluate_n_shot(few_shots: bool):
     evaluation_results = []
     for task in tasks:
         # execute evaluation
-        language = cfg[dataset_name].language
         for subset in ("test", "dev"):
 
             eval_matainfo = {
