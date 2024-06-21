@@ -177,8 +177,9 @@ def process_results(results, evaluation_results):
             raw_output,
             lambda x: text_formatter(x, e_r["dataset"]),
             lambda x: x.split("\n\n")[0],
-            normalize,
-            lambda x: x.replace(" ", "")
+            lambda x: x.strip(),
+            lambda x: x.strip("'").strip('"'),
+            lambda x: x.strip(),
         )
         # collect data
         error = 0
@@ -288,7 +289,8 @@ def evaluate_n_shot(few_shots: bool):
 
                     # generate output
                     prompt = apply_chat_template(messages=messages)
-                    generator_config = {"max_tokens": task_data["output_length"]}
+                    #generator_config = {"max_tokens": task_data["output_length"]}
+                    generator_config = {"max_tokens": 10}
                     inputs.append((messages, generator_config))
 
                     y_true: str = pipe(str(sample["output"]), normalize)
