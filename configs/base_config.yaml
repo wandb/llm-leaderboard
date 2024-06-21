@@ -8,12 +8,12 @@ github_version: v3.0.0 #for recording
 testmode: false
 
 run:
+  jaster: true
+  jmmlu_robustness: true # if this is set as true, jaster should set as true
   mtbench: true
   jbbq: true
   lctg: true
   toxicity: true
-  jaster: true
-  jmmlu_robustness: True #if this is set as true, jaster should set as true
   aggregate: true
 
 model:
@@ -35,7 +35,7 @@ num_few_shots: 2
 
 jaster:
   message_intro: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。"
-  artifacts_path: "wandb-japan/llm-leaderboard3/jaster:v3"
+  artifacts_path: "wandb-japan/llm-leaderboard3/jaster:v5"
   dataset_dir: "jaster"
 
 lctg:
@@ -45,11 +45,6 @@ lctg:
 jbbq:
   artifacts_path: 'wandb-japan/llm-leaderboard3-private/jbbq:v2'
   dataset_dir: 'jbbq'
-  language: 'ja'
-
-sample_dataset:
-  artifacts_path: 't-ibi/llm-leaderboard/sample_dataset:v1'
-  dataset_dir: 'sample_dataset'
   language: 'ja'
 
 toxicity:
@@ -69,11 +64,11 @@ mtbench:
     reasoning: 0.0
     stem: 0.1
     humanities": 0.1
-  question_artifacts_path: 'wandb-japan/llm-leaderboard3/mtbench_ja_question:v1' # if testmode is true, small dataset will be used
-  question_artifacts_path_test: 'wandb-japan/llm-leaderboard3/mtbench_ja_question_small_for_test:v1'
-  referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard3/mtbench_ja_referenceanswer:v1' # if testmode is true, small dataset will be used
-  referenceanswer_artifacts_path_test: 'wandb-japan/llm-leaderboard3/mtbench_ja_referenceanswer_small_for_test:v1'
-  judge_prompt_artifacts_path: 'wandb-japan/llm-leaderboard3/mtbench_ja_prompt:v1' 
+  question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_question:v4' # if testmode is true, small dataset will be used
+  question_artifacts_path_test: 'wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v5'
+  referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v2' # if testmode is true, small dataset will be used
+  referenceanswer_artifacts_path_test: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v2'
+  judge_prompt_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1' 
   bench_name: 'japanese_mt_bench'
   model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
   question_begin: null 
@@ -90,3 +85,7 @@ mtbench:
   baseline_model: null 
   parallel: 80
   first_n: null
+
+sample_dataset:
+  artifacts_path: "your artifact path here"
+  # add necessary configration here
