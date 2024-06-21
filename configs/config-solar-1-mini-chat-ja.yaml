@@ -5,6 +5,7 @@ wandb:
 # if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
 api: upstage
 batch_size: 32 # vllmは256, apiは32を推奨
+# inference_interval: 1 # seconds
 
 model:
   use_wandb_artifacts: false
