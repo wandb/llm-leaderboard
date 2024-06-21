@@ -205,7 +205,9 @@ def evaluate_n_shot(few_shots: bool):
             raw_output,
             lambda x: text_formatter(x, evaluation_result["task"]),
             lambda x: x.split("\n\n")[0],
+            lambda x: x.strip(),
             lambda x: x.strip("'").strip('"'),
+            lambda x: x.strip(),
             normalize,
         )
         metrics_func = evaluation_result["metrics_func"]
