@@ -11,4 +11,4 @@ model:
   pretrained_model_name_or_path: "solar-1-mini-chat-ja" #if you use openai api, put the name of model
   chat_template: null
   size: "api"
-  release_date: "22/5/2024"
+  release_date: "5/22/2024"
