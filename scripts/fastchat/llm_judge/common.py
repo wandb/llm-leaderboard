@@ -698,8 +698,6 @@ def chat_completion_bedrock(chat_state, model, conv, temperature, max_tokens):
         try:
             response = chat_state.run(conv.messages[-2][1])
             output = response
-            import time
-            time.sleep(5)
             break
         except Exception as e:
             print(type(e), e)
