@@ -9,7 +9,6 @@ from tqdm import tqdm
 
 from config_singleton import WandbConfigSingleton
 
-# from .chat_bedrock import chat_bedrock
 
 MAX_TRIES = 100
 
