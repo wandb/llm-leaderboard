@@ -22,20 +22,21 @@ def update_flag(cfg, blend_cfg):
         toxicity_flag = cfg.run.toxicity
         jaster_flag = cfg.run.jaster
 
-    for old_run in blend_cfg.old_runs:
-        if old_run is None or old_run.dataset is None:
-            continue
-        for dataset in old_run.dataset:
-            if "mtbench" in dataset:
-                mtbench_flag = True
-            elif "jbbq" in dataset:
-                jbbq_flag = True
-            elif "lctg" in dataset:
-                lctg_flag = True
-            elif "toxicity" in dataset:
-                toxicity_flag = True
-            elif "jaster" in dataset:
-                jaster_flag = True
+    if blend_cfg:
+        for old_run in blend_cfg.old_runs:
+            if old_run.dataset is None:
+                continue
+            for dataset in old_run.dataset:
+                if "mtbench" in dataset:
+                    mtbench_flag = True
+                elif "jbbq" in dataset:
+                    jbbq_flag = True
+                elif "lctg" in dataset:
+                    lctg_flag = True
+                elif "toxicity" in dataset:
+                    toxicity_flag = True
+                elif "jaster" in dataset:
+                    jaster_flag = True
 
     if mtbench_flag and jaster_flag:
         GLP_flag = True
