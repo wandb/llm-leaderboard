@@ -1,5 +1,5 @@
 wandb:
-  run_name: "SakanaAI/EvoLLM-JP-v1-7B" # use run_name defined above
+  run_name: "SakanaAI/EvoLLM-JP-A-v1-7B" # use run_name defined above
 
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
@@ -8,7 +8,8 @@ batch_size: 256 # vllmは256, apiは32を推奨
 
 model:
   use_wandb_artifacts: false
-  pretrained_model_name_or_path: "SakanaAI/EvoLLM-JP-v1-7B" #if you use openai api, put the name of model
-  chat_template: "SakanaAI/EvoLLM-JP-v1-7B"
+  pretrained_model_name_or_path: "SakanaAI/EvoLLM-JP-A-v1-7B" #if you use openai api, put the name of model
+  chat_template: "SakanaAI/EvoLLM-JP-A-v1-7B"
   size: "<10B"
   release_date: "3/21/2024"
+
