@@ -41,7 +41,7 @@ lctg:
   dataset_dir: "lctg"
 
 jbbq:
-  artifacts_path: 'ryokanazawa/llm-leaderboard3-private/jbbq:v0'
+  artifacts_path: 'wandb-japan/llm-leaderboard3-private/jbbq:v2'
   dataset_dir: 'jbbq'
   language: 'ja'
 
