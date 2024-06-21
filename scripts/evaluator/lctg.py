@@ -23,10 +23,9 @@ def parallel_inference(inputs, lmt_type, llm):
     llm_ap = LLMAsyncProcessor(
         llm=llm,
         inputs=inputs,
-        # batch_size=256,  # APIの場合変える必要あり
     )
     results = llm_ap.get_results()
-    results = [message[0].content for message in results]
+    results = [response.content for response in results]
 
     return lmt_type, results
 
@@ -103,7 +102,7 @@ def evaluate():
                 inputs=inputs
             )
             results = llm_ap.get_results()
-            all_results[lmt_type]=[message[0].content for message in results]
+            all_results[lmt_type]=[response.content for response in results]
 
         data = {
             "generated_text_id": list(range(len(master_df["prompt_id"].tolist()))),
