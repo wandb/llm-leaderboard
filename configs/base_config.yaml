@@ -59,7 +59,6 @@ toxicity:
   judge_prompts_path: 'wandb-japan/toxicity-dataset-private/toxicity_judge_prompts:v1'
   max_workers: 5
   judge_model: 'gpt-4o-2024-05-13'
-  visualize_ids: '[0, 1, 2, 3, 4, 5, 6 ,7 ,8 ,9, 10, 11]'
 
 mtbench:
   temperature_override:
