@@ -35,29 +35,6 @@ def process_question(q, llm):
     ans =  results[0].content
     return ans
 
-
-def assign_answers(questions, answers):
-    for i, q in enumerate(questions):
-        q["answer"] = answers[i]
-
-
-def parallel_process(questions, llm, max_workers):
-    answers = [None] * len(questions)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = []
-        for i, q in enumerate(questions):
-            future = executor.submit(process_question, q, llm)
-            future.index = i
-            futures.append(future)
-        
-        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures)):
-            index = future.index
-            answers[index] = future.result()
-    
-    assign_answers(questions, answers)
-    return questions
-
-
 def judge_answers(prompt, instruction, judge_model):
     client = OpenAI()
     completion = client.chat.completions.create(
@@ -130,7 +107,7 @@ def get_scores(questions, judge_prompts, judge_model, max_workers):
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(process_question, q) for q in questions]
         results = [future.result() for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures))]
-
+        results.sort(key=lambda x: x['question_id'])
     return results
 
 def evaluate():
@@ -150,15 +127,22 @@ def evaluate():
     if cfg.testmode==True:
         questions = questions[:12]
 
-
     # Create model answers
-    questions = parallel_process(questions, llm, max_workers)
+    generator_config = {"max_tokens": 1024}
+    inputs = [
+        ([{"role": "user", "content": q["user_prompt"]}], generator_config)
+        for q in questions
+    ]
+    llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
+    results = llm_ap.get_results()
+    answers = [r.content for r in results]
+    for q, a in zip(questions, answers):
+        q.update({"answer": a})
 
     # Load Judge Prompts
     judge_path = cfg.toxicity.get("judge_prompts_path")
     judge_dir = run.use_artifact(judge_path, type='dataset').download()
     judge_prompts = load_questions(judge_dir + "/toxicity_judge_prompts.jsonl", None, None)
-
     # Evaluate models response to toxic inputs
     questions = get_scores(questions, judge_prompts, judge_model, max_workers)
 
