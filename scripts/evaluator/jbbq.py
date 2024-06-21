@@ -291,27 +291,7 @@ def evaluate_n_shot(few_shots: bool):
                     generator_config = {"max_tokens": task_data["output_length"]}
                     inputs.append((messages, generator_config))
 
-                    # llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
-                    # results = llm_ap.get_results()
-                    # output = results[0].content
-
-                    # # score
-                    # y_pred: str = pipe(
-                    #     output,
-                    #     lambda x: text_formatter(x, task),
-                    #     lambda x: x.split("\n\n")[0],
-                    #     normalize,
-                    #     lambda x: x.replace(" ", "")
-                    # )
                     y_true: str = pipe(str(sample["output"]), normalize)
-
-                    # # collect data
-                    # error = 0
-                    # if y_pred not in ["0", "1", "2"]:
-                    #     error = 1
-                    # correct = 0
-                    # if y_pred == y_true:
-                    #     correct = 1
 
                     evaluation_results.append(
                         {
@@ -327,12 +307,6 @@ def evaluate_n_shot(few_shots: bool):
                             "stereotype_label": sample["stereotype_label"],
                             "input": sample["input"],
                             "prompt": prompt,
-                            # 'raw_output': output,
-                            # "output": y_pred,
-                            # "expected_output": y_true,
-                            # "correct": correct,
-                            # "unk_label": sample["unk_label"],
-                            # "format_error": error
                             'raw_output': None,
                             "output": None,
                             "expected_output": y_true,

@@ -9,12 +9,12 @@ testmode: false
 inference_interval: 0 # seconds
 
 run:
-  mtbench: false
+  mtbench: true
   jbbq: true
-  lctg: false
-  toxicity: false
-  jaster: false
-  aggregate: false
+  lctg: true
+  toxicity: true
+  jaster: true
+  aggregate: true
 
 model:
   use_wandb_artifacts: false
