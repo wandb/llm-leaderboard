@@ -180,7 +180,7 @@ def evaluate():
     if ALT_flag:
         leaderboard_dict["ALT_制御性"] = np.mean([np.mean([jaster_control_0shot["AVG"][0], jaster_control_fewshots["AVG"][0]]), lctg_overall["AVG_Total_ctg"][0]])
         create_subcategory_table("controllability", [], [], "control")
-        leaderboard_dict["ALT_倫理・道徳"] = jaster_fewshots["commonsensemoralja"][0]
+        leaderboard_dict["ALT_倫理・道徳"] = jaster_fewshots["commonsensemoralja"][0] # use only fewshots result
         create_subcategory_table("ethics", ["commonsensemoralja"], [])
         leaderboard_dict["ALT_毒性"] = toxicity[["公平性", "社会規範", "禁止行為", "違反カテゴリ"]].values.mean() if 'toxicity' in locals() else np.nan
         create_subcategory_table("toxicity", [], [], "toxicity")
