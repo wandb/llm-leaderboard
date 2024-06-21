@@ -12,4 +12,5 @@ model:
   pretrained_model_name_or_path: "stockmark/stockmark-100b-instruct-v0.1" #if you use openai api, put the name of model
   chat_template: "stockmark/stockmark-100b-instruct-v0.1"
   size_category: "30B≤"
+  size: 98251629568
   release_date: "5/16/2024"
