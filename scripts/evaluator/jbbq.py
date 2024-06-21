@@ -188,17 +188,16 @@ def evaluate_n_shot(few_shots: bool):
         print(f"skip {dataset_name} because it is not found in {artifact_dir}")
         raise FileNotFoundError(f"dataset_dir not found: {dataset_dir}")
 
-    tasks = [
-        "jbbq"
-    ]
+    tasks = ["jbbq"]
 
     # num_few_shots を正しいキーから取得
     if few_shots:
         num_few_shots = cfg.get("num_few_shots", 0)
     else:
         num_few_shots = 0
-    
+
     evaluation_results = []
+    inputs = []
     for task in tasks:
         # execute evaluation
         for subset in ("test", "dev"):
@@ -213,11 +212,7 @@ def evaluate_n_shot(few_shots: bool):
             }
 
             # read task data
-            task_data_path = (
-                dataset_dir
-                / subset
-                / f"{task}.json"
-            )
+            task_data_path = dataset_dir / subset / f"{task}.json"
             if not task_data_path.exists():
                 print(
                     f"skip {task} because it is not found in {artifact_dir}"
@@ -256,40 +251,42 @@ def evaluate_n_shot(few_shots: bool):
                     for message in few_shots_dict[category]:
                         messages.append(message.copy())
                     messages.append({"role": "user", "content": sample["input"]})
-                    
+
                     # 最初のシステムメッセージにインストラクションを追加
                     first_content = messages[0]["content"]
                     instruction = task_data["instruction"]
                     messages[0]["content"] = f"{instruction}\n\n{first_content}"
-                    
+
                     # メッセージの内容を文字列に変換
                     for message in messages:
                         message["content"] = str(message["content"])
 
                     # generate output
-                    inputs = [(messages, {"max_tokens": task_data["output_length"]})]
-                    llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
-                    results = llm_ap.get_results()
-                    output = results[0].content
                     prompt = apply_chat_template(messages=messages)
+                    generator_config = {"max_tokens": task_data["output_length"]}
+                    inputs.append((messages, generator_config))
 
-                    # score
-                    y_pred: str = pipe(
-                        output,
-                        lambda x: text_formatter(x, task),
-                        lambda x: x.split("\n\n")[0],
-                        normalize,
-                        lambda x: x.replace(" ", "")
-                    )
-                    y_true: str = pipe(str(sample["output"]), normalize)
+                    # llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
+                    # results = llm_ap.get_results()
+                    # output = results[0].content
 
-                    # collect data
-                    error = 0
-                    if y_pred not in ["0", "1", "2"]:
-                        error = 1
-                    correct = 0
-                    if y_pred == y_true:
-                        correct = 1
+                    # # score
+                    # y_pred: str = pipe(
+                    #     output,
+                    #     lambda x: text_formatter(x, task),
+                    #     lambda x: x.split("\n\n")[0],
+                    #     normalize,
+                    #     lambda x: x.replace(" ", "")
+                    # )
+                    # y_true: str = pipe(str(sample["output"]), normalize)
+
+                    # # collect data
+                    # error = 0
+                    # if y_pred not in ["0", "1", "2"]:
+                    #     error = 1
+                    # correct = 0
+                    # if y_pred == y_true:
+                    #     correct = 1
 
                     evaluation_results.append(
                         {
@@ -305,12 +302,18 @@ def evaluate_n_shot(few_shots: bool):
                             "stereotype_label": sample["stereotype_label"],
                             "input": sample["input"],
                             "prompt": prompt,
-                            'raw_output': output,
-                            "output": y_pred,
-                            "expected_output": y_true,
-                            "correct": correct,
+                            # 'raw_output': output,
+                            # "output": y_pred,
+                            # "expected_output": y_true,
+                            # "correct": correct,
+                            # "unk_label": sample["unk_label"],
+                            # "format_error": error
+                            'raw_output': None,
+                            "output": None,
+                            "expected_output": None,
+                            "correct": None,
                             "unk_label": sample["unk_label"],
-                            "format_error": error
+                            "format_error": None
                         }
                     )
 
