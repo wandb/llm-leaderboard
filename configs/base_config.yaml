@@ -69,11 +69,11 @@ mtbench:
     reasoning: 0.0
     stem: 0.1
     humanities": 0.1
-  question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_question:v4' # if testmode is true, small dataset will be used
-  question_artifacts_path_test: 'wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v5'
-  referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v2' # if testmode is true, small dataset will be used
-  referenceanswer_artifacts_path_test: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v2'
-  judge_prompt_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1' 
+  question_artifacts_path: 'wandb-japan/llm-leaderboard3/mtbench_ja_question:v1' # if testmode is true, small dataset will be used
+  question_artifacts_path_test: 'wandb-japan/llm-leaderboard3/mtbench_ja_question_small_for_test:v1'
+  referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard3/mtbench_ja_referenceanswer:v1' # if testmode is true, small dataset will be used
+  referenceanswer_artifacts_path_test: 'wandb-japan/llm-leaderboard3/mtbench_ja_referenceanswer_small_for_test:v1'
+  judge_prompt_artifacts_path: 'wandb-japan/llm-leaderboard3/mtbench_ja_prompt:v1' 
   bench_name: 'japanese_mt_bench'
   model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
   question_begin: null 
