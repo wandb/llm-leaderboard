@@ -8,10 +8,13 @@ github_version: v3.0.0 #for recording
 testmode: true
 inference_interval: 0 # seconds
 
-# GLP（基礎的言語能力）とALT（アライメント能力）のそれぞれで評価を行うための設定（Trueで評価を行う）
 run:
-  GLP: true
-  ALT: true
+  mtbench: true
+  jbbq: true
+  lctg: true
+  toxicity: true
+  jaster: true
+  aggregate: true
 
 model:
   use_wandb_artifacts: false
@@ -42,7 +45,7 @@ lctg:
   dataset_dir: "lctg"
 
 jbbq:
-  artifacts_path: 'wandb-japan/llm-leaderboard3-private/jbbq:v1'
+  artifacts_path: 'wandb-japan/llm-leaderboard3-private/jbbq:v2'
   dataset_dir: 'jbbq'
   language: 'ja'
 

@@ -12,25 +12,61 @@ def radar_contents(leaderboard_dict, categories: list[str]) -> list[list[str, fl
         ret.append([cat[4:], leaderboard_dict[cat]])
     return ret
 
+def update_flag(cfg, blend_cfg):
+    mtbench_flag = jbbq_flag = lctg_flag = toxicity_flag = jaster_flag = GLP_flag = ALT_flag = False
+
+    if hasattr(cfg, 'run'):
+        mtbench_flag = cfg.run.mtbench
+        jbbq_flag = cfg.run.jbbq
+        lctg_flag = cfg.run.lctg
+        toxicity_flag = cfg.run.toxicity
+        jaster_flag = cfg.run.jaster
+
+    if blend_cfg:
+        for old_run in blend_cfg.old_runs:
+            if old_run.dataset is None:
+                continue
+            for dataset in old_run.dataset:
+                if "mtbench" in dataset:
+                    mtbench_flag = True
+                elif "jbbq" in dataset:
+                    jbbq_flag = True
+                elif "lctg" in dataset:
+                    lctg_flag = True
+                elif "toxicity" in dataset:
+                    toxicity_flag = True
+                elif "jaster" in dataset:
+                    jaster_flag = True
+
+    if mtbench_flag and jaster_flag:
+        GLP_flag = True
+    if jbbq_flag and lctg_flag and toxicity_flag:
+        ALT_flag = True
+    return GLP_flag, ALT_flag
+
+
 def evaluate():
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
     cfg = instance.config
-
+    blend_cfg = instance.blend_config
     num_few_shots = cfg.num_few_shots
-    
+
+    GLP_flag, ALT_flag = update_flag(cfg, blend_cfg)
+
     # Initialize empty variables
-    if cfg.run.GLP or cfg.run.ALT:
+    if GLP_flag or ALT_flag:
         jaster_0shot = jaster_fewshots = jmmlu_robust_fewshots = jaster_control_0shot = None
         jaster_control_fewshots = lctg_overall = jbbq_fewshots = toxicity = mtbench = None
         jaster_0shot = read_wandb_table(table_name=f"jaster_0shot_leaderboard_table", run=run)
         jaster_fewshots = read_wandb_table(table_name=f"jaster_{num_few_shots}shot_leaderboard_table", run=run)
 
-    if cfg.run.GLP:
+    if GLP_flag:
         mtbench = read_wandb_table(table_name=f"mtbench_leaderboard_table", run=run)
     
-    if cfg.run.ALT:
+    if ALT_flag:
         lctg_overall = read_wandb_table(table_name=f"lctg_overall_leaderboard_table", run=run)
+
         jmmlu_robust_fewshots = read_wandb_table(table_name=f"jmmlu_robust_{num_few_shots}shot_leaderboard_table", run=run)
         jaster_control_0shot = read_wandb_table(table_name=f"jaster_control_0shot_leaderboard_table", run=run)
         jaster_control_fewshots = read_wandb_table(table_name=f"jaster_control_{num_few_shots}shot_leaderboard_table", run=run)
@@ -117,7 +153,7 @@ def evaluate():
     leaderboard_dict["model_release_date"] = pd.to_datetime(cfg.model.release_date, format='%m/%d/%Y')
     first_cols = ["model_name","model_size_category"]
     
-    if cfg.run.GLP: 
+    if GLP_flag:
         leaderboard_dict["GLP_表現"] = calculate_combined_means([],["roleplay","writing","humanities"])
         create_subcategory_table("expression", [], ["roleplay","writing","humanities"])
         leaderboard_dict["GLP_翻訳"] = calculate_combined_means(["alt-e-to-j","alt-j-to-e","wikicorpus-e-to-j","wikicorpus-j-to-e"], [])
@@ -141,7 +177,7 @@ def evaluate():
         leaderboard_dict["汎用的言語性能(GLP)_AVG"] = calculate_average_from_dict(leaderboard_dict, "GLP")
         first_cols.append("汎用的言語性能(GLP)_AVG")
 
-    if cfg.run.ALT:
+    if ALT_flag:
         leaderboard_dict["ALT_制御性"] = np.mean([np.mean([jaster_control_0shot["AVG"][0], jaster_control_fewshots["AVG"][0]]), lctg_overall["AVG_Total_ctg"][0]])
         create_subcategory_table("controllability", [], [], "control")
         leaderboard_dict["ALT_倫理・道徳"] = calculate_combined_means(["commonsensemoralja"],[])
@@ -155,23 +191,21 @@ def evaluate():
         leaderboard_dict["アラインメント(ALT)_AVG"] = calculate_average_from_dict(leaderboard_dict, "ALT")
         first_cols.append("アラインメント(ALT)_AVG")
 
-    if cfg.run.GLP and cfg.run.ALT:
+    if GLP_flag and ALT_flag:
         leaderboard_dict["TOTAL_AVG"] = np.mean([leaderboard_dict["汎用的言語性能(GLP)_AVG"], leaderboard_dict["アラインメント(ALT)_AVG"]])
         first_cols.append("TOTAL_AVG")
 
     # Average of each dataset
-    if cfg.run.GLP or cfg.run.ALT:
+    if GLP_flag or ALT_flag:
         jaster_agg_cols = [c for c in jaster_0shot if not c.startswith("jmmlu_") and c not in ["run_name", "model_name"]]
         leaderboard_dict["AVG_jaster_0shot"] = jaster_0shot[jaster_agg_cols].mean(axis=1)[0]
         leaderboard_dict[f"AVG_jaster_{num_few_shots}shots"] = jaster_fewshots[jaster_agg_cols].mean(axis=1)[0]
     
-    if cfg.run.GLP:
+    if GLP_flag:
         leaderboard_dict["AVG_mtbench"] = mtbench["AVG_mtbench"][0]
     
-    if cfg.run.ALT:
+    if ALT_flag:
         leaderboard_dict["AVG_lctg"] = lctg_overall["AVG_Total_ctg"][0]
-
-    
 
     leaderboard_table = pd.DataFrame([leaderboard_dict])
     cols = leaderboard_table.columns
@@ -194,7 +228,7 @@ def evaluate():
             ],
         ),
         columns=["category", "score"],
-    ) if cfg.run.GLP else pd.DataFrame()
+    ) if GLP_flag else pd.DataFrame()
 
     alt_radar_table = pd.DataFrame(
         data=radar_contents(
@@ -208,11 +242,11 @@ def evaluate():
             ],
         ),
         columns=["category", "score"],
-    ) if cfg.run.ALT else pd.DataFrame()
+    ) if ALT_flag else pd.DataFrame()
 
     run.log({
         "leaderboard_table": wandb.Table(dataframe=leaderboard_table),
-        "glp_radar_table": wandb.Table(dataframe=glp_radar_table) if cfg.run.GLP else None,
-        "alt_radar_table": wandb.Table(dataframe=alt_radar_table) if cfg.run.ALT else None
+        "glp_radar_table": wandb.Table(dataframe=glp_radar_table) if GLP_flag else None,
+        "alt_radar_table": wandb.Table(dataframe=alt_radar_table) if ALT_flag else None
     })
     run.finish()
