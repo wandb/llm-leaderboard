@@ -70,8 +70,7 @@ class LLMAsyncProcessor:
         if self.api_type in ["google", "amazon_bedrock"]:
             return await asyncio.to_thread(self._invoke, messages, **kwargs)
         else:
-            response = await self.llm.ainvoke(messages, **kwargs)
-        return response
+            return await self.llm.ainvoke(messages, **kwargs)
 
     async def _process_batch(self, batch: Inputs) -> List[Tuple[AIMessage, float]]:
         tasks = [
