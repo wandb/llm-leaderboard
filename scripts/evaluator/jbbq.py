@@ -278,6 +278,7 @@ def evaluate_n_shot(few_shots: bool):
                         lambda x: text_formatter(x, task),
                         lambda x: x.split("\n\n")[0],
                         normalize,
+                        lambda x: x.replace(" ", "")
                     )
                     y_true: str = pipe(str(sample["output"]), normalize)
 
