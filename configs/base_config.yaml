@@ -10,9 +10,9 @@ inference_interval: 0 # seconds
 
 run:
   mtbench: false
-  jbbq: false
+  jbbq: true
   lctg: false
-  toxicity: true
+  toxicity: false
   jaster: false
   aggregate: false
 
