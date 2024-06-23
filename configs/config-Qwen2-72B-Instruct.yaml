@@ -11,5 +11,6 @@ model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: "Qwen/Qwen2-72B-Instruct" #if you use openai api, put the name of model
   chat_template: "Qwen/Qwen2-72B-Instruct"
-  size: "30B≤"
+  size_category: "30B≤"
+  size: 72706203648
   release_date: "3/28/2024"
