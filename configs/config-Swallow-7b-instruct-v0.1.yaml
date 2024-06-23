@@ -10,5 +10,6 @@ model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: "tokyotech-llm/Swallow-7b-instruct-v0.1" #if you use openai api, put the name of model
   chat_template: "tokyotech-llm/Swallow-7b-instruct-v0.1"
-  size: "<10B"
+  size_category: "<10B"
+  size: 6829969408
   release_date: "4/26/2024"
