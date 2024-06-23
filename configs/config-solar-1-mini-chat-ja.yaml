@@ -11,5 +11,6 @@ model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: "solar-1-mini-chat-ja" #if you use openai api, put the name of model
   chat_template: null
-  size: "api"
+  size_category: "api"
+  size: null
   release_date: "5/22/2024"

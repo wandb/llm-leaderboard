@@ -10,5 +10,6 @@ model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: "stabilityai/StableBeluga-7B" #if you use openai api, put the name of model
   chat_template: "stabilityai/StableBeluga-7B"
-  size: "<10B"
+  size_category: "<10B"
+  size: 6738415616
   release_date: "7/27/2023"
