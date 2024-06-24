@@ -83,9 +83,9 @@ def apply_chat_template(messages: list[dict[str, str]]) -> str:
                 **tokenizer_config,
             }
         elif cfg.model.chat_template in [
-            "Swallow-7b-instruct-v0.1"
-            "Swallow-13b-instruct-v0.1"
-            "Swallow-70b-instruct-v0.1"
+            "tokyotech-llm/Swallow-7b-instruct-v0.1",
+            "tokyotech-llm/Swallow-13b-instruct-v0.1",
+            "tokyotech-llm/Swallow-70b-instruct-v0.1",
             ]:
             kwargs = copy(tokenizer_config)
             for key in ["bos_token", "eos_token", "unk_token"]:
