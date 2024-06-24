@@ -4,9 +4,9 @@ from . import symbol_to_ABCD, ABCD_to_symbol, incorrect_to_ABCD, ABCD_to_incorre
 
 def eval_robustness(row):
     matches = sum([
-        row["output_normal"] == row["output_IncorrectChoice"],
-        row["output_normal"] == row["output_SymbolChoice"],
-        row["output_IncorrectChoice"] == row["output_SymbolChoice"]
+        row["output_normal"] == row["converted_output_IncorrectChoice"],
+        row["output_normal"] == row["converted_output_SymbolChoice"],
+        row["converted_output_IncorrectChoice"] == row["converted_output_SymbolChoice"]
     ])
     
     if matches == 3:
