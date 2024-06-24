@@ -1,17 +1,17 @@
 import pandas as pd
 from config_singleton import WandbConfigSingleton
-from . import symbol_to_ABCD, incorrect_to_ABCD, ABCD_to_incorrect
+from . import symbol_to_ABCD, ABCD_to_symbol, incorrect_to_ABCD, ABCD_to_incorrect
 
 def eval_robustness(row):
     matches = sum([
-        row["output_normal"] == row["output_IncorrectChoice"],
-        row["output_normal"] == row["output_SymbolChoice"],
-        row["output_IncorrectChoice"] == row["output_SymbolChoice"]
+        row["output_normal"] == row["converted_output_IncorrectChoice"],
+        row["output_normal"] == row["converted_output_SymbolChoice"],
+        row["converted_output_IncorrectChoice"] == row["converted_output_SymbolChoice"]
     ])
     
     if matches == 3:
         return 1.0
-    elif matches == 2:
+    elif matches == 1:
         return 0.5
     else:
         return 0.0
@@ -36,19 +36,21 @@ def evaluate_robustness(subset: str, df: pd.DataFrame):
     symbol_suffix = "_SymbolChoice"
     symbol_df = df[df["task"].str.endswith(symbol_suffix)]
     symbol_df = symbol_df[use_cols + ["output"]].rename(columns={"output": f"output{symbol_suffix}"})
-    symbol_df[f"output{symbol_suffix}"] = symbol_df[f"output{symbol_suffix}"].apply(symbol_to_ABCD)
+    symbol_df[f"converted_output{symbol_suffix}"] = symbol_df[f"output{symbol_suffix}"].apply(symbol_to_ABCD)
 
     # incorrect
     incorrect_suffix = "_IncorrectChoice"
     incorrect_df = df[df["task"].str.endswith(incorrect_suffix)]
     incorrect_df = incorrect_df[use_cols + ["output"]].rename(columns={"output": f"output{incorrect_suffix}"})
-    incorrect_df[f"output{incorrect_suffix}"] = incorrect_df[f"output{incorrect_suffix}"].apply(incorrect_to_ABCD)
+    incorrect_df[f"converted_output{incorrect_suffix}"] = incorrect_df[f"output{incorrect_suffix}"].apply(incorrect_to_ABCD)
 
     # normal_dfにsymbolとincorrectの列を追加
     normal_df[f"input{symbol_suffix}"] = None
     normal_df[f"output{symbol_suffix}"] = None
+    normal_df[f"converted_output{symbol_suffix}"] = None
     normal_df[f"input{incorrect_suffix}"] = None
     normal_df[f"output{incorrect_suffix}"] = None
+    normal_df[f"converted_output{incorrect_suffix}"] = None
     normal_df[f"score"] = None
 
     # taskごとにnormal, symbol, incorrectでデータを取り出し、normal_dfに結果を追加
@@ -66,23 +68,22 @@ def evaluate_robustness(subset: str, df: pd.DataFrame):
 
             normal_df.loc[normal_row.name, f"input{symbol_suffix}"] = symbol_row["input"]
             normal_df.loc[normal_row.name, f"output{symbol_suffix}"] = symbol_row[f"output{symbol_suffix}"]
+            normal_df.loc[normal_row.name, f"converted_output{symbol_suffix}"] = symbol_row[f"converted_output{symbol_suffix}"]
             normal_df.loc[normal_row.name, f"expected_output{symbol_suffix}"] = symbol_row["expected_output"]
             normal_df.loc[normal_row.name, f"input{incorrect_suffix}"] = incorrect_row["input"]
             normal_df.loc[normal_row.name, f"output{incorrect_suffix}"] = incorrect_row[f"output{incorrect_suffix}"]
+            normal_df.loc[normal_row.name, f"converted_output{incorrect_suffix}"] = incorrect_row[f"converted_output{incorrect_suffix}"]
             normal_df.loc[normal_row.name, f"expected_output{incorrect_suffix}"] = incorrect_row["expected_output"]
 
     # スコアの計算
     normal_df["score"] = normal_df.apply(eval_robustness, axis=1)
 
-    # scoreの計算のためのoutput_IncorrectChoiceを複数選択から単一の回答に変換しているので、元に戻す
-    normal_df[f"output{incorrect_suffix}"] = normal_df[f"output{incorrect_suffix}"].apply(ABCD_to_incorrect)
-
     # 列のrename & 列の順番を並び替える
     normal_df = normal_df.rename(columns={"input": "input_normal","expected_output":"expected_output_normal"})
     new_order=["model_name","index","score",
                "input_normal","output_normal","expected_output_normal",
-               "input_SymbolChoice","output_SymbolChoice","expected_output_SymbolChoice",
-               "input_IncorrectChoice","output_IncorrectChoice","expected_output_IncorrectChoice","dataset","task","num_few_shots","subset"
+               "input_SymbolChoice","output_SymbolChoice","converted_output_SymbolChoice","expected_output_SymbolChoice",
+               "input_IncorrectChoice","output_IncorrectChoice","converted_output_IncorrectChoice","expected_output_IncorrectChoice","dataset","task","num_few_shots","subset"
                ]
     normal_df = normal_df[new_order]
 

@@ -64,6 +64,11 @@ def symbol_to_ABCD(input_str):
     return mapping.get(input_str, input_str)
 
 
+def ABCD_to_symbol(input_str):
+    mapping = {"A": "$", "B": "&", "C": "#", "D": "@"}
+    return mapping.get(input_str, input_str)
+
+
 def incorrect_to_ABCD(input_str):
     mapping = {
         "B,C,D": "A",
