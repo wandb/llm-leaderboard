@@ -19,4 +19,4 @@ class WandbConfigSingleton:
         # Convert Python dictionary to DictConfig
         config = OmegaConf.create(config_dict)
         # Store as attributes in _instance
-        cls._instance = SimpleNamespace(run=run, config=config, llm=llm)
+        cls._instance = SimpleNamespace(run=run, config=config, blend_config=None, llm=llm)
