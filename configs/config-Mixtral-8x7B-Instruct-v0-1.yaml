@@ -9,6 +9,7 @@ batch_size: 256 # vllmは256, apiは32を推奨
 
 model:
   use_wandb_artifacts: false
+  max_model_len: 3500 # update 
   pretrained_model_name_or_path: "mistralai/Mixtral-8x7B-Instruct-v0.1" #if you use openai api, put the name of model
   chat_template: "mistralai/Mixtral-8x7B-Instruct-v0.1"
   size_category: "30B≤"

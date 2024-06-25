@@ -11,4 +11,5 @@ model:
   pretrained_model_name_or_path: "elyza/ELYZA-japanese-Llama-2-13b-instruct" #if you use openai api, put the name of model
   chat_template: "elyza/ELYZA-japanese-Llama-2-13b-instruct"
   size_category: "10B≤ <30B"
+  size: 13144693760
   release_date: "12/27/2023"
