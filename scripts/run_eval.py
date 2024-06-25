@@ -7,6 +7,7 @@ import questionary
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
 from vllm_server import shutdown_vllm_server
+from blend_run import blend_run
 from evaluator import (
     jaster,
     jbbq,
@@ -73,27 +74,32 @@ artifact = wandb.Artifact("config", type="config")
 artifact.add_file(custom_cfg_path)
 run.log_artifact(artifact)
 
+# Inherit old runs
+blend_run(run_chain=True)
+
 # Start inference server
 llm = get_llm_inference_engine()
 instance = WandbConfigSingleton.get_instance()
 instance.llm = llm
 
-if cfg.run.GLP:
-    # mt-bench evaluation
+# mt-bench evaluation
+if cfg.run.mtbench:
     mtbench.evaluate()
 
-if cfg.run.ALT:
-    # jbbq
+# jbbq
+if cfg.run.jbbq:
     jbbq.evaluate()
 
-    # lctg-bench
+# lctg-bench
+if cfg.run.lctg:
     lctg.evaluate()
 
-    # toxicity
+# toxicity
+if cfg.run.toxicity:
     toxicity.evaluate()
 
 # Evaluation phase
-if cfg.run.GLP or cfg.run.ALT:
+if cfg.run.jaster:
     # llm-jp-eval evaluation (jmmlu含む)
     jaster.evaluate()
 
@@ -103,4 +109,5 @@ if cfg.run.GLP or cfg.run.ALT:
     jaster_translation.evaluate()
 
 # 6. Aggregation
-aggregate.evaluate()
+if cfg.run.aggregate:
+    aggregate.evaluate()

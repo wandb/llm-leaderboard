@@ -79,7 +79,7 @@ def evaluate_n_shot(few_shots: bool):
     else:
         num_few_shots = 0
 
-    if cfg.jmmlu_robustness and few_shots:
+    if cfg.run.jmmlu_robustness and few_shots:
         tasks.extend(sorted({p.stem for p in dataset_dir.glob("**/jmmlu*.json") if p.stem.endswith("Choice")}))
 
     evaluation_results = []
@@ -186,7 +186,6 @@ def evaluate_n_shot(few_shots: bool):
                         "control_method": control_method,
                         "control_func": control_func,
                         "score": None,  # to be filled
-                        "latency": None,  # to be filled
                         "inputs": inputs,
                     }
                 )
@@ -198,14 +197,15 @@ def evaluate_n_shot(few_shots: bool):
     )
     results = llm_ap.get_results()
 
-    for result, evaluation_result in tqdm(zip(results, evaluation_results)):
-        response, latency = result
+    for response, evaluation_result in tqdm(zip(results, evaluation_results)):
         raw_output = response.content
         y_pred: str = pipe(
             raw_output,
             lambda x: text_formatter(x, evaluation_result["task"]),
             lambda x: x.split("\n\n")[0],
+            lambda x: x.strip(),
             lambda x: x.strip("'").strip('"'),
+            lambda x: x.strip(),
             normalize,
         )
         metrics_func = evaluation_result["metrics_func"]
@@ -220,7 +220,6 @@ def evaluate_n_shot(few_shots: bool):
         evaluation_result["output"] = y_pred
         evaluation_result["score"] = score
         evaluation_result["control_score"] = control_score
-        evaluation_result["latency"] = latency
         del evaluation_result["metrics_func"], evaluation_result["control_func"], evaluation_result["inputs"]
         
     output_df = pd.DataFrame(evaluation_results)
@@ -234,7 +233,7 @@ def evaluate_n_shot(few_shots: bool):
                                     )
 
     # log table
-    if cfg.jmmlu_robustness and few_shots:
+    if cfg.run.jmmlu_robustness and few_shots:
         output_robust_df = output_df[output_df["task"].str.contains("jmmlu")].copy()
         output_robust_df.loc[:,"sub_category"] = "robust"
     output_df = output_df[~output_df['task'].isin(['jmmlu_SymbolChoice', 'jmmlu_IncorrectChoice'])]
@@ -269,7 +268,7 @@ def evaluate_n_shot(few_shots: bool):
     
     new_order=["model_name","task","index","input","raw_output","output","expected_output",
                "prompt","score","control_score","metrics","control_method",
-               "dataset","num_few_shots","latency","subset","sub_category"]
+               "dataset","num_few_shots","subset","sub_category"]
     dev_table = dev_table[new_order]
     test_table = test_table[new_order]
 
@@ -283,7 +282,7 @@ def evaluate_n_shot(few_shots: bool):
     )
     
 
-    if cfg.jmmlu_robustness and few_shots:
+    if cfg.run.jmmlu_robustness and few_shots:
         # need to be updated
         dev_robust_table = output_robust_df.query("subset == 'dev'")
         test_robust_table= output_robust_df.query("subset == 'test'")

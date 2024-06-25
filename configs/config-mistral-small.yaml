@@ -5,6 +5,7 @@ wandb:
 # if you use api, please select from "openai", "anthropic", "google", "cohere", "vllm", "mistral", "bedrock"
 api: mistral
 batch_size: 1 # vllmは256, apiは32を推奨
+# inference_interval: 1 # seconds
 
 model:
   pretrained_model_name_or_path: "mistral-small" #if you use openai api, put the name of model
