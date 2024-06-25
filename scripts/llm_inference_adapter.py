@@ -1,4 +1,6 @@
 import os
+from dataclasses import dataclass
+import json
 from config_singleton import WandbConfigSingleton
 from langchain_openai import ChatOpenAI, AzureChatOpenAI
 from langchain_mistralai.chat_models import ChatMistralAI
@@ -7,10 +9,64 @@ from langchain_google_genai import (
     HarmBlockThreshold,
     HarmCategory,
 )
-from langchain_aws import ChatBedrock
+# from langchain_aws import ChatBedrock
 from langchain_anthropic import ChatAnthropic
+from botocore.exceptions import ClientError
+import boto3
 
 # from langchain_cohere import Cohere
+
+
+@dataclass
+class BedrockResponse:
+    content: str
+
+
+class ChatBedrock:
+    def __init__(self, cfg) -> None:
+        self.bedrock_runtime = boto3.client(service_name="bedrock-runtime")
+        self.model_id = cfg.model.pretrained_model_name_or_path
+        self.ignore_keys = ["max_tokens"]
+        self.generator_config = {
+            k: v for k, v in cfg.generator.items() if not k in self.ignore_keys
+        }
+
+    def _invoke(
+        self,
+        messages: list[dict[str, str]],
+        max_tokens: int,
+    ):
+        # create body
+        body_dict = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": max_tokens,
+            **self.generator_config,
+        }
+        # handle system message
+        if messages[0]["role"] == "system":
+            body_dict.update(
+                {"messages": messages[1:], "system": messages[0]["content"]}
+            )
+        else:
+            body_dict.update({"messages": messages})
+
+        # inference
+        response = self.bedrock_runtime.invoke_model(
+            body=json.dumps(body_dict), modelId=self.model_id
+        )
+        response_body = json.loads(response.get("body").read())
+
+        return response_body
+
+    def invoke(self, messages, max_tokens: int):
+        response = self._invoke(messages=messages, max_tokens=max_tokens)
+        if response["content"]:
+            content = content = response["content"][0]["text"]
+        else:
+            content = ""
+
+        return BedrockResponse(content=content)
+
 
 def get_llm_inference_engine():
     instance = WandbConfigSingleton.get_instance()
@@ -64,12 +120,13 @@ def get_llm_inference_engine():
         )
 
     elif api_type == "amazon_bedrock":
+        llm = ChatBedrock(cfg=cfg)
         # LangChainのBedrockインテグレーションを使用
-        llm = ChatBedrock(
-            region_name=os.environ["AWS_DEFAULT_REGION"],
-            model_id=cfg.model.pretrained_model_name_or_path,
-            model_kwargs=cfg.generator,
-        )
+        # llm = ChatBedrock(
+        #     region_name=os.environ["AWS_DEFAULT_REGION"],
+        #     model_id=cfg.model.pretrained_model_name_or_path,
+        #     model_kwargs=cfg.generator,
+        # )
 
     elif api_type == "anthropic":
         # LangChainのAnthropicインテグレーションを使用
