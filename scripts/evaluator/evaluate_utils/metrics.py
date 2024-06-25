@@ -173,6 +173,7 @@ task_to_sub_category = {
     "writing": "GLP_expression",
     "reasoning": "GLP_reasoning",
     "math": "GLP_mathematical_reasoning",
+    "mgsm": "GLP_mathematical_reasoning",
     "extraction": "GLP_entity_extraction",
     "stem": "GLP_knowledge_QA",
     "coding": "ADVANCED_programing"
