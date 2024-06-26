@@ -7,19 +7,29 @@ import json
 import random
 from collections import defaultdict
 from pathlib import Path
-from dataclasses import dataclass
 from urllib.request import urlretrieve, URLError, HTTPError
 import json
 import random
 from collections import defaultdict
 from pathlib import Path
-from dataclasses import dataclass
 from urllib.request import urlretrieve, URLError, HTTPError
+import argparse
+import copy
+from dataclasses import asdict, dataclass
+import wandb
 
 @dataclass(frozen=True)
 class Sample:
     input: str
     output: str
+
+@dataclass
+class OutputInfo:
+    instruction: str
+    output_length: int
+    metrics: list[str]
+    few_shots: list[Sample]
+    samples: list[Sample]
 
 @dataclass(frozen=True)
 class BBQSample(Sample):
@@ -30,6 +40,12 @@ class BBQSample(Sample):
     context_condition: str
     unk_label: str
     stereotype_label: str
+
+def upload_to_wandb(entity, project, dataset_name, dataset_folder, dataset_version):
+    with wandb.init(entity=entity, project=project, job_type="upload_data") as run:
+        dataset_artifact = wandb.Artifact(name=dataset_name, type="dataset", metadata={"version":dataset_version})
+        dataset_artifact.add_dir(dataset_folder, name=dataset_name)
+        run.log_artifact(dataset_artifact)
 
 class BaseDatasetProcessor:
     data_name: str
@@ -158,7 +174,7 @@ class JBBQDatasetProcessor(BaseDatasetProcessor):
             "Undetermined",
         ]
 
-        self.raw_dir = Path("/workspace/JBBQ/data") # データがあるディレクトリを明示的に指定する
+        self.raw_dir = Path(self.dataset_dir) # データがあるディレクトリを明示的に指定する
 
         for file in self.raw_dir.iterdir():
             print(f"file: {file}")
@@ -199,17 +215,19 @@ class JBBQDatasetProcessor(BaseDatasetProcessor):
                                 stereotype_label = 2
                                 duplicate_counter += 1
 
-
                         elif sample_dict["category"] == "Disability_status":
-                            if sample_dict["answer_info"]["ans0"][0] == stereotyped_group[0] or sample_dict["answer_info"]["ans0"][1] == stereotyped_group[0]:
-                                stereotype_label = 0
-                                duplicate_counter += 1
-                            elif sample_dict["answer_info"]["ans1"][0] == stereotyped_group[0] or sample_dict["answer_info"]["ans1"][1] == stereotyped_group[0]:
-                                stereotype_label = 1
-                                duplicate_counter += 1
-                            elif sample_dict["answer_info"]["ans2"][0] == stereotyped_group[0] or sample_dict["answer_info"]["ans2"][1] == stereotyped_group[0]:
-                                stereotype_label = 2
-                                duplicate_counter += 1
+                            try:
+                                if sample_dict["answer_info"]["ans0"][0] == stereotyped_group[0] or sample_dict["answer_info"]["ans0"][1] == stereotyped_group[0]:
+                                    stereotype_label = 0
+                                    duplicate_counter += 1
+                                elif sample_dict["answer_info"]["ans1"][0] == stereotyped_group[0] or sample_dict["answer_info"]["ans1"][1] == stereotyped_group[0]:
+                                    stereotype_label = 1
+                                    duplicate_counter += 1
+                                elif sample_dict["answer_info"]["ans2"][0] == stereotyped_group[0] or sample_dict["answer_info"]["ans2"][1] == stereotyped_group[0]:
+                                    stereotype_label = 2
+                                    duplicate_counter += 1
+                            except:
+                                raise ValueError(f"Invalid stereotype_label: {sample_dict}")
 
 
                         elif sample_dict["category"] == "Gender_identity":
@@ -332,6 +350,7 @@ class JBBQDatasetProcessor(BaseDatasetProcessor):
 
             # `question_index` をシャッフル
             question_indices = list(questions.keys())
+            random.seed(42)
             random.shuffle(question_indices)
 
             # `train`, `dev`, `test` のためのインデックスを選定
@@ -371,9 +390,6 @@ class JBBQDatasetProcessor(BaseDatasetProcessor):
                 test_indices.append(original_dev_first)
                 dev_indices.remove(original_dev_first)
                 dev_indices.insert(0, fixed_index)
-
-            # fixed_indexをdevの先頭に移動
-            
 
             # カテゴリごとにインデックスの内訳を表示するデバッグステートメント
             print(f"Category: {category}")
@@ -455,19 +471,30 @@ class JBBQDatasetProcessor(BaseDatasetProcessor):
                     tuning_dev_first100_dir.mkdir(parents=True)
                 with (tuning_dev_first100_dir / f"{self.data_name}.json").open("w", encoding="utf-8") as f:
                     json.dump(saved_samples[:100], f, ensure_ascii=False, indent=4)
+    
+    
+    # データをwandbにアップロードするための関数
+    def upload_to_wandb(self, entity, project, dataset_name, dataset_version):
+        evaluation_dir = self.evaluation_dir
+        upload_to_wandb(entity, project, dataset_name, evaluation_dir, dataset_version)
+
 
 def main():
     parser = argparse.ArgumentParser(description="Preprocess JBBQ dataset.")
     parser.add_argument('-d', '--dataset_dir', type=str, required=True, help='Path to the dataset directory')
-    parser.add_argument('-v', '--version_name', type=str, required=True, help='Version name for the processed dataset')
+    parser.add_argument('-e', '--entity', type=str, required=True, help='WandB entity')
+    parser.add_argument('-p', '--project', type=str, required=True, help='WandB project')
+    parser.add_argument('-n', '--dataset_name', type=str, required=True, help='Name of the dataset')
+    parser.add_argument('-v', '--dataset_version', type=str, required=True, help='Version of the dataset')
     args = parser.parse_args()
 
     dataset_dir = Path(args.dataset_dir)
-    version_name = args.version_name
+    version_name = "tmp"
 
     processor = JBBQDatasetProcessor(dataset_dir, version_name)
-    processor.download()  # If download functionality is needed
     processor.preprocess_evaluation_data()
+    processor.upload_to_wandb(args.entity, args.project, args.dataset_name, args.dataset_version)
+
 
 if __name__ == "__main__":
     main()

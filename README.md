@@ -57,15 +57,15 @@ Below, an example of the process of registering data in wandb's Artifacts is des
   python3 scripts/upload_mtbench_question.py -e <wandb/entity> -p <wandb/project> -v <data version> -f "your path"
 ```
 
-### preparation for JBBQ
+### Preparation for JBBQ
 Please obtain the JBBQ dataset from the [official repository](https://github.com/ynklab/JBBQ_data).
 Even when using the JBBQ dataset through the Nejumi leaderboard, ensure compliance with the handling instructions listed in the official repository.
 
 When using the dataset, please execute the following preprocessing steps. For details on preprocessing, refer to [here](https://github.com/wandb/llm-leaderboard/blob/prototype_hyper/scripts/uploader/JBBQ_README.md).
 
 ```bash
-# Register questions
-  python3 scripts/upload_jbbq.py -d <jbbq dataset path> -e <wandb/entity> -p <wandb/project> -n <data name> -v <dataset version>
+# Preprocess the JBBQ dataset and upload it to WandB
+  python3 scripts/upload_jbbq.py -d <jbbq dataset path> -e <wandb/entity> -p <wandb/project> -n <dataset name> -v <dataset version>
 ```
 
 ## Create config.yaml file
