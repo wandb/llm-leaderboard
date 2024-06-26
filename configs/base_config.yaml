@@ -9,13 +9,13 @@ testmode: false
 inference_interval: 0 # seconds
 
 run:
-  jaster: true
-  jmmlu_robustness: true # if this is set as true, jaster should set as true
-  mtbench: true
+  jaster: false
+  jmmlu_robustness: false # if this is set as true, jaster should set as true
+  mtbench: false
   jbbq: true
-  lctg: true
-  toxicity: true
-  aggregate: true
+  lctg: false
+  toxicity: false
+  aggregate: false
 
 model:
   use_wandb_artifacts: false
