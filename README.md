@@ -46,7 +46,7 @@ If you use wandb's Artifacts, this process is not necessary. The following data 
 
 Below, an example of the process of registering data in wandb's Artifacts is described for reference 
 
-1. create dataset by following an instruction of [llm-jp-eval](https://github.com/llm-jp/llm-jp-eval/tree/wandb-nejumi2)
+1. create dataset by following an instruction of [llm-jp-eval](https://github.com/llm-jp/llm-jp-eval/tree/nejumi3-data)
 
 2. register to wandb artifacts
 ```bash
@@ -164,7 +164,6 @@ The `base_config.yaml` file contains basic settings, and you can create a separa
     - `parallel`: Number of parallel threads to use.
     - `first_n`: Number of generated responses to use for comparison. Leave as null for default behavior.
 
-
 ## API Model Configurations
 
 This framework supports evaluating models using APIs such as OpenAI, Anthropic, Google, and Cohere. You need to create a separate config file for each API model. For example, the config file for OpenAI's gpt-4o-2024-05-13 would be named `configs/config-gpt-4o-2024-05-13.yaml`.
@@ -245,7 +244,7 @@ This feature allows you to blend inference results later or resume a run by carr
 ### blend run
 
 1. **Setting blend_config:**
-
+Copy the template and configure it properly
    ```bash
    cp -ip blend_run_configs/config_template.yaml blend_run_configs/blend_config.yaml
    ```
@@ -261,7 +260,7 @@ This feature allows you to blend inference results later or resume a run by carr
 ### resume run
 
 1. **Setting blend_config:**
-
+Copy the template and configure it properly
    ```bash
    cp -ip blend_run_configs/config_template.yaml blend_run_configs/blend_config.yaml
    ```
