@@ -20,7 +20,8 @@ This document provides a detailed explanation of the preprocessing steps require
 ### Command to Run the Script
 
 ```bash
-python3 scripts/upload_jbbq.py -d <jbbq_dataset_path> -e <wandb_entity> -p <wandb_project> -n <dataset_name> -v <dataset_version>
+# Preprocess the JBBQ dataset and upload it to WandB
+  python3 scripts/uploader/upload_jbbq.py -d <jbbq dataset path> -e <wandb/entity> -p <wandb/project> -n <dataset name> -v <dataset version>
 ```
 
 Replace the placeholders with your specific information:

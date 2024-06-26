@@ -65,7 +65,7 @@ When using the dataset, please execute the following preprocessing steps. For de
 
 ```bash
 # Preprocess the JBBQ dataset and upload it to WandB
-  python3 scripts/upload_jbbq.py -d <jbbq dataset path> -e <wandb/entity> -p <wandb/project> -n <dataset name> -v <dataset version>
+  python3 scripts/uploader/upload_jbbq.py -d <jbbq dataset path> -e <wandb/entity> -p <wandb/project> -n <dataset name> -v <dataset version>
 ```
 
 ## Create config.yaml file
