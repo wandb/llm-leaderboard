@@ -41,6 +41,7 @@ def start_vllm_server():
                 "--uvicorn-log-level", "warning",
                 "--disable-log-stats",
                 "--disable-log-requests",
+                "--trust-remote-code",
             ]
             # subprocessでサーバーをバックグラウンドで実行
             process = subprocess.Popen(command)
