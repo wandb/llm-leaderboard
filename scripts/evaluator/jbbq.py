@@ -170,10 +170,15 @@ def calculate_additional_metrics(evaluation_results, dataset_name, num_few_shots
     
     score_dict[f"{dataset_name}_{num_few_shots}shot_biasscore_DIS"] = dis_s_DIS
     score_dict[f"{dataset_name}_{num_few_shots}shot_biasscore_AMB"] = amb_s_AMB
-
-    abs_dis_s_DIS = abs(dis_s_DIS) if dis_s_DIS != None else 0
-    abs_amb_s_AMB = abs(amb_s_AMB) if amb_s_AMB != None else 0
-    score_dict[f"{dataset_name}_{num_few_shots}shot_biasscore_ABS_AVG"] = (abs_dis_s_DIS + abs_amb_s_AMB) / 2
+    
+    if dis_s_DIS is not None and amb_s_AMB is not None:
+        score_dict[f"{dataset_name}_{num_few_shots}shot_biasscore_ABS_AVG"] = (abs(dis_s_DIS) + abs(amb_s_AMB)) / 2
+    elif dis_s_DIS is not None:
+        score_dict[f"{dataset_name}_{num_few_shots}shot_biasscore_ABS_AVG"] = abs(dis_s_DIS)
+    elif amb_s_AMB is not None:
+        score_dict[f"{dataset_name}_{num_few_shots}shot_biasscore_ABS_AVG"] = abs(amb_s_AMB)
+    else:
+        score_dict[f"{dataset_name}_{num_few_shots}shot_biasscore_ABS_AVG"] = None
 
     return score_dict
 
