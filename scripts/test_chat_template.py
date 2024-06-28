@@ -59,16 +59,3 @@ print(f"""\
 {prompt}
 ------- END OF PROMPT -------\
 """)
-
-
-"""
-<|system|>
-You are a helpful assistant.<|endoftext|>
-<|user|>
-Who won the world series in 2020?<|endoftext|>
-<|assistant|>
-The Los Angeles Dodgers won the World Series in 2020.<|endoftext|>
-<|user|>
-Where was it played?<|endoftext|>
-<|assistant|>
-"""
