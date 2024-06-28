@@ -68,18 +68,23 @@ def hf_download(repo_id: str, filename: str):
 
 
 def get_tokenizer_config(model_id=None, chat_template_name=None) -> dict[str, Any]:
+    instance = WandbConfigSingleton.get_instance()
+    cfg = instance.config
+    model_local_path = cfg.model.get("local_path", None)
+
     if model_id is None and chat_template_name is None:
-        instance = WandbConfigSingleton.get_instance()
-        cfg = instance.config
         model_id = cfg.model.pretrained_model_name_or_path
         chat_template_name = cfg.model.get("chat_template")
-    assert isinstance(model_id, str) and isinstance(chat_template_name, str)
 
     # get tokenizer_config
-    tokenizer_config = hf_download(
-        repo_id=model_id,
-        filename="tokenizer_config.json",
-    )
+    if model_local_path is not None:
+        with (model_local_path / "tokenizer_config.json").open() as f:
+            tokenizer_config = json.load(f)
+    else:
+        tokenizer_config = hf_download(
+            repo_id=model_id,
+            filename="tokenizer_config.json",
+        )
 
     # chat_template from local
     local_chat_template_path = Path(f"chat_templates/{chat_template_name}.jinja")
@@ -91,7 +96,6 @@ def get_tokenizer_config(model_id=None, chat_template_name=None) -> dict[str, An
         chat_template = hf_download(
             repo_id=chat_template_name, filename="tokenizer_config.json"
         ).get("chat_template")
-        assert chat_template is not None
 
     # add chat_template to tokenizer_config
     tokenizer_config.update({"chat_template": chat_template})
