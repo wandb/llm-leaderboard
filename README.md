@@ -57,30 +57,6 @@ huggingface-cli login
 ```
 
 2. Clone the repository
-<<<<<<< HEAD
-```bash
-git clone https://github.com/wandb/llm-leaderboard.git
-cd llm-leaderboard
-```
-
-3. Set up the Python environment
-```bash
-pip install -r requirements.txt
-```
-
-## Data Prepartion 
-### preparation for llm-jp-eval
-If you use wandb's Artifacts, this process is not necessary. The following data is currently registered in wandb's Artifacts.
-
-- v 1.3.0 (latest): "wandb-japan/llm-leaderboard3/jaster:v2"
-
-Below, an example of the process of registering data in wandb's Artifacts is described for reference 
-
-1. create dataset by following an instruction of [llm-jp-eval](https://github.com/llm-jp/llm-jp-eval/tree/wandb-nejumi2)
-
-2. register to wandb artifacts
-=======
->>>>>>> 051015fac2cdd2eb28d26441ef7f52c3f5545d75
 ```bash
 git clone https://github.com/wandb/llm-leaderboard.git
 cd llm-leaderboard
