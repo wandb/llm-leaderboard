@@ -18,7 +18,7 @@ run:
   aggregate: true
 
 model:
-  use_wandb_artifacts: false
+  artifact_path: null
   max_model_len: 3000
   chat_template: null
   dtype: 'float16'
