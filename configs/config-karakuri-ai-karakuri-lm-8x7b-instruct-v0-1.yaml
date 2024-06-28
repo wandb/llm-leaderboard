@@ -13,5 +13,5 @@ model:
   pretrained_model_name_or_path: "karakuri-ai/karakuri-lm-8x7b-instruct-v0.1" #if you use openai api, put the name of model
   chat_template: "karakuri-ai/karakuri-lm-8x7b-instruct-v0.1"
   size_category: "30B≤"
-  size: 46702792704
+  size: 46703841280
   release_date: "6/24/2024"
