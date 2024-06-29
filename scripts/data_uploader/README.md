@@ -1,7 +1,7 @@
 # Dataset Preparation
 How to prepare the data is explained here.
 
-## JASTER 
+## jaster
 jaster is the Japanese evaluation dataset managed by llm-jp in [llm-jp-eval](https://github.com/llm-jp/llm-jp-eval). [llm-jp-eval/nejumi3-data](https://github.com/llm-jp/llm-jp-eval/tree/nejumi3-data) is created for data preparation for Nejumi Leaderboard3.
 
  #### For wandb multinant SaaS users
