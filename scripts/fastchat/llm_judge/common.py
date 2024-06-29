@@ -555,7 +555,7 @@ def chat_completion_anthropic(model, conv, temperature, max_tokens, api_dict=Non
 
     output = API_ERROR_OUTPUT
     for _ in range(API_MAX_RETRY):
-        if model == "claude-3-opus-20240229":
+        if model in {"claude-3-opus-20240229", "claude-3-5-sonnet"}:
             llm = ChatAnthropic(model_name=model)
             max_retries = 3
             retry_count = 0

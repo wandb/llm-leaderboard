@@ -1,0 +1,17 @@
+wandb:
+  run_name: "karakuri-ai/karakuri-lm-8x7b-instruct-v0.1" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+api: vllm
+num_gpus: 2
+batch_size: 256 # vllmは256, apiは32を推奨
+
+model:
+  use_wandb_artifacts: false
+  max_model_len: 3500 # update 
+  pretrained_model_name_or_path: "karakuri-ai/karakuri-lm-8x7b-instruct-v0.1" #if you use openai api, put the name of model
+  chat_template: "karakuri-ai/karakuri-lm-8x7b-instruct-v0.1"
+  size_category: "30B≤"
+  size: 46703841280
+  release_date: "6/24/2024"
