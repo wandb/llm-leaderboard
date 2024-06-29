@@ -7,6 +7,7 @@ import tempfile
 import os
 import signal
 import torch
+from pathlib import Path
 
 from utils import get_tokenizer_config
 
@@ -14,9 +15,15 @@ from utils import get_tokenizer_config
 def start_vllm_server():
     instance = WandbConfigSingleton.get_instance()
     cfg = instance.config
-    model_id = cfg.model.pretrained_model_name_or_path
+    run = instance.run
 
-    def run_vllm_server(model_id: str):
+    model_artifact_path = cfg.model.get("artifact_path", None)
+    if model_artifact_path is not None:
+        artifact = run.use_artifact(model_artifact_path, type='model')
+        artifact = Path(artifact.download())
+        cfg.model.update({"local_path": artifact / artifact.name.split(":")[0]})
+
+    def run_vllm_server():
         # set tokenizer_config
         tokenizer_config = get_tokenizer_config()
         cfg.update({"tokenizer_config": tokenizer_config})
@@ -28,10 +35,15 @@ def start_vllm_server():
             # chat_templateをファイルに書き込んでパスを取得
             temp_file.write(chat_template)
             chat_template_path = temp_file.name
+            model_id = cfg.model.pretrained_model_name_or_path
+            model_path = cfg.model.get("local_path", model_id)
+
             # サーバーを起動するためのコマンド
             command = [
                 "python3", "-m", "vllm.entrypoints.openai.api_server",
-                "--model", model_id, 
+                "--model", str(model_path),
+                "--served-model-name", model_id,
+                # "--tokenizer", str(model_path),
                 "--dtype", cfg.model.dtype, 
                 "--chat-template", chat_template_path,
                 "--max-model-len", str(cfg.model.max_model_len),
@@ -42,6 +54,7 @@ def start_vllm_server():
                 "--disable-log-stats",
                 "--disable-log-requests",
             ]
+
             # subprocessでサーバーをバックグラウンドで実行
             process = subprocess.Popen(command)
 
@@ -69,7 +82,7 @@ def start_vllm_server():
             time.sleep(10)  # 待機してから再試行
 
     # サーバーを起動
-    server_process = run_vllm_server(model_id)
+    server_process = run_vllm_server()
     print("vLLM server is starting...")
 
     # スクリプト終了時にサーバーを終了する
