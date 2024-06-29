@@ -66,27 +66,17 @@ cd llm-leaderboard
 
 ### Dataset Preparation
 
-For detailed instructions on dataset preparation, please refer to [link to detailed guide].
+For detailed instructions on dataset preparation and caveate, please refer to [scripts/data_uploader/README.md](./scripts/data_uploader/README.md).
 
-Overview of datasets:
+In Nejumi Leadeboard3, the following dataset are used.
 
-1. **JASTER**: 
-   - For wandb multinant SaaS users, the artifact has been registered.
-   - For wandb on-premises or dedicated cloud users, artifact registration is required.
+**Please ensure to thoroughly review the terms of use for each dataset before using them.**
 
-2. **MT-Bench**: 
-   - For wandb multinant SaaS users, the artifact has been registered.
-   - For wandb on-premises or dedicated cloud users, artifact registration is required.
-
-3. **LCTG**: 
-   - For wandb multinant SaaS users, the artifact has been registered.
-   - For wandb on-premises or dedicated cloud users, artifact registration is required.
-
-4. **JBBQ**: 
-   - Manual upload required.
-   - The dataset can be downloaded from [JBBQ github repository](https://github.com/ynklab/JBBQ_data?tab=readme-ov-file). 
-
-5. **LINE Yahoo Inappropriate Speech Evaluation Dataset**
+1. [jaster](https://github.com/llm-jp/llm-jp-eval/tree/nejumi3-data)(Apache-2.0 license)
+2. [MT-Bench-JA](https://github.com/Stability-AI/FastChat/tree/jp-stable) (Apache-2.0 license)
+3. [LCTG](https://github.com/CyberAgentAILab/LCTG-Bench) (Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License. Permission from AI shift to use for the leaderboard and was received.)
+4. [JBBQ](https://github.com/ynklab/JBBQ_data?tab=readme-ov-file) (Creative Commons Attribution 4.0 International License.)
+5. LINE Yahoo Inappropriate Speech Evaluation Dataset
 
 
 ### Configuration
