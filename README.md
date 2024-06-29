@@ -228,13 +228,10 @@ The results of the evaluation will be logged to the specified W&B project.
 
 
 ## Contributing
-
-[Guidelines for contributing to the project]
+Contributions to this repository is welcom. Please submit your suggestions via pull requests. Please note that we may not accept all pull requests.
 
 ## License
-
-[Specify the license under which this project is released]
+This repository is available for commercial use. However, please adhere to the respective rights and licenses of each evaluation dataset used.
 
 ## Contact
-
-For questions or support, please [provide contact information or link to issues page].
+For questions or support, please concatct to contact-jp@wandb.com.
