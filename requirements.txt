@@ -203,3 +203,4 @@ xformers==0.0.26.post1
 xmltodict==0.13.0
 yarl==1.9.4
 zipp==3.19.1
+pyknp==0.4.6
