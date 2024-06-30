@@ -95,7 +95,7 @@ Below, you will find a detailed description of the variables utilized in the `ba
 - **inference_interval:** Set inference interval in seconds. This is particularly effective when there are rate limits, such as with APIs.
 - **run:** Set to true for each evaluation dataset you want to run.
 - **model:** Information about the model.
-    - `use_wandb_artifacts`: Whether to use WandB artifacts for the model usage.
+    - `artifacts_path`: Path of the wandb artifacts where the model is located.
     - `max_model_len`: Maximum token length of the input.
     - `chat_template`: Path to the chat template file. This is required for open-weights models.
     - `dtype`: Data type. Choose from float32, float16, bfloat16.
@@ -163,7 +163,7 @@ This framework supports evaluating models using APIs such as OpenAI, Anthropic, 
     - `run_name`: Name of the W&B run.
 - **api:** Choose the API to use from `openai`, `anthropic`, `google`, `amazon_bedrock`.
 - **batch_size:** Batch size for API calls (recommended: 32).
-- **model:** Information about the model.
+- **model:** Information about the model. 
     - `pretrained_model_name_or_path`: Name of the API model.
     - `size_category`: Specify "api" to indicate using an API model.
     - `size`: Model size (leave as null for API models).
@@ -179,7 +179,7 @@ This framework also supports evaluating models using VLLM.  You need to create a
 - **num_gpus:** Number of GPUs to use.
 - **batch_size:** Batch size for VLLM (recommended: 256).
 - **model:** Information about the model.
-    - `use_wandb_artifacts`: Set to true if you want to use wandb artifacts.
+    - `artifacts_path`: When loading a model from wandb artifacts, it is necessary to include a description. If not, there is no need to write it. Example notation: wandb-japan/llm-leaderboard/llm-jp-13b-instruct-lora-jaster-v1.0:v0   
     - `pretrained_model_name_or_path`: Name of the VLLM model.
     - `chat_template`: Path to the chat template file (if needed).
     - `size_category`: Specify model size category. In Nejumi Leaderboard, the category is defined as "10B<", "10B<= <30B", "<=30B" and "api".
