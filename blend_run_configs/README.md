@@ -1,4 +1,4 @@
-#　Blender
+# Blender
 
 This feature allows you to blend inference results later or resume a run by carrying over the previous results.
 
