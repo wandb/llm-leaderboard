@@ -6,6 +6,7 @@ import atexit
 import tempfile
 import os
 import signal
+import psutil
 import torch
 from pathlib import Path
 
@@ -93,16 +94,77 @@ def start_vllm_server():
 
     atexit.register(cleanup)
 
+    # SIGTERMシグナルをキャッチしてサーバーを終了する
+    def handle_sigterm(signal, frame):
+        print("SIGTERM received. Shutting down vLLM server gracefully...")
+        cleanup()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, handle_sigterm)
+
     # サーバーが完全に起動するのを待つ
     health_check()
 
+import asyncio
+import psutil
+import time
+import torch
+import os
+import signal
+
+def force_cuda_memory_cleanup():
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
+        torch.cuda.synchronize()
+        # すべての CUDA デバイスに対してメモリをクリア
+        for i in range(torch.cuda.device_count()):
+            with torch.cuda.device(i):
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+
+def wait_for_gpu_memory_release(timeout=60):
+    start_time = time.time()
+    while torch.cuda.memory_allocated() > 0:
+        if time.time() - start_time > timeout:
+            print(f"Warning: GPU memory not fully released after {timeout} seconds.")
+            break
+        print(f"Waiting for GPU memory to be released. {torch.cuda.memory_allocated()} bytes still allocated.")
+        force_cuda_memory_cleanup()
+        time.sleep(1)
 
 def shutdown_vllm_server():
     try:
         with open('vllm_server.pid', 'r') as pid_file:
             pid = int(pid_file.read().strip())
-        os.kill(pid, signal.SIGTERM)
+        
+        process = psutil.Process(pid)
+        
+        # 同期的にプロセスを終了
+        process.terminate()
+        try:
+            process.wait(timeout=30)
+        except psutil.TimeoutExpired:
+            print("Termination timed out. Killing the process.")
+            process.kill()
+        
         print(f"vLLM server with PID {pid} has been terminated.")
+        
+        # PIDファイルを削除
+        os.remove('vllm_server.pid')
+        
+    except psutil.NoSuchProcess:
+        print(f"Process with PID {pid} not found. It may have already been terminated.")
+    except FileNotFoundError:
+        print("PID file not found. vLLM server may not be running.")
     except Exception as e:
-        print(f"Failed to shutdown vLLM server: {e}")
-    torch.cuda.empty_cache()
+        print(f"An error occurred while shutting down vLLM server: {e}")
+    finally:
+        # GPU メモリのクリーンアップ
+        print("Cleaning up GPU memory...")
+        force_cuda_memory_cleanup()
+        wait_for_gpu_memory_release()
+        print("GPU memory cleanup completed.")
+
+    # 少し待機してリソースが確実に解放されるのを待つ
+    time.sleep(10)
