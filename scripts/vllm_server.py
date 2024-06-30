@@ -17,7 +17,7 @@ def start_vllm_server():
     cfg = instance.config
     run = instance.run
 
-    model_artifact_path = cfg.model.get("artifact_path", None)
+    model_artifact_path = cfg.model.get("artifacts_path", None)
     if model_artifact_path is not None:
         artifact = run.use_artifact(model_artifact_path, type='model')
         artifact = Path(artifact.download())
@@ -49,11 +49,14 @@ def start_vllm_server():
                 "--max-model-len", str(cfg.model.max_model_len),
                 "--max-num-seqs", str(cfg.batch_size),
                 "--tensor-parallel-size", str(cfg.get("num_gpus", 1)),
+                "--device", cfg.model.device_map,
                 "--seed", "42",
                 "--uvicorn-log-level", "warning",
                 "--disable-log-stats",
                 "--disable-log-requests",
             ]
+            if cfg.model.trust_remote_code:
+                command.append("--trust-remote-code")
 
             # subprocessでサーバーをバックグラウンドで実行
             process = subprocess.Popen(command)
