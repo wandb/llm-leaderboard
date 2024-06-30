@@ -95,7 +95,7 @@ Below, you will find a detailed description of the variables utilized in the `ba
 - **inference_interval:** Set inference interval in seconds. This is particularly effective when there are rate limits, such as with APIs.
 - **run:** Set to true for each evaluation dataset you want to run.
 - **model:** Information about the model.
-    - `use_wandb_artifacts`: Whether to use WandB artifacts for the model usage.
+    - `artifacts_path`: Path of the wandb artifacts where the model is located. When loading a model from wandb artifacts, it is necessary to include a description. Default is "null". Example notation: wandb-japan/llm-leaderboard/llm-jp-13b-instruct-lora-jaster-v1.0:v0
     - `max_model_len`: Maximum token length of the input.
     - `chat_template`: Path to the chat template file. This is required for open-weights models.
     - `dtype`: Data type. Choose from float32, float16, bfloat16.
