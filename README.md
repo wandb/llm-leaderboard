@@ -217,7 +217,8 @@ You can use either `-c` or `-s` option:
 The results of the evaluation will be logged to the specified W&B project.
 
 ## When you want to edit runs or add additional evaluation metrics
-Please refer to [belend_run_configs/README.md](./belend_run_configs/README.md).
+Please refer to [belend_run_configs/README.md](belend_run_configs/README.md).
+
 
 ## Contributing
 Contributions to this repository is welcom. Please submit your suggestions via pull requests. Please note that we may not accept all pull requests.
