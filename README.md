@@ -22,7 +22,7 @@ Our evaluation framework incorporates a diverse set of metrics to provide a holi
 | ^   | syntactic analysis | JCoLA-in-domain*(jaster) (0shot, 2shot)<br>JCoLA-out-of-domain*(jaster) (0shot, 2shot)<br>JBLiMP*(jaster) (0shot, 2shot)<br>wiki_reading*(jaster) (0shot, 2shot)<br>wiki_pas*(jaster) (0shot, 2shot)<br>wiki_dependency*(jaster) (0shot, 2shot) | | |
 | Alignment | Controllability | jaster* (0shot, 2shot)<br>LCTG | | LCTG cannot be used for business purposes. Usage for research and using the result in the press release are acceptable. |
 | ^   | Ethics/Moral | JCommonsenseMorality*(2shot) | | |
-| ^   | Toxicity || LINE Yahoo Inappropriate Speech Evaluation Dataset | | <TBU> |
+| ^   | Toxicity || LINE Yahoo Reliability Evaluation Benchmark | This dataset is not publicly available due to its sensitive content.| <TBU> |
 | ^   | Bias | JBBQ (2shot) | | JBBQ needs to be downloaded from [JBBQ github repository](https://github.com/ynklab/JBBQ_data?tab=readme-ov-file). |
 | ^   | Truthfulness | JTruthfulQA (coming) | |<TBU>|
 | ^   | Robustness | Test multiple patterns against JMMLU (W&B original) (0shot, 2shot)<br>- Standard method<br>- Choices are symbols<br>- Select anything but the correct answer | | |
