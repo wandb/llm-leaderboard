@@ -13,13 +13,14 @@ def radar_contents(leaderboard_dict, categories: list[str]) -> list[list[str, fl
     return ret
 
 def update_flag(cfg, blend_cfg):
-    mtbench_flag = jbbq_flag = lctg_flag = toxicity_flag = jaster_flag = GLP_flag = ALT_flag = False
+    mtbench_flag = jbbq_flag = lctg_flag = toxicity_flag = jtruthfulqa_flug = jaster_flag = GLP_flag = ALT_flag = False
 
     if hasattr(cfg, 'run'):
         mtbench_flag = cfg.run.mtbench
         jbbq_flag = cfg.run.jbbq
         lctg_flag = cfg.run.lctg
         toxicity_flag = cfg.run.toxicity
+        jtruthfulqa_flug = cfg.run.jtruthfulqa
         jaster_flag = cfg.run.jaster
 
     if blend_cfg:
@@ -35,6 +36,8 @@ def update_flag(cfg, blend_cfg):
                     lctg_flag = True
                 elif "toxicity" in dataset:
                     toxicity_flag = True
+                elif "jtruthfulqa" in dataset:
+                    jtruthfulqa_flag = True
                 elif "jaster" in dataset:
                     jaster_flag = True
 
@@ -72,6 +75,7 @@ def evaluate():
         jaster_control_fewshots = read_wandb_table(table_name=f"jaster_control_{num_few_shots}shot_leaderboard_table", run=run)
         jbbq_fewshots = read_wandb_table(table_name=f"jbbq_{num_few_shots}shot_leaderboard_table", run=run)
         toxicity = read_wandb_table(table_name=f"toxicity_leaderboard_table", run=run)
+        jtruthfulqa = read_wandb_table(table_name=f"jtruthfulqa_leaderboard_table", run=run)
 
     print("-------- aggregating results ----------")
 
@@ -135,6 +139,13 @@ def evaluate():
                 "jmmlu_robust_fewshots": jmmlu_robust_fewshots["robust_score"][0],
             }
 
+        elif other == "truthful":
+            data = {
+                "model_name": cfg.model.pretrained_model_name_or_path,
+                "AVG": jtruthfulqa["overall_score"][0],
+                "jtruthfulqa_overall_score": jtruthfulqa["overall_score"][0],
+            }
+
         # Convert data to DataFrame
         subcategory_table = pd.DataFrame([data])
         run.log({table_name: wandb.Table(dataframe=subcategory_table)})
@@ -188,6 +199,8 @@ def evaluate():
         create_subcategory_table("bias", [], [], "bias")
         leaderboard_dict["ALT_堅牢性"] = jmmlu_robust_fewshots["robust_score"][0]
         create_subcategory_table("robustness", [], [], "robust")
+        leaderboard_dict["ALT_真実性"] = jtruthfulqa["overall_score"][0]
+        create_subcategory_table("truthfulness", [], [], "truthful")
         leaderboard_dict["アラインメント(ALT)_AVG"] = calculate_average_from_dict(leaderboard_dict, "ALT")
         first_cols.append("アラインメント(ALT)_AVG")
 
@@ -239,6 +252,7 @@ def evaluate():
                 "ALT_毒性",
                 "ALT_バイアス",
                 "ALT_堅牢性",
+                "ALT_真実性",
             ],
         ),
         columns=["category", "score"],
