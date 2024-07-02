@@ -81,7 +81,7 @@ In Nejumi Leadeboard3, the following dataset are used.
 
 ### Configuration
 
-#### Base configration
+#### Base configuration
 
 The `base_config.yaml` file contains basic settings, and you can create a separate YAML file for model-specific settings. This allows for easy customization of settings for each model while maintaining a consistent base configuration.
 
@@ -154,7 +154,7 @@ Below, you will find a detailed description of the variables utilized in the `ba
     - `parallel`: Number of parallel threads to use.
     - `first_n`: Number of generated responses to use for comparison. Leave as null for default behavior.
 
-### Model configration
+### Model configuration
 After setting up the base-configuration file, the next step is to set up a configuration file for model under `configs/`.
 #### API Model Configurations
 This framework supports evaluating models using APIs such as OpenAI, Anthropic, Google, and Cohere. You need to create a separate config file for each API model. For example, the config file for OpenAI's gpt-4o-2024-05-13 would be named `configs/config-gpt-4o-2024-05-13.yaml`.
