@@ -8,6 +8,7 @@ from io import StringIO
 import google.generativeai as genai
 from tqdm import tqdm
 import wandb
+import concurrent.futures
 from fastchat.llm_judge.common import load_questions
 from fastchat.llm_judge.gen_model_answer import run_eval
 from fastchat.llm_judge.gen_api_answer import get_api_answer
@@ -198,18 +199,19 @@ def mtbench_evaluate(language):
         for match in tqdm(matches):
             play_a_match_func(match, output_file=output_file, use_azure=cfg.mtbench.use_azure)
     else:
-
         def play_a_match_wrapper(match):
-            play_a_match_func(match, output_file=output_file, use_azure=cfg.mtbench.use_azure)
+            play_a_match_func(match, output_file=output_file)
 
         np.random.seed(0)
         np.random.shuffle(matches)
 
-        with ThreadPoolExecutor(cfg.mtbench.parallel) as executor:
-            for match in tqdm(
-                executor.map(play_a_match_wrapper, matches), total=len(matches)
-            ):
-                pass
+        with concurrent.futures.ThreadPoolExecutor(max_workers=cfg.mtbench.parallel) as executor:
+            futures = [executor.submit(play_a_match_wrapper, match) for match in matches]
+            for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures)):
+                try:
+                    future.result()
+                except Exception as e:
+                    print(f"Function raised an exception: {e}")
 
     # 3. consolidate results and log as wandb.Table
     # load questions
