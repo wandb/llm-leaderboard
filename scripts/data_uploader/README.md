@@ -59,4 +59,4 @@ python3 scripts/uploader/upload_jbbq.py -e <wandb/entity> -p <wandb/project>  -d
 ```
 
 ## LINE Yahoo Inappropriate Speech Evaluation Dataset
-Please adhere to the LINE Yahoo Inappropriate Speech Evaluation Dataset" terms of use regarding data utilization.
+This dataset is not available publically. So, you cannot use this dataset for your model evaluation.
