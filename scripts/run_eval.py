@@ -31,12 +31,15 @@ if os.path.exists("configs/config.yaml"):
             "mode": "single",
             "num_choices": 1,
             "baseline_model": None,
-            "parallel": 80,
             "first_n": None,
         }
     }
     for key, value in default_settings.items():
         cfg_dict[key].update(value)
+
+    if 'parallel' not in cfg_dict.get('mtbench', {}):
+        cfg_dict['mtbench']['parallel'] = 1
+
     assert isinstance(cfg_dict, dict)
 else:
     raise FileNotFoundError("config.yaml file does not exist.")
