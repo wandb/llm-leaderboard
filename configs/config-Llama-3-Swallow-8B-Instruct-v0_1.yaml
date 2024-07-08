@@ -1,0 +1,15 @@
+wandb:
+  run_name: "tokyotech-llm/Llama-3-Swallow-8B-Instruct-v0.1" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+api: vllm
+batch_size: 256 # vllmは256, apiは32を推奨
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "tokyotech-llm/Llama-3-Swallow-8B-Instruct-v0.1" #if you use openai api, put the name of model
+  chat_template: "tokyotech-llm/Llama-3-Swallow-8B-Instruct-v0.1"
+  size_category: "<10B"
+  size: 8030261248
+  release_date: "7/1/2024"
