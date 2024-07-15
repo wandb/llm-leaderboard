@@ -5,9 +5,11 @@ wandb:
 # if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
 api: vllm
 batch_size: 256 # vllmは256, apiは32を推奨
+num_gpus: 4
 
 model:
-  use_wandb_artifacts: false
+  source: "wandb"  # WandB Artifactを使用する場合のみコメントアウトを解除
+  artifacts_path: "wandb-japan/llm-leaderboard3-internal-webinar/cyberagent-calm2-7b-chat_demo:v1"  # WandB Artifactを使用する場合
   pretrained_model_name_or_path: "cyberagent/calm2-7b-chat" #if you use openai api, put the name of model
   chat_template: "cyberagent/calm2-7b-chat"
   size_category: "<10B"
