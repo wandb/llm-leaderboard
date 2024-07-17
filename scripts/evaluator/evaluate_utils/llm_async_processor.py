@@ -40,6 +40,7 @@ class LLMAsyncProcessor:
         self.llm = llm
         self.inputs = inputs
         self.api_type = cfg.api
+        self.model_name = cfg.model.pretrained_model_name_or_path
         self.batch_size = cfg.get("batch_size", 256)
         self.inference_interval = cfg.inference_interval
 
@@ -69,7 +70,10 @@ class LLMAsyncProcessor:
         if self.api_type in ["google", "amazon_bedrock"]:
             return await asyncio.to_thread(self._invoke, messages, **kwargs)
         else:
-            return await self.llm.ainvoke(messages, **kwargs)
+            if self.model_name == "tokyotech-llm/Swallow-7b-instruct-v0.1":
+                return await self.llm.ainvoke(messages, stop=["</s>"], **kwargs)
+            else:
+                return await self.llm.ainvoke(messages, **kwargs)
 
     async def _process_batch(self, batch: Inputs) -> List[Tuple[AIMessage, float]]:
         tasks = [
@@ -105,10 +109,3 @@ class LLMAsyncProcessor:
 
     def get_results(self) -> List[Tuple[AIMessage, float]]:
         return asyncio.run(self._gather_tasks())
-
-
-# 使用例（llmとinputsは適切なオブジェクトとデータで置き換えてください）
-# llm_instance = YourLLMClass()
-# inputs_data = [(messages1, kwargs1), (messages2, kwargs2), ...]
-# processor = LLMAsyncProcessor(llm_instance, inputs_data, batch_size=10)
-# results = processor.get_results()
