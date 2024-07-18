@@ -271,7 +271,7 @@ def mtbench_evaluate(language):
     table_log = wandb.Table(dataframe=df_judge)
 
     # table for radar chart
-    df_summary = df_judge.groupby(['category'], as_index=False).score.mean()
+    _df_judge = df_judge.query('score != -1').groupby(['question_id', 'turn', 'category'], as_index=False).score.mean()
     table_radar = wandb.Table(dataframe=df_summary)
     
     ## table for LB mtbench
