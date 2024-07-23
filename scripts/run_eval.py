@@ -27,7 +27,7 @@ if os.path.exists("configs/config.yaml"):
         "mtbench":{
             "question_begin": None,
             "question_end": None,
-            "judge_model": "gpt-4",
+            "judge_model": "gpt-4-0613",
             "mode": "single",
             "num_choices": 1,
             "baseline_model": None,
