@@ -143,4 +143,4 @@ xmltodict==0.13.0
 yarl==1.9.3
 zipp==3.17.0
 -e git+https://github.com/wandb/FastChat.git@g-leaderboard-h#egg=fschat
--e git+https://github.com/llm-jp/llm-jp-eval.git@wandb-nejumi-claude#egg=llm_jp_eval
+-e git+https://github.com/llm-jp/llm-jp-eval.git@g-leaderboard-claude3-5#egg=llm_jp_eval
