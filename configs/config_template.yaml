@@ -2,8 +2,8 @@ testmode: false # If you want to test with a small amount of data, please set it
 model_name: "your modelname" # will be used in Table
 
 wandb:
-  entity: "your/WANDB/entity"
-  project: "your/WANDB/project"
+  entity: "geniac"
+  project: "eval-geniac-private"
   run_name: "your/WANDB/run_name" # this run_name will be used as the name of run in leaderboard. Can be changed later
 
 # Tasks to run
@@ -31,8 +31,8 @@ llm_jp_eval:
   en_num_shots: 4 # run_llm_jp_eval_en_few_shots is true, please set the num of few shots. Default is 4
   torch_dtype: "bf16" # {fp16, bf16, fp32}
   # Items that do not need to be changed unless specifically intended.
-  dataset_artifact: "wandb-japan/llm-leaderboard/jaster:v11"
-  dataset_dir: "/jaster/1.2.6/evaluation/test"
+  dataset_artifact: "geniac/eval-geniac-private/jaster:v0"
+  dataset_dir: "/jaster/1.2.6/evaluation/holdout"
   ja: 
     custom_prompt_template: null
     custom_fewshots_template: null
@@ -60,7 +60,7 @@ mtbench:
   max_gpu_memory: null
   dtype: bfloat16 # None or float32 or float16 or bfloat16
   use_azure: false # if you use azure openai service for evaluation, set true
-  parallel: 1 # set number of parallel judgment
+  parallel: 80 # set number of parallel judgment
   # for conv template # added
   custom_conv_template: false
   # the following variables will be used when custom_conv_template is set as true
@@ -78,18 +78,18 @@ mtbench:
     conv_roles: "('Instruction', 'Response')"
   dataset: # Items that do not need to be changed unless specifically intended.
     ja:
-      question_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_question:v3" 
-      test_question_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v5"
-      referenceanswer_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v1" 
-      test_referenceanswer_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v1"
-      judge_prompt_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1"
+      question_artifacts_path: "geniac/eval-geniac-private/mtbench_ja_question:v0" 
+      test_question_artifacts_path: "geniac/eval-geniac-private/mtbench_ja_question_small_for_test:v0"
+      referenceanswer_artifacts_path: "geniac/eval-geniac-private/mtbench_ja_referenceanswer:v0"
+      test_referenceanswer_artifacts_path: "geniac/eval-geniac-private/mtbench_ja_referenceanswer_small_for_test:v0"
+      judge_prompt_artifacts_path: "geniac/eval-geniac-private/mtbench_ja_prompt:v0"
       bench_name: "mt_bench_ja"
     en:
-      question_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_en_question:v0"
-      test_question_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_en_question_small_for_test:v0"
-      referenceanswer_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_en_referenceanswer:v0" 
-      test_referenceanswer_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_en_referenceanswer_small_for_test:v0"
-      judge_prompt_artifacts_path: "wandb-japan/llm-leaderboard/mtbench_en_prompt:v0"
+      question_artifacts_path: "geniac/eval-geniac-private/mtbench_en_question:v0"
+      test_question_artifacts_path: "geniac/eval-geniac-private/mtbench_en_question_small_for_test:v0"
+      referenceanswer_artifacts_path: "geniac/eval-geniac-private/mtbench_en_referenceanswer:v0" 
+      test_referenceanswer_artifacts_path: "geniac/eval-geniac-private/mtbench_en_referenceanswer_small_for_test:v0"
+      judge_prompt_artifacts_path: "geniac/eval-geniac-private/mtbench_en_prompt:v0"
       bench_name: "mt_bench_en"
 
 #==================================================================
