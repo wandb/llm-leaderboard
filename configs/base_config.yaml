@@ -1,6 +1,6 @@
 wandb:
-  entity: "wandb-japan"
-  project: "llm-leaderboard3"
+  entity: <your wandb entity name>
+  project: <your wandb project name>
   #run: please set up run name in a model-base config
 
 github_version: v3.0.0 #for recording
@@ -12,9 +12,9 @@ run:
   jaster: true
   jmmlu_robustness: true # if this is set as true, jaster should set as true
   mtbench: true
-  jbbq: true
-  lctg: true
-  toxicity: true
+  jbbq: false
+  lctg: false
+  toxicity: false
   aggregate: true
 
 model:
@@ -44,13 +44,13 @@ lctg:
   dataset_dir: "lctg"
 
 jbbq:
-  artifacts_path: 'wandb-japan/llm-leaderboard3-private/jbbq:v2'
-  dataset_dir: 'jbbq'
-  language: 'ja'
+  artifacts_path: "wandb-japan/llm-leaderboard3-private/jbbq:v2" # replace with your artifact path
+  dataset_dir: "jbbq"
+  language: "ja"
 
 toxicity:
-  artifact_path: 'wandb-japan/toxicity-dataset-private/toxicity_dataset_full:v3'
-  judge_prompts_path: 'wandb-japan/toxicity-dataset-private/toxicity_judge_prompts:v1'
+  artifact_path: 'wandb-japan/toxicity-dataset-private/toxicity_dataset_full:v3' # this dataset is not available publically
+  judge_prompts_path: 'wandb-japan/toxicity-dataset-private/toxicity_judge_prompts:v1' # this dataset is not available publically
   max_workers: 5
   judge_model: 'gpt-4o-2024-05-13'
 
