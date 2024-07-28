@@ -9,6 +9,8 @@ from langchain_google_genai import (
     HarmBlockThreshold,
     HarmCategory,
 )
+from transformers import AutoModel, AutoTokenizer
+import torch
 # from langchain_aws import ChatBedrock
 from langchain_anthropic import ChatAnthropic
 from botocore.exceptions import ClientError
@@ -77,6 +79,10 @@ def get_llm_inference_engine():
         # vLLMサーバーを起動
         from vllm_server import start_vllm_server
         start_vllm_server()
+
+        #model = AutoModel.from_pretrained(model_name)
+        #num_params=sum(p.numel() for p in model.parameters() if p.requires_grad)
+        #wandb.config.update({"model.size": num_params})
 
         # LangChainのVLLMインテグレーションを使用
         llm = ChatOpenAI(
