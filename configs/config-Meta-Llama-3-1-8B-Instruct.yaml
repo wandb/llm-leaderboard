@@ -12,5 +12,5 @@ model:
   pretrained_model_name_or_path: "meta-llama/Meta-Llama-3.1-8B-Instruct" #if you use openai api, put the name of model
   chat_template: "meta-llama/Meta-Llama-3.1-8B-Instruct"
   size_category: "<10B"
-  size: 70553706496
+  #size: 70553706496
   release_date: "7/24/2024"
