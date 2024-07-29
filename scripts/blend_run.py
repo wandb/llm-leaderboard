@@ -56,6 +56,12 @@ def process_task(
             f"jmmlu_robust_{num_few_shots}shot_output_table",
             f"jmmlu_robust_{num_few_shots}shot_leaderboard_table",
         ]
+    elif dataset == "jtruthfulqa":
+        table_names = [
+            "jtruthfulqa_output_table",
+            "jtruthfulqa_radar_table",
+            "jtruthfulqa_leaderboard_table",
+        ]
     else:
         raise ValueError(f"Invalid dataset name: {dataset}")
 
@@ -85,6 +91,8 @@ def process_task(
                     new_cols = [f"{col}_{dataset}_{num_few_shots}shot" for col in output_table.columns]
             elif dataset == "jmmlu":
                 new_cols = [f"{col}_{dataset}_robust_{num_few_shots}shot" for col in output_table.columns]
+            elif dataset == "jtruthfulqa":
+                new_cols = [f"{col}_{dataset}" for col in output_table.columns]
             else:
                 raise ValueError(f"Invalid dataset name: {dataset}")
             

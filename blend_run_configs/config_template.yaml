@@ -21,6 +21,7 @@ old_runs: # Please specify the tasks you want to carry over from past runs. Mult
       - lctg
       - toxicity
       - jaster
+      - jtruthfulqa
   # - run_path: "your/WANDB/run_path"
   #   dataset: # The list of tasks to take over. Please comment out tasks that do not need to be taken over.
   #     - mtbench
@@ -28,3 +29,4 @@ old_runs: # Please specify the tasks you want to carry over from past runs. Mult
   #     - lctg
   #     - toxicity
   #     - jaster
+  #     - jtruthfulqa

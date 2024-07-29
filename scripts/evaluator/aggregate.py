@@ -13,14 +13,14 @@ def radar_contents(leaderboard_dict, categories: list[str]) -> list[list[str, fl
     return ret
 
 def update_flag(cfg, blend_cfg):
-    mtbench_flag = jbbq_flag = lctg_flag = toxicity_flag = jtruthfulqa_flug = jaster_flag = GLP_flag = ALT_flag = False
+    mtbench_flag = jbbq_flag = lctg_flag = toxicity_flag = jtruthfulqa_flag = jaster_flag = GLP_flag = ALT_flag = False
 
     if hasattr(cfg, 'run'):
         mtbench_flag = cfg.run.mtbench
         jbbq_flag = cfg.run.jbbq
         lctg_flag = cfg.run.lctg
         toxicity_flag = cfg.run.toxicity
-        jtruthfulqa_flug = cfg.run.jtruthfulqa
+        jtruthfulqa_flag = cfg.run.jtruthfulqa
         jaster_flag = cfg.run.jaster
 
     if blend_cfg:
@@ -43,7 +43,7 @@ def update_flag(cfg, blend_cfg):
 
     if mtbench_flag and jaster_flag:
         GLP_flag = True
-    if jbbq_flag and lctg_flag and toxicity_flag:
+    if jbbq_flag and lctg_flag and toxicity_flag and jtruthfulqa_flag:
         ALT_flag = True
     return GLP_flag, ALT_flag
 
