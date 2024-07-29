@@ -15,6 +15,7 @@ from evaluator import (
     mtbench,
     jaster_translation,
     toxicity,
+    jtruthfulqa,
     aggregate,
 )
 from utils import paginate_choices
@@ -97,6 +98,10 @@ if cfg.run.lctg:
 # toxicity
 if cfg.run.toxicity:
     toxicity.evaluate()
+
+# JTruthfulQA
+if cfg.run.jtruthfulqa:
+    jtruthfulqa.evaluate()
 
 # Evaluation phase
 if cfg.run.jaster:
