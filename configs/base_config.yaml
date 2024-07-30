@@ -15,6 +15,7 @@ run:
   jbbq: true
   lctg: true
   toxicity: true
+  jtruthfulqa: false
   aggregate: true
 
 model:
@@ -53,6 +54,11 @@ toxicity:
   judge_prompts_path: 'wandb-japan/toxicity-dataset-private/toxicity_judge_prompts:v1'
   max_workers: 5
   judge_model: 'gpt-4o-2024-05-13'
+
+jtruthfulqa:
+  artifact_path: 'wandb-japan/llm-leaderboard3/jtruthfulqa_dataset:v1'  # JTruthfulQAデータセットのアーティファクトパス
+  roberta_model_name: 'nlp-waseda/roberta_jtruthfulqa'  # 評価に使用するRoBERTaモデル名
+
 
 mtbench:
   temperature_override:
