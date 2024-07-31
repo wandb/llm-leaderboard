@@ -72,6 +72,8 @@ def evaluate():
             answer_file=answer_file,
             num_worker=cfg.mtbench.parallel,
         )
+    elif cfg.api == "None":
+        pass
 
     # 2. evaluate outputs
     questions = load_questions(question_file, None, None)
