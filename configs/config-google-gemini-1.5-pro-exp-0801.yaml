@@ -1,0 +1,15 @@
+wandb:
+  run_name: "google/gemini-1.5-pro-exp-0801" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthropic", "google", "cohere", "vllm", "mistral", "bedrock"
+api: google
+batch_size: 2 # vllmは256, apiは32を推奨
+inference_interval: 1 # seconds
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "gemini-1.5-pro-exp-0801" #if you use openai api, put the name of model
+  size_category: "api"
+  size: null
+  release_date: "8/1/2024"
