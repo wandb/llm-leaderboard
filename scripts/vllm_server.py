@@ -55,6 +55,8 @@ def start_vllm_server():
                 "--uvicorn-log-level", "warning",
                 "--disable-log-stats",
                 "--disable-log-requests",
+                "--quantization", str(cfg.get("quantization", None)),
+                "--revision", str(cfg.get("revision", 'main')),
             ]
             if cfg.model.trust_remote_code:
                 command.append("--trust-remote-code")
