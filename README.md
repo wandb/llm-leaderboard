@@ -24,7 +24,7 @@ Our evaluation framework incorporates a diverse set of metrics to provide a holi
 | ^   | Ethics/Moral | JCommonsenseMorality*(2shot) | | |
 | ^   | Toxicity || LINE Yahoo Reliability Evaluation Benchmark | This dataset is not publicly available due to its sensitive content.| <TBU> |
 | ^   | Bias | JBBQ (2shot) | | JBBQ needs to be downloaded from [JBBQ github repository](https://github.com/ynklab/JBBQ_data?tab=readme-ov-file). |
-| ^   | Truthfulness | JTruthfulQA (coming) | |<TBU>|
+| ^   | Truthfulness | JTruthfulQA | | For JTruthfulQA evaluation, nlp-waseda/roberta_jtruthfulqa requires Juman++ to be installed beforehand. You can install it by running the script/install_jumanpp.sh script. |
 | ^   | Robustness | Test multiple patterns against JMMLU (W&B original) (0shot, 2shot)<br>- Standard method<br>- Choices are symbols<br>- Select anything but the correct answer | | |
 
 
@@ -77,6 +77,8 @@ In Nejumi Leadeboard3, the following dataset are used.
 3. [LCTG](https://github.com/CyberAgentAILab/LCTG-Bench) (Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License. Permission from AI shift to use for the leaderboard and was received.)
 4. [JBBQ](https://github.com/ynklab/JBBQ_data?tab=readme-ov-file) (Creative Commons Attribution 4.0 International License.)
 5. LINE Yahoo Inappropriate Speech Evaluation Dataset
+6. [JTruthfulQA](https://github.com/nlp-waseda/JTruthfulQA) (Creative Commons Attribution 4.0 International License.)
+
 
 
 ### Configuration
@@ -132,6 +134,10 @@ Below, you will find a detailed description of the variables utilized in the `ba
     - `judge_prompts_path`: URL of the WandB Artifact of the toxicity judge prompts.
     - `max_workers`: Number of workers for parallel processing.
     - `judge_model`: Model used for toxicity judgment. Default is `gpt-4o-2024-05-13`
+
+- **jtruthfulqa:** Settings for the LCTG dataset.
+    - `artifact_path`: URL of the WandB Artifact for the JTruthfulQA dataset.
+    - `roberta_model_name`: Name of the RoBERTa model used for evaluation. Default is 'nlp-waseda/roberta_jtruthfulqa'.
 
 - **mtbench:** Settings for the MT-Bench evaluation.
     - `temperature_override`: Override the temperature for each category of the MT-Bench.
