@@ -76,7 +76,7 @@ In Nejumi Leadeboard3, the following dataset are used.
 2. [MT-Bench-JA](https://github.com/Stability-AI/FastChat/tree/jp-stable) (Apache-2.0 license)
 3. [LCTG](https://github.com/CyberAgentAILab/LCTG-Bench) (Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License. Permission from AI shift to use for the leaderboard and was received.)
 4. [JBBQ](https://github.com/ynklab/JBBQ_data?tab=readme-ov-file) (Creative Commons Attribution 4.0 International License.)
-5. LINE Yahoo Inappropriate Speech Evaluation Dataset
+5. LINE Yahoo Inappropriate Speech Evaluation Dataset (not publically available)
 6. [JTruthfulQA](https://github.com/nlp-waseda/JTruthfulQA) (Creative Commons Attribution 4.0 International License.)
 
 
