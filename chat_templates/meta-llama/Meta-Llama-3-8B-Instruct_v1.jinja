@@ -1,0 +1,7 @@
+{% for message in messages -%}
+    {% if message['role'] == 'system' -%}
+<|begin_of_text|><|start_header_id|>system<|end_header_id|>다음은 작업을 설명하는 지침과 추가 배경 정보를 제공하는 입력의 조합입니다. 요청을 적절하게 충족하는 답변을 작성하십시오.
+    {%- elif message['role'] == 'user' %}
+{{message['instruction']}}<|eot_id|><|start_header_id|>user<|end_header_id|>{input}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+    {%- endif -%}
+{%- endfor %}

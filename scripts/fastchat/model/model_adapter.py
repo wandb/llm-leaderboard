@@ -2479,10 +2479,19 @@ class LlmjpAdapter(BaseModelAdapter):
     def get_default_conv_template(self, model_path: str) -> Conversation:
         return get_conv_template("llm-jp")
 
+class ExaoneAdapter(BaseModelAdapter):
+    """The model adapter for LGAI-EXAONE/EXAONE-3.0-7.8B-Instruct"""
+
+    def match(self, model_path: str):
+        return "exaone-" in model_path.lower() and "instruct" in model_path.lower()
+
+    def get_default_conv_template(self, model_path: str) -> Conversation:
+        return get_conv_template("exaone")
 
 # Note: the registration order matters.
 # The one registered earlier has a higher matching priority.
 register_model_adapter(CustomAdapter)  # ←追加
+register_model_adapter(ExaoneAdapter)
 register_model_adapter(LlmjpAdapter)
 register_model_adapter(SwallowAdapter)
 register_model_adapter(JLlama2Adapter)

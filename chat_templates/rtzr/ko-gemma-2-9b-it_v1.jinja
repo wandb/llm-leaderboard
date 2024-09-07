@@ -1,0 +1,16 @@
+{% for message in messages -%}
+    {% if message['role'] == 'system' -%}
+{{'[|system|]'+message['content']+'[|endofturn|]'}}
+    {%- elif message['role'] == 'user' %}
+[|user|]
+다음은 작업을 설명하는 지침과 추가 배경 정보를 제공하는 입력의 조합입니다. 요청을 적절하게 충족하는 답변을 작성하십시오. 
+지시:
+{{message['instruction']}}
+
+입력:
+{input}
+    {%- elif message['role'] == 'assistant' %}
+답변:
+[|assistant|]
+    {%- endif -%}
+{%- endfor %}

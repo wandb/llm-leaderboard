@@ -1799,6 +1799,19 @@ register_conv_template(
     )
 )
 
+# EXAONE-3.0-7.8B Chat Template
+# Reference: https://huggingface.co/LGAI-EXAONE/EXAONE-3.0-7.8B-Instruct/blob/main/tokenizer_config.json
+register_conv_template(
+    Conversation(
+        name="exaone",
+        system_message="[|system|] [|endofturn|]",
+        roles=("### User", "### Assistant"),
+        sep_style=SeparatorStyle.ADD_NEW_LINE_SINGLE,
+        sep="\n\n",
+        stop_str="</s>",
+    )
+)
+
 if __name__ == "__main__":
     from fastchat.conversation import get_conv_template
     print("JSLM Alpha template:")
