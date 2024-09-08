@@ -1,0 +1,16 @@
+wandb:
+  run_name: "CohereForAI/c4ai-command-r-08-2024" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+api: vllm
+num_gpus: 4
+batch_size: 256 # vllmは256, apiは32を推奨
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "CohereForAI/c4ai-command-r-08-2024" #if you use openai api, put the name of model
+  chat_template: "CohereForAI/c4ai-command-r-08-2024"
+  size_category: "30B≤"
+  size: 32296476672
+  release_date: "8/30/2024"
