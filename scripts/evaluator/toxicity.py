@@ -2,6 +2,7 @@ import concurrent.futures
 import json
 import re
 import ast
+import os
 from typing import Optional
 
 import pandas as pd
@@ -50,13 +51,12 @@ from openai import OpenAI, AzureOpenAI
 import os
 
 def judge_answers(prompt, instruction, judge_model):
-    instance = WandbConfigSingleton.get_instance()
-    cfg = instance.config
-    api_type = cfg.api
-    if api_type=="azure-opanai":
+    api_type = os.environ.get('OPENAI_API_TYPE', 'openai')
+    print(f"API Type: {api_type}")
+    if api_type=="azure":
         client = AzureOpenAI(
             azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-            api_key=os.environ["AZURE_OPENAI_KEY"],
+            api_key=os.environ["AZURE_OPENAI_API_KEY"],
             api_version="2023-07-01-preview"
         )
         
