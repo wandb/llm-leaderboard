@@ -172,7 +172,11 @@ def run_judge_single(question, answer, judge, ref_answer, multi_turn=False):
     conv.append_message(conv.roles[0], user_prompt)
     conv.append_message(conv.roles[1], None)
 
-    if model in OPENAI_MODEL_LIST:
+    instance = WandbConfigSingleton.get_instance()
+    cfg = instance.config
+    api_type = cfg.toxicity.get('judge_api_type', 'openai')
+    if api_type=="azure-opanai" or "openai":
+        print("Selecting API_Type (OpenAI or Azure OpenAI)")
         judgment = chat_completion_azure_fallback(model, conv, temperature=0, max_tokens=2048)
     elif model in ANTHROPIC_MODEL_LIST:
         judgment = chat_completion_anthropic(
@@ -436,12 +440,13 @@ def setup_openai_api(model: str, use_azure=False):
         return openai.ChatCompletion.create
 
 def chat_completion_azure_fallback(model, conv, temperature, max_tokens):
-    instance = WandbConfigSingleton.get_instance()
-    cfg = instance.config
-    api_type = cfg.api
-    if api_type=="azure-opanai":
+    api_type = os.environ.get('OPENAI_API_TYPE', 'openai')
+    print(f"API Type: {api_type}")
+    if api_type == "azure":
+        print('Azure OpenAI is being used.')
         return chat_completion_openai_azure(model, conv, temperature, max_tokens)
     else:
+        print('OpenAI is being used.')
         return chat_completion_openai(model, conv, temperature, max_tokens)
 
 def chat_completion_upstage(model, conv, temperature, max_tokens):
@@ -531,7 +536,7 @@ def chat_completion_openai_azure(model, conv, temperature, max_tokens, api_dict=
     else:
         client = AzureOpenAI(
             azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-            api_key=os.environ["AZURE_OPENAI_KEY"],
+            api_key=os.environ["AZURE_OPENAI_API_KEY"],
             api_version="2023-07-01-preview"
         )
 
