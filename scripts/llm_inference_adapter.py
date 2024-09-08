@@ -13,6 +13,7 @@ from langchain_google_genai import (
 from langchain_anthropic import ChatAnthropic
 from botocore.exceptions import ClientError
 import boto3
+from botocore.config import Config
 
 # from langchain_cohere import Cohere
 
@@ -30,7 +31,8 @@ class ChatBedrock:
     def __init__(self, cfg) -> None:
         self.bedrock_runtime = boto3.client(
             service_name="bedrock-runtime",
-            region_name=os.environ.get("AWS_DEFAULT_REGION", "us-west-2")
+            region_name=os.environ.get("AWS_DEFAULT_REGION", "us-west-2"),
+            config=Config(read_timeout=1000),
         )
         self.model_id = cfg.model.pretrained_model_name_or_path
         self.ignore_keys = ["max_tokens"]
@@ -76,16 +78,15 @@ class ChatBedrock:
         return response_body
 
     def _format_llama_prompt(self, messages):
-        formatted_messages = []
+        formatted_messages = ["<|begin_of_text|>"]
         for message in messages:
             if message["role"] == "system":
-                formatted_messages.append(f"<|system|>\n{message['content']}\n")
+                formatted_messages.append(f"<|start_header_id|>system<|end_header_id|>\n{message['content']}\n<|eot_id|>")
             elif message["role"] == "user":
-                formatted_messages.append(f"<|user|>\n{message['content']}\n")
+                formatted_messages.append(f"<|start_header_id|>user<|end_header_id|>\n{message['content']}\n<|eot_id|>")
             elif message["role"] == "assistant":
-                formatted_messages.append(f"<|assistant|>\n{message['content']}\n")
-        formatted_messages.append("<|assistant|>\n")  # Add for the model to continue
-        return "<|begin_of_text|>\n" + "".join(formatted_messages)
+                formatted_messages.append(f"<|start_header_id|>assistant<|end_header_id|>\n{message['content']}\n<|eot_id|>")
+        return "".join(formatted_messages)
 
     def invoke(self, messages, max_tokens: int):
         response = self._invoke(messages=messages, max_tokens=max_tokens)
@@ -93,6 +94,8 @@ class ChatBedrock:
             content = response.get("content", [{"text": ""}])[0]["text"]
         elif "llama" in self.model_id.lower():
             content = response.get("generation", "")
+            # ヘッダーとフッターを除去
+            content = content.replace("<|start_header_id|>assistant<|end_header_id|>\n", "").replace("\n<|eot_id|>", "") 
         else:
             content = ""
         return BedrockResponse(content=content)
@@ -184,7 +187,6 @@ def get_llm_inference_engine():
             api_version=cfg.model.get("api_version", "2024-05-01-preview"),
             **cfg.generator,
         )
-        print('Azure OpenAI loaded...')
 
     # elif api_type == "cohere":
     #     llm = Cohere(
