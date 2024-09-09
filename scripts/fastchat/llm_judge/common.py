@@ -741,7 +741,7 @@ def chat_completion_bedrock(chat_state, model, conv, temperature, max_tokens):
         if "anthropic" in model.lower():
             llm = BedrockChat(
                 model_id=model,
-                model_kwargs={"temperature": temperature, "max_tokens_to_sample": max_tokens},
+                model_kwargs={"temperature": temperature, "max_tokens": max_tokens},
             )
 
             memory = ConversationBufferMemory(return_messages=True)
