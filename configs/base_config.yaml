@@ -3,7 +3,7 @@ wandb:
   project: "llm-leaderboard3"
   #run: please set up run name in a model-base config
 
-github_version: v3.0.0 #for recording
+github_version: v3.1.0 #for recording
 
 testmode: false
 inference_interval: 0 # seconds
