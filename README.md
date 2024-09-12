@@ -43,6 +43,10 @@ Our evaluation framework incorporates a diverse set of metrics to provide a holi
 export WANDB_API_KEY=<your WANDB_API_KEY>
 export OPENAI_API_KEY=<your OPENAI_API_KEY>
 export LANG=ja_JP.UTF-8
+# If using Azure OpenAI instead of standard OpenAI
+export AZURE_OPENAI_ENDPOINT=<your AZURE_OPENAI_ENDPOINT>
+export AZURE_OPENAI_API_KEY=<your AZURE_OPENAI_API_KEY>
+export OPENAI_API_TYPE=azure
 # if needed, set the following API KEY too
 export ANTHROPIC_API_KEY=<your ANTHROPIC_API_KEY>
 export GOOGLE_API_KEY=<your GOOGLE_API_KEY>
