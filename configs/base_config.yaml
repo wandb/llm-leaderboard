@@ -59,7 +59,6 @@ jtruthfulqa:
   artifact_path: 'wandb-japan/llm-leaderboard3/jtruthfulqa_dataset:v1'  # JTruthfulQAデータセットのアーティファクトパス
   roberta_model_name: 'nlp-waseda/roberta_jtruthfulqa'  # 評価に使用するRoBERTaモデル名
 
-
 mtbench:
   temperature_override:
     writing: 0.7
