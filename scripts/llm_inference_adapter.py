@@ -13,9 +13,14 @@ from langchain_google_genai import (
 from langchain_anthropic import ChatAnthropic
 from botocore.exceptions import ClientError
 import boto3
+from botocore.config import Config
 
 # from langchain_cohere import Cohere
 
+
+import json
+import boto3
+from dataclasses import dataclass
 
 @dataclass
 class BedrockResponse:
@@ -24,47 +29,75 @@ class BedrockResponse:
 
 class ChatBedrock:
     def __init__(self, cfg) -> None:
-        self.bedrock_runtime = boto3.client(service_name="bedrock-runtime")
+        self.bedrock_runtime = boto3.client(
+            service_name="bedrock-runtime",
+            region_name=os.environ.get("AWS_DEFAULT_REGION", "us-west-2"),
+            config=Config(read_timeout=1000),
+        )
         self.model_id = cfg.model.pretrained_model_name_or_path
         self.ignore_keys = ["max_tokens"]
         self.generator_config = {
-            k: v for k, v in cfg.generator.items() if not k in self.ignore_keys
+            k: v for k, v in cfg.generator.items() if k not in self.ignore_keys
         }
 
-    def _invoke(
-        self,
-        messages: list[dict[str, str]],
-        max_tokens: int,
-    ):
-        # create body
-        body_dict = {
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": max_tokens,
-            **self.generator_config,
-        }
-        # handle system message
-        if messages[0]["role"] == "system":
-            body_dict.update(
-                {"messages": messages[1:], "system": messages[0]["content"]}
-            )
+    def _invoke(self, messages: list[dict[str, str]], max_tokens: int):
+        # Determine the model type (Anthropic Claude or Meta Llama 3)
+        is_claude = "anthropic" in self.model_id.lower()
+        is_llama = "llama" in self.model_id.lower()
+
+        if is_claude:
+            body_dict = {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": max_tokens,
+                **self.generator_config,
+            }
+            if messages[0]["role"] == "system":
+                body_dict.update({"messages": messages[1:], "system": messages[0]["content"]})
+            else:
+                body_dict.update({"messages": messages})
+        elif is_llama:
+            prompt = self._format_llama_prompt(messages)
+            body_dict = {
+                "prompt": prompt,
+                "max_gen_len": max_tokens,
+                **self.generator_config,
+            }
         else:
-            body_dict.update({"messages": messages})
+            raise ValueError(f"Unsupported model: {self.model_id}")
 
-        # inference
-        response = self.bedrock_runtime.invoke_model(
-            body=json.dumps(body_dict), modelId=self.model_id
-        )
-        response_body = json.loads(response.get("body").read())
+        try:
+            response = self.bedrock_runtime.invoke_model(
+                body=json.dumps(body_dict),
+                modelId=self.model_id
+            )
+            response_body = json.loads(response.get("body").read())
+        except ClientError as e:
+            print(f"ERROR: Can't invoke '{self.model_id}'. Reason: {e}")
+            raise
 
         return response_body
 
+    def _format_llama_prompt(self, messages):
+        formatted_messages = ["<|begin_of_text|>"]
+        for message in messages:
+            if message["role"] == "system":
+                formatted_messages.append(f"<|start_header_id|>system<|end_header_id|>\n{message['content']}\n<|eot_id|>")
+            elif message["role"] == "user":
+                formatted_messages.append(f"<|start_header_id|>user<|end_header_id|>\n{message['content']}\n<|eot_id|>")
+            elif message["role"] == "assistant":
+                formatted_messages.append(f"<|start_header_id|>assistant<|end_header_id|>\n{message['content']}\n<|eot_id|>")
+        return "".join(formatted_messages)
+
     def invoke(self, messages, max_tokens: int):
         response = self._invoke(messages=messages, max_tokens=max_tokens)
-        if response["content"]:
-            content = content = response["content"][0]["text"]
+        if "anthropic" in self.model_id.lower():
+            content = response.get("content", [{"text": ""}])[0]["text"]
+        elif "llama" in self.model_id.lower():
+            content = response.get("generation", "")
+            # ヘッダーとフッターを除去
+            content = content.replace("<|start_header_id|>assistant<|end_header_id|>\n", "").replace("\n<|eot_id|>", "") 
         else:
             content = ""
-
         return BedrockResponse(content=content)
 
 
@@ -145,15 +178,15 @@ def get_llm_inference_engine():
             **cfg.generator,
         )
 
-    # elif api_type == "azure-openai":
-    #     llm = AzureChatOpenAI(
-    #         api_key=os.environ["OPENAI_API_KEY"],
-    #         # api_base=os.environ["OPENAI_API_BASE"],
-    #         # api_version=os.environ["OPENAI_API_VERSION"]
-    #         api_version="2024-05-01-preview",
-    #         model=cfg.model.pretrained_model_name_or_path,
-    #         **cfg.generator,
-    #     )
+    elif api_type == "azure-openai":
+        # LangChainのAzure OpenAIインテグレーションを使用
+        llm = AzureChatOpenAI(
+            api_key=os.environ["AZURE_OPENAI_API_KEY"],
+            azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+            azure_deployment=cfg.model.pretrained_model_name_or_path,
+            api_version=cfg.model.get("api_version", "2024-05-01-preview"),
+            **cfg.generator,
+        )
 
     # elif api_type == "cohere":
     #     llm = Cohere(

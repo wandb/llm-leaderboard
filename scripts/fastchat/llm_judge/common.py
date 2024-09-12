@@ -172,7 +172,11 @@ def run_judge_single(question, answer, judge, ref_answer, multi_turn=False):
     conv.append_message(conv.roles[0], user_prompt)
     conv.append_message(conv.roles[1], None)
 
-    if model in OPENAI_MODEL_LIST:
+    instance = WandbConfigSingleton.get_instance()
+    cfg = instance.config
+    api_type = cfg.toxicity.get('judge_api_type', 'openai')
+    if api_type=="azure-opanai" or "openai":
+        print("Selecting API_Type (OpenAI or Azure OpenAI)")
         judgment = chat_completion_azure_fallback(model, conv, temperature=0, max_tokens=2048)
     elif model in ANTHROPIC_MODEL_LIST:
         judgment = chat_completion_anthropic(
@@ -436,10 +440,13 @@ def setup_openai_api(model: str, use_azure=False):
         return openai.ChatCompletion.create
 
 def chat_completion_azure_fallback(model, conv, temperature, max_tokens):
-    """Use the Azure OpenAI API if env vars are set, otherwise use OpenAI directly."""
-    if "AZURE_OPENAI_ENDPOINT" in os.environ:
+    api_type = os.environ.get('OPENAI_API_TYPE', 'openai')
+    print(f"API Type: {api_type}")
+    if api_type == "azure":
+        print('Azure OpenAI is being used.')
         return chat_completion_openai_azure(model, conv, temperature, max_tokens)
     else:
+        print('OpenAI is being used.')
         return chat_completion_openai(model, conv, temperature, max_tokens)
 
 def chat_completion_upstage(model, conv, temperature, max_tokens):
@@ -515,15 +522,23 @@ def chat_completion_vllm(model, conv, temperature, max_tokens):
     return response.choices[0].message.content
 
 
+from openai import AzureOpenAI
+import os
+import time
+
 def chat_completion_openai_azure(model, conv, temperature, max_tokens, api_dict=None):
-    openai.api_type = "azure"
-    openai.api_version = "2023-07-01-preview"
     if api_dict is not None:
-        openai.api_base = api_dict["api_base"]
-        openai.api_key = api_dict["api_key"]
+        client = AzureOpenAI(
+            azure_endpoint=api_dict["api_base"],
+            api_key=api_dict["api_key"],
+            api_version="2023-07-01-preview"
+        )
     else:
-        openai.api_base = os.environ["AZURE_OPENAI_ENDPOINT"]
-        openai.api_key = os.environ["AZURE_OPENAI_KEY"]
+        client = AzureOpenAI(
+            azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+            api_key=os.environ["AZURE_OPENAI_API_KEY"],
+            api_version="2023-07-01-preview"
+        )
 
     if "azure-" in model:
         model = model[6:]
@@ -532,16 +547,15 @@ def chat_completion_openai_azure(model, conv, temperature, max_tokens, api_dict=
     for _ in range(API_MAX_RETRY):
         try:
             messages = conv.to_openai_api_messages()
-            response = openai.ChatCompletion.create(
-                engine=model,
+            response = client.chat.completions.create(
+                model=model,
                 messages=messages,
-                n=1,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            output = response["choices"][0]["message"]["content"]
+            output = response.choices[0].message.content
             break
-        except openai.error.OpenAIError as e:
+        except Exception as e:
             print(type(e), e)
             time.sleep(API_RETRY_SLEEP)
     return output
@@ -669,7 +683,7 @@ def chat_completion_gemini(chat_state, model, conv, temperature, max_tokens):
     return chat_state, output
 
 
-def chat_completion_bedrock(chat_state, model, conv, temperature, max_tokens):
+'''def chat_completion_bedrock(chat_state, model, conv, temperature, max_tokens):
     from langchain_community.chat_models import BedrockChat
     from langchain.chains import ConversationChain
     from langchain.memory import ConversationBufferMemory
@@ -702,7 +716,105 @@ def chat_completion_bedrock(chat_state, model, conv, temperature, max_tokens):
         except Exception as e:
             print(type(e), e)
             time.sleep(API_RETRY_SLEEP)
+    return chat_state, output'''
+import boto3
+import json
+import time
+import os
+from dataclasses import dataclass
+from botocore.exceptions import ClientError
+from langchain_community.chat_models import BedrockChat
+from langchain.chains import ConversationChain
+from langchain.memory import ConversationBufferMemory
+from langchain.prompts.chat import (
+    ChatPromptTemplate,
+    HumanMessagePromptTemplate,
+    MessagesPlaceholder,
+)
+
+@dataclass
+class BedrockResponse:
+    content: str
+
+def chat_completion_bedrock(chat_state, model, conv, temperature, max_tokens):
+    if chat_state is None:
+        if "anthropic" in model.lower():
+            llm = BedrockChat(
+                model_id=model,
+                model_kwargs={"temperature": temperature, "max_tokens": max_tokens},
+            )
+
+            memory = ConversationBufferMemory(return_messages=True)
+            prompt = ChatPromptTemplate.from_messages([
+                MessagesPlaceholder(variable_name="history"),
+                HumanMessagePromptTemplate.from_template("{input}")
+            ])
+
+            chat_state = ConversationChain(llm=llm, prompt=prompt, memory=memory)
+        else:
+            chat_state = ChatBedrock(model, temperature)
+
+    output = API_ERROR_OUTPUT
+    for _ in range(API_MAX_RETRY):
+        try:
+            if isinstance(chat_state, ConversationChain):
+                response = chat_state.run(conv.messages[-2][1])
+                output = response
+            else:
+                messages = conv.to_openai_api_messages()
+                response = chat_state.invoke(messages, max_tokens)
+                output = response.content
+            break
+        except Exception as e:
+            print(type(e), e)
+            time.sleep(API_RETRY_SLEEP)
     return chat_state, output
+
+class ChatBedrock:
+    def __init__(self, model_id, temperature) -> None:
+        self.bedrock_runtime = boto3.client(
+            service_name="bedrock-runtime",
+            region_name=os.environ.get("AWS_DEFAULT_REGION", "us-west-2")
+        )
+        self.model_id = model_id
+        self.generator_config = {"temperature": temperature}
+
+    def _invoke(self, messages: list[dict[str, str]], max_tokens: int):
+        prompt = self._format_llama_prompt(messages)
+        body_dict = {
+            "prompt": prompt,
+            "max_gen_len": max_tokens,
+            **self.generator_config,
+        }
+
+        try:
+            response = self.bedrock_runtime.invoke_model(
+                body=json.dumps(body_dict),
+                modelId=self.model_id
+            )
+            response_body = json.loads(response.get("body").read())
+        except ClientError as e:
+            print(f"ERROR: Can't invoke '{self.model_id}'. Reason: {e}")
+            raise
+
+        return response_body
+
+    def _format_llama_prompt(self, messages):
+        formatted_messages = []
+        for message in messages:
+            if message["role"] == "system":
+                formatted_messages.append(f"<|system|>\n{message['content']}\n")
+            elif message["role"] == "user":
+                formatted_messages.append(f"<|user|>\n{message['content']}\n")
+            elif message["role"] == "assistant":
+                formatted_messages.append(f"<|assistant|>\n{message['content']}\n")
+        formatted_messages.append("<|assistant|>\n")  # Add for the model to continue
+        return "<|begin_of_text|>\n" + "".join(formatted_messages)
+
+    def invoke(self, messages, max_tokens: int):
+        response = self._invoke(messages=messages, max_tokens=max_tokens)
+        content = response.get("generation", "")
+        return BedrockResponse(content=content)
 
 
 def chat_completion_mistral(chat_state, model, conv, temperature, max_tokens):
