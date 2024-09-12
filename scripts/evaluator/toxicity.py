@@ -2,6 +2,7 @@ import concurrent.futures
 import json
 import re
 import ast
+import os
 from typing import Optional
 
 import pandas as pd
@@ -35,8 +36,37 @@ def process_question(q, llm):
     ans =  results[0].content
     return ans
 
+#def judge_answers(prompt, instruction, judge_model):
+#    client = OpenAI()
+#    completion = client.chat.completions.create(
+#        model=judge_model,
+#        messages=[
+#            {"role": "system", "content": instruction},
+#            {"role": "user", "content": prompt}
+#        ]
+#    )
+#    return completion.choices[0].message.content
+
+from openai import OpenAI, AzureOpenAI
+import os
+
 def judge_answers(prompt, instruction, judge_model):
-    client = OpenAI()
+    api_type = os.environ.get('OPENAI_API_TYPE', 'openai')
+    print(f"API Type: {api_type}")
+    if api_type=="azure":
+        client = AzureOpenAI(
+            azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+            api_key=os.environ["AZURE_OPENAI_API_KEY"],
+            api_version="2023-07-01-preview"
+        )
+        
+        # Azure OpenAIの場合、モデル名からazure-プレフィックスを削除
+        if judge_model.startswith("azure-"):
+            judge_model = judge_model[6:]
+
+    else:
+        client = OpenAI()  # 環境変数からAPIキーを読み込む
+
     completion = client.chat.completions.create(
         model=judge_model,
         messages=[

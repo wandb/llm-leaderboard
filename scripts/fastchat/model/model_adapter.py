@@ -48,8 +48,10 @@ ANTHROPIC_MODEL_LIST = (
     "claude-instant-1.2",
     "claude-3-opus-20240229",
     "claude-3-sonnet-20240229",
+    "claude-3-5-sonnet-20240620",
     "claude-3-opus",
     "claude-3-sonnet",
+    "claude-3-5-sonnet",
 )
 
 OPENAI_MODEL_LIST = (
@@ -66,6 +68,10 @@ OPENAI_MODEL_LIST = (
     "gpt-4-0125-preview",
     "gpt-4o",
     "gpt-4o-2024-05-13",
+    "gpt-4o-2024-08-06",
+    "gpt-4o-mini",
+    "gpt-4o-mini-2024-07-18",
+    "chatgpt-4o-latest",
     "base-gpt4o-with-human-annotation",
 )
 
