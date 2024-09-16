@@ -11,11 +11,10 @@ from langchain_google_genai import (
 )
 # from langchain_aws import ChatBedrock
 from langchain_anthropic import ChatAnthropic
+from langchain_cohere import ChatCohere
 from botocore.exceptions import ClientError
 import boto3
 from botocore.config import Config
-
-# from langchain_cohere import Cohere
 
 
 import json
@@ -188,12 +187,12 @@ def get_llm_inference_engine():
             **cfg.generator,
         )
 
-    # elif api_type == "cohere":
-    #     llm = Cohere(
-    #         model=cfg.model.pretrained_model_name_or_path,
-    #         cohere_api_key=os.environ["COHERE_API_KEY"],
-    #         **cfg.generator,
-    #     )
+    elif api_type == "cohere":
+        llm = ChatCohere(
+            model=cfg.model.pretrained_model_name_or_path,
+            cohere_api_key=os.environ["COHERE_API_KEY"],
+            **cfg.generator,
+        )
 
     else:
         raise ValueError(f"Unsupported API type: {api_type}")
