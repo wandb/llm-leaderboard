@@ -3,7 +3,7 @@ wandb:
   project: "llm-leaderboard3"
   #run: please set up run name in a model-base config
 
-github_version: v3.0.0 #for recording
+github_version: v3.1.0 #for recording
 
 testmode: false
 inference_interval: 0 # seconds
@@ -11,11 +11,11 @@ inference_interval: 0 # seconds
 run:
   jaster: true
   jmmlu_robustness: true # if this is set as true, jaster should set as true
-  mtbench: true
-  jbbq: true
-  lctg: true
-  toxicity: true
-  jtruthfulqa: true
+  mtbench: false
+  jbbq: false
+  lctg: false
+  toxicity: false
+  jtruthfulqa: false
   aggregate: true
 
 model:
@@ -30,8 +30,9 @@ model:
 
 generator:
   top_p: 1.0
-  temperature: 0.1
-  max_tokens: 128
+  #temperature: 0.1
+  #max_tokens: 128
+  
 
 num_few_shots: 2
 
@@ -88,7 +89,7 @@ mtbench:
   judge_model: 'gpt-4o-2024-05-13'
   mode: 'single'
   baseline_model: null 
-  parallel: 80
+  parallel: 1
   first_n: null
 
 sample_dataset:

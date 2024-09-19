@@ -64,6 +64,8 @@ run = wandb.init(
     name=cfg_dict["wandb"]["run_name"],
     config=cfg_dict,
     job_type="evaluation",
+    id="5cua9qcc",
+    resume="must"
 )
 
 # Initialize the WandbConfigSingleton

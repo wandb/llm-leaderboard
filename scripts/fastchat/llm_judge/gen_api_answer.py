@@ -82,7 +82,16 @@ def get_answer(
     chat_state = None  # for palm-2, gemini and bedrock-claude model
     for i in range(num_choices):
         conv = get_conversation_template(model)
-
+        # システムメッセージを処理する
+        if conv.messages and conv.messages[0]["role"] == "system":
+            system_message = conv.messages.pop(0)
+            if conv.messages:
+                # システムメッセージの内容を最初のユーザーメッセージに追加
+                conv.messages[0]["content"] = f"{system_message['content']}\n\n{conv.messages[0]['content']}"
+            else:
+                # メッセージが他にない場合、システムメッセージをユーザーメッセージに変換
+                conv.append_message(conv.roles[0], system_message["content"])
+        
         turns = []
         for j in range(len(question["turns"])):
             conv.append_message(conv.roles[0], question["turns"][j])

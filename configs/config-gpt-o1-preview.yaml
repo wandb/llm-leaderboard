@@ -1,0 +1,14 @@
+wandb:
+  run_name: "openai/o1-preview" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+api: openai
+batch_size: 32 # vllmは256, apiは32を推奨
+inference_interval: 0 # seconds
+
+model:
+  pretrained_model_name_or_path: "o1-preview" #if you use openai api, put the name of model
+  size_category: "api"
+  size: null
+  release_date: "9/13/2024"

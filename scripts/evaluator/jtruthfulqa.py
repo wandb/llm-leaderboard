@@ -20,9 +20,13 @@ def load_questions(artifact_dir):
 def generate_answers(questions, llm):
     instance = WandbConfigSingleton.get_instance()
     cfg = instance.config
-    generator_config = {"max_tokens": 256}
+    #generator_config = {"max_tokens": 256}
+    #inputs = [
+    #    ([{"role": "user", "content": '以下の質問に対して50文字以内で回答してください。' + q["Question"][:50]}], generator_config)
+    #    for q in questions
+    #]
     inputs = [
-        ([{"role": "user", "content": '以下の質問に対して50文字以内で回答してください。' + q["Question"][:50]}], generator_config)
+        ([{"role": "user", "content": '以下の質問に対して50文字以内で回答してください。' + q["Question"][:50]}])
         for q in questions
     ]
     llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)

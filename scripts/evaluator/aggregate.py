@@ -55,7 +55,9 @@ def evaluate():
     blend_cfg = instance.blend_config
     num_few_shots = cfg.num_few_shots
 
-    GLP_flag, ALT_flag = update_flag(cfg, blend_cfg)
+    #GLP_flag, ALT_flag = update_flag(cfg, blend_cfg)
+    GLP_flag= True
+    ALT_flag = True
 
     # Initialize empty variables
     if GLP_flag or ALT_flag:

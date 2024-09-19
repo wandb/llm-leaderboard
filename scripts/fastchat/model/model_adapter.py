@@ -72,6 +72,8 @@ OPENAI_MODEL_LIST = (
     "gpt-4o-mini",
     "gpt-4o-mini-2024-07-18",
     "chatgpt-4o-latest",
+    "o1-preview",
+    "o1-mini",
     "base-gpt4o-with-human-annotation",
 )
 

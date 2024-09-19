@@ -149,9 +149,8 @@ def evaluate():
 
     # Play matches
     import concurrent.futures
-    from tqdm import tqdm
     if cfg.mtbench.parallel == 1:
-        for match in tqdm.tqdm(matches):
+        for match in tqdm(matches):
             play_a_match_func(match, output_file=output_file)
     else:
         def play_a_match_wrapper(match):

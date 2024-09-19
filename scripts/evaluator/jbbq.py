@@ -302,8 +302,9 @@ def evaluate_n_shot(few_shots: bool):
                     # generate output
                     prompt = apply_chat_template(messages=messages)
                     #generator_config = {"max_tokens": task_data["output_length"]}
-                    generator_config = {"max_tokens": 10}
-                    inputs.append((messages, generator_config))
+                    #generator_config = {"max_tokens": 10}
+                    #inputs.append((messages, generator_config))
+                    inputs.append((messages))
 
                     y_true: str = pipe(str(sample["output"]), normalize)
 

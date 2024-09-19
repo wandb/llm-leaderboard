@@ -29,8 +29,9 @@ def load_questions(question_file: str, begin: Optional[int], end: Optional[int])
 
 def process_question(q, llm):
     messages = [{"role": "user", "content": q["user_prompt"]}]
-    max_tokens = 1024  # TODO 引数にする
-    inputs = [(messages, {"max_tokens": max_tokens})]
+    #max_tokens = 1024  # TODO 引数にする
+    #inputs = [(messages, {"max_tokens": max_tokens})]
+    inputs = messages
     llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
     results = llm_ap.get_results()
     ans =  results[0].content
@@ -70,8 +71,8 @@ def judge_answers(prompt, instruction, judge_model):
     completion = client.chat.completions.create(
         model=judge_model,
         messages=[
-            {"role": "system", "content": instruction},
-            {"role": "user", "content": prompt}
+            #{"role": "system", "content": instruction},
+            {"role": "user", "content":instruction+"/n"+prompt}
         ]
     )
     return completion.choices[0].message.content
@@ -157,9 +158,14 @@ def evaluate():
         questions = questions[:12]
 
     # Create model answers
-    generator_config = {"max_tokens": 1024}
+    #generator_config = {"max_tokens": 1024}
+    #inputs = [
+    #    ([{"role": "user", "content": q["user_prompt"]}], generator_config)
+    #    for q in questions
+    #]
+
     inputs = [
-        ([{"role": "user", "content": q["user_prompt"]}], generator_config)
+        ([{"role": "user", "content": q["user_prompt"]}])
         for q in questions
     ]
     llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
