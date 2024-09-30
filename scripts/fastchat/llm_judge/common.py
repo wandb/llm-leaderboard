@@ -13,7 +13,7 @@ from typing import Optional
 
 import openai
 import anthropic
-#import cohere
+import cohere
 import google.generativeai as genai
 
 from fastchat.model.model_adapter import (
@@ -603,26 +603,45 @@ def chat_completion_anthropic(model, conv, temperature, max_tokens, api_dict=Non
                 time.sleep(API_RETRY_SLEEP)
     return output.strip()
 
-"""
+
 def chat_completion_cohere(model, conv, temperature, max_tokens):
+    import cohere
+    import os
+    import time
+
     output = API_ERROR_OUTPUT
-    for _ in range(API_MAX_RETRY):
+    cohere_api_key = os.environ.get("COHERE_API_KEY")
+    if not cohere_api_key:
+        print("COHERE_API_KEY is not set in the environment variables.")
+        return API_ERROR_OUTPUT
+
+    for attempt in range(API_MAX_RETRY):
         try:
-            co = cohere.Client(api_key=os.environ["COHERE_API_KEY"])
-            prompt = conv.get_prompt()
+            # Use Cohere's ClientV2
+            co = cohere.ClientV2(api_key=cohere_api_key)
+
+            # Use OpenAI-style messages directly
+            messages = conv.to_openai_api_messages()
+
             response = co.chat(
-                prompt, 
-                model=model, 
+                model=model,
+                messages=messages,
+                temperature=temperature,
                 max_tokens=max_tokens,
-                temperature=temperature
             )
-            output = response.text
-            break
-        except anthropic.APIError as e:
-            print(type(e), e)
-            time.sleep(API_RETRY_SLEEP)
-    return output.strip()
-"""
+
+            # Get the generated message from the response
+            output = response.message.content[0].text.strip()
+            break  # Exit the loop if successful
+
+        except Exception as e:
+            print(f"An error occurred (attempt {attempt + 1}/{API_MAX_RETRY}): {e}")
+            wait_time = API_RETRY_SLEEP
+            print(f"Retrying in {wait_time} seconds.")
+            time.sleep(wait_time)
+
+    return output if output else API_ERROR_OUTPUT
+
 
 def chat_completion_palm(chat_state, model, conv, temperature, max_tokens):
     from fastchat.serve.api_provider import init_palm_chat

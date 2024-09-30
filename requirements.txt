@@ -19,6 +19,7 @@ charset-normalizer==3.3.2
 click==8.1.7
 cloudpickle==3.0.0
 cmake==3.29.3
+cohere==5.9.4
 colorama==0.4.6
 dataclasses-json==0.6.3
 defusedxml==0.7.1
@@ -71,6 +72,7 @@ langchain==0.2.1
 langchain-anthropic==0.1.15
 langchain-aws==0.1.6
 langchain-core==0.2.3
+langchain-cohere==0.2.0
 langchain-google-genai==1.0.5
 langchain-mistralai==0.1.7
 langchain-openai==0.1.8

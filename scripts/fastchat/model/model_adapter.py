@@ -719,7 +719,8 @@ class CohereAdapter(BaseModelAdapter):
         raise NotImplementedError()
 
     def get_default_conv_template(self, model_path: str) -> Conversation:
-        return get_conv_template("cohere")
+        return get_conv_template("chatgpt")
+        #return get_conv_template("cohere")
 
 
 class BardAdapter(BaseModelAdapter):
