@@ -13,7 +13,7 @@ from typing import Optional
 
 import openai
 import anthropic
-#import cohere
+import cohere
 import google.generativeai as genai
 
 from fastchat.model.model_adapter import (
@@ -475,6 +475,32 @@ def chat_completion_upstage(model, conv, temperature, max_tokens):
 
     return output
 
+def chat_completion_xai(model, conv, temperature, max_tokens):
+    #openai_chat_completion_func = setup_openai_api(model)
+    client = openai.OpenAI(
+    api_key=os.getenv("XAI_API_KEY"),
+    base_url="https://api.x.ai/v1"
+    )
+    output = API_ERROR_OUTPUT
+    # TODO: allow additional params for toggling between azure api
+    for _ in range(API_MAX_RETRY):
+        try:
+            messages = conv.to_openai_api_messages()
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                n=1,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            output = response.choices[0].message.content
+            break
+        except openai.OpenAIError as e:
+            print(type(e), e)
+            time.sleep(API_RETRY_SLEEP)
+
+    return output
+
 def chat_completion_openai(model, conv, temperature, max_tokens):
     #openai_chat_completion_func = setup_openai_api(model)
     output = API_ERROR_OUTPUT
@@ -500,6 +526,10 @@ def chat_completion_openai(model, conv, temperature, max_tokens):
 @retry(stop=stop_after_attempt(5), wait=wait_fixed(30))
 def chat_completion_vllm(model, conv, temperature, max_tokens):
     from openai import OpenAI
+    from config_singleton import WandbConfigSingleton
+
+    instance = WandbConfigSingleton.get_instance()
+    cfg = instance.config
 
     openai_api_key = "EMPTY"
     openai_api_base = "http://0.0.0.0:8000/v1"
@@ -508,6 +538,14 @@ def chat_completion_vllm(model, conv, temperature, max_tokens):
         api_key=openai_api_key,
         base_url=openai_api_base,
     )
+    
+    # LoRAの設定を確認
+    lora_config = cfg.model.get("lora", None)
+    if lora_config and lora_config.get("enable", False):
+        # LoRAが有効な場合、LoRAアダプター名をモデル名として使用
+        model = lora_config.get("adapter_name", model)
+
+    print(f"Using model: {model}")
     print(client.models.list())
 
     messages = conv.to_openai_api_messages()
@@ -603,26 +641,45 @@ def chat_completion_anthropic(model, conv, temperature, max_tokens, api_dict=Non
                 time.sleep(API_RETRY_SLEEP)
     return output.strip()
 
-"""
+
 def chat_completion_cohere(model, conv, temperature, max_tokens):
+    import cohere
+    import os
+    import time
+
     output = API_ERROR_OUTPUT
-    for _ in range(API_MAX_RETRY):
+    cohere_api_key = os.environ.get("COHERE_API_KEY")
+    if not cohere_api_key:
+        print("COHERE_API_KEY is not set in the environment variables.")
+        return API_ERROR_OUTPUT
+
+    for attempt in range(API_MAX_RETRY):
         try:
-            co = cohere.Client(api_key=os.environ["COHERE_API_KEY"])
-            prompt = conv.get_prompt()
+            # Use Cohere's ClientV2
+            co = cohere.ClientV2(api_key=cohere_api_key)
+
+            # Use OpenAI-style messages directly
+            messages = conv.to_openai_api_messages()
+
             response = co.chat(
-                prompt, 
-                model=model, 
+                model=model,
+                messages=messages,
+                temperature=temperature,
                 max_tokens=max_tokens,
-                temperature=temperature
             )
-            output = response.text
-            break
-        except anthropic.APIError as e:
-            print(type(e), e)
-            time.sleep(API_RETRY_SLEEP)
-    return output.strip()
-"""
+
+            # Get the generated message from the response
+            output = response.message.content[0].text.strip()
+            break  # Exit the loop if successful
+
+        except Exception as e:
+            print(f"An error occurred (attempt {attempt + 1}/{API_MAX_RETRY}): {e}")
+            wait_time = API_RETRY_SLEEP
+            print(f"Retrying in {wait_time} seconds.")
+            time.sleep(wait_time)
+
+    return output if output else API_ERROR_OUTPUT
+
 
 def chat_completion_palm(chat_state, model, conv, temperature, max_tokens):
     from fastchat.serve.api_provider import init_palm_chat
