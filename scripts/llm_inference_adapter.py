@@ -127,6 +127,22 @@ def get_llm_inference_engine():
             **cfg.generator,
         )
 
+    elif api_type == "vllm-external":
+        # vLLMサーバーは起動済みのものを用いるので、ここでは起動しない
+        #from vllm_server import start_vllm_server
+        #start_vllm_server()
+
+        base_url = cfg.get("base_url", "http://localhost:8000/v1") #"http://localhost:8000/v1"
+        model_name = cfg.model.pretrained_model_name_or_path
+
+        # LangChainのVLLMインテグレーションを使用
+        llm = ChatOpenAI(
+            openai_api_key=os.environ.get("VLLM_API_KEY", "EMPTY"),
+            openai_api_base=base_url,
+            model_name=model_name,
+            **cfg.generator,
+        )
+
     elif api_type == "openai":
         # LangChainのOpenAIインテグレーションを使用
         llm = ChatOpenAI(
