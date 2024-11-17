@@ -21,7 +21,7 @@ from fastchat.llm_judge.common import (
     temperature_config,
     chat_completion_openai,
     chat_completion_anthropic,
-#   chat_completion_cohere,
+    chat_completion_cohere,
     chat_completion_palm,
     chat_completion_gemini,
     chat_completion_bedrock,
@@ -29,6 +29,7 @@ from fastchat.llm_judge.common import (
     chat_completion_vllm,
     chat_completion_upstage,
     chat_completion_openai_azure,
+    chat_completion_xai,
 )
 from fastchat.llm_judge.gen_model_answer import reorg_answer_file
 from fastchat.model.model_adapter import get_conversation_template, ANTHROPIC_MODEL_LIST
@@ -100,10 +101,10 @@ def get_answer(
                 chat_state, output = chat_completion_palm(
                     chat_state, model, conv, temperature, max_tokens
                 )
-            #elif cfg.api == "cohere":
-            #    output = chat_completion_cohere(
-            #        model, conv, temperature, max_tokens
-            #    ) 
+            elif cfg.api == "cohere":
+                output = chat_completion_cohere(
+                    model, conv, temperature, max_tokens
+                ) 
             elif cfg.api == "google":
                 chat_state, output = chat_completion_gemini(
                     chat_state, model, conv, temperature, max_tokens
@@ -122,6 +123,10 @@ def get_answer(
                 )
             elif cfg.api == "azure-openai":
                 output = chat_completion_openai_azure(
+                    model, conv, temperature, max_tokens
+                )
+            elif cfg.api == "xai":
+                output = chat_completion_xai(
                     model, conv, temperature, max_tokens
                 )
             else:
