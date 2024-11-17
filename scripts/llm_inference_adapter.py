@@ -11,11 +11,10 @@ from langchain_google_genai import (
 )
 # from langchain_aws import ChatBedrock
 from langchain_anthropic import ChatAnthropic
+from langchain_cohere import ChatCohere
 from botocore.exceptions import ClientError
 import boto3
 from botocore.config import Config
-
-# from langchain_cohere import Cohere
 
 
 import json
@@ -111,11 +110,20 @@ def get_llm_inference_engine():
         from vllm_server import start_vllm_server
         start_vllm_server()
 
+        # LoRAの設定を確認
+        lora_config = cfg.model.get("lora", None)
+        base_url = "http://localhost:8000/v1"
+        model_name = cfg.model.pretrained_model_name_or_path
+
+        if lora_config and lora_config.get("enable", False):
+            # LoRAが有効な場合、LoRAアダプター名をモデル名として使用
+            model_name = lora_config.get("adapter_name", model_name)
+
         # LangChainのVLLMインテグレーションを使用
         llm = ChatOpenAI(
             openai_api_key="EMPTY",
-            openai_api_base="http://localhost:8000/v1",
-            model_name=cfg.model.pretrained_model_name_or_path,
+            openai_api_base=base_url,
+            model_name=model_name,
             **cfg.generator,
         )
 
@@ -123,6 +131,15 @@ def get_llm_inference_engine():
         # LangChainのOpenAIインテグレーションを使用
         llm = ChatOpenAI(
             api_key=os.environ["OPENAI_API_KEY"],
+            model=cfg.model.pretrained_model_name_or_path,
+            **cfg.generator,
+        )
+
+    elif api_type == "xai":
+        # LangChainのOpenAIインテグレーションを使用
+        llm = ChatOpenAI(
+            base_url="https://api.x.ai/v1",
+            api_key=os.environ["XAI_API_KEY"],
             model=cfg.model.pretrained_model_name_or_path,
             **cfg.generator,
         )
@@ -188,12 +205,12 @@ def get_llm_inference_engine():
             **cfg.generator,
         )
 
-    # elif api_type == "cohere":
-    #     llm = Cohere(
-    #         model=cfg.model.pretrained_model_name_or_path,
-    #         cohere_api_key=os.environ["COHERE_API_KEY"],
-    #         **cfg.generator,
-    #     )
+    elif api_type == "cohere":
+        llm = ChatCohere(
+            model=cfg.model.pretrained_model_name_or_path,
+            cohere_api_key=os.environ["COHERE_API_KEY"],
+            **cfg.generator,
+        )
 
     else:
         raise ValueError(f"Unsupported API type: {api_type}")
