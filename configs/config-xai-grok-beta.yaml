@@ -1,0 +1,15 @@
+wandb:
+  run_name: "grok-beta" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+api: xai
+batch_size: 32 # vllmは256, apiは32を推奨
+# inference_interval: 1 # seconds
+
+model:
+  pretrained_model_name_or_path: "grok-beta" #if you use openai api, put the name of model
+  size_category: "api"
+  size: null
+  release_date: "10/21/2024"
+
