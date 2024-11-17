@@ -89,7 +89,7 @@ def get_answer(
             conv.append_message(conv.roles[0], question["turns"][j])
             conv.append_message(conv.roles[1], None)
 
-            if cfg.api == "vllm":
+            if cfg.api == "vllm" or "vllm-external":
                 output = chat_completion_vllm(
                     model, conv, temperature, max_tokens
                 )

@@ -531,8 +531,8 @@ def chat_completion_vllm(model, conv, temperature, max_tokens):
     instance = WandbConfigSingleton.get_instance()
     cfg = instance.config
 
-    openai_api_key = "EMPTY"
-    openai_api_base = "http://0.0.0.0:8000/v1"
+    openai_api_key = os.environ.get("VLLM_API_KEY", "EMPTY")
+    openai_api_base = cfg.get("base_url", "http://localhost:8000/v1")
 
     client = OpenAI(
         api_key=openai_api_key,
