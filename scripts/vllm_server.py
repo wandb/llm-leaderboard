@@ -8,15 +8,143 @@ import os
 import signal
 import psutil
 import torch
+import sys
+import socket
 from pathlib import Path
+import logging
+import json
 
 from utils import get_tokenizer_config
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def find_and_kill_process_on_port(port):
+    try:
+        # ポートを使用しているプロセスを見つける
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                for conns in proc.connections(kind='inet'):
+                    if conns.laddr.port == port:
+                        logger.info(f"Found process using port {port}: PID {proc.pid}")
+                        # プロセスツリー全体を終了
+                        parent = psutil.Process(proc.pid)
+                        children = parent.children(recursive=True)
+                        for child in children:
+                            try:
+                                child.terminate()
+                                child.wait(timeout=3)
+                            except (psutil.NoSuchProcess, psutil.TimeoutExpired):
+                                try:
+                                    child.kill()
+                                except psutil.NoSuchProcess:
+                                    pass
+                        
+                        try:
+                            parent.terminate()
+                            parent.wait(timeout=3)
+                        except (psutil.NoSuchProcess, psutil.TimeoutExpired):
+                            try:
+                                parent.kill()
+                            except psutil.NoSuchProcess:
+                                pass
+                        return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+    except Exception as e:
+        logger.error(f"Error while finding and killing process: {e}")
+    return False
+
+def is_port_in_use(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            # SO_REUSEADDRを設定
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(('localhost', port))
+            return False
+        except socket.error:
+            return True
+
+def wait_for_port_release(port, timeout=30):
+    start_time = time.time()
+    while is_port_in_use(port):
+        if time.time() - start_time > timeout:
+            # タイムアウト時に強制的にプロセスを終了
+            if find_and_kill_process_on_port(port):
+                logger.info(f"Forcefully killed process using port {port}")
+                time.sleep(2)  # プロセス終了待機
+                if not is_port_in_use(port):
+                    return
+            raise TimeoutError(f"Port {port} was not released after {timeout} seconds")
+        time.sleep(1)
+
+def force_cuda_memory_cleanup():
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
+        torch.cuda.synchronize()
+        for i in range(torch.cuda.device_count()):
+            with torch.cuda.device(i):
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+
+def wait_for_gpu_memory_release(timeout=60):
+    start_time = time.time()
+    while torch.cuda.memory_allocated() > 0:
+        if time.time() - start_time > timeout:
+            logger.warning(f"GPU memory not fully released after {timeout} seconds")
+            break
+        logger.info(f"Waiting for GPU memory to be released. {torch.cuda.memory_allocated()} bytes still allocated")
+        force_cuda_memory_cleanup()
+        time.sleep(1)
+
+def force_cleanup(server_process):
+    try:
+        # プロセスツリー全体を終了
+        parent = psutil.Process(server_process.pid)
+        children = parent.children(recursive=True)
+        
+        # 子プロセスを終了
+        for child in children:
+            try:
+                child.terminate()
+                child.wait(timeout=3)
+            except (psutil.NoSuchProcess, psutil.TimeoutExpired):
+                try:
+                    child.kill()
+                except psutil.NoSuchProcess:
+                    pass
+
+        # 親プロセスを終了
+        try:
+            parent.terminate()
+            parent.wait(timeout=3)
+        except (psutil.NoSuchProcess, psutil.TimeoutExpired):
+            try:
+                parent.kill()
+            except psutil.NoSuchProcess:
+                pass
+
+    except psutil.NoSuchProcess:
+        pass
+    except Exception as e:
+        logger.error(f"Error during cleanup: {e}")
 
 def start_vllm_server():
     instance = WandbConfigSingleton.get_instance()
     cfg = instance.config
     run = instance.run
+
+    port = cfg.get("port", 8000)
+    
+    # 起動前のクリーンアップ
+    if is_port_in_use(port):
+        logger.info(f"Port {port} is in use. Attempting to clean up...")
+        find_and_kill_process_on_port(port)
+        wait_for_port_release(port)
+    
+    force_cuda_memory_cleanup()
+    wait_for_gpu_memory_release()
 
     model_artifact_path = cfg.model.get("artifacts_path", None)
     if model_artifact_path is not None:
@@ -25,7 +153,6 @@ def start_vllm_server():
         cfg.model.update({"local_path": artifact / artifact.name.split(":")[0]})
 
     def run_vllm_server():
-        # set tokenizer_config
         tokenizer_config = get_tokenizer_config()
         cfg.update({"tokenizer_config": tokenizer_config})
         chat_template: str = cfg.tokenizer_config.get("chat_template", None)
@@ -33,18 +160,15 @@ def start_vllm_server():
             raise ValueError("chat_template is None. Please provide a valid chat_template in the configuration.")
 
         with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
-            # chat_templateをファイルに書き込んでパスを取得
             temp_file.write(chat_template)
             chat_template_path = temp_file.name
             model_id = cfg.model.pretrained_model_name_or_path
             model_path = cfg.model.get("local_path", model_id)
 
-            # サーバーを起動するためのコマンド
             command = [
                 "python3", "-m", "vllm.entrypoints.openai.api_server",
                 "--model", str(model_path),
                 "--served-model-name", model_id,
-                # "--tokenizer", str(model_path),
                 "--dtype", cfg.model.dtype, 
                 "--chat-template", chat_template_path,
                 "--max-model-len", str(cfg.model.max_model_len),
@@ -58,119 +182,137 @@ def start_vllm_server():
                 "--quantization", str(cfg.get("quantization", None)),
                 "--revision", str(cfg.get("revision", 'main')),
                 "--gpu-memory-utilization", str(cfg.get("gpu_memory_utilization", 0.9)),
+                "--port", str(port),
             ]
+
+            # LoRAの設定を追加
+            lora_config = cfg.model.get("lora", None)
+            if lora_config and lora_config.get("enable", False):
+                command.append("--enable-lora")
+                
+                # LoRAモジュールの設定を追加
+                adapter_name = lora_config.get("adapter_name", "default-lora")
+                adapter_path = lora_config.get("adapter_path")
+                if adapter_name and adapter_path:
+                    command.extend(["--lora-modules", f"{adapter_name}={adapter_path}"])
+                
+                # その他のLoRA関連のオプションを追加
+                if "max_lora_rank" in lora_config:
+                    command.extend(["--max-lora-rank", str(lora_config["max_lora_rank"])])
+                if "max_loras" in lora_config:
+                    command.extend(["--max-loras", str(lora_config["max_loras"])])
+                if "max_cpu_loras" in lora_config:
+                    command.extend(["--max-cpu-loras", str(lora_config["max_cpu_loras"])])
+                    
             if cfg.model.trust_remote_code:
                 command.append("--trust-remote-code")
 
-            # subprocessでサーバーをバックグラウンドで実行
             process = subprocess.Popen(command)
 
-        # プロセスIDをファイルに保存
         with open('vllm_server.pid', 'w') as pid_file:
             pid_file.write(str(process.pid))
-        # サーバーが起動するのを待つ
-        time.sleep(10)
-
-        # サーバーのプロセスを返す
+        
+        time.sleep(15)
         return process
 
     def health_check():
-        url = "http://localhost:8000/health"
-        while True:
+        url = f"http://localhost:{port}/health"
+        max_retries = 30
+        retry_count = 0
+        
+        while retry_count < max_retries:
             try:
                 response = requests.get(url)
                 if response.status_code == 200:
-                    print("Health check passed!")
-                    break
+                    logger.info("Health check passed!")
+                    return True
                 else:
-                    print(f"Health check failed with status code: {response.status_code}")
+                    logger.warning(f"Health check failed with status code: {response.status_code}")
             except requests.ConnectionError:
-                print("Failed to connect to the server. Retrying...")
-            time.sleep(10)  # 待機してから再試行
+                logger.info(f"Failed to connect to the server. Retry {retry_count + 1}/{max_retries}")
+            retry_count += 1
+            time.sleep(10)
+        
+        raise TimeoutError("Server failed to start after maximum retries")
 
-    # サーバーを起動
     server_process = run_vllm_server()
-    print("vLLM server is starting...")
+    logger.info("vLLM server is starting...")
 
-    # スクリプト終了時にサーバーを終了する
     def cleanup():
-        print("Terminating vLLM server...")
-        server_process.terminate()
-        server_process.wait()
+        logger.info("Terminating vLLM server...")
+        force_cleanup(server_process)
+        # ポートの解放を確認
+        try:
+            wait_for_port_release(port)
+        except TimeoutError:
+            logger.warning(f"Port {port} could not be released")
+        force_cuda_memory_cleanup()
+        wait_for_gpu_memory_release()
 
     atexit.register(cleanup)
 
-    # SIGTERMシグナルをキャッチしてサーバーを終了する
-    def handle_sigterm(signal, frame):
-        print("SIGTERM received. Shutting down vLLM server gracefully...")
+    def handle_sigterm(signum, frame):
+        logger.info("SIGTERM received. Shutting down vLLM server gracefully...")
         cleanup()
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, handle_sigterm)
 
-    # サーバーが完全に起動するのを待つ
     health_check()
 
-import asyncio
-import psutil
-import time
-import torch
-import os
-import signal
-
-def force_cuda_memory_cleanup():
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
-        torch.cuda.synchronize()
-        # すべての CUDA デバイスに対してメモリをクリア
-        for i in range(torch.cuda.device_count()):
-            with torch.cuda.device(i):
-                torch.cuda.empty_cache()
-                torch.cuda.ipc_collect()
-
-def wait_for_gpu_memory_release(timeout=60):
-    start_time = time.time()
-    while torch.cuda.memory_allocated() > 0:
-        if time.time() - start_time > timeout:
-            print(f"Warning: GPU memory not fully released after {timeout} seconds.")
-            break
-        print(f"Waiting for GPU memory to be released. {torch.cuda.memory_allocated()} bytes still allocated.")
-        force_cuda_memory_cleanup()
-        time.sleep(1)
-
 def shutdown_vllm_server():
+    instance = WandbConfigSingleton.get_instance()
+    port = instance.config.get("port", 8000)
+    
     try:
         with open('vllm_server.pid', 'r') as pid_file:
             pid = int(pid_file.read().strip())
         
         process = psutil.Process(pid)
+        children = process.children(recursive=True)
         
-        # 同期的にプロセスを終了
-        process.terminate()
+        # 子プロセスを終了
+        for child in children:
+            try:
+                child.terminate()
+                child.wait(timeout=3)
+            except (psutil.NoSuchProcess, psutil.TimeoutExpired):
+                try:
+                    child.kill()
+                except psutil.NoSuchProcess:
+                    pass
+        
+        # 親プロセスを終了
         try:
-            process.wait(timeout=30)
-        except psutil.TimeoutExpired:
-            print("Termination timed out. Killing the process.")
-            process.kill()
+            process.terminate()
+            process.wait(timeout=3)
+        except (psutil.NoSuchProcess, psutil.TimeoutExpired):
+            try:
+                process.kill()
+            except psutil.NoSuchProcess:
+                pass
         
-        print(f"vLLM server with PID {pid} has been terminated.")
+        logger.info(f"vLLM server with PID {pid} has been terminated.")
         
-        # PIDファイルを削除
         os.remove('vllm_server.pid')
         
-    except psutil.NoSuchProcess:
-        print(f"Process with PID {pid} not found. It may have already been terminated.")
-    except FileNotFoundError:
-        print("PID file not found. vLLM server may not be running.")
+    except (psutil.NoSuchProcess, FileNotFoundError) as e:
+        logger.warning(f"Process or PID file not found: {e}")
     except Exception as e:
-        print(f"An error occurred while shutting down vLLM server: {e}")
+        logger.error(f"An error occurred while shutting down vLLM server: {e}")
     finally:
-        # GPU メモリのクリーンアップ
-        print("Cleaning up GPU memory...")
+        # 使用中のポートを強制的に解放
+        if is_port_in_use(port):
+            find_and_kill_process_on_port(port)
+        
+        logger.info("Cleaning up GPU memory...")
         force_cuda_memory_cleanup()
         wait_for_gpu_memory_release()
-        print("GPU memory cleanup completed.")
+        logger.info("GPU memory cleanup completed.")
 
-    # 少し待機してリソースが確実に解放されるのを待つ
-    time.sleep(10)
+        try:
+            wait_for_port_release(port)
+        except TimeoutError:
+            logger.warning(f"Port {port} could not be released")
+
+        time.sleep(15)
