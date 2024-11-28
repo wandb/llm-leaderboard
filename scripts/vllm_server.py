@@ -193,8 +193,14 @@ def start_vllm_server():
                 # LoRAモジュールの設定を追加
                 adapter_name = lora_config.get("adapter_name", "default-lora")
                 adapter_path = lora_config.get("adapter_path")
+                base_model_name = cfg.model.get("base_model_name_or_path", cfg.model.pretrained_model_name_or_path)
                 if adapter_name and adapter_path:
-                    command.extend(["--lora-modules", f"{adapter_name}={adapter_path}"])
+                    lora_config_json = {
+                        "name": adapter_name,
+                        "path": adapter_path,
+                        "base_model_name": base_model_name
+                    }
+                    command.extend(["--lora-modules", json.dumps(lora_config_json)])
                 
                 # その他のLoRA関連のオプションを追加
                 if "max_lora_rank" in lora_config:
@@ -203,10 +209,13 @@ def start_vllm_server():
                     command.extend(["--max-loras", str(lora_config["max_loras"])])
                 if "max_cpu_loras" in lora_config:
                     command.extend(["--max-cpu-loras", str(lora_config["max_cpu_loras"])])
+                if lora_config.fully_sharded_loras:
+                    command.append("--fully-sharded-loras")
                     
             if cfg.model.trust_remote_code:
                 command.append("--trust-remote-code")
 
+            print(command)
             process = subprocess.Popen(command)
 
         with open('vllm_server.pid', 'w') as pid_file:
