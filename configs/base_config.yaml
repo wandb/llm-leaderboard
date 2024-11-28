@@ -1,11 +1,11 @@
 wandb:
   entity: "wandb-japan"
-  project: "llm-leaderboard3"
+  project: "llm-leaderboard3-weave-hakacthon2"
   #run: please set up run name in a model-base config
 
 github_version: v3.0.0 #for recording
 
-testmode: false
+testmode: true
 inference_interval: 0 # seconds
 
 run:

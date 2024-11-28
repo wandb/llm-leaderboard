@@ -1,0 +1,17 @@
+wandb:
+  run_name: "llm-jp/llm-jp-3-172b-beta2-instruct2" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+api: vllm
+num_gpus: 8
+batch_size: 256 # vllmは256, apiは32を推奨
+# inference_interval: 1 # seconds
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "llm-jp/llm-jp-3-172b-beta2-instruct2" #if you use openai api, put the name of model
+  chat_template: "llm-jp/llm-jp-3-172b-beta2-instruct2"
+  size_category: "30B≤"
+  size: 172400848896
+  release_date: "11/15/2024"

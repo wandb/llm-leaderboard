@@ -1,0 +1,17 @@
+wandb:
+  run_name: "meta-llama/Llama-3.2-90B-Vision-Instruct" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+api: vllm
+num_gpus: 4
+batch_size: 16 # vllmは256, apiは32を推奨
+# inference_interval: 1 # seconds
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "meta-llama/Llama-3.2-90B-Vision-Instruct" #if you use openai api, put the name of model
+  chat_template: "meta-llama/Llama-3.2-90B-Vision-Instruct"
+  size_category: "30B≤"
+  size: 88593355323
+  release_date: "9/26/2024"
