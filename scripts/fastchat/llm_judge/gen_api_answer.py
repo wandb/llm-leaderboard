@@ -29,6 +29,7 @@ from fastchat.llm_judge.common import (
     chat_completion_vllm,
     chat_completion_upstage,
     chat_completion_openai_azure,
+    chat_completion_alt,
 )
 from fastchat.llm_judge.gen_model_answer import reorg_answer_file
 from fastchat.model.model_adapter import get_conversation_template, ANTHROPIC_MODEL_LIST
@@ -122,6 +123,10 @@ def get_answer(
                 )
             elif cfg.api == "azure-openai":
                 output = chat_completion_openai_azure(
+                    model, conv, temperature, max_tokens
+                )
+            elif cfg.api == "alt":
+                output = chat_completion_alt(
                     model, conv, temperature, max_tokens
                 )
             else:
