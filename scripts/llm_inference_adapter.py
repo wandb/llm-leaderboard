@@ -40,9 +40,10 @@ class ChatBedrock:
         }
 
     def _invoke(self, messages: list[dict[str, str]], max_tokens: int):
-        # Determine the model type (Anthropic Claude or Meta Llama 3)
+        # Determine the model type (Anthropic Claude, Meta Llama 3, or Amazon Nova)
         is_claude = "anthropic" in self.model_id.lower()
         is_llama = "llama" in self.model_id.lower()
+        is_nova = "nova" in self.model_id.lower()
 
         if is_claude:
             body_dict = {
@@ -61,15 +62,50 @@ class ChatBedrock:
                 "max_gen_len": max_tokens,
                 **self.generator_config,
             }
+        elif is_nova:
+            # Novaモデルの場合の処理
+
+            # 修正1：messagesの各メッセージのcontentを適切な形式に変換
+            for message in messages:
+                if isinstance(message['content'], str):
+                    message['content'] = [{"text": message['content']}]
+
+            # パラメータ名のマッピング（大文字小文字の修正）
+            parameter_mapping = {
+                "top_p": "topP",
+                "max_tokens": "maxTokens",
+                # その他のパラメータも必要に応じて追加
+            }
+
+            # 修正2：inferenceConfigのパラメータ名を正しい形式に変更
+            inference_config = {
+                parameter_mapping.get(k, k): v for k, v in {
+                    "temperature": self.generator_config.get("temperature", 0.0),
+                    "maxTokens": max_tokens,
+                    **{k: v for k, v in self.generator_config.items() if k not in ["temperature"]}
+                }.items()
+            }
+
+            body_dict = {
+                "messages": messages,
+                "inferenceConfig": inference_config
+            }
         else:
             raise ValueError(f"Unsupported model: {self.model_id}")
 
         try:
-            response = self.bedrock_runtime.invoke_model(
-                body=json.dumps(body_dict),
-                modelId=self.model_id
-            )
-            response_body = json.loads(response.get("body").read())
+            if is_nova:
+                response = self.bedrock_runtime.converse(
+                    modelId=self.model_id,
+                    **body_dict
+                )
+                response_body = response
+            else:
+                response = self.bedrock_runtime.invoke_model(
+                    body=json.dumps(body_dict),
+                    modelId=self.model_id
+                )
+                response_body = json.loads(response.get("body").read())
         except ClientError as e:
             print(f"ERROR: Can't invoke '{self.model_id}'. Reason: {e}")
             raise
@@ -95,6 +131,8 @@ class ChatBedrock:
             content = response.get("generation", "")
             # ヘッダーとフッターを除去
             content = content.replace("<|start_header_id|>assistant<|end_header_id|>\n", "").replace("\n<|eot_id|>", "") 
+        elif "nova" in self.model_id.lower():
+            content = response.get("output", {}).get("message", {}).get("content", [{}])[0].get("text", "")
         else:
             content = ""
         return BedrockResponse(content=content)
