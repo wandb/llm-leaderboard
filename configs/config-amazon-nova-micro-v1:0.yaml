@@ -1,0 +1,14 @@
+wandb:
+  run_name: "us.amazon.nova-micro-v1:0" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+api: "amazon_bedrock"
+batch_size: 2 # vllmは256, apiは32を推奨
+inference_interval: 16 # seconds
+
+model:
+  pretrained_model_name_or_path: "us.amazon.nova-micro-v1:0" #if you use openai api, put the name of model
+  size_category: "api"
+  size: null 
+  release_date: "12/3/2024"

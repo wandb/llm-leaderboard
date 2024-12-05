@@ -837,24 +837,60 @@ class ChatBedrock:
         self.generator_config = {"temperature": temperature}
 
     def _invoke(self, messages: list[dict[str, str]], max_tokens: int):
-        prompt = self._format_llama_prompt(messages)
-        body_dict = {
-            "prompt": prompt,
-            "max_gen_len": max_tokens,
-            **self.generator_config,
-        }
+        # モデルタイプの判定
+        is_llama = "llama" in self.model_id.lower()
+        is_nova = "nova" in self.model_id.lower()
+
+        if is_nova:
+            # Novaモデル用の処理
+            for message in messages:
+                if isinstance(message['content'], str):
+                    message['content'] = [{"text": message['content']}]
+
+            inference_config = {
+                "temperature": self.generator_config.get("temperature", 0.0),
+                "maxTokens": max_tokens
+            }
+
+            body_dict = {
+                "messages": messages,
+                "inferenceConfig": inference_config
+            }
+        else:
+            # 既存のLlama用処理
+            prompt = self._format_llama_prompt(messages)
+            body_dict = {
+                "prompt": prompt,
+                "max_gen_len": max_tokens,
+                **self.generator_config,
+            }
 
         try:
-            response = self.bedrock_runtime.invoke_model(
-                body=json.dumps(body_dict),
-                modelId=self.model_id
-            )
-            response_body = json.loads(response.get("body").read())
+            if is_nova:
+                response = self.bedrock_runtime.converse(
+                    modelId=self.model_id,
+                    **body_dict
+                )
+                response_body = response
+            else:
+                response = self.bedrock_runtime.invoke_model(
+                    body=json.dumps(body_dict),
+                    modelId=self.model_id
+                )
+                response_body = json.loads(response.get("body").read())
         except ClientError as e:
             print(f"ERROR: Can't invoke '{self.model_id}'. Reason: {e}")
             raise
 
         return response_body
+
+    def invoke(self, messages, max_tokens: int):
+        response = self._invoke(messages=messages, max_tokens=max_tokens)
+        if "nova" in self.model_id.lower():
+            content = response.get("output", {}).get("message", {}).get("content", [{}])[0].get("text", "")
+        else:
+            content = response.get("generation", "")
+        return BedrockResponse(content=content)
 
     def _format_llama_prompt(self, messages):
         formatted_messages = []
@@ -867,11 +903,6 @@ class ChatBedrock:
                 formatted_messages.append(f"<|assistant|>\n{message['content']}\n")
         formatted_messages.append("<|assistant|>\n")  # Add for the model to continue
         return "<|begin_of_text|>\n" + "".join(formatted_messages)
-
-    def invoke(self, messages, max_tokens: int):
-        response = self._invoke(messages=messages, max_tokens=max_tokens)
-        content = response.get("generation", "")
-        return BedrockResponse(content=content)
 
 
 def chat_completion_mistral(chat_state, model, conv, temperature, max_tokens):
