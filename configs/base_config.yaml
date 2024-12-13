@@ -5,18 +5,18 @@ wandb:
 
 github_version: v3.0.0 #for recording
 
-testmode: false
+testmode: true
 inference_interval: 0 # seconds
 
 run:
-  jaster: true
-  jmmlu_robustness: true # if this is set as true, jaster should set as true
+  jaster: false
+  jmmlu_robustness: false # if this is set as true, jaster should set as true
   mtbench: true
-  jbbq: true
-  lctg: true
-  toxicity: true
-  jtruthfulqa: true
-  aggregate: true
+  jbbq: false
+  lctg: false
+  toxicity: false
+  jtruthfulqa: false
+  aggregate: false
 
 model:
   artifact_path: null

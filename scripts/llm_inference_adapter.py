@@ -17,6 +17,12 @@ from botocore.config import Config
 
 # from langchain_cohere import Cohere
 
+from typing import Any, Dict, List, Optional
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.outputs import ChatResult, ChatGeneration
+import requests
+import aiohttp
 
 import json
 import boto3
@@ -99,6 +105,67 @@ class ChatBedrock:
         else:
             content = ""
         return BedrockResponse(content=content)
+
+class PFEResponse:
+    def __init__(self, content: str):
+        self.content = content
+
+class ChatPFE:
+    def __init__(self, api_key: str, model: str, **kwargs):
+        self.api_key = api_key
+        self.base_url = "https://platform.preferredai.jp/api/completion/v1"
+        self.model_id = model
+        self.max_tokens = kwargs.pop('max_tokens', None)
+        self.generator_config = kwargs
+    def _prepare_request(self, messages: List[Dict[str, str]], max_tokens: int = None):
+        body_dict = {
+            "model": self.model_id,
+            "messages": messages,
+            **self.generator_config,
+        }
+        
+        if max_tokens is not None:
+            body_dict["max_tokens"] = max_tokens
+        elif self.max_tokens is not None:
+            body_dict["max_tokens"] = self.max_tokens
+        return body_dict
+    def invoke(self, messages: List[Dict[str, str]], max_tokens: int = None):
+        body_dict = self._prepare_request(messages, max_tokens)
+        try:
+            response = requests.post(
+                f"{self.base_url}/chat/completions",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.api_key}"
+                },
+                json=body_dict
+            )
+            response.raise_for_status()
+            response_body = response.json()
+        except requests.RequestException as e:
+            print(f"ERROR: Can't invoke '{self.model_id}'. Reason: {e}")
+            raise
+        content = response_body.get("choices", [{}])[0].get("message", {}).get("content", "")
+        return ALTResponse(content=content)
+    async def ainvoke(self, messages: List[Dict[str, str]], max_tokens: int = None):
+        body_dict = self._prepare_request(messages, max_tokens)
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.post(
+                    f"{self.base_url}/chat/completions",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {self.api_key}"
+                    },
+                    json=body_dict
+                ) as response:
+                    response.raise_for_status()
+                    response_body = await response.json()
+            except aiohttp.ClientError as e:
+                print(f"ERROR: Can't invoke '{self.model_id}'. Reason: {e}")
+                raise
+        content = response_body.get("choices", [{}])[0].get("message", {}).get("content", "")
+        return ALTResponse(content=content)
 
 
 def get_llm_inference_engine():
@@ -194,6 +261,13 @@ def get_llm_inference_engine():
     #         cohere_api_key=os.environ["COHERE_API_KEY"],
     #         **cfg.generator,
     #     )
+
+    elif api_type == "preferred":
+        llm = ChatPFE(
+            api_key=os.environ["PLAMO_API_KEY"],
+            model=cfg.model.pretrained_model_name_or_path,
+            **cfg.generator,
+        )
 
     else:
         raise ValueError(f"Unsupported API type: {api_type}")
