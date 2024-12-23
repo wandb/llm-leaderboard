@@ -146,7 +146,7 @@ class ChatPFE:
             print(f"ERROR: Can't invoke '{self.model_id}'. Reason: {e}")
             raise
         content = response_body.get("choices", [{}])[0].get("message", {}).get("content", "")
-        return ALTResponse(content=content)
+        return PFEResponse(content=content)
     async def ainvoke(self, messages: List[Dict[str, str]], max_tokens: int = None):
         body_dict = self._prepare_request(messages, max_tokens)
         async with aiohttp.ClientSession() as session:
@@ -165,7 +165,7 @@ class ChatPFE:
                 print(f"ERROR: Can't invoke '{self.model_id}'. Reason: {e}")
                 raise
         content = response_body.get("choices", [{}])[0].get("message", {}).get("content", "")
-        return ALTResponse(content=content)
+        return PFEResponse(content=content)
 
 
 def get_llm_inference_engine():
