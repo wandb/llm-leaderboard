@@ -16,9 +16,12 @@ import boto3
 
 # from langchain_cohere import Cohere
 
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline  # PreTrainedTokenizerBase,
+from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
+import torch
 
 @dataclass
-class BedrockResponse:
+class TextHolder:
     content: str
 
 
@@ -61,11 +64,78 @@ class ChatBedrock:
     def invoke(self, messages, max_tokens: int):
         response = self._invoke(messages=messages, max_tokens=max_tokens)
         if response["content"]:
-            content = content = response["content"][0]["text"]
+            content = response["content"][0]["text"]
         else:
             content = ""
 
-        return BedrockResponse(content=content)
+        return TextHolder(content=content)
+
+
+class ChatTransformers:
+    def __init__(self, cfg) -> None:
+        # self.cfg = cfg
+        self.model_id = cfg.model.pretrained_model_name_or_path
+        self.ignore_keys = ["max_tokens"]
+        self.generator_config = {
+            k: v for k, v in cfg.generator.items() if not k in self.ignore_keys
+        }
+        self.model_params = dict(
+            trust_remote_code=cfg.model.trust_remote_code,
+            device_map=cfg.model.device_map,
+            load_in_8bit=cfg.model.load_in_8bit,
+            load_in_4bit=cfg.model.load_in_4bit,
+            torch_dtype=torch.float16,
+        )
+        self.model = AutoModelForCausalLM.from_pretrained(
+            self.model_id,
+            **self.model_params,
+        )
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.model_id,
+            trust_remote_code=self.model_params["trust_remote_code"],
+        )
+
+    def _invoke(
+        self,
+        messages: list[dict[str, str]],
+        max_tokens: int,
+    ):
+        self.model.eval()
+
+        pipe = pipeline(
+            "text-generation",
+            model=self.model,
+            tokenizer=self.tokenizer,
+            eos_token_id=self.tokenizer.eos_token_id,
+            pad_token_id=self.tokenizer.pad_token_id,
+            max_new_tokens=max_tokens,
+            device_map=self.model_params["device_map"],
+        )
+
+        print("="*50)
+        print("messages")
+        print("="*50)
+        print(messages)
+
+        prompt = " ".join([msg["content"] for msg in messages])
+        print("="*50)
+        print("prompt")
+        print("="*50)
+        print(prompt)
+
+        generated_text = pipe(prompt, **self.generator_config)[0]["generated_text"]
+        print("="*50)
+        print("generated_text")
+        print("="*50)
+        print(generated_text)
+
+        return generated_text
+
+    def invoke(self, messages, max_tokens: int):
+        content = self._invoke(messages=messages, max_tokens=max_tokens)
+        # content = response["content"][0]["text"]
+
+        return TextHolder(content=content)
 
 
 def get_llm_inference_engine():
@@ -135,7 +205,7 @@ def get_llm_inference_engine():
             api_key=os.environ["ANTHROPIC_API_KEY"],
             **cfg.generator,
         )
-    
+
     elif api_type == "upstage":
         # LangChainのOpenAIインテグレーションを使用
         llm = ChatOpenAI(
@@ -144,6 +214,10 @@ def get_llm_inference_engine():
             base_url="https://api.upstage.ai/v1/solar",
             **cfg.generator,
         )
+
+    elif api_type == "None":
+        llm = ChatTransformers(cfg=cfg)
+
 
     # elif api_type == "azure-openai":
     #     llm = AzureChatOpenAI(
