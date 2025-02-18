@@ -793,7 +793,7 @@ class vLLMAdapter(BaseModelAdapter):
 
     def match(self, model_path: str):
         cfg = WandbConfigSingleton.get_instance().config
-        return cfg.api == 'vllm'
+        return cfg.api == 'vllm' or "vllm-external"
 
     def load_model(self, model_path: str, from_pretrained_kwargs: dict):
         raise NotImplementedError()

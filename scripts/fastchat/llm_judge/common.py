@@ -13,7 +13,7 @@ from typing import Optional
 
 import openai
 import anthropic
-#import cohere
+import cohere
 import google.generativeai as genai
 
 from fastchat.model.model_adapter import (
@@ -475,6 +475,32 @@ def chat_completion_upstage(model, conv, temperature, max_tokens):
 
     return output
 
+def chat_completion_xai(model, conv, temperature, max_tokens):
+    #openai_chat_completion_func = setup_openai_api(model)
+    client = openai.OpenAI(
+    api_key=os.getenv("XAI_API_KEY"),
+    base_url="https://api.x.ai/v1"
+    )
+    output = API_ERROR_OUTPUT
+    # TODO: allow additional params for toggling between azure api
+    for _ in range(API_MAX_RETRY):
+        try:
+            messages = conv.to_openai_api_messages()
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                n=1,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            output = response.choices[0].message.content
+            break
+        except openai.OpenAIError as e:
+            print(type(e), e)
+            time.sleep(API_RETRY_SLEEP)
+
+    return output
+
 def chat_completion_openai(model, conv, temperature, max_tokens):
     #openai_chat_completion_func = setup_openai_api(model)
     output = API_ERROR_OUTPUT
@@ -500,14 +526,26 @@ def chat_completion_openai(model, conv, temperature, max_tokens):
 @retry(stop=stop_after_attempt(5), wait=wait_fixed(30))
 def chat_completion_vllm(model, conv, temperature, max_tokens):
     from openai import OpenAI
+    from config_singleton import WandbConfigSingleton
 
-    openai_api_key = "EMPTY"
-    openai_api_base = "http://0.0.0.0:8000/v1"
+    instance = WandbConfigSingleton.get_instance()
+    cfg = instance.config
+
+    openai_api_key = os.environ.get("VLLM_API_KEY", "EMPTY")
+    openai_api_base = cfg.get("base_url", "http://localhost:8000/v1")
 
     client = OpenAI(
         api_key=openai_api_key,
         base_url=openai_api_base,
     )
+    
+    # LoRAの設定を確認
+    lora_config = cfg.model.get("lora", None)
+    if lora_config and lora_config.get("enable", False):
+        # LoRAが有効な場合、LoRAアダプター名をモデル名として使用
+        model = lora_config.get("adapter_name", model)
+
+    print(f"Using model: {model}")
     print(client.models.list())
 
     messages = conv.to_openai_api_messages()
@@ -603,26 +641,45 @@ def chat_completion_anthropic(model, conv, temperature, max_tokens, api_dict=Non
                 time.sleep(API_RETRY_SLEEP)
     return output.strip()
 
-"""
+
 def chat_completion_cohere(model, conv, temperature, max_tokens):
+    import cohere
+    import os
+    import time
+
     output = API_ERROR_OUTPUT
-    for _ in range(API_MAX_RETRY):
+    cohere_api_key = os.environ.get("COHERE_API_KEY")
+    if not cohere_api_key:
+        print("COHERE_API_KEY is not set in the environment variables.")
+        return API_ERROR_OUTPUT
+
+    for attempt in range(API_MAX_RETRY):
         try:
-            co = cohere.Client(api_key=os.environ["COHERE_API_KEY"])
-            prompt = conv.get_prompt()
+            # Use Cohere's ClientV2
+            co = cohere.ClientV2(api_key=cohere_api_key)
+
+            # Use OpenAI-style messages directly
+            messages = conv.to_openai_api_messages()
+
             response = co.chat(
-                prompt, 
-                model=model, 
+                model=model,
+                messages=messages,
+                temperature=temperature,
                 max_tokens=max_tokens,
-                temperature=temperature
             )
-            output = response.text
-            break
-        except anthropic.APIError as e:
-            print(type(e), e)
-            time.sleep(API_RETRY_SLEEP)
-    return output.strip()
-"""
+
+            # Get the generated message from the response
+            output = response.message.content[0].text.strip()
+            break  # Exit the loop if successful
+
+        except Exception as e:
+            print(f"An error occurred (attempt {attempt + 1}/{API_MAX_RETRY}): {e}")
+            wait_time = API_RETRY_SLEEP
+            print(f"Retrying in {wait_time} seconds.")
+            time.sleep(wait_time)
+
+    return output if output else API_ERROR_OUTPUT
+
 
 def chat_completion_palm(chat_state, model, conv, temperature, max_tokens):
     from fastchat.serve.api_provider import init_palm_chat
@@ -780,24 +837,60 @@ class ChatBedrock:
         self.generator_config = {"temperature": temperature}
 
     def _invoke(self, messages: list[dict[str, str]], max_tokens: int):
-        prompt = self._format_llama_prompt(messages)
-        body_dict = {
-            "prompt": prompt,
-            "max_gen_len": max_tokens,
-            **self.generator_config,
-        }
+        # モデルタイプの判定
+        is_llama = "llama" in self.model_id.lower()
+        is_nova = "nova" in self.model_id.lower()
+
+        if is_nova:
+            # Novaモデル用の処理
+            for message in messages:
+                if isinstance(message['content'], str):
+                    message['content'] = [{"text": message['content']}]
+
+            inference_config = {
+                "temperature": self.generator_config.get("temperature", 0.0),
+                "maxTokens": max_tokens
+            }
+
+            body_dict = {
+                "messages": messages,
+                "inferenceConfig": inference_config
+            }
+        else:
+            # 既存のLlama用処理
+            prompt = self._format_llama_prompt(messages)
+            body_dict = {
+                "prompt": prompt,
+                "max_gen_len": max_tokens,
+                **self.generator_config,
+            }
 
         try:
-            response = self.bedrock_runtime.invoke_model(
-                body=json.dumps(body_dict),
-                modelId=self.model_id
-            )
-            response_body = json.loads(response.get("body").read())
+            if is_nova:
+                response = self.bedrock_runtime.converse(
+                    modelId=self.model_id,
+                    **body_dict
+                )
+                response_body = response
+            else:
+                response = self.bedrock_runtime.invoke_model(
+                    body=json.dumps(body_dict),
+                    modelId=self.model_id
+                )
+                response_body = json.loads(response.get("body").read())
         except ClientError as e:
             print(f"ERROR: Can't invoke '{self.model_id}'. Reason: {e}")
             raise
 
         return response_body
+
+    def invoke(self, messages, max_tokens: int):
+        response = self._invoke(messages=messages, max_tokens=max_tokens)
+        if "nova" in self.model_id.lower():
+            content = response.get("output", {}).get("message", {}).get("content", [{}])[0].get("text", "")
+        else:
+            content = response.get("generation", "")
+        return BedrockResponse(content=content)
 
     def _format_llama_prompt(self, messages):
         formatted_messages = []
@@ -810,11 +903,6 @@ class ChatBedrock:
                 formatted_messages.append(f"<|assistant|>\n{message['content']}\n")
         formatted_messages.append("<|assistant|>\n")  # Add for the model to continue
         return "<|begin_of_text|>\n" + "".join(formatted_messages)
-
-    def invoke(self, messages, max_tokens: int):
-        response = self._invoke(messages=messages, max_tokens=max_tokens)
-        content = response.get("generation", "")
-        return BedrockResponse(content=content)
 
 
 def chat_completion_mistral(chat_state, model, conv, temperature, max_tokens):
