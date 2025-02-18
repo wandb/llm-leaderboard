@@ -38,7 +38,7 @@ def evaluate():
     if cfg.mtbench.model_id == None:
         cfg.mtbench.model_id = f'{cfg.model.pretrained_model_name_or_path.replace("/", "--")}_hash_{hashed_string}' 
 
-    if cfg.api == 'vllm':
+    if cfg.api == 'vllm' or "vllm-external":
         initialize_vllm_custom_template()
 
     if cfg.mtbench.num_gpus_total // cfg.mtbench.num_gpus_per_model > 1:
@@ -65,7 +65,7 @@ def evaluate():
 
     
     # 1. generate model answers
-    if cfg.api in ["openai","anthropic","cohere","google","amazon_bedrock","mistral","upstage","vllm", "azure-openai"]:
+    if cfg.api in ["openai","anthropic","cohere","google","amazon_bedrock","mistral","upstage","vllm", "azure-openai", "xai", "vllm-external"]:
         questions = load_questions(question_file, None, None)
         get_api_answer(
             question_file=question_file,
