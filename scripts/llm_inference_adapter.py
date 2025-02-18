@@ -11,11 +11,10 @@ from langchain_google_genai import (
 )
 # from langchain_aws import ChatBedrock
 from langchain_anthropic import ChatAnthropic
+from langchain_cohere import ChatCohere
 from botocore.exceptions import ClientError
 import boto3
 from botocore.config import Config
-
-# from langchain_cohere import Cohere
 
 
 import json
@@ -41,9 +40,10 @@ class ChatBedrock:
         }
 
     def _invoke(self, messages: list[dict[str, str]], max_tokens: int):
-        # Determine the model type (Anthropic Claude or Meta Llama 3)
+        # Determine the model type (Anthropic Claude, Meta Llama 3, or Amazon Nova)
         is_claude = "anthropic" in self.model_id.lower()
         is_llama = "llama" in self.model_id.lower()
+        is_nova = "nova" in self.model_id.lower()
 
         if is_claude:
             body_dict = {
@@ -62,15 +62,50 @@ class ChatBedrock:
                 "max_gen_len": max_tokens,
                 **self.generator_config,
             }
+        elif is_nova:
+            # Novaモデルの場合の処理
+
+            # 修正1：messagesの各メッセージのcontentを適切な形式に変換
+            for message in messages:
+                if isinstance(message['content'], str):
+                    message['content'] = [{"text": message['content']}]
+
+            # パラメータ名のマッピング（大文字小文字の修正）
+            parameter_mapping = {
+                "top_p": "topP",
+                "max_tokens": "maxTokens",
+                # その他のパラメータも必要に応じて追加
+            }
+
+            # 修正2：inferenceConfigのパラメータ名を正しい形式に変更
+            inference_config = {
+                parameter_mapping.get(k, k): v for k, v in {
+                    "temperature": self.generator_config.get("temperature", 0.0),
+                    "maxTokens": max_tokens,
+                    **{k: v for k, v in self.generator_config.items() if k not in ["temperature"]}
+                }.items()
+            }
+
+            body_dict = {
+                "messages": messages,
+                "inferenceConfig": inference_config
+            }
         else:
             raise ValueError(f"Unsupported model: {self.model_id}")
 
         try:
-            response = self.bedrock_runtime.invoke_model(
-                body=json.dumps(body_dict),
-                modelId=self.model_id
-            )
-            response_body = json.loads(response.get("body").read())
+            if is_nova:
+                response = self.bedrock_runtime.converse(
+                    modelId=self.model_id,
+                    **body_dict
+                )
+                response_body = response
+            else:
+                response = self.bedrock_runtime.invoke_model(
+                    body=json.dumps(body_dict),
+                    modelId=self.model_id
+                )
+                response_body = json.loads(response.get("body").read())
         except ClientError as e:
             print(f"ERROR: Can't invoke '{self.model_id}'. Reason: {e}")
             raise
@@ -96,6 +131,8 @@ class ChatBedrock:
             content = response.get("generation", "")
             # ヘッダーとフッターを除去
             content = content.replace("<|start_header_id|>assistant<|end_header_id|>\n", "").replace("\n<|eot_id|>", "") 
+        elif "nova" in self.model_id.lower():
+            content = response.get("output", {}).get("message", {}).get("content", [{}])[0].get("text", "")
         else:
             content = ""
         return BedrockResponse(content=content)
@@ -111,11 +148,36 @@ def get_llm_inference_engine():
         from vllm_server import start_vllm_server
         start_vllm_server()
 
+        # LoRAの設定を確認
+        lora_config = cfg.model.get("lora", None)
+        base_url = "http://localhost:8000/v1"
+        model_name = cfg.model.pretrained_model_name_or_path
+
+        if lora_config and lora_config.get("enable", False):
+            # LoRAが有効な場合、LoRAアダプター名をモデル名として使用
+            model_name = lora_config.get("adapter_name", model_name)
+
         # LangChainのVLLMインテグレーションを使用
         llm = ChatOpenAI(
             openai_api_key="EMPTY",
-            openai_api_base="http://localhost:8000/v1",
-            model_name=cfg.model.pretrained_model_name_or_path,
+            openai_api_base=base_url,
+            model_name=model_name,
+            **cfg.generator,
+        )
+
+    elif api_type == "vllm-external":
+        # vLLMサーバーは起動済みのものを用いるので、ここでは起動しない
+        #from vllm_server import start_vllm_server
+        #start_vllm_server()
+
+        base_url = cfg.get("base_url", "http://localhost:8000/v1") #"http://localhost:8000/v1"
+        model_name = cfg.model.pretrained_model_name_or_path
+
+        # LangChainのVLLMインテグレーションを使用
+        llm = ChatOpenAI(
+            openai_api_key=os.environ.get("VLLM_API_KEY", "EMPTY"),
+            openai_api_base=base_url,
+            model_name=model_name,
             **cfg.generator,
         )
 
@@ -123,6 +185,15 @@ def get_llm_inference_engine():
         # LangChainのOpenAIインテグレーションを使用
         llm = ChatOpenAI(
             api_key=os.environ["OPENAI_API_KEY"],
+            model=cfg.model.pretrained_model_name_or_path,
+            **cfg.generator,
+        )
+
+    elif api_type == "xai":
+        # LangChainのOpenAIインテグレーションを使用
+        llm = ChatOpenAI(
+            base_url="https://api.x.ai/v1",
+            api_key=os.environ["XAI_API_KEY"],
             model=cfg.model.pretrained_model_name_or_path,
             **cfg.generator,
         )
@@ -188,12 +259,12 @@ def get_llm_inference_engine():
             **cfg.generator,
         )
 
-    # elif api_type == "cohere":
-    #     llm = Cohere(
-    #         model=cfg.model.pretrained_model_name_or_path,
-    #         cohere_api_key=os.environ["COHERE_API_KEY"],
-    #         **cfg.generator,
-    #     )
+    elif api_type == "cohere":
+        llm = ChatCohere(
+            model=cfg.model.pretrained_model_name_or_path,
+            cohere_api_key=os.environ["COHERE_API_KEY"],
+            **cfg.generator,
+        )
 
     else:
         raise ValueError(f"Unsupported API type: {api_type}")
