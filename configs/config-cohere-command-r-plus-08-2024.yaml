@@ -1,15 +1,18 @@
 wandb:
-  run_name: "cohere/command-r-plus-v1:0" # use run_name defined above
+  run_name: "cohere/command-r-plus-08-2024" # use run_name defined above
 
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthropic", "google", "cohere", "vllm", "mistral", "bedrock"
-api: "amazon_bedrock"
+api: "cohere"
 batch_size: 1 # vllmは256, apiは32を推奨
 # inference_interval
 
+generator:
+  preamble: ""  # Put a custom preamble here if needed
+
 model:
   use_wandb_artifacts: false
-  pretrained_model_name_or_path: "cohere.command-r-plus-v1:0" #if you use openai api, put the name of model
+  pretrained_model_name_or_path: "command-r-plus-08-2024"  # put the name of Cohere model here
   size_category: "api"
   size: null
-  release_date: "4/4/2024"
+  release_date: "8/30/2024"
