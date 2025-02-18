@@ -15,6 +15,7 @@ import openai
 import anthropic
 #import cohere
 import google.generativeai as genai
+import requests
 
 from fastchat.model.model_adapter import (
     get_conversation_template,
@@ -853,6 +854,37 @@ def chat_completion_mistral(chat_state, model, conv, temperature, max_tokens):
             print(type(e), e)
             time.sleep(API_RETRY_SLEEP)
     return chat_state, output
+
+
+def chat_completion_alt(model, conv, temperature, max_tokens):
+    output = API_ERROR_OUTPUT
+    url = "https://lhtmopt2api.alt.ai/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {os.environ['ALT_API_KEY']}"
+    }
+    for _ in range(API_MAX_RETRY):
+        try:
+            data = {
+                "model": model,
+                "messages": conv.to_openai_api_messages(),
+                "temperature": temperature,
+                "max_tokens": max_tokens
+            }
+            
+            response = requests.post(url, headers=headers, data=json.dumps(data))
+            
+            if response.status_code == 200:
+                output = response.json()['choices'][0]['message']['content']
+                break
+            else:
+                raise Exception(f"API error: {response.status_code}")
+        
+        except Exception as e:
+            print(type(e), e)
+            time.sleep(API_RETRY_SLEEP)
+    
+    return output
 
 
 def normalize_game_key_single(gamekey, result):
