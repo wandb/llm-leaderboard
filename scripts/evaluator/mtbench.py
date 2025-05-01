@@ -11,12 +11,28 @@ from dataclasses import dataclass
 from typing import List, Dict, Any, Optional, Tuple
 import shortuuid
 import time
+import openai
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils.llm_async_processor import LLMAsyncProcessor
+from llm_inference_adapter import get_llm_inference_engine
 
 # カテゴリが参照回答を必要とするかどうかのリスト
 NEED_REF_CATS = ["math", "reasoning", "coding", "arena-hard-200"]
+
+# default settings for temperature
+temperature_config = {
+    "writing": 0.7,
+    "roleplay": 0.7,
+    "extraction": 0.0,
+    "math": 0.0,
+    "coding": 0.0,
+    "reasoning": 0.0,
+    "stem": 0.1,
+    "humanities": 0.1,
+    "arena-hard-200": 0.0,
+}
 
 @dataclass
 class Question:
@@ -313,13 +329,18 @@ async def run_judge_single_async(question: Question, answer: Answer, judge: Judg
     if judge.prompt_template["output_format"] in ["[[rating]]", "[[評価]]", "[[평가]]"]:
         one_score_pattern = re.compile(r"\[\[(\d+\.?\d*)\]\]")
         one_score_pattern_backup = re.compile(r"\[(\d+\.?\d*)\]")
-        
-        match = re.search(one_score_pattern, judgment)
-        if not match:
-            match = re.search(one_score_pattern_backup, judgment)
-        
-        if match:
-            rating = float(match.groups()[0])
+        score_match = re.search(one_score_pattern, judgment)
+        if not score_match:
+            score_match = re.search(one_score_pattern_backup, judgment)
+        if score_match and score_match.groups():
+            try:
+                rating = float(score_match.groups()[0])
+            except ValueError:
+                print(f"Warning: Could not convert score '{score_match.groups()[0]}' to float for question {question.question_id}")
+                rating = -1
+        else:
+            print(f"[WARN] Judgment output did not match expected pattern: {judgment}")
+            rating = -1
     
     return rating, user_prompt, judgment
 
@@ -411,7 +432,7 @@ async def async_evaluate():
     hash_object = hashlib.sha256(encoded_data)
     hashed_string = hash_object.hexdigest()
     if cfg.mtbench.model_id is None:
-        cfg.mtbench.model_id = f'{cfg.model.pretrained_model_name_or_path.replace("/", "--")}_hash_{hashed_string}'
+        cfg.mtbench.model_id = f'{cfg.model.pretrained_model_name_or_path.replace("/", "--")}_hash_{hashed_string}' 
     
     # ファイルパス
     # 質問
@@ -430,7 +451,7 @@ async def async_evaluate():
         ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path_test, type='dataset').download()
     else:
         ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path, type='dataset').download()
-    
+
     # ***** 質問データの読み込みをここで行う *****
     print("1. 質問データを読み込み中...")
     questions = load_questions(question_file)
@@ -458,20 +479,20 @@ async def async_evaluate():
     # ジャッジプロンプトを読み込む
     artifact_dir = run.use_artifact(cfg.mtbench.judge_prompt_artifacts_path, type='dataset').download()
     judge_prompts = load_judge_prompts(artifact_dir + "/judge_prompts.jsonl")
-    
+
     models = [cfg.mtbench.model_id]
-    
+ 
     # ジャッジを作成
     judges = make_judge_single(cfg.mtbench.judge_model, judge_prompts)
     output_file = f"data/{cfg.mtbench.bench_name}/model_judgment/{cfg.mtbench.judge_model}_single"
-    
+
     # データチェック
     check_data(questions, model_answers, ref_answers, models, judges)
-    
+
     # 質問を数学/非数学に分ける
     question_math = [q for q in questions if q.category in NEED_REF_CATS]
     question_default = [q for q in questions if q.category not in NEED_REF_CATS]
-    
+
     # マッチを作成
     print("4. 評価マッチを作成中...")
     matches = []
@@ -502,10 +523,10 @@ async def async_evaluate():
         ref_answers=ref_answers,
         multi_turn=True,
     )
-    
+
     judge_count = cfg.mtbench.get('judge_count', 1)
     matches *= judge_count
-    
+
     # マッチ統計
     match_stat = {
         "bench_name": cfg.mtbench.bench_name,
@@ -521,14 +542,27 @@ async def async_evaluate():
     print("統計情報:")
     print(json.dumps(match_stat, indent=4))
     
-    # マッチを実行 (LLMAsyncProcessor を使用)
-    print(f"5. 評価を実行中... (マッチ数: {len(matches)}) (using LLMAsyncProcessor)")
-    results = []
-    
     # ジャッジ用のパラメータ
     judge_max_tokens = 2048
     judge_temperature = 0.0
-    judge_params = {"max_tokens": judge_max_tokens, "temperature": judge_temperature}
+    judge_model_name = cfg.mtbench.judge_model
+    judge_parallel = getattr(cfg.mtbench, 'parallel', 80)
+    judge_api_key = os.environ.get("OPENAI_API_KEY")
+
+    client = openai.OpenAI(api_key=judge_api_key)
+
+    @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=2, min=1, max=10))
+    async def openai_judge_async(messages, max_tokens, temperature, model):
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            ).choices[0].message.content
+        )
 
     # LLMAsyncProcessor に渡す inputs を作成
     inputs_for_judge_processor = []
@@ -544,7 +578,7 @@ async def async_evaluate():
             kwargs["ref_answer_1"] = ref_answer.choices[0]["turns"][0]
             if multi_turn:
                 kwargs["ref_answer_2"] = ref_answer.choices[0]["turns"][1]
-        
+
         if multi_turn:
             user_prompt = judge.prompt_template["prompt_template"].format(
                 question_1=question.turns[0],
@@ -559,75 +593,73 @@ async def async_evaluate():
                 answer=answer.choices[0]["turns"][0],
                 **kwargs,
             )
-        
+
         system_prompt = judge.prompt_template["system_prompt"]
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ]
-        inputs_for_judge_processor.append((messages, judge_params, match)) # match情報も一緒に渡す
+        inputs_for_judge_processor.append((messages, judge_max_tokens, judge_temperature, judge_model_name, match, user_prompt))
 
-    # LLMAsyncProcessor でジャッジを実行
-    llm = instance.llm # instance.llm を直接渡す
-    # LLMAsyncProcessorのinputs型定義に合わせる
-    proc_inputs = [(msgs, params) for msgs, params, _ in inputs_for_judge_processor]
-    llm_ap_judge = LLMAsyncProcessor(llm=llm, inputs=proc_inputs)
-    # get_results を asyncio.to_thread で呼び出す
-    judge_responses = await asyncio.to_thread(llm_ap_judge.get_results)
+    print(f"Processing judge results (OpenAI API parallel, batch={judge_parallel})...")
+    results = []
+    sem = asyncio.Semaphore(judge_parallel)
 
-    # 結果を処理して results リストに追加
-    print("Processing judge results...")
-    for i, response in enumerate(tqdm(judge_responses)):
-        judgment = response.content if hasattr(response, 'content') else str(response)
-        _, _, match = inputs_for_judge_processor[i] # 元のmatch情報を取得
-        
-        question = match.question
-        model = match.model
-        judge = match.judge
-        multi_turn = match.multi_turn
-        user_prompt = next((item[0][1]['content'] for item in inputs_for_judge_processor if item[2] == match), None) # user_prompt を inputs から再取得 (簡易的)
+    async def judge_task(args):
+        messages, max_tokens, temperature, model, match, user_prompt = args
+        async with sem:
+            try:
+                judgment = await openai_judge_async(messages, max_tokens, temperature, model)
+            except Exception as e:
+                print(f"OpenAI judge error: {e}")
+                judgment = "$ERROR$"
+            # スコア抽出
+            import re
+            rating = -1
+            if match.judge.prompt_template["output_format"] in ["[[rating]]", "[[評価]]", "[[평가]]"]:
+                one_score_pattern = re.compile(r"\[\[(\d+\.?\d*)\]\]")
+                one_score_pattern_backup = re.compile(r"\[(\d+\.?\d*)\]")
+                score_match = re.search(one_score_pattern, judgment)
+                if not score_match:
+                    score_match = re.search(one_score_pattern_backup, judgment)
+                if score_match and score_match.groups():
+                    try:
+                        rating = float(score_match.groups()[0])
+                    except ValueError:
+                        print(f"Warning: Could not convert score '{score_match.groups()[0]}' to float for question {match.question.question_id}")
+                        rating = -1
+                else:
+                    print(f"[WARN] Judgment output did not match expected pattern: {judgment}")
+                    rating = -1
+            question_id = match.question.question_id
+            turn = 1 if not match.multi_turn else 2
+            result = {
+                "question_id": question_id,
+                "model": match.model,
+                "judge": (match.judge.model_name, match.judge.prompt_template["name"]),
+                "user_prompt": user_prompt,
+                "judgment": judgment,
+                "score": rating,
+                "turn": turn,
+                "tstamp": datetime.datetime.now().timestamp(),
+            }
+            # ファイル出力
+            if output_file:
+                output_file_path = os.path.join(
+                    output_file.replace(".jsonl", ""),
+                    f"{match.model}__{turn}turn.jsonl"
+                )
+                os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
+                with open(output_file_path, "a") as f:
+                    f.write(json.dumps(result, ensure_ascii=False) + "\n")
+            return result
 
-        # スコア抽出 (run_judge_single_asyncからコピー)
-        import re
-        rating = -1
-        if judge.prompt_template["output_format"] in ["[[rating]]", "[[評価]]", "[[평가]]"]:
-            one_score_pattern = re.compile(r"\[\[(\d+\.?\d*)\]]")
-            one_score_pattern_backup = re.compile(r"\[(\d+\.?\d*)\]")
-            
-            score_match = re.search(one_score_pattern, judgment)
-            if not score_match:
-                score_match = re.search(one_score_pattern_backup, judgment)
-            
-            if score_match:
-                try:
-                    rating = float(score_match.groups()[0])
-                except ValueError:
-                    print(f"Warning: Could not convert score '{score_match.groups()[0]}' to float for question {question.question_id}")
-                    rating = -1 # エラー時は -1 のまま
-
-        question_id = question.question_id
-        turn = 1 if not multi_turn else 2
-        result = {
-            "question_id": question_id,
-            "model": model,
-            "judge": (judge.model_name, judge.prompt_template["name"]),
-            "user_prompt": user_prompt, # inputsから取得した簡易的なもの
-            "judgment": judgment,
-            "score": rating,
-            "turn": turn,
-            "tstamp": datetime.datetime.now().timestamp(),
-        }
-        results.append(result)
-        
-        # ジャッジ結果をファイルに書き込む (play_a_match_single_async から移植)
-        if output_file:
-            output_file_path = os.path.join(
-                output_file.replace(".jsonl", ""),
-                f"{model}__{turn}turn.jsonl"
-            )
-            os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
-            with open(output_file_path, "a") as f:
-                f.write(json.dumps(result, ensure_ascii=False) + "\n")
+    # 並列バッチで実行
+    tasks = [judge_task(args) for args in inputs_for_judge_processor]
+    for i in range(0, len(tasks), judge_parallel):
+        batch = tasks[i:i+judge_parallel]
+        batch_results = await asyncio.gather(*batch)
+        results.extend(batch_results)
 
     print("6. 結果を集計中...")
     # 3. 結果を集計してwandb.Tableとしてログに記録
@@ -646,25 +678,25 @@ async def async_evaluate():
     df_answer = df_answer[(df_answer.model_id == cfg.mtbench.model_id)|(df_answer.model_id == cfg.model.pretrained_model_name_or_path)]
     df_answer = df_answer.sort_values(['question_id'])
     df_answer_repeat = df_answer.loc[df_answer.index.repeat(judge_count)].reset_index(drop=True)
-    
+
     # ジャッジ結果を読み込む
     output_file_turn1 = output_file + "/" + cfg.mtbench.model_id + "__1turn.jsonl"
     output_file_turn2 = output_file + "/" + cfg.mtbench.model_id + "__2turn.jsonl"
     df_judge1 = pd.read_json(output_file_turn1, lines=True)
     df_judge2 = pd.read_json(output_file_turn2, lines=True)
     df_judge = pd.concat([df_judge1, df_judge2], ignore_index=True)
-    
+
     df_judge = df_judge[df_judge.model == cfg.mtbench.model_id]
     df_judge.model = df_judge.model.str.replace("--", "/")
     df_judge['hash'] = df_judge.model.apply(lambda x: x.split('_hash_')[-1])
     df_judge['model'] = df_judge.model.apply(lambda x: x.split('_hash_')[0])
     df_judge = df_judge.sort_values(['question_id', 'turn'])
-    
+
     # テーブルをマージ
     df_judge["question"] = pd.Series(np.nan, dtype='object')
     df_judge.loc[df_judge.turn == 1, 'question'] = df_question_repeat.turns.apply(lambda x: x[0]).values
     df_judge.loc[df_judge.turn == 2, 'question'] = df_question_repeat.turns.apply(lambda x: x[1]).values
-    
+
     df_judge['answer'] = pd.Series(np.nan, dtype='object')
     df_judge.loc[df_judge.turn == 1, 'answer'] = df_answer_repeat.choices.apply(lambda x: x[0]['turns'][0]).values
     df_judge.loc[df_judge.turn == 2, 'answer'] = df_answer_repeat.choices.apply(lambda x: x[0]['turns'][1]).values
@@ -672,7 +704,7 @@ async def async_evaluate():
     # 元のコードと同じように単純にマージ
     df_judge = df_judge.merge(df_answer[['question_id', 'answer_id']], on='question_id', how='left')
     df_judge = df_judge.merge(df_question[['question_id', 'category']], on='question_id', how='left')
-    
+
     # 元のコードと同じ固定の列リスト
     use_col = [
         'model', 'question_id', 'category', 'question', 
@@ -682,7 +714,7 @@ async def async_evaluate():
     df_judge = df_judge[use_col]
     df_judge.rename(columns={'model': 'model_name'}, inplace=True)
     df_judge['sub_category'] = df_judge['category'].map(task_to_sub_category)
-    
+
     # テーブルをログに記録
     print("7. 結果をWandBにログ記録中...")
     table_log = wandb.Table(dataframe=df_judge)
@@ -691,13 +723,13 @@ async def async_evaluate():
     _df_judge = df_judge.query('score != -1').groupby(['question_id', 'turn', 'category'], as_index=False).score.mean()
     df_summary = _df_judge.groupby(['category'], as_index=False).score.mean()
     table_radar = wandb.Table(dataframe=df_summary)
-    
+
     # リーダーボード用のテーブル
     mtbench_df = pd.DataFrame([df_summary.score.values.tolist()], columns=df_summary.category.values.tolist())
     mtbench_df.insert(0, "AVG_mtbench", mtbench_df.mean(axis=1, numeric_only=True))
     mtbench_df.insert(0, "model_name", cfg.model.pretrained_model_name_or_path)
     table_metric = wandb.Table(dataframe=mtbench_df)
-    
+
     run.log({
         "mtbench_output_table": table_log,
         "mtbench_leaderboard_table": table_metric,
