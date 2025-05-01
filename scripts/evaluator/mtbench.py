@@ -174,34 +174,37 @@ def make_match_single(
 
 async def generate_model_answer(question: Question, llm, model_id: str, max_tokens: int) -> Tuple[str, str]:
     """モデルの回答を生成する（非同期）"""
-    # カテゴリに基づいてtemperatureを取得
-    temperature = temperature_config.get(question.category, 0.7) # デフォルトは0.7
-    
+    temperature = temperature_config.get(question.category, 0.7)
     # 一回目の質問に回答
     messages_turn1 = [{"role": "user", "content": question.turns[0]}]
     response_turn1 = await asyncio.to_thread(
-        llm.invoke, 
+        llm.invoke,
         messages_turn1,
-        max_tokens=max_tokens, # max_tokensを設定
-        temperature=temperature # temperatureを設定
+        max_tokens=max_tokens,
+        temperature=temperature,
+        n=1,
+        stop=None,
+        presence_penalty=0.0,
+        frequency_penalty=0.0,
     )
-    answer_turn1 = response_turn1.content if hasattr(response_turn1, 'content') else str(response_turn1) # 文字列に変換
-    
+    answer_turn1 = response_turn1.content if hasattr(response_turn1, 'content') else str(response_turn1)
     # 二回目の質問に回答（マルチターン）
     messages_turn2 = [
         {"role": "user", "content": question.turns[0]},
         {"role": "assistant", "content": answer_turn1},
         {"role": "user", "content": question.turns[1]}
     ]
-    
     response_turn2 = await asyncio.to_thread(
-        llm.invoke, 
+        llm.invoke,
         messages_turn2,
-        max_tokens=max_tokens, # max_tokensを設定
-        temperature=temperature # temperatureを設定
+        max_tokens=max_tokens,
+        temperature=temperature,
+        n=1,
+        stop=None,
+        presence_penalty=0.0,
+        frequency_penalty=0.0,
     )
-    answer_turn2 = response_turn2.content if hasattr(response_turn2, 'content') else str(response_turn2) # 文字列に変換
-    
+    answer_turn2 = response_turn2.content if hasattr(response_turn2, 'content') else str(response_turn2)
     return answer_turn1, answer_turn2
 
 async def generate_model_answers(questions: List[Question], output_file: str):
@@ -282,17 +285,13 @@ async def run_judge_single_async(question: Question, answer: Answer, judge: Judg
     """回答を評価する（非同期）"""
     instance = WandbConfigSingleton.get_instance()
     llm = instance.llm
-    
-    # ジャッジ用のパラメータ設定
-    judge_max_tokens = 2048 # 元のcommon.pyに合わせた値
-    judge_temperature = 0.0 # 評価なので0
-    
+    judge_max_tokens = 2048
+    judge_temperature = 0.0
     kwargs = {}
     if ref_answer is not None:
         kwargs["ref_answer_1"] = ref_answer.choices[0]["turns"][0]
         if multi_turn:
             kwargs["ref_answer_2"] = ref_answer.choices[0]["turns"][1]
-    
     if multi_turn:
         user_prompt = judge.prompt_template["prompt_template"].format(
             question_1=question.turns[0],
@@ -307,22 +306,22 @@ async def run_judge_single_async(question: Question, answer: Answer, judge: Judg
             answer=answer.choices[0]["turns"][0],
             **kwargs,
         )
-    
     system_prompt = judge.prompt_template["system_prompt"]
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt}
     ]
-    
-    # 評価実行（非同期）
     response = await asyncio.to_thread(
-        llm.invoke, 
+        llm.invoke,
         messages,
-        max_tokens=judge_max_tokens, # max_tokensを設定
-        temperature=judge_temperature # temperatureを設定
+        max_tokens=judge_max_tokens,
+        temperature=judge_temperature,
+        n=1,
+        stop=None,
+        presence_penalty=0.0,
+        frequency_penalty=0.0,
     )
-    judgment = response.content if hasattr(response, 'content') else str(response) # 文字列に変換
-    
+    judgment = response.content if hasattr(response, 'content') else str(response)
     # スコア抽出
     import re
     rating = -1
@@ -341,7 +340,6 @@ async def run_judge_single_async(question: Question, answer: Answer, judge: Judg
         else:
             print(f"[WARN] Judgment output did not match expected pattern: {judgment}")
             rating = -1
-    
     return rating, user_prompt, judgment
 
 async def play_a_match_single_async(match: MatchSingle, output_file: str) -> Dict[str, Any]:
