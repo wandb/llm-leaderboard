@@ -86,3 +86,18 @@ def ABCD_to_incorrect(input_str):
         "D": "A,B,C",
     }
     return mapping.get(input_str, input_str)
+
+def task_to_sub_category(category):
+    """カテゴリをサブカテゴリにマッピングする関数"""
+    sub_category_map = {
+        "writing": "creation",
+        "roleplay": "creation",
+        "extraction": "stem",
+        "math": "stem",
+        "coding": "stem",
+        "reasoning": "stem",
+        "humanities": "humanities",
+        "stem": "stem",
+        "arena-hard-200": "arena-hard-200"
+    }
+    return sub_category_map.get(category, "others")
