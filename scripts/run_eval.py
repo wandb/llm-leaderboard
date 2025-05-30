@@ -11,11 +11,11 @@ from blend_run import blend_run
 from evaluator import (
     jaster,
     jbbq,
-    lctg,
     mtbench,
     jaster_translation,
     toxicity,
     jtruthfulqa,
+    bfcl,
     aggregate,
 )
 from utils import paginate_choices
@@ -91,10 +91,6 @@ if cfg.run.mtbench:
 if cfg.run.jbbq:
     jbbq.evaluate()
 
-# lctg-bench
-if cfg.run.lctg:
-    lctg.evaluate()
-
 # toxicity
 if cfg.run.toxicity:
     toxicity.evaluate()
@@ -102,6 +98,10 @@ if cfg.run.toxicity:
 # JTruthfulQA
 if cfg.run.jtruthfulqa:
     jtruthfulqa.evaluate()
+
+## BFCL
+#if cfg.run.bfcl:
+#    bfcl.evaluate()
 
 # Evaluation phase
 if cfg.run.jaster:
