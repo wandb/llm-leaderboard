@@ -1,22 +1,22 @@
 wandb:
   entity: "wandb-japan"
-  project: "llm-leaderboard3"
+  project: "llm-leaderboard4-test"
   #run: please set up run name in a model-base config
 
 github_version: v3.0.0 #for recording
 
-testmode: false
+testmode: true
 inference_interval: 0 # seconds
 
 run:
-  jaster: true
-  jmmlu_robustness: true # if this is set as true, jaster should set as true
-  mtbench: true
-  jbbq: true
-  lctg: true
-  toxicity: true
-  jtruthfulqa: true
-  aggregate: true
+  jaster: false
+  jmmlu_robustness: false # if this is set as true, jaster should set as true
+  mtbench: false
+  jbbq: false
+  toxicity: false
+  jtruthfulqa: false
+  bfcl: true
+  aggregate: false
 
 model:
   artifact_path: null
@@ -39,10 +39,6 @@ jaster:
   message_intro: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。"
   artifacts_path: "wandb-japan/llm-leaderboard3/jaster:v6"
   dataset_dir: "jaster"
-
-lctg:
-  artifacts_path: "wandb-japan/llm-leaderboard3/lctg:v0"
-  dataset_dir: "lctg"
 
 jbbq:
   artifacts_path: 'wandb-japan/llm-leaderboard3-private/jbbq:v2'
@@ -90,6 +86,13 @@ mtbench:
   baseline_model: null 
   parallel: 80
   first_n: null
+
+#bfcl:
+#  temperature: 0.001
+#  num_gpus: 4
+#  batch_size: 256
+#  num_threads: 1
+#  gpu_memory_utilization: 0.9
 
 sample_dataset:
   artifacts_path: "your artifact path here"
