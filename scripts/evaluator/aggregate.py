@@ -13,7 +13,7 @@ def radar_contents(leaderboard_dict, categories: list[str]) -> list[list[str, fl
     return ret
 
 def update_flag(cfg, blend_cfg):
-    mtbench_flag = jbbq_flag = lctg_flag = toxicity_flag = jtruthfulqa_flag = jaster_flag = GLP_flag = ALT_flag = False
+    mtbench_flag = jbbq_flag = lctg_flag = toxicity_flag = jtruthfulqa_flag = jaster_flag = swebench_flag = GLP_flag = ALT_flag = False
 
     if hasattr(cfg, 'run'):
         mtbench_flag = cfg.run.mtbench
@@ -22,6 +22,7 @@ def update_flag(cfg, blend_cfg):
         toxicity_flag = cfg.run.toxicity
         jtruthfulqa_flag = cfg.run.jtruthfulqa
         jaster_flag = cfg.run.jaster
+        swebench_flag = cfg.run.get('swebench', False)
 
     if blend_cfg:
         for old_run in blend_cfg.old_runs:
@@ -40,12 +41,14 @@ def update_flag(cfg, blend_cfg):
                     jtruthfulqa_flag = True
                 elif "jaster" in dataset:
                     jaster_flag = True
+                elif "swebench" in dataset:
+                    swebench_flag = True
 
     if mtbench_flag and jaster_flag:
         GLP_flag = True
     if jbbq_flag and lctg_flag and toxicity_flag and jtruthfulqa_flag:
         ALT_flag = True
-    return GLP_flag, ALT_flag
+    return GLP_flag, ALT_flag, swebench_flag
 
 
 def evaluate():
@@ -55,7 +58,7 @@ def evaluate():
     blend_cfg = instance.blend_config
     num_few_shots = cfg.num_few_shots
 
-    GLP_flag, ALT_flag = update_flag(cfg, blend_cfg)
+    GLP_flag, ALT_flag, swebench_flag = update_flag(cfg, blend_cfg)
 
     # Initialize empty variables
     if GLP_flag or ALT_flag:
@@ -63,6 +66,15 @@ def evaluate():
         jaster_control_fewshots = lctg_overall = jbbq_fewshots = toxicity = mtbench = None
         jaster_0shot = read_wandb_table(table_name=f"jaster_0shot_leaderboard_table", run=run)
         jaster_fewshots = read_wandb_table(table_name=f"jaster_{num_few_shots}shot_leaderboard_table", run=run)
+
+    # Initialize SWE-Bench variables
+    swebench_result = None
+    if swebench_flag:
+        try:
+            swebench_result = read_wandb_table(table_name="swebench_leaderboard_table", run=run)
+        except:
+            print("SWE-Bench results not found, skipping SWE-Bench aggregation")
+            swebench_flag = False
 
     if GLP_flag:
         mtbench = read_wandb_table(table_name=f"mtbench_leaderboard_table", run=run)
@@ -146,6 +158,21 @@ def evaluate():
                 "jtruthfulqa_overall_score": jtruthfulqa["overall_score"][0],
             }
 
+        elif other == "swebench":
+            data = {
+                "model_name": cfg.model.pretrained_model_name_or_path,
+                "AVG": swebench_result["resolution_rate"][0],
+                "resolution_rate": swebench_result["resolution_rate"][0],
+                "issues_resolved": swebench_result["issues_resolved"][0],
+                "total_samples": swebench_result["total_samples"][0],
+            }
+            
+            # application_rateが存在する場合のみ追加
+            if "application_rate" in swebench_result.columns:
+                data["application_rate"] = swebench_result["application_rate"][0]
+            else:
+                data["application_rate"] = "N/A"
+
         # Convert data to DataFrame
         subcategory_table = pd.DataFrame([data])
         run.log({table_name: wandb.Table(dataframe=subcategory_table)})
@@ -163,6 +190,12 @@ def evaluate():
     leaderboard_dict["model_size"] = cfg.model.get("size", np.nan)
     leaderboard_dict["model_release_date"] = pd.to_datetime(cfg.model.release_date, format='%m/%d/%Y')
     first_cols = ["model_name","model_size_category"]
+    
+    # SWE-Bench metrics
+    if swebench_flag:
+        leaderboard_dict["SWE_コード生成"] = swebench_result["resolution_rate"][0]
+        create_subcategory_table("swebench", [], [], "swebench")
+        first_cols.append("SWE_コード生成")
     
     if GLP_flag:
         leaderboard_dict["GLP_表現"] = calculate_combined_means([],["roleplay","writing","humanities"])
@@ -219,6 +252,10 @@ def evaluate():
     
     if ALT_flag:
         leaderboard_dict["AVG_lctg"] = lctg_overall["AVG_Total_ctg"][0]
+
+    # SWE-Bench specific metrics
+    if swebench_flag:
+        leaderboard_dict["AVG_swebench"] = swebench_result["resolution_rate"][0]
 
     leaderboard_table = pd.DataFrame([leaderboard_dict])
     cols = leaderboard_table.columns
