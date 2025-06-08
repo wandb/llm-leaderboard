@@ -16,6 +16,7 @@ run:
   lctg: true
   toxicity: true
   jtruthfulqa: true
+  swebench: false  # SWE-Bench Verified evaluation
   aggregate: true
 
 model:
@@ -58,6 +59,14 @@ toxicity:
 jtruthfulqa:
   artifact_path: 'wandb-japan/llm-leaderboard3/jtruthfulqa_dataset:v1'  # JTruthfulQAデータセットのアーティファクトパス
   roberta_model_name: 'nlp-waseda/roberta_jtruthfulqa'  # 評価に使用するRoBERTaモデル名
+
+swebench:
+  artifacts_path: "wandb-japan/llm-leaderboard3/swebench_verified:v1"  # SWE-Bench Verifiedデータセットのアーティファクトパス
+  dataset_dir: "swebench"
+  max_samples: 100  # 全500件は時間がかかるため制限（フルセットの場合は500を指定）
+  max_tokens: 2048  # SWE-Benchのパッチ生成に必要なトークン数
+  max_workers: 4  # 並列実行ワーカー数
+  evaluation_method: "official"  # "official" or "docker" - 公式パッケージまたは独自Docker実装
 
 mtbench:
   temperature_override:

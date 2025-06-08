@@ -3,15 +3,44 @@ from dataclasses import dataclass
 import json
 from config_singleton import WandbConfigSingleton
 from langchain_openai import ChatOpenAI, AzureChatOpenAI
-from langchain_mistralai.chat_models import ChatMistralAI
-from langchain_google_genai import (
-    ChatGoogleGenerativeAI,
-    HarmBlockThreshold,
-    HarmCategory,
-)
+# MistralAIのインポートを条件付きに（Pydantic v2の互換性問題を回避）
+try:
+    from langchain_mistralai.chat_models import ChatMistralAI
+    MISTRAL_AVAILABLE = True
+except ImportError:
+    MISTRAL_AVAILABLE = False
+    print("Warning: langchain_mistralai not available due to dependency conflicts. MistralAI API will not be supported.")
+
+# Google GenerativeAIのインポートを条件付きに
+try:
+    from langchain_google_genai import (
+        ChatGoogleGenerativeAI,
+        HarmBlockThreshold,
+        HarmCategory,
+    )
+    GOOGLE_AVAILABLE = True
+except ImportError:
+    GOOGLE_AVAILABLE = False
+    print("Warning: langchain_google_genai not available due to dependency conflicts. Google API will not be supported.")
+
 # from langchain_aws import ChatBedrock
-from langchain_anthropic import ChatAnthropic
-from langchain_cohere import ChatCohere
+
+# Anthropicのインポートを条件付きに
+try:
+    from langchain_anthropic import ChatAnthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
+    print("Warning: langchain_anthropic not available due to dependency conflicts. Anthropic API will not be supported.")
+
+# Cohereのインポートも条件付きに（同様の問題の可能性）
+try:
+    from langchain_cohere import ChatCohere
+    COHERE_AVAILABLE = True
+except ImportError:
+    COHERE_AVAILABLE = False
+    print("Warning: langchain_cohere not available due to dependency conflicts. Cohere API will not be supported.")
+
 from botocore.exceptions import ClientError
 import boto3
 from botocore.config import Config
@@ -182,12 +211,27 @@ def get_llm_inference_engine():
         )
 
     elif api_type == "openai":
-        # LangChainのOpenAIインテグレーションを使用
-        llm = ChatOpenAI(
-            api_key=os.environ["OPENAI_API_KEY"],
-            model=cfg.model.pretrained_model_name_or_path,
-            **cfg.generator,
-        )
+        # OpenAI APIを使用
+        model_name = cfg.model.pretrained_model_name_or_path
+        
+        # reasoningモデル（o1, o3など）の場合は特別な処理
+        if model_name in ["o1", "o1-preview", "o1-mini", "o3", "o3-mini"]:
+            generator_config = cfg.generator.copy()
+            # reasoningモデルではmax_tokensを除外し、model_kwargsで処理
+            generator_config.pop("max_tokens", None)
+            
+            # max_completion_tokensをmodel_kwargsで渡す
+            max_completion_tokens = cfg.generator.get("max_tokens", 4096)
+            llm = ChatOpenAI(
+                model_name=model_name,
+                model_kwargs={"max_completion_tokens": max_completion_tokens},
+                **generator_config,
+            )
+        else:
+            llm = ChatOpenAI(
+                model_name=model_name,
+                **cfg.generator,
+            )
 
     elif api_type == "xai":
         # LangChainのOpenAIインテグレーションを使用
@@ -200,28 +244,34 @@ def get_llm_inference_engine():
 
     elif api_type == "mistral":
         # LangChainのMistralAIインテグレーションを使用
-        llm = ChatMistralAI(
-            model=cfg.model.pretrained_model_name_or_path, 
-            api_key=os.environ["MISTRAL_API_KEY"],
-            **cfg.generator,
-        )
+        if MISTRAL_AVAILABLE:
+            llm = ChatMistralAI(
+                model=cfg.model.pretrained_model_name_or_path, 
+                api_key=os.environ["MISTRAL_API_KEY"],
+                **cfg.generator,
+            )
+        else:
+            raise ValueError("MistralAI API requested but langchain_mistralai is not available due to dependency conflicts. Please check your environment or use a different API.")
 
     elif api_type == "google":
         # LangChainのGoogleGenerativeAIインテグレーションを使用
-        categories = [
-            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-            HarmCategory.HARM_CATEGORY_HARASSMENT,
-            HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-        ]
-        safety_settings = {cat: HarmBlockThreshold.BLOCK_NONE for cat in categories}
-        
-        llm = ChatGoogleGenerativeAI(
-            model=cfg.model.pretrained_model_name_or_path,
-            api_key=os.environ["GOOGLE_API_KEY"],
-            safety_settings=safety_settings,
-            **cfg.generator,
-        )
+        if GOOGLE_AVAILABLE:
+            categories = [
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                HarmCategory.HARM_CATEGORY_HARASSMENT,
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+            ]
+            safety_settings = {cat: HarmBlockThreshold.BLOCK_NONE for cat in categories}
+            
+            llm = ChatGoogleGenerativeAI(
+                model=cfg.model.pretrained_model_name_or_path,
+                api_key=os.environ["GOOGLE_API_KEY"],
+                safety_settings=safety_settings,
+                **cfg.generator,
+            )
+        else:
+            raise ValueError("Google API requested but langchain_google_genai is not available due to dependency conflicts. Please check your environment or use a different API.")
 
     elif api_type == "amazon_bedrock":
         llm = ChatBedrock(cfg=cfg)
@@ -234,11 +284,14 @@ def get_llm_inference_engine():
 
     elif api_type == "anthropic":
         # LangChainのAnthropicインテグレーションを使用
-        llm = ChatAnthropic(
-            model=cfg.model.pretrained_model_name_or_path, 
-            api_key=os.environ["ANTHROPIC_API_KEY"],
-            **cfg.generator,
-        )
+        if ANTHROPIC_AVAILABLE:
+            llm = ChatAnthropic(
+                model=cfg.model.pretrained_model_name_or_path, 
+                api_key=os.environ["ANTHROPIC_API_KEY"],
+                **cfg.generator,
+            )
+        else:
+            raise ValueError("Anthropic API requested but langchain_anthropic is not available due to dependency conflicts. Please check your environment or use a different API.")
     
     elif api_type == "upstage":
         # LangChainのOpenAIインテグレーションを使用
@@ -260,11 +313,14 @@ def get_llm_inference_engine():
         )
 
     elif api_type == "cohere":
-        llm = ChatCohere(
-            model=cfg.model.pretrained_model_name_or_path,
-            cohere_api_key=os.environ["COHERE_API_KEY"],
-            **cfg.generator,
-        )
+        if COHERE_AVAILABLE:
+            llm = ChatCohere(
+                model=cfg.model.pretrained_model_name_or_path,
+                cohere_api_key=os.environ["COHERE_API_KEY"],
+                **cfg.generator,
+            )
+        else:
+            raise ValueError("Cohere API requested but langchain_cohere is not available due to dependency conflicts. Please check your environment or use a different API.")
 
     else:
         raise ValueError(f"Unsupported API type: {api_type}")

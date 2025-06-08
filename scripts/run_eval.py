@@ -17,6 +17,7 @@ from evaluator import (
     toxicity,
     jtruthfulqa,
     aggregate,
+    swebench,
 )
 from utils import paginate_choices
 
@@ -102,6 +103,15 @@ if cfg.run.toxicity:
 # JTruthfulQA
 if cfg.run.jtruthfulqa:
     jtruthfulqa.evaluate()
+
+# SWE-Bench Verified evaluation
+if cfg.run.swebench:
+    evaluation_method = cfg.swebench.get("evaluation_method", "official")
+    if evaluation_method == "official":
+        from evaluator import swebench_official
+        swebench_official.evaluate()
+    else:
+        swebench.evaluate()
 
 # Evaluation phase
 if cfg.run.jaster:

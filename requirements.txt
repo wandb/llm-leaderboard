@@ -71,8 +71,9 @@ langchain==0.2.1
 langchain-anthropic==0.1.15
 langchain-aws==0.1.6
 langchain-core==0.2.3
+# langchain-cohere==0.1.9
 langchain-google-genai==1.0.5
-langchain-mistralai==0.1.7
+# langchain-mistralai==0.1.7
 langchain-openai==0.1.8
 langchain-text-splitters==0.2.0
 langsmith==0.1.67
@@ -204,3 +205,8 @@ xmltodict==0.13.0
 yarl==1.9.4
 zipp==3.19.1
 pyknp==0.4.6
+# SWE-Bench Verified dependencies
+docker==7.1.0
+datasets==2.20.0
+# Official SWE-bench dependencies
+# swebench==2.1.0 - will be installed dynamically if needed
