@@ -16,6 +16,7 @@ from evaluator import (
     jaster_translation,
     toxicity,
     jtruthfulqa,
+    hle,
     aggregate,
 )
 from utils import paginate_choices
@@ -102,6 +103,10 @@ if cfg.run.toxicity:
 # JTruthfulQA
 if cfg.run.jtruthfulqa:
     jtruthfulqa.evaluate()
+
+# hle
+if cfg.run.hle:
+    hle.evaluate()
 
 # Evaluation phase
 if cfg.run.jaster:
