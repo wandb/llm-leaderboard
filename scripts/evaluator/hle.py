@@ -42,26 +42,29 @@ def get_openai_client(async_client=True):
         else:
             return OpenAI()
 
-# Judge prompt and response format
-JUDGE_PROMPT = """Judge whether the following [response] to [question] is correct or not based on the precise and unambiguous [correct_answer] below.
+# Judge prompt and response format (Japanese)
+JUDGE_PROMPT = """以下の[質問]に対する[回答]が、明確で曖昧さのない[正解]に基づいて正しいかどうかを判定してください。
 
-[question]: {question}
+[質問]: {question}
 
-[response]: {response}
+[回答]: {response}
 
-Your judgement must be in the format and criteria specified below:
+判定は以下の形式と基準に従って行ってください：
 
-extracted_final_answer: The final exact answer extracted from the [response]. Put the extracted answer as 'None' if there is no exact, final answer to extract from the response.
+extracted_final_answer: [回答]から抽出した最終的な正確な答え。回答から正確で最終的な答えを抽出できない場合は'None'と記載してください。
 
-[correct_answer]: {correct_answer}
+[正解]: {correct_answer}
 
-reasoning: Explain why the extracted_final_answer is correct or incorrect based on [correct_answer], focusing only on if there are meaningful differences between [correct_answer] and the extracted_final_answer. Do not comment on any background to the problem, do not attempt to solve the problem, do not argue for any answer different than [correct_answer], focus only on whether the answers match.
+reasoning: [正解]に基づいて、extracted_final_answerが正しいか間違っているかを説明してください。[正解]とextracted_final_answerの間に意味のある違いがあるかどうかのみに焦点を当ててください。問題の背景についてコメントしたり、問題を解こうとしたり、[正解]と異なる答えを主張したりせず、答えが一致するかどうかのみに焦点を当ててください。
 
-correct: Answer 'yes' if extracted_final_answer matches the [correct_answer] given above, or is within a small margin of error for numerical problems. Answer 'no' otherwise, i.e. if there if there is any inconsistency, ambiguity, non-equivalency, or if the extracted answer is incorrect.
+correct: extracted_final_answerが上記の[正解]と一致する場合、または数値問題で小さな誤差の範囲内にある場合は'yes'と答えてください。そうでない場合、つまり不一致、曖昧さ、非等価性がある場合、または抽出された答えが間違っている場合は'no'と答えてください。
 
-confidence: The extracted confidence score between 0|\%| and 100|\%| from [response]. Put 100 if there is no confidence score available."""
+confidence: [回答]から抽出した0%から100%の間の信頼度スコア。信頼度スコアが利用できない場合は100を記載してください。"""
 
-SYSTEM_PROMPT = "Your response should be in the following format:\nExplanation: {your explanation for your answer choice}\nAnswer: {your chosen answer}\nConfidence: {your confidence score between 0% and 100% for your answer}"
+SYSTEM_PROMPT = """回答は以下の形式で行ってください：
+説明: {選択した答えに対する説明}
+答え: {選択した答え}
+信頼度: {答えに対する0%から100%の信頼度スコア}"""
 
 class ExtractedAnswer(BaseModel):
     extracted_final_answer: str
@@ -70,10 +73,10 @@ class ExtractedAnswer(BaseModel):
     confidence: int
     strict: Literal[True] = True  # 100% reliability
 
-def load_questions(artifact_dir: str) -> List[Dict[str, Any]]:
+def load_questions(artifact_dir: str, dataset_name: str) -> List[Dict[str, Any]]:
     """Load questions from JSONL file"""
     questions = []
-    hle_file_path = Path(artifact_dir) / "hle.jsonl"
+    hle_file_path = Path(artifact_dir) / dataset_name
     
     if not hle_file_path.exists():
         raise FileNotFoundError(f"Dataset file not found: {hle_file_path}")
@@ -261,11 +264,13 @@ def evaluate():
     max_workers = cfg.hle.get("max_workers", 10)
     judge_model = cfg.hle.get("judge_model", "o3-mini-2025-01-31")
     max_samples = cfg.hle.get("max_samples", None)
+    dataset_name = cfg.hle.get("dataset_name", "hle.jsonl")  # デフォルトはhle.jsonl
     
     if cfg.testmode:
         max_samples = 10
     
     print(f"Starting HLE evaluation with max_completion_tokens={max_completion_tokens}, max_workers={max_workers}")
+    print(f"Using dataset file: {dataset_name}")
     
     # Load dataset from wandb artifact
     try:
@@ -273,7 +278,7 @@ def evaluate():
         artifact = run.use_artifact(artifact_path, type="dataset")
         artifact_dir = artifact.download()
         
-        questions = load_questions(artifact_dir)
+        questions = load_questions(artifact_dir, dataset_name)
         
         if max_samples:
             questions = questions[:max_samples]

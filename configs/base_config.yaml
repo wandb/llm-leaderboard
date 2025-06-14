@@ -93,7 +93,8 @@ mtbench:
   first_n: null
 
 hle:
-  artifact_path: 'wandb-japan/llm-leaderboard/hle:v0'
+  artifact_path: 'llm-leaderboard/hle-test/hle-ja:v1'
+  dataset_name: 'hle-ja.jsonl'
   max_completion_tokens: 512
   max_workers: 10
   judge_model: "o3-mini-2025-01-31"
