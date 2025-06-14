@@ -13,10 +13,25 @@ import socket
 from pathlib import Path
 import logging
 import json
-
 from utils import get_tokenizer_config
 
+disable_logger_apis =[
+    "httpx",
+    "openai",
+    "openai._base_client", 
+    "openai._client",
+    "anthropic",
+    "anthropic._base_client",
+    "mistralai", 
+    "google.generativeai",
+    "cohere",
+    "boto3",
+    "botocore"
+]
+    
 logging.basicConfig(level=logging.INFO)
+for logger_name in disable_logger_apis:
+    logging.getLogger(logger_name).setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 def find_and_kill_process_on_port(port):
