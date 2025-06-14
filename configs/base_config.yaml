@@ -16,6 +16,7 @@ run:
   lctg: true
   toxicity: true
   jtruthfulqa: true
+  hle: true
   aggregate: true
 
 model:
@@ -90,6 +91,13 @@ mtbench:
   baseline_model: null 
   parallel: 80
   first_n: null
+
+hle:
+  artifact_path: 'wandb-japan/llm-leaderboard/hle:v0'
+  max_completion_tokens: 512
+  max_workers: 10
+  judge_model: "o3-mini-2025-01-31"
+  max_samples: 100
 
 sample_dataset:
   artifacts_path: "your artifact path here"
