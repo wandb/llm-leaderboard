@@ -94,11 +94,11 @@ mtbench:
 
 hle:
   artifact_path: 'llm-leaderboard/hle-test/hle-ja:v1'
-  dataset_name: 'hle-ja.jsonl'
-  max_completion_tokens: 512
-  max_workers: 10
+  dataset_name: 'hle.jsonl'
+  max_completion_tokens: 8192
+  max_workers: 100
   judge_model: "o3-mini-2025-01-31"
-  max_samples: 100
+  max_samples: None
 
 sample_dataset:
   artifacts_path: "your artifact path here"
