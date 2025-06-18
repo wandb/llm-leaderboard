@@ -1,0 +1,71 @@
+services:
+  vllm:
+    image: vllm/vllm-openai:latest
+    runtime: nvidia
+    # GPU設定はdocker-compose.override.ymlで定義
+    command: >
+      --model ${MODEL_NAME}
+      --dtype ${DTYPE}
+      --max-model-len ${MAX_MODEL_LEN}
+      --served-model-name ${SERVED_MODEL_NAME}
+      --tensor-parallel-size ${TENSOR_PARALLEL_SIZE}
+    environment:
+      - HUGGINGFACE_HUB_TOKEN=${HUGGINGFACE_HUB_TOKEN}
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    ports:
+      - "${VLLM_PORT:-8000}:8000"
+    ipc: host
+
+  llm-leaderboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on: [vllm]
+    runtime: nvidia
+    container_name: llm-leaderboard
+    # GPU設定はdocker-compose.override.ymlで定義
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+      # Required API keys - set these in your .env file
+      - WANDB_API_KEY=${WANDB_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+
+      # Other API Keys (optional - set as needed)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - COHERE_API_KEY=${COHERE_API_KEY}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - UPSTAGE_API_KEY=${UPSTAGE_API_KEY}
+
+      # AWS Configuration (optional)
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
+
+      # Azure OpenAI (if using)
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
+      - OPENAI_API_TYPE=${OPENAI_API_TYPE}
+
+      # Other settings
+      - LANG=${LANG:-ja_JP.UTF-8}
+      - PYTHONPATH=${PYTHONPATH:-/workspace}
+      - JUMANPP_COMMAND=${JUMANPP_COMMAND:-/usr/local/bin/jumanpp}
+    ipc: host
+    profiles:
+      - leaderboard
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+      - ./configs:/workspace/configs:ro
+
+    command: >
+      bash -c "
+        echo 'LLM Leaderboard container started with GPU support';
+        echo 'Checking GPU availability...';
+        nvidia-smi || echo 'GPU not detected - check NVIDIA drivers and container toolkit';
+        echo 'To run evaluation, use: docker exec -it llm-leaderboard python scripts/run_eval.py -s';
+        tail -f /dev/null
+      "
