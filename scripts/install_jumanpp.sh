@@ -18,14 +18,11 @@ TEMP_DIR=$(mktemp -d)
 cd "$TEMP_DIR"
 
 # Download Juman++ source
-wget "https://github.com/ku-nlp/jumanpp/releases/download/v2.0.0-rc3/jumanpp-2.0.0-rc3.tar.xz"
-tar xvf jumanpp-2.0.0-rc3.tar.xz
+wget "https://github.com/ku-nlp/jumanpp/releases/download/v2.0.0-rc4/jumanpp-2.0.0-rc4.tar.xz"
+tar xvf jumanpp-2.0.0-rc4.tar.xz
 
 # Build and install Juman++
-cd jumanpp-2.0.0-rc3
-
-# Fix CMake version requirement in all CMakeLists.txt files
-find . -name "CMakeLists.txt" -exec sed -i 's/cmake_minimum_required(VERSION [0-9.]*)/cmake_minimum_required(VERSION 3.5)/' {} \;
+cd jumanpp-2.0.0-rc4
 
 mkdir bld && cd bld
 

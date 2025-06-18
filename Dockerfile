@@ -44,7 +44,6 @@ RUN git clone -b nejumi4-dev https://github.com/wandb/llm-leaderboard.git .
 # Initialize uv project and sync dependencies
 RUN uv sync
 RUN echo 'source /workspace/.venv/bin/activate' >> ~/.bashrc
-ENV PATH="/workspace/.venv/bin:$PATH"
 
 # Juman++
 RUN bash scripts/install_jumanpp.sh
@@ -61,4 +60,4 @@ RUN chmod +x scripts/*.py 2>/dev/null || true
 EXPOSE 8080
 
 # Default command
-CMD ["uv", "run", "scripts/run_eval.py", "--help"]
+ENTRYPOINT ["uv", "run", "scripts/run_eval.py"]
