@@ -83,14 +83,3 @@ fi
 cat >> docker-compose.override.yml << EOL
               capabilities: [gpu]
 EOL
-
-echo "docker-compose.override.yml を生成しました。"
-echo ""
-echo "使用方法:"
-echo "1. docker-compose up -d"
-echo "   (自動的にoverride設定が適用されます)"
-echo ""
-echo "2. Leaderboard込みで起動:"
-echo "   docker-compose --profile leaderboard up -d"
-echo ""
-echo "生成されたファイル: docker-compose.override.yml"
