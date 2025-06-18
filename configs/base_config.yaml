@@ -9,14 +9,15 @@ testmode: false
 inference_interval: 0 # seconds
 
 run:
-  jaster: true
-  jmmlu_robustness: true # if this is set as true, jaster should set as true
-  mtbench: true
-  jbbq: true
-  lctg: true
-  toxicity: true
-  jtruthfulqa: true
-  aggregate: true
+  jaster: false
+  jmmlu_robustness: false # if this is set as true, jaster should set as true
+  mtbench: false
+  jbbq: false
+  lctg: false
+  toxicity: false
+  jtruthfulqa: false
+  aggregate: false
+  m_ifeval: true
 
 model:
   artifact_path: null

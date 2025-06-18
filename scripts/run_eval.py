@@ -17,6 +17,7 @@ from evaluator import (
     toxicity,
     jtruthfulqa,
     aggregate,
+    m_ifeval,
 )
 from utils import paginate_choices
 
@@ -82,6 +83,10 @@ blend_run(run_chain=True)
 llm = get_llm_inference_engine()
 instance = WandbConfigSingleton.get_instance()
 instance.llm = llm
+
+# M-IFEval 평가 (새로 추가)
+if cfg.run.m_ifeval:
+    m_ifeval.evaluate()
 
 # mt-bench evaluation
 if cfg.run.mtbench:
