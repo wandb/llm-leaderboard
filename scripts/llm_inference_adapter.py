@@ -508,10 +508,40 @@ def get_llm_inference_engine():
     cfg = instance.config
     api_type = cfg.api
 
-    if api_type in ["vllm", "vllm-external"]:
-        raise NotImplementedError(
-            f"vLLM support is currently disabled due to dependency conflicts. "
-            f"Please use other API types like 'openai', 'anthropic', 'google', etc."
+    if api_type == "vllm":
+        # vLLMサーバーを起動
+        from vllm_server import start_vllm_server
+        start_vllm_server()
+
+        # LoRAの設定を確認
+        lora_config = cfg.model.get("lora", None)
+        base_url = "http://localhost:8000/v1"
+        model_name = cfg.model.pretrained_model_name_or_path
+
+        if lora_config and lora_config.get("enable", False):
+            # LoRAが有効な場合、LoRAアダプター名をモデル名として使用
+            model_name = lora_config.get("adapter_name", model_name)
+
+        llm = OpenAIClient(
+            api_key="EMPTY",
+            base_url=base_url,
+            model_name=model_name,
+            **cfg.generator,
+        )
+
+    elif api_type == "vllm-external":
+        # vLLMサーバーは起動済みのものを用いるので、ここでは起動しない
+        #from vllm_server import start_vllm_server
+        #start_vllm_server()
+
+        base_url = cfg.get("base_url", "http://localhost:8000/v1") #"http://localhost:8000/v1"
+        model_name = cfg.model.pretrained_model_name_or_path
+
+        llm = OpenAIClient(
+            api_key=os.environ.get("VLLM_API_KEY", "EMPTY"),
+            base_url=base_url,
+            model_name=model_name,
+            **cfg.generator,
         )
 
     elif api_type == "openai":
