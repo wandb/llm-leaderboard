@@ -188,7 +188,7 @@ def start_vllm_server():
                 "--chat-template", chat_template_path,
                 "--max-model-len", str(cfg.model.max_model_len),
                 "--max-num-seqs", str(cfg.batch_size),
-                "--tensor-parallel-size", str(cfg.get("num_gpus", 4)),
+                "--tensor-parallel-size", str(cfg.get("num_gpus", 1)),
                 "--device", cfg.model.device_map,
                 "--seed", "42",
                 "--uvicorn-log-level", "warning",
