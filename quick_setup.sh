@@ -3,7 +3,7 @@
 
 set -e
 
-echo "=== LLM Stack セットアップ ==="
+echo "=== LLM Leaderboard Environment Setup ==="
 echo ""
 
 # GPU数の検出
