@@ -100,8 +100,8 @@ if cfg.run.jtruthfulqa:
     jtruthfulqa.evaluate()
 
 ## BFCL
-#if cfg.run.bfcl:
-#    bfcl.evaluate()
+if cfg.run.bfcl:
+    bfcl.evaluate()
 
 # Evaluation phase
 if cfg.run.jaster:

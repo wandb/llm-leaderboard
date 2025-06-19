@@ -1,11 +1,11 @@
 wandb:
-  entity: "wandb-japan"
-  project: "llm-leaderboard4-test"
+  entity: "llm-leaderboard"
+  project: "bfcl-test"
   #run: please set up run name in a model-base config
 
 github_version: v3.0.0 #for recording
 
-testmode: true
+testmode: false
 inference_interval: 0 # seconds
 
 run:
@@ -87,12 +87,20 @@ mtbench:
   parallel: 80
   first_n: null
 
-#bfcl:
-#  temperature: 0.001
-#  num_gpus: 4
-#  batch_size: 256
-#  num_threads: 1
-#  gpu_memory_utilization: 0.9
+bfcl:
+  temperature: 0.001
+  num_gpus: 1
+  batch_size: 256  
+  backend: 'vllm'
+  test_category: 'all'
+  num_threads: 1
+  gpu_memory_utilization: 0.9
+  skip_server_setup: False
+  local_model_path: None
+  allow_overwrite: True
+  samples_per_category: 10
+  artifacts_path: 'llm-leaderboard/data-upload/bfcl:jp'
+
 
 sample_dataset:
   artifacts_path: "your artifact path here"
