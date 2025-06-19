@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=40.8.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bfcl"
+version = "1.0.0"
+description = "Berkeley Function Calling Leaderboard (BFCL)"
+authors = [{ name = "Sky Computing Lab", email = "sky@cs.berkeley.edu" }]
+readme = "README.md"
+requires-python = ">=3.10"
+license = { "text" = "Apache 2.0" }
+dependencies = [
+    "requests",
+    "tqdm",
+    "numpy==1.26.4",
+    "pandas",
+    "pathlib",
+    "huggingface_hub",
+    "pydantic>=2.8.2",
+    "python-dotenv>=1.0.1",
+    "tree_sitter==0.21.3",
+    "tree-sitter-java==0.21.0",
+    "tree-sitter-javascript==0.21.4",
+    "openai==1.76.0",
+    "mistralai==1.7.0",
+    "anthropic==0.49.0",
+    "cohere==5.13.3",
+    "typer>=0.12.5",
+    "tabulate>=0.9.0",
+    "datamodel-code-generator==0.25.7",
+    "google-cloud-aiplatform==1.93.1",
+    "mpmath==1.3.0",
+    "tenacity==9.0.0",
+    "writer-sdk>=2.1.0",
+    "overrides",
+    "boto3"
+]
+
+[project.scripts]
+bfcl = "bfcl.__main__:cli"
+
+[tool.setuptools.packages.find]
+include = ["bfcl*"]
+
+[project.urls]
+Repository = "https://github.com/ShishirPatil/gorilla/tree/main/berkeley-function-call-leaderboard"
+
+[project.optional-dependencies]
+oss_eval_vllm = ["vllm==0.8.5"]
+oss_eval_sglang = ["sglang[all]"]
+wandb = ["wandb==0.18.5"]

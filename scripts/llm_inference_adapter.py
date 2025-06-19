@@ -9,9 +9,9 @@ from langchain_google_genai import (
     HarmBlockThreshold,
     HarmCategory,
 )
-# from langchain_aws import ChatBedrock
+from langchain_aws import ChatBedrock
 from langchain_anthropic import ChatAnthropic
-from langchain_cohere import ChatCohere
+#from langchain_cohere import ChatCohere
 from botocore.exceptions import ClientError
 import boto3
 from botocore.config import Config
