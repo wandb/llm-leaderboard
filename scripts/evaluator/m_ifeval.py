@@ -8,9 +8,6 @@ from tqdm import tqdm
 import wandb
 import sys
 import os
-import collections
-import dataclasses
-from typing import Dict, Optional, Sequence, Union
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import (
@@ -40,21 +37,6 @@ except ImportError as e:
     test_instruction_following_loose = None
     print_report = None
     write_outputs = None
-
-@dataclasses.dataclass
-class InputExample:
-    key: int
-    instruction_id_list: list[str]
-    prompt: str
-    kwargs: list[Dict[str, Optional[Union[str, int]]]]
-
-@dataclasses.dataclass
-class OutputExample:
-    instruction_id_list: list[str]
-    prompt: str
-    response: str
-    follow_all_instructions: bool
-    follow_instruction_list: list[bool]
 
 def evaluate_m_ifeval():
     """M-IFEval 결과를 평가합니다."""
@@ -96,66 +78,22 @@ def evaluate_m_ifeval():
     output_dir = Path(f"../M-IFEval/evaluations/ja_input_response_data_{model_name_safe}")
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # strict 및 loose 평가 수행
-    evaluation_results = {}
-    
-    for eval_type, eval_func in [
-        ("strict", test_instruction_following_strict),
-        ("loose", test_instruction_following_loose),
-    ]:
+    for eval_type, eval_func in [("strict", test_instruction_following_strict)]:
         print(f"\n=== {eval_type.upper()} 평가 시작 ===")
         
         outputs = []
         for inp in tqdm(inputs, desc=f"{eval_type} 평가 진행"):
             outputs.append(eval_func(inp, prompt_to_response))
         
-        # 정확도 계산
-        follow_all_instructions = [o.follow_all_instructions for o in outputs]
-        accuracy = sum(follow_all_instructions) / len(outputs)
-        print(f"{eval_type} 평가 정확도: {accuracy:.4f}")
-        
-        # M-IFEval의 기존 함수를 사용하여 결과 저장
-        output_file = output_dir / f"eval_results_{eval_type}.jsonl"
-        write_outputs(str(output_file), outputs)
-        
-        print(f"결과 저장됨: {output_file}")
-        
-        # 상세 리포트 출력
-        print(f"\n=== {eval_type.upper()} 평가 상세 리포트 ===")
-        
-        # M-IFEval의 기존 print_report 함수 사용
-        print_report(outputs)
-        
         # 메트릭 계산 (W&B 로깅용)
-        prompt_total = len(outputs)
-        prompt_correct = sum(follow_all_instructions)
         instruction_total = sum(len(o.instruction_id_list) for o in outputs)
         instruction_correct = sum(sum(o.follow_instruction_list) for o in outputs)
         
-        metrics = {
-            "prompt_level_accuracy": prompt_correct / prompt_total,
-            "instruction_level_accuracy": instruction_correct / instruction_total,
-        }
-        
-        # 평가 결과 저장
-        evaluation_results[eval_type] = {
-            "accuracy": accuracy,
-            "metrics": metrics,
-            "output_file": str(output_file)
-        }
-        
-        # W&B 로깅
         run.log({
-            f"m_ifeval_{eval_type}_accuracy": accuracy,
-            f"m_ifeval_{eval_type}_prompt_level_accuracy": metrics["prompt_level_accuracy"],
-            f"m_ifeval_{eval_type}_instruction_level_accuracy": metrics["instruction_level_accuracy"],
+            f"m_ifeval_score": instruction_correct / instruction_total
         })
     
-    print("\n=== M-IFEval 평가 완료 ===")
-    print(f"Strict 정확도: {evaluation_results['strict']['accuracy']:.4f}")
-    print(f"Loose 정확도: {evaluation_results['loose']['accuracy']:.4f}")
-    
-    return evaluation_results
+    return instruction_correct / instruction_total
 
 def evaluate():
     """M-IFEval 평가를 위한 response 생성"""
@@ -262,28 +200,16 @@ def evaluate():
         for data in output_data:
             f.write(json.dumps(data, ensure_ascii=False) + '\n')
 
-    print(f"Response 파일이 저장되었습니다: {output_file}")
-    
-    # W&B에 결과 로깅
+    table_data = [[data['key'], data['prompt'], data['response'], str(data['instruction_id_list']), str(data['kwargs'])] for data in output_data]
+
+    # log output_data as wandb table
     run.log({
-        "m_ifeval_total_samples": len(output_data),
-        "m_ifeval_output_file": str(output_file),
+        "m_ifeval_output_test": wandb.Table(
+            columns=["key", "prompt", "response", "instruction_id_list", "kwargs"],
+            data=table_data
+        )
     })
 
-    # 간단한 통계 출력
-    response_lengths = [len(data["response"]) if data["response"] else 0 for data in output_data]
-    print(f"응답 길이 통계:")
-    print(f"  평균: {np.mean(response_lengths):.1f} 문자")
-    print(f"  최소: {np.min(response_lengths)} 문자")
-    print(f"  최대: {np.max(response_lengths)} 문자")
-    
-    # 빈 응답 개수 체크
-    empty_responses = sum(1 for data in output_data if not data["response"] or not data["response"].strip())
-    if empty_responses > 0:
-        print(f"경고: {empty_responses}개의 빈 응답이 있습니다.")
-    
-    print("M-IFEval response 생성이 완료되었습니다!")
-    
-    # 응답 생성 후 자동으로 평가 수행
-    print("\n응답 생성이 완료되었습니다. 이제 평가를 시작합니다...")
+    print(f"Response 파일이 저장되었습니다: {output_file}")
+
     return evaluate_m_ifeval()
