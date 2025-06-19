@@ -1,0 +1,2 @@
+Rank,Model,Live Overall Acc,AST Summary,Python Simple AST,Python Multiple AST,Python Parallel AST,Python Parallel Multiple AST,Irrelevance Detection,Relevance Detection
+1,GPT-4o-mini-2024-07-18 (Prompt),0.8,0.7,1.0,0.6,0.8,0.4,1.0,1.0
