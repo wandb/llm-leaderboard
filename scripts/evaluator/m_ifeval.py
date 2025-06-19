@@ -10,39 +10,20 @@ import sys
 import os
 
 from config_singleton import WandbConfigSingleton
+
+
+from .evaluate_utils.m_ifeval_utils import (
+    read_prompt_list,
+    read_prompt_to_response_dict,
+    test_instruction_following_strict,
+)
 from .evaluate_utils import (
     apply_chat_template,
     LLMAsyncProcessor,
 )
 
-# M-IFEval 라이브러리 경로 추가
-sys.path.append(str(Path("../M-IFEval").resolve()))
-
-try:
-    from evaluation_main import (
-        read_prompt_list,
-        read_prompt_to_response_dict,
-        test_instruction_following_strict,
-        test_instruction_following_loose,
-        print_report,
-        write_outputs
-    )
-    print("M-IFEval 평가 모듈을 성공적으로 불러왔습니다.")
-except ImportError as e:
-    print(f"M-IFEval 평가 모듈을 불러올 수 없습니다: {e}")
-    print("M-IFEval 디렉토리가 올바른 위치에 있는지 확인하세요.")
-    read_prompt_list = None
-    read_prompt_to_response_dict = None
-    test_instruction_following_strict = None
-    test_instruction_following_loose = None
-    print_report = None
-    write_outputs = None
-
-def evaluate_m_ifeval():
+def evaluate_m_ifeval(input_data, output_data):
     """M-IFEval 결과를 평가합니다."""
-    if read_prompt_list is None:
-        print("M-IFEval 모듈을 불러올 수 없어 평가를 수행할 수 없습니다.")
-        return None
     
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
@@ -50,37 +31,12 @@ def evaluate_m_ifeval():
     
     # 모델명 추출
     model_name_safe = cfg.model.pretrained_model_name_or_path.replace('/', '__')
-    
-    # 입력 데이터 및 응답 데이터 경로
-    input_data_path = Path("../M-IFEval/data/ja_input_data.jsonl")
-    response_data_path = Path(f"../M-IFEval/data/ja_input_response_data_{model_name_safe}.jsonl")
-    
-    print(f"입력 데이터: {input_data_path}")
-    print(f"응답 데이터: {response_data_path}")
-    
-    # 파일 존재 확인
-    if not input_data_path.exists():
-        print(f"입력 데이터를 찾을 수 없습니다: {input_data_path}")
-        return None
-    
-    if not response_data_path.exists():
-        print(f"응답 데이터를 찾을 수 없습니다: {response_data_path}")
-        print("먼저 evaluate() 함수를 실행하여 응답을 생성하세요.")
-        return None
-    
-    # M-IFEval의 기존 함수들을 사용하여 데이터 로드
-    inputs = read_prompt_list(str(input_data_path))
-    prompt_to_response = read_prompt_to_response_dict(str(response_data_path))
-    
-    print(f"총 {len(inputs)}개의 프롬프트를 평가합니다.")
-    
-    # 출력 디렉토리 설정
-    output_dir = Path(f"../M-IFEval/evaluations/ja_input_response_data_{model_name_safe}")
-    output_dir.mkdir(parents=True, exist_ok=True)
+
+    inputs = read_prompt_list(input_data)
+    prompt_to_response = read_prompt_to_response_dict(output_data)
     
     for eval_type, eval_func in [("strict", test_instruction_following_strict)]:
         print(f"\n=== {eval_type.upper()} 평가 시작 ===")
-        
         outputs = []
         for inp in tqdm(inputs, desc=f"{eval_type} 평가 진행"):
             outputs.append(eval_func(inp, prompt_to_response))
@@ -88,9 +44,11 @@ def evaluate_m_ifeval():
         # 메트릭 계산 (W&B 로깅용)
         instruction_total = sum(len(o.instruction_id_list) for o in outputs)
         instruction_correct = sum(sum(o.follow_instruction_list) for o in outputs)
-        
         run.log({
-            f"m_ifeval_score": instruction_correct / instruction_total
+            "m_ifeval_leaderboard_table": wandb.Table(
+                columns=["model_name", "m_ifeval_score"],
+                data=[[model_name_safe, instruction_correct / instruction_total]]
+            )
         })
     
     return instruction_correct / instruction_total
@@ -103,19 +61,13 @@ def evaluate():
     cfg = instance.config
     llm = instance.llm
 
+    model_name_safe = cfg.model.pretrained_model_name_or_path.replace('/', '__')
+
     # M-IFEval 데이터셋 경로 설정
     input_data_path = Path("../M-IFEval/data/ja_input_data.jsonl")
     if not input_data_path.exists():
         print(f"Input data not found: {input_data_path}")
         return
-
-    # 출력 파일 경로 설정
-    model_name_safe = cfg.model.pretrained_model_name_or_path.replace('/', '__')
-    output_dir = Path("../M-IFEval/data")
-    output_file = output_dir / f"ja_input_response_data_{model_name_safe}.jsonl"
-    
-    print(f"입력 파일: {input_data_path}")
-    print(f"출력 파일: {output_file}")
 
     # 입력 데이터 로드
     input_data = []
@@ -123,8 +75,6 @@ def evaluate():
         for line in f:
             data = json.loads(line.strip())
             input_data.append(data)
-
-    print(f"총 {len(input_data)}개의 프롬프트를 처리합니다.")
 
     # 테스트 모드인 경우 적은 수의 샘플만 처리
     if cfg.get('testmode', False):
@@ -192,24 +142,14 @@ def evaluate():
             "kwargs": er["kwargs"]
         })
 
-    # 출력 디렉토리가 없으면 생성
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # JSONL 파일로 저장
-    with open(output_file, 'w', encoding='utf-8') as f:
-        for data in output_data:
-            f.write(json.dumps(data, ensure_ascii=False) + '\n')
-
-    table_data = [[data['key'], data['prompt'], data['response'], str(data['instruction_id_list']), str(data['kwargs'])] for data in output_data]
+    table_data = [[model_name_safe, data['key'], data['prompt'], data['response'], str(data['instruction_id_list']), str(data['kwargs'])] for data in output_data]
 
     # log output_data as wandb table
     run.log({
-        "m_ifeval_output_test": wandb.Table(
-            columns=["key", "prompt", "response", "instruction_id_list", "kwargs"],
+        "m_ifeval_output_table": wandb.Table(
+            columns=["model_name", "key", "prompt", "response", "instruction_id_list", "kwargs"],
             data=table_data
         )
     })
 
-    print(f"Response 파일이 저장되었습니다: {output_file}")
-
-    return evaluate_m_ifeval()
+    return evaluate_m_ifeval(input_data, output_data)
