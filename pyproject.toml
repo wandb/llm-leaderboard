@@ -1,0 +1,33 @@
+[project]
+name = "nejumi4"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = "==3.11.*"
+dependencies = [
+    "accelerate>=1.7.0",
+    "anthropic>=0.54.0",
+    "azure-identity>=1.23.0",
+    "backoff>=2.2.1",
+    "boto3>=1.38.36",
+    "botocore>=1.38.36",
+    "cohere>=5.15.0",
+    "fuzzywuzzy>=0.18.0",
+    "google-generativeai>=0.8.5",
+    "langchain>=0.3.25",
+    "mistralai>=1.8.2",
+    "omegaconf>=2.3.0",
+    "openai>=1.86.0",
+    "pandas>=2.3.0",
+    "python-levenshtein>=0.27.1",
+    "questionary>=2.1.0",
+    "rhoknp>=1.7.1",
+    "sacrebleu>=2.5.1",
+    "shortuuid>=1.0.13",
+    "tenacity>=9.1.2",
+    "toolz>=1.0.0",
+    "tqdm>=4.67.1",
+    "unbabel-comet>=2.2.6",
+    "vllm>=0.9.1",
+    "wandb>=0.20.1",
+]
