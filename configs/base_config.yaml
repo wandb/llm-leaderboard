@@ -1,6 +1,6 @@
 wandb:
-  entity: "wandb-japan"
-  project: "llm-leaderboard3"
+  entity: "llm-leaderboard"
+  project: "m-ifeval"
   #run: please set up run name in a model-base config
 
 github_version: v3.0.0 #for recording
