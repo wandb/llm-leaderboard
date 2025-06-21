@@ -42,8 +42,8 @@ echo "vLLM GPUs: ${VLLM_DEVICE_IDS[*]}"
 echo "Leaderboard GPUs: ${LEADERBOARD_DEVICE_IDS[*]}"
 echo ""
 
-# docker-compose.override.ymlの生成
-cat > docker-compose.override.yml << EOL
+# docker-compose.override.yamlの生成
+cat > docker-compose.override.yaml << EOL
 services:
   vllm:
     deploy:
@@ -51,15 +51,19 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids:
 EOL
 
 # vLLM GPU IDsを追加
-for gpu_id in "${VLLM_DEVICE_IDS[@]}"; do
-    echo "                - $gpu_id" >> docker-compose.override.yml
-done
+if [ ${#VLLM_DEVICE_IDS[@]} -eq 0 ]; then
+    echo "              device_ids: []" >> docker-compose.override.yaml
+else
+    echo "              device_ids:" >> docker-compose.override.yaml
+    for gpu_id in "${VLLM_DEVICE_IDS[@]}"; do
+        echo "                - $gpu_id" >> docker-compose.override.yaml
+    done
+fi
 
-cat >> docker-compose.override.yml << EOL
+cat >> docker-compose.override.yaml << EOL
               capabilities: [gpu]
 
   llm-leaderboard:
@@ -74,12 +78,12 @@ EOL
 # Leaderboard GPU IDsを追加（存在する場合）
 if [ ${#LEADERBOARD_DEVICE_IDS[@]} -gt 0 ]; then
     for gpu_id in "${LEADERBOARD_DEVICE_IDS[@]}"; do
-        echo "                - $gpu_id" >> docker-compose.override.yml
+        echo "                - $gpu_id" >> docker-compose.override.yaml
     done
 else
-    echo "                - \"0\"  # デフォルトGPU" >> docker-compose.override.yml
+    echo "                - \"0\"  # デフォルトGPU" >> docker-compose.override.yaml
 fi
 
-cat >> docker-compose.override.yml << EOL
+cat >> docker-compose.override.yaml << EOL
               capabilities: [gpu]
 EOL
