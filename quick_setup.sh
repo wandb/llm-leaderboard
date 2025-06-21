@@ -27,100 +27,429 @@ if [ "$GPU_COUNT" -eq 0 ]; then
     exit 1
 fi
 
-# 設定の選択
-echo "GPU構成を選択してください:"
-echo "1) 2GPU環境 (vLLM: GPU 0, Leaderboard: GPU 1)"
-echo "2) 4GPU環境 (vLLM: GPU 0-1, Leaderboard: GPU 2-3)"
-echo "3) 8GPU環境 (vLLM: GPU 0-3, Leaderboard: GPU 4-7)"
-echo "4) カスタム設定"
-echo "5) 最小構成"
+# モデル入力方法の選択
+echo ""
+echo "=== モデル設定 ==="
+echo "モデルの種類を選択してください:"
+echo "1) ローカルモデル"
+echo "2) HuggingFaceモデル"
+echo "3) API"
+echo ""
 
-read -p "選択 (1-5): " choice
+while true; do
+    read -p "選択 (1-3): " model_choice
+    case $model_choice in
+        1|2|3)
+            break
+            ;;
+        *)
+            echo "無効な選択です。1-3の中から選択してください。"
+            ;;
+    esac
+done
 
-case $choice in
+MODEL_NAME=""
+LOCAL_MODEL_PATH=""
+USE_API=false
+API_PROVIDER=""
+API_MODEL_NAME=""
+
+case $model_choice in
     1)
-        if [ "$GPU_COUNT" -lt 2 ]; then
-            echo "エラー: 2GPU構成には最低2つのGPUが必要です。"
-            exit 1
-        fi
-        VLLM_GPUS="0"
-        LEADERBOARD_GPUS="1"
-        TENSOR_PARALLEL_SIZE=1
+        # ローカルモデル
+        echo ""
+        echo "=== ローカルモデル設定 ==="
+        echo "モデルの絶対パスを入力してください"
+        echo "例: /models/Swallow-7b-instruct-v0.1"
+        echo ""
+        
+        while true; do
+            read -p "モデルパス: " MODEL_NAME
+            if [ -n "$MODEL_NAME" ]; then
+                if [[ "$MODEL_NAME" = /* ]]; then
+                    if [ ! -d "$MODEL_NAME" ]; then
+                        echo "警告: 指定されたディレクトリが存在しません: $MODEL_NAME"
+                        read -p "続行しますか？ (y/N): " path_confirm
+                        if [[ ! "$path_confirm" =~ ^[Yy]$ ]]; then
+                            echo "再度入力してください。"
+                            continue
+                        fi
+                    fi
+                    LOCAL_MODEL_PATH="$MODEL_NAME"
+                    break
+                else
+                    echo "エラー: 絶対パスを入力してください（/で始まる）"
+                fi
+            else
+                echo "エラー: モデルパスは必須です。再度入力してください。"
+            fi
+        done
         ;;
     2)
-        if [ "$GPU_COUNT" -lt 4 ]; then
-            echo "エラー: 4GPU構成には最低4つのGPUが必要です。"
-            exit 1
-        fi
-        VLLM_GPUS="0,1"
-        LEADERBOARD_GPUS="2,3"
-        TENSOR_PARALLEL_SIZE=2
+        # HuggingFaceモデル
+        echo ""
+        echo "=== HuggingFaceモデル設定 ==="
+        echo "HuggingFaceのリポジトリ名を入力してください"
+        echo "例: tokyotech-llm/Swallow-7b-instruct-v0.1"
+        echo ""
+        
+        while true; do
+            read -p "リポジトリ名: " MODEL_NAME
+            if [ -n "$MODEL_NAME" ]; then
+                break
+            else
+                echo "エラー: リポジトリ名は必須です。再度入力してください。"
+            fi
+        done
         ;;
     3)
-        if [ "$GPU_COUNT" -lt 8 ]; then
-            echo "エラー: 8GPU構成には最低8つのGPUが必要です。"
-            exit 1
-        fi
-        VLLM_GPUS="0,1,2,3"
-        LEADERBOARD_GPUS="4,5,6,7"
-        TENSOR_PARALLEL_SIZE=4
-        ;;
-    4)
-        read -p "vLLM用GPU (カンマ区切り, 例: 0,1): " VLLM_GPUS
-        read -p "Leaderboard用GPU (カンマ区切り, 例: 2,3): " LEADERBOARD_GPUS
-        IFS=',' read -ra VLLM_ARRAY <<< "$VLLM_GPUS"
-        TENSOR_PARALLEL_SIZE=${#VLLM_ARRAY[@]}
-        ;;
-    5)
-        VLLM_GPUS="0"
-        LEADERBOARD_GPUS=""
-        TENSOR_PARALLEL_SIZE=1
-        ;;
-    *)
-        echo "無効な選択です。"
-        exit 1
+        # API
+        echo ""
+        echo "=== API設定 ==="
+        echo "APIプロバイダーを選択してください:"
+        echo "1) OpenAI"
+        echo "2) Anthropic"
+        echo "3) Google"
+        echo "4) Cohere"
+        echo "5) Mistral"
+        echo "6) Upstage"
+        echo "7) Azure OpenAI"
+        echo "8) Amazon Bedrock"
+        echo "9) xAI"
+        echo ""
+        
+        while true; do
+            read -p "選択 (1-9): " api_choice
+            case $api_choice in
+                1) API_PROVIDER="openai"; break;;
+                2) API_PROVIDER="anthropic"; break;;
+                3) API_PROVIDER="google"; break;;
+                4) API_PROVIDER="cohere"; break;;
+                5) API_PROVIDER="mistral"; break;;
+                6) API_PROVIDER="upstage"; break;;
+                7) API_PROVIDER="azure_openai"; break;;
+                8) API_PROVIDER="amazon_bedrock"; break;;
+                9) API_PROVIDER="xai"; break;;
+                *)
+                    echo "無効な選択です。1-9の中から選択してください。"
+                    ;;
+            esac
+        done
+        
+        USE_API=true
+        MODEL_NAME="api_model"  # APIの場合はダミーの値
         ;;
 esac
 
-# モデル名の必須入力
+# API使用時以外は最大トークン長を設定
+if [ "$USE_API" = false ]; then
+    # 最大トークン長の入力
+    read -p "最大トークン長 [デフォルト: 4096]: " MAX_MODEL_LEN
+    MAX_MODEL_LEN=${MAX_MODEL_LEN:-4096}
+else
+    MAX_MODEL_LEN=4096  # APIの場合はデフォルト値
+fi
+
+# API設定
+if [ "$USE_API" = true ]; then
+    echo ""
+    echo "=== ${API_PROVIDER^^} API設定 ==="
+    echo "※ 入力内容は画面に表示されません"
+    echo ""
+    LEADERBOARD_GPUS=$(seq -s, 0 $((GPU_COUNT-1)))
+    
+    case $API_PROVIDER in
+        "openai")
+            while true; do
+                echo -n "OpenAI APIキーを入力してください: "
+                read -s OPENAI_API_KEY
+                echo ""
+                if [ -n "$OPENAI_API_KEY" ]; then
+                    break
+                else
+                    echo "エラー: OpenAI APIキーは必須です。再度入力してください。"
+                fi
+            done
+            ;;
+        "anthropic")
+            while true; do
+                echo -n "Anthropic APIキーを入力してください: "
+                read -s ANTHROPIC_API_KEY
+                echo ""
+                if [ -n "$ANTHROPIC_API_KEY" ]; then
+                    break
+                else
+                    echo "エラー: Anthropic APIキーは必須です。再度入力してください。"
+                fi
+            done
+            ;;
+        "google")
+            while true; do
+                echo -n "Google APIキーを入力してください: "
+                read -s GOOGLE_API_KEY
+                echo ""
+                if [ -n "$GOOGLE_API_KEY" ]; then
+                    break
+                else
+                    echo "エラー: Google APIキーは必須です。再度入力してください。"
+                fi
+            done
+            ;;
+        "cohere")
+            while true; do
+                echo -n "Cohere APIキーを入力してください: "
+                read -s COHERE_API_KEY
+                echo ""
+                if [ -n "$COHERE_API_KEY" ]; then
+                    break
+                else
+                    echo "エラー: Cohere APIキーは必須です。再度入力してください。"
+                fi
+            done
+            ;;
+        "mistral")
+            while true; do
+                echo -n "Mistral APIキーを入力してください: "
+                read -s MISTRAL_API_KEY
+                echo ""
+                if [ -n "$MISTRAL_API_KEY" ]; then
+                    break
+                else
+                    echo "エラー: Mistral APIキーは必須です。再度入力してください。"
+                fi
+            done
+            ;;
+        "upstage")
+            while true; do
+                echo -n "Upstage APIキーを入力してください: "
+                read -s UPSTAGE_API_KEY
+                echo ""
+                if [ -n "$UPSTAGE_API_KEY" ]; then
+                    break
+                else
+                    echo "エラー: Upstage APIキーは必須です。再度入力してください。"
+                fi
+            done
+            ;;
+        "azure_openai")
+            while true; do
+                echo -n "Azure OpenAI APIキーを入力してください: "
+                read -s AZURE_OPENAI_API_KEY
+                echo ""
+                if [ -n "$AZURE_OPENAI_API_KEY" ]; then
+                    break
+                else
+                    echo "エラー: Azure OpenAI APIキーは必須です。再度入力してください。"
+                fi
+            done
+            
+            while true; do
+                read -p "Azure OpenAI Endpoint: " AZURE_OPENAI_ENDPOINT
+                if [ -n "$AZURE_OPENAI_ENDPOINT" ]; then
+                    break
+                else
+                    echo "エラー: Azure OpenAI Endpointは必須です。再度入力してください。"
+                fi
+            done
+            
+            read -p "デプロイメント名: " AZURE_DEPLOYMENT_NAME
+            read -p "APIバージョン [デフォルト: 2024-02-15-preview]: " AZURE_API_VERSION
+            AZURE_API_VERSION=${AZURE_API_VERSION:-2024-02-15-preview}
+            
+            OPENAI_API_TYPE="azure"
+            ;;
+        "amazon_bedrock")
+            read -p "AWS Access Key ID: " AWS_ACCESS_KEY_ID
+            read -p "AWS Secret Access Key: " AWS_SECRET_ACCESS_KEY
+            read -p "AWS Region [デフォルト: us-west-2]: " AWS_DEFAULT_REGION
+            AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-west-2}
+            ;;
+        "xai")
+            while true; do
+                echo -n "xAI APIキーを入力してください: "
+                read -s XAI_API_KEY
+                echo ""
+                if [ -n "$XAI_API_KEY" ]; then
+                    break
+                else
+                    echo "エラー: xAI APIキーは必須です。再度入力してください。"
+                fi
+            done
+            ;;
+    esac
+else 
+    # 設定の選択
+    echo "GPU構成を選択してください:"
+    echo "1) 2GPU環境 (vLLM: GPU 0, Leaderboard: GPU 1)"
+    echo "2) 4GPU環境 (vLLM: GPU 0-1, Leaderboard: GPU 2-3)"
+    echo "3) 8GPU環境 (vLLM: GPU 0-3, Leaderboard: GPU 4-7)"
+    echo "4) カスタム設定"
+    echo "5) 最小構成"
+
+    read -p "選択 (1-5): " choice
+
+    case $choice in
+        1)
+            if [ "$GPU_COUNT" -lt 2 ]; then
+                echo "エラー: 2GPU構成には最低2つのGPUが必要です。"
+                exit 1
+            fi
+            VLLM_GPUS="0"
+            LEADERBOARD_GPUS="1"
+            TENSOR_PARALLEL_SIZE=1
+            ;;
+        2)
+            if [ "$GPU_COUNT" -lt 4 ]; then
+                echo "エラー: 4GPU構成には最低4つのGPUが必要です。"
+                exit 1
+            fi
+            VLLM_GPUS="0,1"
+            LEADERBOARD_GPUS="2,3"
+            TENSOR_PARALLEL_SIZE=2
+            ;;
+        3)
+            if [ "$GPU_COUNT" -lt 8 ]; then
+                echo "エラー: 8GPU構成には最低8つのGPUが必要です。"
+                exit 1
+            fi
+            VLLM_GPUS="0,1,2,3"
+            LEADERBOARD_GPUS="4,5,6,7"
+            TENSOR_PARALLEL_SIZE=4
+            ;;
+        4)
+            read -p "vLLM用GPU (カンマ区切り, 例: 0,1): " VLLM_GPUS
+            read -p "Leaderboard用GPU (カンマ区切り, 例: 2,3): " LEADERBOARD_GPUS
+            IFS=',' read -ra VLLM_ARRAY <<< "$VLLM_GPUS"
+            TENSOR_PARALLEL_SIZE=${#VLLM_ARRAY[@]}
+            ;;
+        5)
+            VLLM_GPUS="0"
+            LEADERBOARD_GPUS=""
+            TENSOR_PARALLEL_SIZE=1
+            ;;
+        *)
+            echo "無効な選択です。"
+            exit 1
+            ;;
+    esac
+fi
+
 echo ""
-echo "=== モデル設定 ==="
-echo "HuggingFaceのリポジトリ名または、ローカルの絶対パスを入力してください"
-echo "例: tokyotech-llm/Swallow-7b-instruct-v0.1, /models/Swallow-7b-instruct-v0.1"
+echo "=== 必須APIキーの設定 ==="
+echo "※ 入力内容は画面に表示されません"
 echo ""
 
-# モデル名の必須入力
+# WANDB APIキーの必須入力
 while true; do
-    read -p "モデル名: " MODEL_NAME
-    if [ -n "$MODEL_NAME" ]; then
+    echo -n "WANDB APIキーを入力してください: "
+    read -s WANDB_API_KEY
+    echo ""
+    if [ -n "$WANDB_API_KEY" ]; then
         break
     else
-        echo "エラー: モデル名は必須です。再度入力してください。"
+        echo "エラー: WANDB APIキーは必須です。再度入力してください。"
     fi
 done
 
-# 絶対パスかどうかを判定し、Dockerマウント設定を準備
-if [[ "$MODEL_NAME" = /* ]]; then
-    # 絶対パスの場合
-    if [ ! -d "$MODEL_NAME" ]; then
-        echo "警告: 指定されたディレクトリが存在しません: $MODEL_NAME"
-        read -p "続行しますか？ (y/N): " path_confirm
-        if [[ ! "$path_confirm" =~ ^[Yy]$ ]]; then
-            echo "セットアップを中止しました。"
-            exit 0
+if [ -z "$OPENAI_API_KEY" ]; then
+    # OpenAI APIキーの必須入力
+    while true; do
+        echo -n "OpenAI APIキーを入力してください: "
+        read -s OPENAI_API_KEY
+        echo ""
+        if [ -n "$OPENAI_API_KEY" ]; then
+            break
+        else
+            echo "エラー: OpenAI APIキーは必須です。再度入力してください。"
         fi
-    fi
-    LOCAL_MODEL_PATH="$MODEL_NAME"
-    echo "ローカルモデルが検出されました: $MODEL_NAME"
-else
-    # HuggingFaceリポジトリの場合
-    LOCAL_MODEL_PATH=""
-    echo "HuggingFaceリポジトリが指定されました: $MODEL_NAME"
+    done
 fi
 
-# 最大トークン長の入力
-read -p "最大トークン長 [デフォルト: 4096]: " MAX_MODEL_LEN
-MAX_MODEL_LEN=${MAX_MODEL_LEN:-4096}
+# 共通の任意APIキー設定（APIを使わない場合、またはメインAPI以外のキーが必要な場合）
+if [ "$USE_API" = false ] || [ "$API_PROVIDER" != "anthropic" ]; then
+    echo ""
+    echo "=== 任意APIキーの設定 ==="
+    echo "※ 不要な場合はEnterキーで空白のまま進んでください"
+    echo "※ 入力内容は画面に表示されません"
+    echo ""
+
+    if [ -z "$HUGGINGFACE_HUB_TOKEN" ]; then
+        echo -n "HuggingFace Hub Token: "
+        read -s HUGGINGFACE_HUB_TOKEN
+        echo ""
+    fi
+
+    if [ -z "$ANTHROPIC_API_KEY" ]; then
+        echo -n "Anthropic API Key: "
+        read -s ANTHROPIC_API_KEY
+        echo ""
+    fi
+
+    if [ -z "$GOOGLE_API_KEY" ]; then
+        echo -n "Google API Key: "
+        read -s GOOGLE_API_KEY
+        echo ""
+    fi
+
+    if [ -z "$COHERE_API_KEY" ]; then
+        echo -n "Cohere API Key: "
+        read -s COHERE_API_KEY
+        echo ""
+    fi
+
+    if [ -z "$MISTRAL_API_KEY" ]; then
+        echo -n "Mistral API Key: "
+        read -s MISTRAL_API_KEY
+        echo ""
+    fi
+
+    if [ -z "$UPSTAGE_API_KEY" ]; then
+        echo -n "Upstage API Key: "
+        read -s UPSTAGE_API_KEY
+        echo ""
+    fi
+
+    if [ -z "$XAI_API_KEY" ]; then
+        echo -n "xAI API Key: "
+        read -s XAI_API_KEY
+        echo ""
+    fi
+fi
+
+# AWS設定（Amazon Bedrock以外の場合）
+if [ "$API_PROVIDER" != "amazon_bedrock" ]; then
+    echo ""
+    echo "=== AWS設定（任意） ==="
+    echo ""
+
+    if [ -z "$AWS_ACCESS_KEY_ID" ]; then
+        read -p "AWS Access Key ID: " AWS_ACCESS_KEY_ID
+        read -p "AWS Secret Access Key: " AWS_SECRET_ACCESS_KEY
+        read -p "AWS Default Region [デフォルト: us-west-2]: " AWS_DEFAULT_REGION
+        AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-west-2}
+    fi
+fi
+
+# Azure OpenAI設定（Azure OpenAI以外の場合）
+if [ "$API_PROVIDER" != "azure_openai" ]; then
+    echo ""
+    echo "=== Azure OpenAI設定（任意） ==="
+    echo ""
+
+    if [ -z "$AZURE_OPENAI_ENDPOINT" ]; then
+        read -p "Azure OpenAI Endpoint: " AZURE_OPENAI_ENDPOINT
+        if [ -n "$AZURE_OPENAI_ENDPOINT" ]; then
+            echo -n "Azure OpenAI API Key: "
+            read -s AZURE_OPENAI_API_KEY
+            echo ""
+            read -p "OpenAI API Type [デフォルト: azure]: " OPENAI_API_TYPE
+            OPENAI_API_TYPE=${OPENAI_API_TYPE:-azure}
+        else
+            AZURE_OPENAI_API_KEY=""
+            OPENAI_API_TYPE=""
+        fi
+    fi
+fi
 
 # config fileの必須入力
 show_config_files() {
@@ -178,99 +507,17 @@ while true; do
     fi
 done
 
-# 必須APIキーの入力（非表示）
-echo ""
-echo "=== 必須APIキーの設定 ==="
-echo "※ 入力内容は画面に表示されません"
-echo ""
-
-# WANDB APIキーの必須入力
-while true; do
-    echo -n "WANDB APIキーを入力してください: "
-    read -s WANDB_API_KEY
-    echo ""
-    if [ -n "$WANDB_API_KEY" ]; then
-        break
-    else
-        echo "エラー: WANDB APIキーは必須です。再度入力してください。"
-    fi
-done
-
-# OpenAI APIキーの必須入力
-while true; do
-    echo -n "OpenAI APIキーを入力してください: "
-    read -s OPENAI_API_KEY
-    echo ""
-    if [ -n "$OPENAI_API_KEY" ]; then
-        break
-    else
-        echo "エラー: OpenAI APIキーは必須です。再度入力してください。"
-    fi
-done
-
-# 任意APIキーの入力
-echo ""
-echo "=== 任意APIキーの設定 ==="
-echo "※ 不要な場合はEnterキーで空白のまま進んでください"
-echo "※ 入力内容は画面に表示されません"
-echo ""
-
-echo -n "HuggingFace Hub Token: "
-read -s HUGGINGFACE_HUB_TOKEN
-echo ""
-
-echo -n "Anthropic API Key: "
-read -s ANTHROPIC_API_KEY
-echo ""
-
-echo -n "Google API Key: "
-read -s GOOGLE_API_KEY
-echo ""
-
-echo -n "Cohere API Key: "
-read -s COHERE_API_KEY
-echo ""
-
-echo -n "Mistral API Key: "
-read -s MISTRAL_API_KEY
-echo ""
-
-echo -n "Upstage API Key: "
-read -s UPSTAGE_API_KEY
-echo ""
-
-# AWS設定
-echo ""
-echo "=== AWS設定（任意） ==="
-echo ""
-
-read -p "AWS Access Key ID: " AWS_ACCESS_KEY_ID
-read -p "AWS Secret Access Key: " AWS_SECRET_ACCESS_KEY
-read -p "AWS Default Region [デフォルト: us-east-1]: " AWS_DEFAULT_REGION
-AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
-
-# Azure OpenAI設定
-echo ""
-echo "=== Azure OpenAI設定（任意） ==="
-echo ""
-
-read -p "Azure OpenAI Endpoint: " AZURE_OPENAI_ENDPOINT
-if [ -n "$AZURE_OPENAI_ENDPOINT" ]; then
-    echo -n "Azure OpenAI API Key: "
-    read -s AZURE_OPENAI_API_KEY
-    echo ""
-    read -p "OpenAI API Type [デフォルト: azure]: " OPENAI_API_TYPE
-    OPENAI_API_TYPE=${OPENAI_API_TYPE:-azure}
-else
-    AZURE_OPENAI_API_KEY=""
-    OPENAI_API_TYPE=""
-fi
-
 # 入力確認
 echo ""
 echo "=== 入力確認 ==="
-echo "選択されたモデル: $MODEL_NAME"
-echo "最大トークン長: $MAX_MODEL_LEN"
+if [ "$USE_API" = true ]; then
+    echo "モード: API (${API_PROVIDER^^})"
+else
+    echo "モード: ローカル/HuggingFace"
+    echo "選択されたモデル: $MODEL_NAME"
+    echo "最大トークン長: $MAX_MODEL_LEN"
+fi
+
 echo "WANDB APIキー: [設定済み]"
 echo "OpenAI APIキー: [設定済み]"
 
@@ -282,6 +529,7 @@ optional_keys=""
 [ -n "$COHERE_API_KEY" ] && optional_keys+="Cohere, "
 [ -n "$MISTRAL_API_KEY" ] && optional_keys+="Mistral, "
 [ -n "$UPSTAGE_API_KEY" ] && optional_keys+="Upstage, "
+[ -n "$XAI_API_KEY" ] && optional_keys+="xAI, "
 [ -n "$AWS_ACCESS_KEY_ID" ] && optional_keys+="AWS, "
 [ -n "$AZURE_OPENAI_ENDPOINT" ] && optional_keys+="Azure OpenAI, "
 
@@ -349,9 +597,13 @@ echo "環境設定ファイルを作成中..."
 
 mkdir -p ./env_files
 
-# モデル名からファイル名を生成
-MODEL_FILE_NAME=$(basename "$MODEL_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
-ENV_FILENAME="${MODEL_FILE_NAME}.env"
+# ファイル名の生成
+if [ "$USE_API" = true ]; then
+    ENV_FILENAME="${API_PROVIDER}_${API_MODEL_NAME//[^a-zA-Z0-9_-]/_}.env"
+else
+    MODEL_FILE_NAME=$(basename "$MODEL_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
+    ENV_FILENAME="${MODEL_FILE_NAME}.env"
+fi
 ENV_FILEPATH="./env_files/${ENV_FILENAME}"
 
 echo "設定ファイル: $ENV_FILEPATH"
@@ -369,6 +621,10 @@ DTYPE=half
 MAX_MODEL_LEN=$MAX_MODEL_LEN
 VLLM_PORT=8000
 
+# API Configuration
+USE_API=$USE_API
+API_PROVIDER=$API_PROVIDER
+
 # GPU Configuration - Array Format (for compatibility)
 VLLM_GPU_IDS=$VLLM_GPU_IDS
 TENSOR_PARALLEL_SIZE=$TENSOR_PARALLEL_SIZE
@@ -381,26 +637,29 @@ $VLLM_GPU_VARS
 $LEADERBOARD_GPU_VARS
 
 # Required API Keys
-WANDB_API_KEY=$WANDB_API_KEY
-OPENAI_API_KEY=$OPENAI_API_KEY
+WANDB_API_KEY=${WANDB_API_KEY:-}
+OPENAI_API_KEY=${OPENAI_API_KEY:-}
 
 # Other API Keys
-HUGGINGFACE_HUB_TOKEN=$HUGGINGFACE_HUB_TOKEN
-ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
-GOOGLE_API_KEY=$GOOGLE_API_KEY
-COHERE_API_KEY=$COHERE_API_KEY
-MISTRAL_API_KEY=$MISTRAL_API_KEY
-UPSTAGE_API_KEY=$UPSTAGE_API_KEY
+HUGGINGFACE_HUB_TOKEN=${HUGGINGFACE_HUB_TOKEN:-}
+ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+COHERE_API_KEY=${COHERE_API_KEY:-}
+MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
+UPSTAGE_API_KEY=${UPSTAGE_API_KEY:-}
+XAI_API_KEY=${XAI_API_KEY:-}
 
 # AWS Configuration
-AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
-AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
-AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION
+AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-west-2}
 
 # Azure OpenAI
-AZURE_OPENAI_ENDPOINT=$AZURE_OPENAI_ENDPOINT
-AZURE_OPENAI_API_KEY=$AZURE_OPENAI_API_KEY
-OPENAI_API_TYPE=$OPENAI_API_TYPE
+AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
+AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+AZURE_DEPLOYMENT_NAME=${AZURE_DEPLOYMENT_NAME:-}
+AZURE_API_VERSION=${AZURE_API_VERSION:-}
+OPENAI_API_TYPE=${OPENAI_API_TYPE:-}
 
 # Other Settings
 LANG=ja_JP.UTF-8
@@ -416,18 +675,27 @@ cp "$ENV_FILEPATH" .env
 echo "設定完了！"
 echo ""
 echo "=== 設定サマリー ==="
-echo "モデル: $MODEL_NAME"
-echo "最大トークン長: $MAX_MODEL_LEN"
-echo "vLLM GPU: $VLLM_GPU_IDS (Tensor Parallel: $TENSOR_PARALLEL_SIZE)"
-if [ -n "$LEADERBOARD_GPUS" ]; then
-    echo "Leaderboard GPU: $LEADERBOARD_GPU_IDS"
+if [ "$USE_API" = true ]; then
+    echo "モード: API (${API_PROVIDER^^})"
 else
-    echo "Leaderboard: CPU実行"
+    echo "モード: ローカル/HuggingFace"
+    echo "モデル: $MODEL_NAME"
+    echo "最大トークン長: $MAX_MODEL_LEN"
+    echo "vLLM GPU: $VLLM_GPU_IDS (Tensor Parallel: $TENSOR_PARALLEL_SIZE)"
+    if [ -n "$LEADERBOARD_GPUS" ]; then
+        echo "Leaderboard GPU: $LEADERBOARD_GPU_IDS"
+    else
+        echo "Leaderboard: CPU実行"
+    fi
 fi
+
 echo "設定ファイル: $ENV_FILEPATH"
 echo "メイン設定: .env"
-echo "WANDB APIキー: [設定済み]"
-echo "OpenAI APIキー: [設定済み]"
+
+if [ "$USE_API" = false ]; then
+    echo "WANDB APIキー: [設定済み]"
+    echo "OpenAI APIキー: [設定済み]"
+fi
 
 if [ -n "$optional_keys" ]; then
     echo "任意APIキー: $optional_keys [設定済み]"
@@ -455,11 +723,18 @@ if [ -f "./generate_docker_override.sh" ]; then
         echo "=== セットアップ完了 ==="
         echo "環境の準備が完了しました。以下のコマンドでコンテナを起動できます："
         echo ""
-        echo "  docker-compose up -d"
-        echo ""
-        echo "または、特定のサービスのみ起動する場合："
-        echo "  docker-compose up -d vllm"
-        echo "  docker-compose up -d leaderboard"
+        if [ "$USE_API" = true ]; then
+            echo "  docker-compose up -d llm-leaderboard"
+            echo ""
+            echo "APIモードのため、vLLMサービスは不要です。"
+        else
+            echo "1. vllmサービスを起動："
+            echo "  docker-compose up -d vllm"
+            exho "2. vllmサーバーの起動確認"
+            echo "  docker compose logs -f vllm"
+            echo "3. 評価の実行"
+            echo "  docker-compose up -d llm-leaderboard"
+        fi
         echo ""
     else
         echo ""
