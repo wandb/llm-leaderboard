@@ -42,7 +42,11 @@ def get_openai_client(async_client=True):
         else:
             return OpenAI()
 
-# Judge prompt and response format (Japanese)
+SYSTEM_PROMPT = """回答は以下の形式で行ってください：
+説明: {選択した答えに対する説明}
+答え: {選択した答え}
+信頼度: {答えに対する0%から100%の信頼度スコア}"""
+
 JUDGE_PROMPT = """以下の[質問]に対する[回答]が、明確で曖昧さのない[正解]に基づいて正しいかどうかを判定してください。
 
 [質問]: {question}
@@ -60,11 +64,6 @@ reasoning: [正解]に基づいて、extracted_final_answerが正しいか間違
 correct: extracted_final_answerが上記の[正解]と一致する場合、または数値問題で小さな誤差の範囲内にある場合は'yes'と答えてください。そうでない場合、つまり不一致、曖昧さ、非等価性がある場合、または抽出された答えが間違っている場合は'no'と答えてください。
 
 confidence: [回答]から抽出した0%から100%の間の信頼度スコア。信頼度スコアが利用できない場合は100を記載してください。"""
-
-SYSTEM_PROMPT = """回答は以下の形式で行ってください：
-説明: {選択した答えに対する説明}
-答え: {選択した答え}
-信頼度: {答えに対する0%から100%の信頼度スコア}"""
 
 class ExtractedAnswer(BaseModel):
     extracted_final_answer: str
@@ -93,7 +92,7 @@ def format_message(question: Dict[str, Any], model_name: str) -> List[Dict[str, 
     question_text = question['question']
     
     text_content = {"type": "text", "text": question_text}
-    if question.get('image'):  # "" if not multi-modal
+    if question.get('image') and question['image']:  # Check for non-empty image
         image_content = {"type": "image_url", "image_url": {"url": question['image']}}
         content = [text_content, image_content]
     else:
@@ -264,12 +263,13 @@ def evaluate():
     max_workers = cfg.hle.get("max_workers", 10)
     judge_model = cfg.hle.get("judge_model", "o3-mini-2025-01-31")
     max_samples = cfg.hle.get("max_samples", None)
-    dataset_name = cfg.hle.get("dataset_name", "hle.jsonl")  # デフォルトはhle.jsonl
+    dataset_name = cfg.hle.get("dataset_name", "hle.jsonl")
     
     if cfg.testmode:
         max_samples = 10
     
     print(f"Starting HLE evaluation with max_completion_tokens={max_completion_tokens}, max_workers={max_workers}")
+    print(f"Using judge model: {judge_model}")
     print(f"Using dataset file: {dataset_name}")
     
     # Load dataset from wandb artifact
@@ -284,6 +284,11 @@ def evaluate():
             questions = questions[:max_samples]
             
         print(f"Loaded {len(questions)} questions from HLE dataset")
+        
+        # Check for multimodal questions
+        multimodal_count = sum(1 for q in questions if q.get('image'))
+        if multimodal_count > 0:
+            print(f"Warning: {multimodal_count} questions contain images. Ensure your LLM supports multimodal input.")
         
     except Exception as e:
         print(f"Error loading dataset: {e}")
@@ -348,13 +353,13 @@ def evaluate():
             judge_resp = pred.get("judge_response", {})
             results_data.append({
                 "id": q["id"],
-                "question": q["question"][:100] + "..." if len(q["question"]) > 100 else q["question"],
+                "question": q["question"],
                 "correct_answer": q["answer"],
-                "model_response": pred["response"][:200] + "..." if len(pred["response"]) > 200 else pred["response"],
+                "model_response": pred["response"],
                 "model_answer": judge_resp.get("model_answer", ""),
                 "correct": judge_resp.get("correct", ""),
                 "confidence": judge_resp.get("confidence", 0),
-                "reasoning": judge_resp.get("reasoning", "")[:100] + "..." if len(judge_resp.get("reasoning", "")) > 100 else judge_resp.get("reasoning", "")
+                "reasoning": judge_resp.get("reasoning", ""),
             })
     
     # Create output table
