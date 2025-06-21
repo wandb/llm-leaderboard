@@ -22,7 +22,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    depends_on: [vllm]
     runtime: nvidia
     container_name: llm-leaderboard
     # GPU設定はdocker-compose.override.ymlで定義
@@ -40,6 +39,7 @@ services:
       - COHERE_API_KEY=${COHERE_API_KEY}
       - MISTRAL_API_KEY=${MISTRAL_API_KEY}
       - UPSTAGE_API_KEY=${UPSTAGE_API_KEY}
+      - XAI_API_KEY=${XAI_API_KEY}
 
       # AWS Configuration (optional)
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
