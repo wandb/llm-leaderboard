@@ -9,14 +9,15 @@ testmode: false
 inference_interval: 0 # seconds
 
 run:
-  jaster: false
-  jmmlu_robustness: false # if this is set as true, jaster should set as true
-  mtbench: false
-  jbbq: false
-  toxicity: false
-  jtruthfulqa: false
-  bfcl: true
-  aggregate: false
+  jaster: true
+  jmmlu_robustness: true # if this is set as true, jaster should set as true
+  mtbench: true
+  jbbq: true
+  lctg: true
+  toxicity: true
+  jtruthfulqa: true
+  aggregate: true
+  hallulens: true
 
 model:
   artifact_path: null
@@ -105,3 +106,7 @@ bfcl:
 sample_dataset:
   artifacts_path: "your artifact path here"
   # add necessary configration here
+
+hallulens:
+  artifacts_path: "wandb-japan/llm-leaderboard3/hallulens:v0"
+  judge_model: "gpt-4o"

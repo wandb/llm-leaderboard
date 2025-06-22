@@ -15,7 +15,11 @@ from evaluator import (
     jaster_translation,
     toxicity,
     jtruthfulqa,
+<<<<<<< HEAD
     bfcl,
+=======
+    hallulens,
+>>>>>>> origin/nejumi4-dev
     aggregate,
 )
 from utils import paginate_choices
@@ -102,6 +106,10 @@ if cfg.run.jtruthfulqa:
 ## BFCL
 if cfg.run.bfcl:
     bfcl.evaluate()
+
+# HalluLens
+if cfg.run.hallulens:
+    hallulens.evaluate()
 
 # Evaluation phase
 if cfg.run.jaster:
