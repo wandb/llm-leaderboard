@@ -1,29 +1,36 @@
 import os
+import asyncio
 from dataclasses import dataclass
 import json
 from config_singleton import WandbConfigSingleton
-from langchain_openai import ChatOpenAI, AzureChatOpenAI
-from langchain_mistralai.chat_models import ChatMistralAI
-from langchain_google_genai import (
-    ChatGoogleGenerativeAI,
-    HarmBlockThreshold,
-    HarmCategory,
-)
-from langchain_aws import ChatBedrock
-from langchain_anthropic import ChatAnthropic
-#from langchain_cohere import ChatCohere
+import openai
+from mistralai import Mistral
+import google.generativeai as genai
+from anthropic import Anthropic
+import cohere
 from botocore.exceptions import ClientError
 import boto3
 from botocore.config import Config
+from openai import AzureOpenAI
 
-
-import json
-import boto3
-from dataclasses import dataclass
 
 @dataclass
-class BedrockResponse:
+class LLMResponse:
     content: str
+
+
+def filter_params(params, allowed_params):
+    """許可されたパラメータのみをフィルタリング"""
+    return {k: v for k, v in params.items() if k in allowed_params}
+
+
+def map_common_params(params, param_mapping):
+    """共通パラメータを各プロバイダ固有のパラメータ名にマッピング"""
+    mapped_params = {}
+    for key, value in params.items():
+        mapped_key = param_mapping.get(key, key)
+        mapped_params[mapped_key] = value
+    return mapped_params
 
 
 class ChatBedrock:
@@ -39,8 +46,8 @@ class ChatBedrock:
             k: v for k, v in cfg.generator.items() if k not in self.ignore_keys
         }
 
-    def _invoke(self, messages: list[dict[str, str]], max_tokens: int):
-        # Determine the model type (Anthropic Claude, Meta Llama 3, or Amazon Nova)
+    async def _invoke_async(self, messages: list[dict[str, str]], max_tokens: int):
+        """非同期でBedrockを呼び出し"""
         is_claude = "anthropic" in self.model_id.lower()
         is_llama = "llama" in self.model_id.lower()
         is_nova = "nova" in self.model_id.lower()
@@ -63,21 +70,15 @@ class ChatBedrock:
                 **self.generator_config,
             }
         elif is_nova:
-            # Novaモデルの場合の処理
-
-            # 修正1：messagesの各メッセージのcontentを適切な形式に変換
             for message in messages:
                 if isinstance(message['content'], str):
                     message['content'] = [{"text": message['content']}]
 
-            # パラメータ名のマッピング（大文字小文字の修正）
             parameter_mapping = {
                 "top_p": "topP",
                 "max_tokens": "maxTokens",
-                # その他のパラメータも必要に応じて追加
             }
 
-            # 修正2：inferenceConfigのパラメータ名を正しい形式に変更
             inference_config = {
                 parameter_mapping.get(k, k): v for k, v in {
                     "temperature": self.generator_config.get("temperature", 0.0),
@@ -95,13 +96,17 @@ class ChatBedrock:
 
         try:
             if is_nova:
-                response = self.bedrock_runtime.converse(
+                # 非同期でconverseを実行
+                response = await asyncio.to_thread(
+                    self.bedrock_runtime.converse,
                     modelId=self.model_id,
                     **body_dict
                 )
                 response_body = response
             else:
-                response = self.bedrock_runtime.invoke_model(
+                # 非同期でinvoke_modelを実行
+                response = await asyncio.to_thread(
+                    self.bedrock_runtime.invoke_model,
                     body=json.dumps(body_dict),
                     modelId=self.model_id
                 )
@@ -123,19 +128,379 @@ class ChatBedrock:
                 formatted_messages.append(f"<|start_header_id|>assistant<|end_header_id|>\n{message['content']}\n<|eot_id|>")
         return "".join(formatted_messages)
 
-    def invoke(self, messages, max_tokens: int):
-        response = self._invoke(messages=messages, max_tokens=max_tokens)
+    def invoke(self, messages, max_tokens=None, **kwargs):
+        """同期版のinvoke（後方互換性のため）"""
+        if max_tokens is None:
+            max_tokens = 1024
+        # 同期処理として実行
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self.ainvoke(messages, max_tokens, **kwargs))
+        finally:
+            loop.close()
+
+    async def ainvoke(self, messages, max_tokens=None, **kwargs):
+        """非同期版のinvoke"""
+        if max_tokens is None:
+            max_tokens = 1024
+        
+        response = await self._invoke_async(messages=messages, max_tokens=max_tokens)
+        
         if "anthropic" in self.model_id.lower():
             content = response.get("content", [{"text": ""}])[0]["text"]
         elif "llama" in self.model_id.lower():
             content = response.get("generation", "")
-            # ヘッダーとフッターを除去
             content = content.replace("<|start_header_id|>assistant<|end_header_id|>\n", "").replace("\n<|eot_id|>", "") 
         elif "nova" in self.model_id.lower():
             content = response.get("output", {}).get("message", {}).get("content", [{}])[0].get("text", "")
         else:
             content = ""
-        return BedrockResponse(content=content)
+        return LLMResponse(content=content)
+
+
+class OpenAIClient:
+    def __init__(self, api_key=None, base_url=None, model=None, **kwargs):
+        self.client = openai.OpenAI(
+            api_key=api_key,
+            base_url=base_url
+        )
+        self.async_client = openai.AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url
+        )
+        self.model = model
+        self.kwargs = kwargs
+        
+        self.allowed_params = {
+            'temperature', 'top_p', 'n', 'stream', 'stop', 
+            'max_tokens', 'presence_penalty', 'frequency_penalty',
+            'logit_bias', 'user', 'response_format', 'seed',
+            'tools', 'tool_choice', 'parallel_tool_calls'
+        }
+        
+        self.param_mapping = {}
+
+    def invoke(self, messages, max_tokens=None, **kwargs):
+        """同期版のinvoke（後方互換性のため）"""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self.ainvoke(messages, max_tokens, **kwargs))
+        finally:
+            loop.close()
+
+    async def ainvoke(self, messages, max_tokens=None, **kwargs):
+        """非同期版のinvoke"""
+        all_kwargs = {**self.kwargs, **kwargs}
+        mapped_params = map_common_params(all_kwargs, self.param_mapping)
+        filtered_params = filter_params(mapped_params, self.allowed_params)
+        
+        params = {
+            "model": self.model,
+            "messages": messages,
+            **filtered_params
+        }
+        
+        if max_tokens:
+            params["max_tokens"] = max_tokens
+        
+        response = await self.async_client.chat.completions.create(**params)
+        return LLMResponse(content=response.choices[0].message.content)
+
+
+class MistralClient:
+    def __init__(self, api_key, model, **kwargs):
+        self.client = Mistral(api_key=api_key)
+        self.model = model
+        self.kwargs = kwargs
+        
+        self.allowed_params = {
+            'temperature', 'top_p', 'max_tokens', 'stream', 'stop',
+            'random_seed', 'response_format', 'tools', 'tool_choice'
+        }
+        
+        self.param_mapping = {
+            'seed': 'random_seed',
+        }
+
+    def invoke(self, messages, max_tokens=None, **kwargs):
+        """同期版のinvoke（後方互換性のため）"""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self.ainvoke(messages, max_tokens, **kwargs))
+        finally:
+            loop.close()
+
+    async def ainvoke(self, messages, max_tokens=None, **kwargs):
+        """非同期版のinvoke"""
+        all_kwargs = {**self.kwargs, **kwargs}
+        mapped_params = map_common_params(all_kwargs, self.param_mapping)
+        filtered_params = filter_params(mapped_params, self.allowed_params)
+        
+        params = {
+            "model": self.model,
+            "messages": messages,
+            **filtered_params
+        }
+        
+        if max_tokens:
+            params["max_tokens"] = max_tokens
+        
+        # Mistral APIを非同期で実行
+        response = await asyncio.to_thread(self.client.chat.complete, **params)
+        return LLMResponse(content=response.choices[0].message.content)
+
+
+class GoogleClient:
+    def __init__(self, api_key, model, **kwargs):
+        genai.configure(api_key=api_key)
+        self.model = genai.GenerativeModel(model)
+        self.kwargs = kwargs
+        
+        self.allowed_params = {
+            'temperature', 'top_p', 'top_k', 'max_output_tokens',
+            'candidate_count', 'stop_sequences'
+        }
+        
+        self.param_mapping = {
+            'max_tokens': 'max_output_tokens',
+            'stop': 'stop_sequences',
+        }
+
+    def invoke(self, messages, max_tokens=None, **kwargs):
+        """同期版のinvoke（後方互換性のため）"""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self.ainvoke(messages, max_tokens, **kwargs))
+        finally:
+            loop.close()
+
+    async def ainvoke(self, messages, max_tokens=None, **kwargs):
+        """非同期版のinvoke"""
+        # メッセージ処理
+        chat_history = []
+        system_instruction = None
+        
+        for i, msg in enumerate(messages):
+            if msg["role"] == "system":
+                system_instruction = msg["content"]
+            elif msg["role"] == "user":
+                if i < len(messages) - 1:
+                    chat_history.append({"role": "user", "parts": [msg["content"]]})
+            elif msg["role"] == "assistant":
+                chat_history.append({"role": "model", "parts": [msg["content"]]})
+        
+        if system_instruction:
+            model = genai.GenerativeModel(
+                model_name=self.model.model_name,
+                system_instruction=system_instruction
+            )
+        else:
+            model = self.model
+        
+        chat = model.start_chat(history=chat_history)
+        
+        last_user_message = None
+        for msg in reversed(messages):
+            if msg["role"] == "user":
+                last_user_message = msg["content"]
+                break
+        
+        if not last_user_message:
+            raise ValueError("No user message found")
+        
+        all_kwargs = {**self.kwargs, **kwargs}
+        mapped_params = map_common_params(all_kwargs, self.param_mapping)
+        generation_config = filter_params(mapped_params, self.allowed_params)
+        
+        if max_tokens:
+            generation_config["max_output_tokens"] = max_tokens
+        
+        # Google APIを非同期で実行
+        response = await asyncio.to_thread(
+            chat.send_message, 
+            last_user_message, 
+            generation_config=generation_config
+        )
+        return LLMResponse(content=response.text)
+
+
+class AnthropicClient:
+    def __init__(self, api_key, model, **kwargs):
+        self.client = Anthropic(api_key=api_key)
+        self.model = model
+        self.kwargs = kwargs
+        
+        self.allowed_params = {
+            'temperature', 'top_p', 'top_k', 'max_tokens',
+            'stop_sequences', 'stream'
+        }
+        
+        self.param_mapping = {
+            'stop': 'stop_sequences',
+        }
+
+    def invoke(self, messages, max_tokens=None, **kwargs):
+        """同期版のinvoke（後方互換性のため）"""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self.ainvoke(messages, max_tokens, **kwargs))
+        finally:
+            loop.close()
+
+    async def ainvoke(self, messages, max_tokens=None, **kwargs):
+        """非同期版のinvoke"""
+        system_message = None
+        filtered_messages = []
+        
+        for msg in messages:
+            if msg["role"] == "system":
+                system_message = msg["content"]
+            else:
+                filtered_messages.append(msg)
+        
+        all_kwargs = {**self.kwargs, **kwargs}
+        mapped_params = map_common_params(all_kwargs, self.param_mapping)
+        filtered_params = filter_params(mapped_params, self.allowed_params)
+        
+        params = {
+            "model": self.model,
+            "messages": filtered_messages,
+            **filtered_params
+        }
+        
+        if system_message:
+            params["system"] = system_message
+            
+        if max_tokens:
+            params["max_tokens"] = max_tokens
+        elif "max_tokens" not in params:
+            params["max_tokens"] = 1024
+        
+        # Anthropic APIを非同期で実行
+        response = await asyncio.to_thread(self.client.messages.create, **params)
+        return LLMResponse(content=response.content[0].text)
+
+
+class AzureOpenAIClient:
+    def __init__(self, api_key, azure_endpoint, azure_deployment, api_version, **kwargs):
+        self.client = AzureOpenAI(
+            api_key=api_key,
+            azure_endpoint=azure_endpoint,
+            api_version=api_version
+        )
+        self.async_client = openai.AsyncAzureOpenAI(
+            api_key=api_key,
+            azure_endpoint=azure_endpoint,
+            api_version=api_version
+        )
+        self.azure_deployment = azure_deployment
+        self.kwargs = kwargs
+        
+        self.allowed_params = {
+            'temperature', 'top_p', 'n', 'stream', 'stop', 
+            'max_tokens', 'presence_penalty', 'frequency_penalty',
+            'logit_bias', 'user', 'response_format', 'seed',
+            'tools', 'tool_choice', 'parallel_tool_calls'
+        }
+        
+        self.param_mapping = {}
+
+    def invoke(self, messages, max_tokens=None, **kwargs):
+        """同期版のinvoke（後方互換性のため）"""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self.ainvoke(messages, max_tokens, **kwargs))
+        finally:
+            loop.close()
+
+    async def ainvoke(self, messages, max_tokens=None, **kwargs):
+        """非同期版のinvoke"""
+        all_kwargs = {**self.kwargs, **kwargs}
+        mapped_params = map_common_params(all_kwargs, self.param_mapping)
+        filtered_params = filter_params(mapped_params, self.allowed_params)
+        
+        params = {
+            "model": self.azure_deployment,
+            "messages": messages,
+            **filtered_params
+        }
+        
+        if max_tokens:
+            params["max_tokens"] = max_tokens
+        
+        response = await self.async_client.chat.completions.create(**params)
+        return LLMResponse(content=response.choices[0].message.content)
+
+
+class CohereClient:
+    def __init__(self, api_key, model, **kwargs):
+        self.client = cohere.Client(api_key)
+        self.model = model
+        self.kwargs = kwargs
+        
+        self.allowed_params = {
+            'temperature', 'p', 'k', 'max_tokens', 'stop_sequences',
+            'frequency_penalty', 'presence_penalty', 'seed'
+        }
+        
+        self.param_mapping = {
+            'top_p': 'p',
+            'top_k': 'k',
+            'stop': 'stop_sequences',
+        }
+
+    def invoke(self, messages, max_tokens=None, **kwargs):
+        """同期版のinvoke（後方互換性のため）"""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self.ainvoke(messages, max_tokens, **kwargs))
+        finally:
+            loop.close()
+
+    async def ainvoke(self, messages, max_tokens=None, **kwargs):
+        """非同期版のinvoke"""
+        chat_history = []
+        message = ""
+        preamble = None
+        
+        for i, msg in enumerate(messages):
+            if msg["role"] == "system":
+                preamble = msg["content"]
+            elif msg["role"] == "user":
+                if i == len(messages) - 1:
+                    message = msg["content"]
+                else:
+                    chat_history.append({"role": "USER", "message": msg["content"]})
+            elif msg["role"] == "assistant":
+                chat_history.append({"role": "CHATBOT", "message": msg["content"]})
+        
+        all_kwargs = {**self.kwargs, **kwargs}
+        mapped_params = map_common_params(all_kwargs, self.param_mapping)
+        filtered_params = filter_params(mapped_params, self.allowed_params)
+        
+        params = {
+            "model": self.model,
+            "message": message,
+            "chat_history": chat_history,
+            **filtered_params
+        }
+        
+        if preamble:
+            params["preamble"] = preamble
+            
+        if max_tokens:
+            params["max_tokens"] = max_tokens
+        
+        # Cohere APIを非同期で実行
+        response = await asyncio.to_thread(self.client.chat, **params)
+        return LLMResponse(content=response.text)
 
 
 def get_llm_inference_engine():
@@ -157,10 +522,9 @@ def get_llm_inference_engine():
             # LoRAが有効な場合、LoRAアダプター名をモデル名として使用
             model_name = lora_config.get("adapter_name", model_name)
 
-        # LangChainのVLLMインテグレーションを使用
-        llm = ChatOpenAI(
-            openai_api_key="EMPTY",
-            openai_api_base=base_url,
+        llm = OpenAIClient(
+            api_key="EMPTY",
+            base_url=base_url,
             model_name=model_name,
             **cfg.generator,
         )
@@ -173,85 +537,62 @@ def get_llm_inference_engine():
         base_url = cfg.get("base_url", "http://localhost:8000/v1") #"http://localhost:8000/v1"
         model_name = cfg.model.pretrained_model_name_or_path
 
-        # LangChainのVLLMインテグレーションを使用
-        llm = ChatOpenAI(
-            openai_api_key=os.environ.get("VLLM_API_KEY", "EMPTY"),
-            openai_api_base=base_url,
+        llm = OpenAIClient(
+            api_key=os.environ.get("VLLM_API_KEY", "EMPTY"),
+            base_url=base_url,
             model_name=model_name,
             **cfg.generator,
         )
 
     elif api_type == "openai":
-        # LangChainのOpenAIインテグレーションを使用
-        llm = ChatOpenAI(
+        llm = OpenAIClient(
             api_key=os.environ["OPENAI_API_KEY"],
             model=cfg.model.pretrained_model_name_or_path,
             **cfg.generator,
         )
 
     elif api_type == "xai":
-        # LangChainのOpenAIインテグレーションを使用
-        llm = ChatOpenAI(
-            base_url="https://api.x.ai/v1",
+        llm = OpenAIClient(
             api_key=os.environ["XAI_API_KEY"],
+            base_url="https://api.x.ai/v1",
             model=cfg.model.pretrained_model_name_or_path,
             **cfg.generator,
         )
 
     elif api_type == "mistral":
-        # LangChainのMistralAIインテグレーションを使用
-        llm = ChatMistralAI(
-            model=cfg.model.pretrained_model_name_or_path, 
+        llm = MistralClient(
             api_key=os.environ["MISTRAL_API_KEY"],
+            model=cfg.model.pretrained_model_name_or_path,
             **cfg.generator,
         )
 
     elif api_type == "google":
-        # LangChainのGoogleGenerativeAIインテグレーションを使用
-        categories = [
-            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-            HarmCategory.HARM_CATEGORY_HARASSMENT,
-            HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-        ]
-        safety_settings = {cat: HarmBlockThreshold.BLOCK_NONE for cat in categories}
-        
-        llm = ChatGoogleGenerativeAI(
-            model=cfg.model.pretrained_model_name_or_path,
+        llm = GoogleClient(
             api_key=os.environ["GOOGLE_API_KEY"],
-            safety_settings=safety_settings,
+            model=cfg.model.pretrained_model_name_or_path,
             **cfg.generator,
         )
 
     elif api_type == "amazon_bedrock":
         llm = ChatBedrock(cfg=cfg)
-        # LangChainのBedrockインテグレーションを使用
-        # llm = ChatBedrock(
-        #     region_name=os.environ["AWS_DEFAULT_REGION"],
-        #     model_id=cfg.model.pretrained_model_name_or_path,
-        #     model_kwargs=cfg.generator,
-        # )
 
     elif api_type == "anthropic":
-        # LangChainのAnthropicインテグレーションを使用
-        llm = ChatAnthropic(
-            model=cfg.model.pretrained_model_name_or_path, 
+        llm = AnthropicClient(
             api_key=os.environ["ANTHROPIC_API_KEY"],
+            model=cfg.model.pretrained_model_name_or_path,
             **cfg.generator,
         )
     
     elif api_type == "upstage":
-        # LangChainのOpenAIインテグレーションを使用
-        llm = ChatOpenAI(
+        llm = OpenAIClient(
             api_key=os.environ["UPSTAGE_API_KEY"],
-            model=cfg.model.pretrained_model_name_or_path,
             base_url="https://api.upstage.ai/v1/solar",
+            model=cfg.model.pretrained_model_name_or_path,
             **cfg.generator,
         )
 
     elif api_type == "azure-openai":
-        # LangChainのAzure OpenAIインテグレーションを使用
-        llm = AzureChatOpenAI(
+        llm = AzureOpenAIClient(
             api_key=os.environ["AZURE_OPENAI_API_KEY"],
             azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
             azure_deployment=cfg.model.pretrained_model_name_or_path,
@@ -260,9 +601,9 @@ def get_llm_inference_engine():
         )
 
     elif api_type == "cohere":
-        llm = ChatCohere(
+        llm = CohereClient(
+            api_key=os.environ["COHERE_API_KEY"],
             model=cfg.model.pretrained_model_name_or_path,
-            cohere_api_key=os.environ["COHERE_API_KEY"],
             **cfg.generator,
         )
 
