@@ -17,6 +17,7 @@ from evaluator import (
     toxicity,
     jtruthfulqa,
     hle,
+    hallulens,
     aggregate,
 )
 from utils import paginate_choices
@@ -107,6 +108,10 @@ if cfg.run.jtruthfulqa:
 # hle
 if cfg.run.hle:
     hle.evaluate()
+
+# HalluLens
+if cfg.run.hallulens:
+    hallulens.evaluate()
 
 # Evaluation phase
 if cfg.run.jaster:

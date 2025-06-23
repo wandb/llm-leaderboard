@@ -18,6 +18,7 @@ run:
   jtruthfulqa: true
   hle: true
   aggregate: true
+  hallulens: true
 
 model:
   artifact_path: null
@@ -94,12 +95,16 @@ mtbench:
 
 hle:
   artifact_path: 'llm-leaderboard/hle-test/hle-ja:v1'
-  dataset_name: 'hle.jsonl'
+  dataset_name: 'hle-ja.jsonl'
   max_completion_tokens: 8192
   max_workers: 100
   judge_model: "o3-mini-2025-01-31"
-  max_samples: None
+  max_samples: 100
 
 sample_dataset:
   artifacts_path: "your artifact path here"
   # add necessary configration here
+
+hallulens:
+  artifacts_path: "wandb-japan/llm-leaderboard3/hallulens:v0"
+  judge_model: "gpt-4o"
