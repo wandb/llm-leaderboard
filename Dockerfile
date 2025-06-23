@@ -40,8 +40,8 @@ WORKDIR /workspace
 
 # Copy local code instead of cloning from repository
 # Clone the repository
-RUN git clone -b nejumi4-dev https://github.com/wandb/llm-leaderboard.git .
-#COPY . .
+#RUN git clone -b nejumi4-dev https://github.com/wandb/llm-leaderboard.git .
+COPY . /workspace
 
 # Initialize uv project and sync dependencies
 RUN uv sync
