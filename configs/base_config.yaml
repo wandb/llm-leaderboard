@@ -5,7 +5,7 @@ wandb:
 
 github_version: v3.0.0 #for recording
 
-testmode: false
+testmode: true
 inference_interval: 0 # seconds
 
 run:
@@ -13,10 +13,11 @@ run:
   jmmlu_robustness: true # if this is set as true, jaster should set as true
   mtbench: true
   jbbq: true
-  lctg: true
+  lctg: false
+  bfcl: true
   toxicity: true
   jtruthfulqa: true
-  aggregate: true
+  aggregate: True
   hallulens: true
 
 model:

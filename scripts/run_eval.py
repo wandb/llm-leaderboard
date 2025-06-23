@@ -15,11 +15,8 @@ from evaluator import (
     jaster_translation,
     toxicity,
     jtruthfulqa,
-<<<<<<< HEAD
     bfcl,
-=======
     hallulens,
->>>>>>> origin/nejumi4-dev
     aggregate,
 )
 from utils import paginate_choices
@@ -102,6 +99,10 @@ if cfg.run.toxicity:
 # JTruthfulQA
 if cfg.run.jtruthfulqa:
     jtruthfulqa.evaluate()
+
+## LCTG
+#if cfg.run.lctg:
+#    lctg.evaluate()
 
 ## BFCL
 if cfg.run.bfcl:
