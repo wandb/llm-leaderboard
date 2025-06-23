@@ -118,3 +118,8 @@ fastchat/llm_judge/data/japanese_mt_bench
 
 # vllm
 *.pid.env
+
+# Environment files with API keys
+.env
+env_files/
+*.env
