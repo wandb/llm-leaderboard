@@ -105,6 +105,23 @@ def format_message(question: Dict[str, Any], model_name: str) -> List[Dict[str, 
     ]
     return messages
 
+def format_message_for_llm_processor(question: Dict[str, Any], model_name: str) -> List[Dict[str, str]]:
+    """Format message for LLMAsyncProcessor (simplified format)"""
+    question_text = question['question']
+    
+    # For LLMAsyncProcessor, we need to include system prompt in user message if multimodal
+    if question.get('image') and question['image']:
+        # For multimodal questions, combine system prompt with question
+        combined_content = f"{SYSTEM_PROMPT}\n\n{question_text}"
+        # Note: LLMAsyncProcessor might not support image_url format
+        # This is a limitation that needs to be addressed in the processor
+        print(f"Warning: Question {question.get('id', 'unknown')} contains image but LLMAsyncProcessor may not support it")
+    else:
+        combined_content = f"{SYSTEM_PROMPT}\n\n{question_text}"
+    
+    # Return format expected by LLMAsyncProcessor
+    return [{"role": "user", "content": combined_content}]
+
 async def extract_answer(question: str, correct_answer: str, response: str, judge_model: str) -> Optional[Dict[str, Any]]:
     """Extract and judge answer using OpenAI API"""
     client = get_openai_client(async_client=True)
@@ -156,21 +173,33 @@ def calib_err(confidence: np.ndarray, correct: np.ndarray, p: str = '2', beta: i
     # source: https://github.com/hendrycks/outlier-exposure/blob/master/utils/calibration_tools.py
     if len(confidence) == 0:
         return 0.0
-        
+    
+    # データサイズに応じてbetaを自動調整
+    n = len(confidence)
+    if n < 200:
+        beta = max(10, n // 10)  # 最低10個のビンを作る
+    elif n < 1000:
+        beta = 50
+    else:
+        beta = 100
+    
+    print(f"Data size: {n}, Using beta: {beta}, Expected bins: {n // beta}")
+    
     idxs = np.argsort(confidence)
     confidence = confidence[idxs]
     correct = correct[idxs]
     
-    if len(confidence) < beta:
-        beta = max(1, len(confidence) // 2)
-    
     bins = [[i * beta, (i + 1) * beta] for i in range(len(confidence) // beta)]
-    if bins:
+    if bins:  # ビンが存在する場合のみ調整
         bins[-1] = [bins[-1][0], len(confidence)]
+    else:
+        # 全データを1つのビンとして扱う
+        bins = [[0, len(confidence)]]
 
     cerr = 0
     total_examples = len(confidence)
-    for i in range(len(bins) - 1):
+    
+    for i in range(len(bins)):
         bin_confidence = confidence[bins[i][0]:bins[i][1]]
         bin_correct = correct[bins[i][0]:bins[i][1]]
         num_examples_in_bin = len(bin_confidence)
@@ -184,8 +213,6 @@ def calib_err(confidence: np.ndarray, correct: np.ndarray, p: str = '2', beta: i
                 cerr += num_examples_in_bin / total_examples * difference
             elif p == 'infty' or p == 'infinity' or p == 'max':
                 cerr = np.maximum(cerr, difference)
-            else:
-                assert False, "p must be '1', '2', or 'infty'"
 
     if p == '2':
         cerr = np.sqrt(cerr)
@@ -300,8 +327,10 @@ def evaluate():
     
     # Use LLMAsyncProcessor for batch processing
     generator_config = {"max_tokens": max_completion_tokens}
+    
+    # Format inputs with proper system prompts
     inputs = [
-        ([{"role": "user", "content": q["question"]}], generator_config)
+        (format_message_for_llm_processor(q, cfg.model.pretrained_model_name_or_path), generator_config)
         for q in questions
     ]
     
@@ -384,7 +413,7 @@ def evaluate():
         "hle_output_table": hle_output_table,
         "hle_leaderboard_table": hle_leaderboard_table,
         "hle_accuracy": metrics["accuracy"],
-        "hle_calibration_error": metrics["calibration_error"],
+        "hle_calibration_error": metrics["calibration_error"]
     })
     
     print("HLE evaluation completed and logged to wandb")
