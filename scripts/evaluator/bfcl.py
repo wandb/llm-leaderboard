@@ -28,7 +28,7 @@ def get_default_config() -> Dict[str, Any]:
         "num_threads": 1,  # 使用するスレッド数
         "gpu_memory_utilization": 0.9,  # GPU メモリ使用率
         "backend": "vllm",  # 使用するバックエンド
-        "skip_server_setup": False,  # サーバーセットアップをスキップするかどうか
+        "skip_server_setup": True,  # サーバーセットアップをスキップするかどうか
         "local_model_path": None,  # ローカルモデルのパス
         "allow_overwrite": False,  # 既存の結果を上書きするかどうか
         "include_input_log": False,  # 推論ログに入力ログを含めるかどうか

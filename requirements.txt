@@ -132,6 +132,7 @@ opentelemetry-semantic-conventions-ai==0.4.9
 orjson==3.10.18
 outlines==0.1.11
 outlines-core==0.1.26
+overrides>=7.7.0
 packaging==24.2
 pandas==2.3.0
 partial-json-parser==0.2.1.1.post5
