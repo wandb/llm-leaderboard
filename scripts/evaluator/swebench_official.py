@@ -28,6 +28,20 @@ import re
 
 hunk_header_re = re.compile(r"^@@ -(\d+),(\d+) \+(\d+),(\d+) @@")
 
+# Patch extraction patterns
+PATCH_PATTERN = re.compile(
+    r"(^diff --git.*?(?=^diff --git|^--- |^\+\+\+ |^@@ |$))", 
+    re.MULTILINE | re.DOTALL
+)
+PATCH_FILE_PATTERN = re.compile(
+    r"^diff --git a/(.*?) b/(.*?)$", 
+    re.MULTILINE
+)
+PATCH_HUNK_PATTERN = re.compile(
+    r"^@@ -(\d+),(\d+) \+(\d+),(\d+) @@(.*?)(?=^@@ |^diff |^--- |^\+\+\+ |$)", 
+    re.MULTILINE | re.DOTALL
+)
+
 def expand_hunk_headers(patch: str, ctx: int = MIN_CTX) -> str:
     """Increase pre_len/post_len by ctx*2 in hunk headers to allow fuzzy apply."""
     new_lines = []
@@ -318,13 +332,6 @@ def generate_predictions(samples: List[Dict], llm, generator_config, output_file
 
 def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4) -> Dict:
     """公式SWE-bench評価実行"""
-    import sys
-    
-    # SWE-benchパッケージのパスを追加
-    swebench_path = Path(__file__).parent.parent.parent / "SWE-bench"
-    if str(swebench_path) not in sys.path:
-        sys.path.insert(0, str(swebench_path))
-    
     from swebench.harness.run_evaluation import main as run_evaluation
     
     # run_id生成
@@ -563,12 +570,15 @@ def _fix_split_headers(patch: str) -> str:
     return "\n".join(fixed_lines) 
 
 # --- extend patch apply commands to allow higher fuzz ---
-import importlib
-run_eval_mod = importlib.import_module("swebench.harness.run_evaluation")
-extra_cmds = [
-    "patch --batch --fuzz=10 -p1 -i",
-    "patch --batch --fuzz=20 -p1 -i",
-]
-for cmd in extra_cmds:
-    if cmd not in run_eval_mod.GIT_APPLY_CMDS:
-        run_eval_mod.GIT_APPLY_CMDS.append(cmd) 
+try:
+    from swebench.harness.run_evaluation import GIT_APPLY_CMDS
+    extra_cmds = [
+        "patch --batch --fuzz=10 -p1 -i",
+        "patch --batch --fuzz=20 -p1 -i",
+    ]
+    for cmd in extra_cmds:
+        if cmd not in GIT_APPLY_CMDS:
+            GIT_APPLY_CMDS.append(cmd)
+except ImportError:
+    # SWE-benchがインストールされていない場合は警告のみ
+    logger.warning("Failed to extend patch commands: swebench not installed") 
