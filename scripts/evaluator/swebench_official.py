@@ -314,7 +314,7 @@ def generate_predictions(samples: List[Dict], llm, generator_config, output_file
             pred_data = {
                 "instance_id": instance_id,
                 "model_patch": final_patch_to_save,
-                "model_name_or_path": "gpt-4.1-2025-04-14"
+                "model_name_or_path": model_name  # 設定から取得したモデル名を使用
             }
             
             with open(output_file, 'a', encoding='utf-8') as f:
