@@ -10,17 +10,22 @@ if [ -n "$DOCKER_GID" ] && [ -S /var/run/docker.sock ]; then
     # dockerグループが存在しない場合は作成
     if ! getent group docker > /dev/null 2>&1; then
         echo "Creating docker group with GID: $DOCKER_GID"
-        groupadd -g $DOCKER_GID docker
+        groupadd -g $DOCKER_GID docker || true
     fi
     
-    # 現在のユーザーをdockerグループに追加
-    if [ -n "$USER" ] && [ "$USER" != "root" ]; then
-        echo "Adding user $USER to docker group"
-        usermod -aG docker $USER || true
+    # 現在のユーザーをdockerグループに追加（ルート権限が必要な場合はスキップ）
+    if [ -w /etc/passwd ]; then
+        if [ -n "$USER" ] && [ "$USER" != "root" ]; then
+            echo "Adding user $USER to docker group"
+            usermod -aG docker $USER || true
+        fi
+        
+        # rootユーザーでもdockerグループに追加（念のため）
+        usermod -aG docker root || true
+    else
+        echo "Warning: Cannot modify user groups (read-only /etc/passwd)"
+        echo "Running with current permissions"
     fi
-    
-    # rootユーザーでもdockerグループに追加（念のため）
-    usermod -aG docker root || true
 fi
 
 # uvのPATHを確実に通す
