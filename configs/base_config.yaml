@@ -18,6 +18,7 @@ run:
   jtruthfulqa: true
   swebench: false  # SWE-Bench Verified evaluation
   aggregate: true
+  hallulens: true
 
 model:
   artifact_path: null
@@ -103,3 +104,7 @@ mtbench:
 sample_dataset:
   artifacts_path: "your artifact path here"
   # add necessary configration here
+
+hallulens:
+  artifacts_path: "wandb-japan/llm-leaderboard3/hallulens:v0"
+  judge_model: "gpt-4o"

@@ -13,10 +13,25 @@ import socket
 from pathlib import Path
 import logging
 import json
-
 from utils import get_tokenizer_config
 
+disable_logger_apis =[
+    "httpx",
+    "openai",
+    "openai._base_client", 
+    "openai._client",
+    "anthropic",
+    "anthropic._base_client",
+    "mistralai", 
+    "google.generativeai",
+    "cohere",
+    "boto3",
+    "botocore"
+]
+    
 logging.basicConfig(level=logging.INFO)
+for logger_name in disable_logger_apis:
+    logging.getLogger(logger_name).setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 def find_and_kill_process_on_port(port):
@@ -179,11 +194,15 @@ def start_vllm_server():
                 "--uvicorn-log-level", "warning",
                 "--disable-log-stats",
                 "--disable-log-requests",
-                "--quantization", str(cfg.get("quantization", None)),
                 "--revision", str(cfg.get("revision", 'main')),
                 "--gpu-memory-utilization", str(cfg.get("gpu_memory_utilization", 0.9)),
                 "--port", str(port),
             ]
+
+            # quantizationが指定されている場合のみ追加
+            quantization = cfg.get("quantization", None)
+            if quantization is not None and str(quantization).lower() != 'none':
+                command.extend(["--quantization", str(quantization)])
 
             # LoRAの設定を追加
             lora_config = cfg.model.get("lora", None)

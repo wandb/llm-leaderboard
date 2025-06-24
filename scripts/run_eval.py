@@ -16,6 +16,7 @@ from evaluator import (
     jaster_translation,
     toxicity,
     jtruthfulqa,
+    hallulens,
     aggregate,
     swebench,
 )
@@ -112,6 +113,10 @@ if cfg.run.swebench:
         swebench_official.evaluate()
     else:
         swebench.evaluate()
+
+# HalluLens
+if cfg.run.hallulens:
+    hallulens.evaluate()
 
 # Evaluation phase
 if cfg.run.jaster:

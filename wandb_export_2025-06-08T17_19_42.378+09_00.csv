@@ -1,0 +1,143 @@
+"instance_id","repo","problem_statement","generated_patch","is_resolved","is_completed","evaluation_status","evaluation_method"
+"astropy__astropy-12907","astropy/astropy","Modeling's `separability_matrix` does not compute separability correctly for nested CompoundModels
+Consider the following model:
+
+```python
+from astropy.modeling import models as m
+from astropy.modeling.separable import separability_matrix
+
+cm = m.Linear1D(10) & m.Linear1D(5)
+```
+
+It's separability matrix as you might expect is a diagonal:
+
+```python
+>>> separability_matrix(cm)
+array([[ True, False],
+       [False,  True]])
+```
+
+If I make the model more complex:
+```python
+>>> ...","diff --git a/astropy/modeling/separable.py b/astropy/modeling/separable.py
+index 8e2e1a2..c2e4e0d 100644
+--- a/astropy/modeling/separable.py
++++ b/astropy/modeling/separable.py
+@@ -16,7 +16,28 @@
+ def separability_matrix(model):
+-    """"""
+-    Returns a boolean matrix indicating which outputs depend on which inputs.
+-    """"""
+-    from .core import CompoundModel
+-    if not isinstance(model, CompoundModel):
+-        # For a single model, all outputs depend on all inputs unless the model is separable
+-        if hasattr(model, 'inputs') and hasattr(model, 'outputs'):
+-            nin = len(model.inputs)
+-            nout = len(model.outputs)
+-            if hasattr(model, 'separable'):
+-                if model.separable:
+-                    return np.eye(nout, nin, dtype=bool)
+-            return np.ones((nout, nin), dtype=bool)
+-        else:
+-            raise ValueError(""Model must have 'inputs' and 'outputs' attributes."")
+-    else:
+-        # CompoundModel
+-        # Recursively co...","false","false","failed","official_swebench"
+"astropy__astropy-13033","astropy/astropy","TimeSeries: misleading exception when required column check fails.
+<!-- This comments are hidden when you submit the issue,
+so you do not need to remove them! -->
+
+<!-- Please be sure to check out our contributing guidelines,
+https://github.com/astropy/astropy/blob/main/CONTRIBUTING.md .
+Please be sure to check out our code of conduct,
+https://github.com/astropy/astropy/blob/main/CODE_OF_CONDUCT.md . -->
+
+<!-- Please have a search on our GitHub repository to see if a similar
+issue has a...","diff --git a/astropy/timeseries/core.py b/astropy/timeseries/core.py
+index 7e8b0e2..b6e2e2b 100644
+--- a/astropy/timeseries/core.py
++++ b/astropy/timeseries/core.py
+@@ -77,9 +77,13 @@
+         # Check that the required columns are present and in the right order
+         required = self._required_columns
+         if self.colnames[:len(required)] != required:
+-            raise ValueError(
+-                f""TimeSeries object is invalid - expected 'time' as the first columns but found ""
+-                f""'{self.colnames[0]}'""
+-            )
++            raise ValueError(
++                f""TimeSeries object is invalid - required {required!r} as the first columns but found ""
++                f""{self.colnames[:len(required)]!r}""
++            )
+ 
+         # Check that the time column is a Time object
+         if not isinstance(self['time'], Time):
+             raise ValueError(""TimeSeries requires the first column to be a Time object"")","false","false","failed","official_swebench"
+"astropy__astropy-13236","astropy/astropy","Consider removing auto-transform of structured column into NdarrayMixin
+<!-- This comments are hidden when you submit the issue,
+so you do not need to remove them! -->
+
+<!-- Please be sure to check out our contributing guidelines,
+https://github.com/astropy/astropy/blob/main/CONTRIBUTING.md .
+Please be sure to check out our code of conduct,
+https://github.com/astropy/astropy/blob/main/CODE_OF_CONDUCT.md . -->
+
+<!-- Please have a search on our GitHub repository to see if a similar
+issue ...","diff --git a/astropy/table/table.py b/astropy/table/table.py
+index 6e3e2e2..b1e6e2a 100644
+--- a/astropy/table/table.py
++++ b/astropy/table/table.py
+@@ -1747,13 +1747,6 @@ class Table(RowMixin, metaclass=TableMeta):
+         # Structured ndarray gets viewed as a mixin unless already a valid
+         # mixin class
+-        if (not isinstance(data, Column) and not data_is_mixin
+-                and isinstance(data, np.ndarray) and len(data.dtype) > 1):
+-            data = data.view(NdarrayMixin)
+-            data_is_mixin = True
+-
+         if not data_is_mixin:
+             data = self._convert_to_column(data, name, copy=copy)
+ 
+diff --git a/astropy/table/tests/test_table.py b/astropy/table/tests/test_table.py
+index 6b5e2e1..e2b5e2a 100644
+--- a/astropy/table/tests/test_table.py
++++ b/astropy/table/tests/test_table.py
+@@ -3500,6 +3500,18 @@ def test_add_structured_array_column():
+     arr = np.array([(1, 2.0), (3, 4.0)], dtype=[('a', int), ('b', float)])
+     t = Table()
+     t['x'] = ar...","false","false","failed","official_swebench"
+"astropy__astropy-13398","astropy/astropy","A direct approach to ITRS to Observed transformations that stays within the ITRS.
+<!-- This comments are hidden when you submit the issue,
+so you do not need to remove them! -->
+
+<!-- Please be sure to check out our contributing guidelines,
+https://github.com/astropy/astropy/blob/main/CONTRIBUTING.md .
+Please be sure to check out our code of conduct,
+https://github.com/astropy/astropy/blob/main/CODE_OF_CONDUCT.md . -->
+
+<!-- Please have a search on our GitHub repository to see if a simil...","diff --git a/astropy/coordinates/builtin_frames/itrs_observed.py b/astropy/coordinates/builtin_frames/itrs_observed.py
+new file mode 100644
+index 0000000..e9b1f7b
+--- /dev/null
++++ b/astropy/coordinates/builtin_frames/itrs_observed.py
+@@ -0,0 +1,88 @@
++import numpy as np
++from astropy import units as u
++from astropy.coordinates.matrix_utilities import rotation_matrix, matrix_transpose
++from astropy.coordinates.baseframe import frame_transform_graph
++from astropy.coordinates.transformations import FunctionTransformWithFiniteDifference
++from .altaz import AltAz
++from .hadec import HADec
++from .itrs import ITRS
++from .utils import PIOVER2
++
++def itrs_to_observed_mat(observed_frame):
++    lon, lat, height = observed_frame.location.to_geodetic('WGS84')
++    elong = lon.to_value(u.radian)
++
++    if isinstance(observed_frame, AltAz):
++        # form ITRS to AltAz matrix
++        elat = lat.to_value(u.radian)
++        # AltAz frame is left handed
++        minus_x = np.eye(3)
++        minus_x[0...","false","false","failed","official_swebench"
