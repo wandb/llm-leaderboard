@@ -66,14 +66,15 @@ services:
       
       # Docker socket mount for SWE-bench evaluation
       - /var/run/docker.sock:/var/run/docker.sock
-      # Docker group permissions
-      - /etc/group:/etc/group:ro
-      - /etc/passwd:/etc/passwd:ro
+      
+      # ローカルのスクリプトをマウント（開発用）
+      - ./scripts:/workspace/scripts:ro
 
     command: >
+      uv run scripts/run_eval.py
       -c ${EVAL_CONFIG_PATH}
 
 networks:
   default:
     name: llm-stack-network
-    driver: bridge
+    external: true

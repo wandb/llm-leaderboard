@@ -46,8 +46,10 @@ RUN git clone -b nejumi4-dev https://github.com/wandb/llm-leaderboard.git .
 # Initialize uv project and sync dependencies
 RUN uv sync
 
-# SWE-benchパッケージをインストール
-RUN uv pip install swebench
+# SWE-benchを公式リポジトリからインストール（ソースコードは保持）
+RUN git clone https://github.com/princeton-nlp/SWE-bench.git /opt/SWE-bench && \
+    cd /workspace && \
+    uv pip install -e /opt/SWE-bench
 
 RUN echo 'source /workspace/.venv/bin/activate' >> ~/.bashrc
 
