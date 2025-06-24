@@ -264,7 +264,7 @@ def build_prompt(instance: Dict) -> str:
     # フォールバック
     return format_problem_statement(instance)
 
-def generate_predictions(samples: List[Dict], llm, generator_config, output_file: Path):
+def generate_predictions(samples: List[Dict], llm, generator_config, output_file: Path, model_name: str):
     """パッチ生成とJSONL保存"""
     print(f"Generating patches for {len(samples)} samples...")
     
@@ -425,7 +425,7 @@ def evaluate():
             generator_config = {"max_tokens": max_tokens}
         
         # パッチ生成
-        generate_predictions(samples, llm, generator_config, predictions_file)
+        generate_predictions(samples, llm, generator_config, predictions_file, model_name)
         
         # 公式評価実行
         max_workers = cfg.swebench.get("max_workers", 4)

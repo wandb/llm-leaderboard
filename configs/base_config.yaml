@@ -82,7 +82,7 @@ mtbench:
   question_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_question:v0' # if testmode is true, small dataset will be used
   question_artifacts_path_test: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_question_small_for_test:v0'
   referenceanswer_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_referenceanswer:v0' # if testmode is true, small dataset will be used
-  referenceanswer_artifacts_path_test: 'llm-leaderboard/nejumi-leaderboard4mtbench_ja_referenceanswer_small_for_test:v0'
+  referenceanswer_artifacts_path_test: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_referenceanswer_small_for_test:v0'
   judge_prompt_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_prompt:v0' 
   bench_name: 'japanese_mt_bench'
   model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
