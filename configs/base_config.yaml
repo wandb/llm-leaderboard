@@ -1,6 +1,6 @@
 wandb:
-  entity: "wandb-japan"
-  project: "llm-leaderboard3"
+  entity: "llm-leaderboard"
+  project: "nejumi-leaderboard4"
   #run: please set up run name in a model-base config
 
 github_version: v3.0.0 #for recording
@@ -16,8 +16,9 @@ run:
   lctg: true
   toxicity: true
   jtruthfulqa: true
-  aggregate: true
+  swebench: true
   hallulens: true
+  aggregate: true
 
 model:
   artifact_path: null
@@ -38,27 +39,35 @@ num_few_shots: 2
 
 jaster:
   message_intro: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。"
-  artifacts_path: "wandb-japan/llm-leaderboard3/jaster:v6"
+  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/jaster:v0"
   dataset_dir: "jaster"
 
 lctg:
-  artifacts_path: "wandb-japan/llm-leaderboard3/lctg:v0"
+  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/lctg:v0"
   dataset_dir: "lctg"
 
 jbbq:
-  artifacts_path: 'wandb-japan/llm-leaderboard3-private/jbbq:v2'
+  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4-private/jbbq:v0'
   dataset_dir: 'jbbq'
   language: 'ja'
 
 toxicity:
-  artifact_path: 'wandb-japan/toxicity-dataset-private/toxicity_dataset_full:v3'
-  judge_prompts_path: 'wandb-japan/toxicity-dataset-private/toxicity_judge_prompts:v1'
+  artifact_path: 'llm-leaderboard/nejumi-leaderboard4-private/toxicity_dataset_full:v0'
+  judge_prompts_path: 'llm-leaderboard/nejumi-leaderboard4-private/toxicity_judge_prompts:v0'
   max_workers: 5
   judge_model: 'gpt-4o-2024-05-13'
 
 jtruthfulqa:
-  artifact_path: 'wandb-japan/llm-leaderboard3/jtruthfulqa_dataset:v1'  # JTruthfulQAデータセットのアーティファクトパス
+  artifact_path: 'llm-leaderboard/nejumi-leaderboard4/jtruthfulqa_dataset:v0'  # JTruthfulQAデータセットのアーティファクトパス
   roberta_model_name: 'nlp-waseda/roberta_jtruthfulqa'  # 評価に使用するRoBERTaモデル名
+
+swebench:
+  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/swebench_verified_official:v0'  # SWE-Bench Verifiedデータセットのアーティファクトパス
+  dataset_dir: "swebench_verified_official"
+  max_samples: 100  # 全500件は時間がかかるため制限（フルセットの場合は500を指定）
+  max_tokens: 2048  # SWE-Benchのパッチ生成に必要なトークン数
+  max_workers: 4  # 並列実行ワーカー数
+  evaluation_method: "official"  # "official" or "docker" - 公式パッケージまたは独自Docker実装
 
 mtbench:
   temperature_override:
@@ -70,11 +79,11 @@ mtbench:
     reasoning: 0.0
     stem: 0.1
     humanities": 0.1
-  question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_question:v4' # if testmode is true, small dataset will be used
-  question_artifacts_path_test: 'wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v5'
-  referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v2' # if testmode is true, small dataset will be used
-  referenceanswer_artifacts_path_test: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v2'
-  judge_prompt_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1' 
+  question_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_question:v0' # if testmode is true, small dataset will be used
+  question_artifacts_path_test: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_question_small_for_test:v0'
+  referenceanswer_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_referenceanswer:v0' # if testmode is true, small dataset will be used
+  referenceanswer_artifacts_path_test: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_referenceanswer_small_for_test:v0'
+  judge_prompt_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_prompt:v0' 
   bench_name: 'japanese_mt_bench'
   model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
   question_begin: null 
@@ -97,5 +106,5 @@ sample_dataset:
   # add necessary configration here
 
 hallulens:
-  artifacts_path: "wandb-japan/llm-leaderboard3/hallulens:v0"
+  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/hallulens:v0"
   judge_model: "gpt-4o"
