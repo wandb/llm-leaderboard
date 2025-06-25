@@ -1,6 +1,6 @@
 wandb:
   entity: "llm-leaderboard"
-  project: "nejumi-leaderboard4"
+  project: "nejumi-leaderboard4-dev"
   #run: please set up run name in a model-base config
 
 github_version: v3.0.0 #for recording
@@ -17,7 +17,7 @@ run:
   jtruthfulqa: true
   swebench: true
   hallulens: true
-  aggregate: true
+  aggregate: false
 
 model:
   artifact_path: null
