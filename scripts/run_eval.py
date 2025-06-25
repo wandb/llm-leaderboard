@@ -11,7 +11,6 @@ from blend_run import blend_run
 from evaluator import (
     jaster,
     jbbq,
-    lctg,
     mtbench,
     jaster_translation,
     toxicity,
@@ -93,10 +92,6 @@ if cfg.run.mtbench:
 if cfg.run.jbbq:
     jbbq.evaluate()
 
-# lctg-bench
-if cfg.run.lctg:
-    lctg.evaluate()
-
 # toxicity
 if cfg.run.toxicity:
     toxicity.evaluate()
@@ -128,6 +123,6 @@ if cfg.run.jaster:
     shutdown_vllm_server()
     jaster_translation.evaluate()
 
-# 6. Aggregation
+# Aggregation
 if cfg.run.aggregate:
     aggregate.evaluate()
