@@ -1,11 +1,11 @@
 wandb:
   entity: "llm-leaderboard"
-  project: "nejumi-leaderboard4"
+  project: "nejumi-leaderboard4-dev"
   #run: please set up run name in a model-base config
 
 github_version: v3.0.0 #for recording
 
-testmode: false
+testmode: true
 inference_interval: 0 # seconds
 
 run:
@@ -13,12 +13,11 @@ run:
   jmmlu_robustness: true # if this is set as true, jaster should set as true
   mtbench: true
   jbbq: true
-  lctg: true
   toxicity: true
   jtruthfulqa: true
   swebench: true
   hallulens: true
-  aggregate: true
+  aggregate: false
 
 model:
   artifact_path: null
@@ -42,9 +41,6 @@ jaster:
   artifacts_path: "llm-leaderboard/nejumi-leaderboard4/jaster:v0"
   dataset_dir: "jaster"
 
-lctg:
-  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/lctg:v0"
-  dataset_dir: "lctg"
 
 jbbq:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4-private/jbbq:v0'

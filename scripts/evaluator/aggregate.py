@@ -13,12 +13,11 @@ def radar_contents(leaderboard_dict, categories: list[str]) -> list[list[str, fl
     return ret
 
 def update_flag(cfg, blend_cfg):
-    mtbench_flag = jbbq_flag = lctg_flag = toxicity_flag = jtruthfulqa_flag = jaster_flag = swebench_flag = GLP_flag = ALT_flag = False
+    mtbench_flag = jbbq_flag  = toxicity_flag = jtruthfulqa_flag = jaster_flag = GLP_flag = ALT_flag = False
 
     if hasattr(cfg, 'run'):
         mtbench_flag = cfg.run.mtbench
         jbbq_flag = cfg.run.jbbq
-        lctg_flag = cfg.run.lctg
         toxicity_flag = cfg.run.toxicity
         jtruthfulqa_flag = cfg.run.jtruthfulqa
         jaster_flag = cfg.run.jaster
@@ -33,8 +32,6 @@ def update_flag(cfg, blend_cfg):
                     mtbench_flag = True
                 elif "jbbq" in dataset:
                     jbbq_flag = True
-                elif "lctg" in dataset:
-                    lctg_flag = True
                 elif "toxicity" in dataset:
                     toxicity_flag = True
                 elif "jtruthfulqa" in dataset:
@@ -46,7 +43,7 @@ def update_flag(cfg, blend_cfg):
 
     if mtbench_flag and jaster_flag:
         GLP_flag = True
-    if jbbq_flag and lctg_flag and toxicity_flag and jtruthfulqa_flag:
+    if jbbq_flag and toxicity_flag and jtruthfulqa_flag:
         ALT_flag = True
     return GLP_flag, ALT_flag, swebench_flag
 
@@ -63,7 +60,7 @@ def evaluate():
     # Initialize empty variables
     if GLP_flag or ALT_flag:
         jaster_0shot = jaster_fewshots = jmmlu_robust_fewshots = jaster_control_0shot = None
-        jaster_control_fewshots = lctg_overall = jbbq_fewshots = toxicity = mtbench = None
+        jaster_control_fewshots = jbbq_fewshots = toxicity = mtbench = None
         jaster_0shot = read_wandb_table(table_name=f"jaster_0shot_leaderboard_table", run=run)
         jaster_fewshots = read_wandb_table(table_name=f"jaster_{num_few_shots}shot_leaderboard_table", run=run)
 
@@ -80,8 +77,6 @@ def evaluate():
         mtbench = read_wandb_table(table_name=f"mtbench_leaderboard_table", run=run)
     
     if ALT_flag:
-        lctg_overall = read_wandb_table(table_name=f"lctg_overall_leaderboard_table", run=run)
-
         jmmlu_robust_fewshots = read_wandb_table(table_name=f"jmmlu_robust_{num_few_shots}shot_leaderboard_table", run=run)
         jaster_control_0shot = read_wandb_table(table_name=f"jaster_control_0shot_leaderboard_table", run=run)
         jaster_control_fewshots = read_wandb_table(table_name=f"jaster_control_{num_few_shots}shot_leaderboard_table", run=run)
@@ -121,10 +116,9 @@ def evaluate():
         elif other == "control":
             data = {
                 "model_name": cfg.model.pretrained_model_name_or_path,
-                "AVG": np.mean([np.mean([jaster_control_0shot["AVG"][0], jaster_control_fewshots["AVG"][0]]), lctg_overall["AVG_Total_ctg"][0]]),
+                "AVG": np.mean([jaster_control_0shot["AVG"][0], jaster_control_fewshots["AVG"][0]]),
                 "jaster_control_0shot":jaster_control_0shot["AVG"][0],
                 "jaster_control_2shot":jaster_control_fewshots["AVG"][0],
-                "lctg_avg_score": lctg_overall["AVG_Total_ctg"][0],
             }
 
         elif other == "toxicity":
@@ -222,7 +216,7 @@ def evaluate():
         first_cols.append("汎用的言語性能(GLP)_AVG")
 
     if ALT_flag:
-        leaderboard_dict["ALT_制御性"] = np.mean([np.mean([jaster_control_0shot["AVG"][0], jaster_control_fewshots["AVG"][0]]), lctg_overall["AVG_Total_ctg"][0]])
+        leaderboard_dict["ALT_制御性"] = np.mean([jaster_control_0shot["AVG"][0], jaster_control_fewshots["AVG"][0]])
         create_subcategory_table("controllability", [], [], "control")
         leaderboard_dict["ALT_倫理・道徳"] = jaster_fewshots["commonsensemoralja"][0] # use only fewshots result
         create_subcategory_table("ethics", ["commonsensemoralja"], [])
@@ -249,9 +243,6 @@ def evaluate():
     
     if GLP_flag:
         leaderboard_dict["AVG_mtbench"] = mtbench["AVG_mtbench"][0]
-    
-    if ALT_flag:
-        leaderboard_dict["AVG_lctg"] = lctg_overall["AVG_Total_ctg"][0]
 
     # SWE-Bench specific metrics
     if swebench_flag:

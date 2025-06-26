@@ -41,7 +41,8 @@ ENV LC_ALL=ja_JP.UTF-8
 WORKDIR /workspace
 
 # Clone the repository
-RUN git clone -b nejumi4-dev https://github.com/wandb/llm-leaderboard.git .
+#RUN git clone -b nejumi4-dev https://github.com/wandb/llm-leaderboard.git .
+COPY . .
 
 # Initialize uv project and sync dependencies
 RUN uv sync
