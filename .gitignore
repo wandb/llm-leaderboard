@@ -1,4 +1,4 @@
-# Byte-compiled / optimized / DLL files
+１# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
@@ -82,6 +82,8 @@ celerybeat-schedule
 *.sage.py
 
 # Environments
+.env
+*.env
 .venv
 env/
 venv/
@@ -117,9 +119,4 @@ logs/
 fastchat/llm_judge/data/japanese_mt_bench
 
 # vllm
-*.pid.env
-
-# Environment files with API keys
-.env
-env_files/
-*.env
+*.pid
