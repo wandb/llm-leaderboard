@@ -11,7 +11,6 @@ from blend_run import blend_run
 from evaluator import (
     jaster,
     jbbq,
-    lctg,
     mtbench,
     jaster_translation,
     toxicity,
@@ -19,6 +18,7 @@ from evaluator import (
     hle,
     hallulens,
     aggregate,
+    swebench,
 )
 from utils import paginate_choices
 
@@ -93,10 +93,6 @@ if cfg.run.mtbench:
 if cfg.run.jbbq:
     jbbq.evaluate()
 
-# lctg-bench
-if cfg.run.lctg:
-    lctg.evaluate()
-
 # toxicity
 if cfg.run.toxicity:
     toxicity.evaluate()
@@ -108,6 +104,15 @@ if cfg.run.jtruthfulqa:
 # hle
 if cfg.run.hle:
     hle.evaluate()
+
+# SWE-Bench Verified evaluation
+if cfg.run.swebench:
+    evaluation_method = cfg.swebench.get("evaluation_method", "official")
+    if evaluation_method == "official":
+        from evaluator import swebench_official
+        swebench_official.evaluate()
+    else:
+        swebench.evaluate()
 
 # HalluLens
 if cfg.run.hallulens:
@@ -123,6 +128,6 @@ if cfg.run.jaster:
     shutdown_vllm_server()
     jaster_translation.evaluate()
 
-# 6. Aggregation
+# Aggregation
 if cfg.run.aggregate:
     aggregate.evaluate()

@@ -23,6 +23,8 @@ RUN apt-get update && apt-get install -y \
     zlib1g-dev \
     libprotobuf-dev \
     protobuf-compiler \
+    # Docker CLIをインストール（SWE-bench評価用）
+    docker.io \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure Japanese locale properly
@@ -39,10 +41,17 @@ ENV LC_ALL=ja_JP.UTF-8
 WORKDIR /workspace
 
 # Clone the repository
-RUN git clone -b nejumi4-dev https://github.com/wandb/llm-leaderboard.git .
+#RUN git clone -b nejumi4-dev https://github.com/wandb/llm-leaderboard.git .
+COPY . .
 
 # Initialize uv project and sync dependencies
 RUN uv sync
+
+# SWE-benchを公式リポジトリからインストール（ソースコードは保持）
+RUN git clone https://github.com/princeton-nlp/SWE-bench.git /opt/SWE-bench && \
+    cd /workspace && \
+    uv pip install -e /opt/SWE-bench
+
 RUN echo 'source /workspace/.venv/bin/activate' >> ~/.bashrc
 
 # Juman++
@@ -56,8 +65,18 @@ ENV PATH="/usr/local/bin:${PATH}" \
 # Set permissions for scripts (if they exist)
 RUN chmod +x scripts/*.py 2>/dev/null || true
 
+# Copy and set up entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Dockerグループが存在する場合のための準備（実行時に適切なGIDで動作する）
+# 注意: 実際のdockerグループGIDはホストに依存するため、実行時に調整が必要
+
 # Expose port (if needed for web interface)
 EXPOSE 8080
 
+# Set entrypoint for docker permissions
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+
 # Default command
-ENTRYPOINT ["uv", "run", "scripts/run_eval.py"]
+CMD ["uv", "run", "scripts/run_eval.py"]
