@@ -109,17 +109,21 @@ def format_message_for_llm_processor(question: Dict[str, Any], model_name: str) 
     """Format message for LLMAsyncProcessor (simplified format)"""
     question_text = question['question']
     
-    # For LLMAsyncProcessor, we need to include system prompt in user message if multimodal
-    if question.get('image') and question['image']:
-        # For multimodal questions, combine system prompt with question
+    # 画像存在チェック
+    try:
+        image_value = question.get('image', '')
+        # 文字列に変換してから判定
+        image_str = str(image_value) if image_value is not None else ''
+        has_image = bool(image_str.strip() and image_str.lower() not in ['nan', 'none', ''])
+    except:
+        has_image = False
+    
+    if has_image:
         combined_content = f"{SYSTEM_PROMPT}\n\n{question_text}"
-        # Note: LLMAsyncProcessor might not support image_url format
-        # This is a limitation that needs to be addressed in the processor
         print(f"Warning: Question {question.get('id', 'unknown')} contains image but LLMAsyncProcessor may not support it")
     else:
         combined_content = f"{SYSTEM_PROMPT}\n\n{question_text}"
     
-    # Return format expected by LLMAsyncProcessor
     return [{"role": "user", "content": combined_content}]
 
 async def extract_answer(question: str, correct_answer: str, response: str, judge_model: str) -> Optional[Dict[str, Any]]:
@@ -293,7 +297,7 @@ def evaluate():
     dataset_name = cfg.hle.get("dataset_name", "hle.jsonl")
     
     if cfg.testmode:
-        max_samples = 10
+        max_samples = 50
     
     print(f"Starting HLE evaluation with max_completion_tokens={max_completion_tokens}, max_workers={max_workers}")
     print(f"Using judge model: {judge_model}")
