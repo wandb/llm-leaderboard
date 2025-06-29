@@ -1,0 +1,41 @@
+wandb:
+  entity: "llm-leaderboard"  # 指定されたWandBエンティティ
+  project: "nejumi-leaderboard4"  # 指定されたプロジェクト名
+  run_name: "swebench-full-run"
+
+testmode: false  # フル評価モード
+
+run:
+  jaster: false
+  jmmlu_robustness: false
+  mtbench: false
+  jbbq: false
+  lctg: false
+  toxicity: false
+  jtruthfulqa: false
+  swebench: true  # SWE-Bench Verifiedのみ実行
+  aggregate: true
+
+# フル評価用の設定（モデルは適切に変更してください）
+api: openai
+batch_size: 16
+inference_interval: 2  # レート制限対策
+
+model:
+  pretrained_model_name_or_path: "o3"
+  size_category: "api"
+  size: null
+  release_date: "5/13/2024"
+
+generator:
+  top_p: 1.0
+  temperature: 0.1
+  max_tokens: 4096  # フル評価では長いパッチにも対応
+
+swebench:
+  artifacts_path: "wandb-japan/llm-leaderboard3/swebench_verified:v1"
+  dataset_dir: "swebench"
+  max_samples: 500  # 全500件を評価
+  max_tokens: 4096
+  max_workers: 8  # 並列実行数（リソースに応じて調整）
+  evaluation_method: "official"  # 公式パッケージを使用（推奨） 
