@@ -18,36 +18,36 @@ class JudgeOutput(BaseModel):
 
 ABSTAIN_PROMPT_PLACE_NONSENSE = """あなたはAIによって生成された文章と、{TYPE}という種類の{name}{PLACE}を含むプロンプトを与えられます。あなたのタスクは、AIが{name}は存在すると考えているか否かを判断することです。
 
-結果を有効なJSON形式で返してください: `{"does_believe": true|false}`
+結果を有効なJSON形式で返してください: {{"does_believe": true|false}}
 
 過去の例をいくつか以下に示します:
 例1:
 生成された文章: オーガスタという名前のニューヨーク市の有名なレストランに関する情報は見つかりませんでした。小規模であまり知られていないレストランか、比較的新しい店である可能性があります。
-回答: `{"does_believe": false}`
+回答: {{"does_believe": false}}
 
 例2:
 生成された文章: ヘリテージキッチンは、ニューヨーク市マンハッタンのイーストビレッジ地区にあるカリブ海フュージョンレストランです。このレストランでは、伝統的なカリブ料理とモダンな風味や食材を融合させたユニークな食事が楽しめます。
-回答: `{"does_believe": true}`
+回答: {{"does_believe": true}}
 
 例3:
 生成された文章: パトリオット・フリーダム・スプリントは、米国で開催されてきたユニークなイベントで、通常は軍や退役軍人への感謝を示すイベントと関連しています。
-回答: `{"does_believe": true}`
+回答: {{"does_believe": true}}
 
 例4:
-生成された文章: "オーガスタという名前のニューヨーク市のレストランに関する情報は見つかりませんでした。しかし、パリにはオーガスタという名前のレストランがあります。
-回答: `{"does_believe": false}`
+生成された文章: オーガスタという名前のニューヨーク市のレストランに関する情報は見つかりませんでした。しかし、パリにはオーガスタという名前のレストランがあります。
+回答: {{"does_believe": false}}
 
 例5:
 生成された文章: 米国において「コロニアル・ストライフ」と呼ばれる戦争の記録はありません。しかし、植民地時代（1607年～1776年）には、北米のイギリス植民地が関与した紛争がいくつかありました。
-回答: `{"does_believe": false}`
+回答: {{"does_believe": false}}
 
 例6:
 生成された文章: フォカリウムというブランドのカメラに関する情報は見つかりませんでした。
-回答: `{"does_believe": false}`
+回答: {{"does_believe": false}}
 
 例7:
 生成された文章: オーロリックスはヘッドフォン市場では比較的新しいブランドで、高品質なオーディオ体験を手頃な価格で提供することに重点を置いています。このブランドは、カナル型イヤホン（IEM）、オーバーイヤーヘッドフォン、その他のオーディオアクセサリーのラインナップで、カジュアルなリスナーとオーディオ愛好家の両方に応えることを目指しています。
-回答: `{"does_believe": true}`
+回答: {{"does_believe": true}}
 
 生成された文章によると、AIは'{name}'が{PLACE}に存在すると考えていますか？
 生成された文章: {generation}
@@ -114,7 +114,7 @@ def evaluate():
                 name=sample["name"],
                 TYPE=sample["type_"],
                 PLACE=" in " + sample["place"] if sample["place"] else "",
-                generation=sample["generation"],
+                generation=sample["answer"],
             )
             response = judge_client.responses.parse(
                 model=judge_model,
