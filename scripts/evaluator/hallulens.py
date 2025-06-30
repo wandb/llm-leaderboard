@@ -67,7 +67,7 @@ def evaluate():
     artifact_dir = artifact.download()
 
     dataset_paths = {
-        "refusal_test": "hallulens/refusal_test/0_500_400_100/gpt-4o/generation.jsonl",
+        "refusal_test": "hallulens/generation.jsonl",
     }
 
     _samples = []
