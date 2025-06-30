@@ -15,7 +15,6 @@ from .evaluate_utils import (
     jaster_metrics_dict,
     controllability_dict,
     task_to_sub_category,
-    jmmlu_dict,
     LLMAsyncProcessor,
     normalize,
     text_formatter,
@@ -42,7 +41,6 @@ def evaluate_n_shot(few_shots: bool):
         "aio",
         "alt-e-to-j",
         "alt-j-to-e",
-        "chabsa",
         "commonsensemoralja",
         "jamp",
         "janli",
@@ -51,36 +49,28 @@ def evaluate_n_shot(few_shots: bool):
         "jcola-out-of-domain",
         "jcommonsenseqa",
         "jemhopqa",
+        #"jhumaneval",
         "jnli",
+        "jmmlu",
         "jsem",
         "jsick",
         "jsquad",
-        #"jsts",
         "kuci",
         "mawps",
-        #"mbpp",
         "mgsm",
         "niilc",
-        "wiki_coreference",
-        "wiki_dependency",
-        "wiki_ner",
-        "wiki_pas",
-        "wiki_reading",
-        "wikicorpus-e-to-j",
-        "wikicorpus-j-to-e"
+        "mmlu_prox_ja"
     ]
-    tasks.extend(sorted({p.stem for p in dataset_dir.glob("**/mmlu_en_*.json")}))
-    tasks.extend(sorted({p.stem for p in dataset_dir.glob("**/jmmlu*.json") if not p.stem.endswith("Choice")}))
 
+    if cfg.run.jmmlu_robustness and few_shots:
+        tasks.extend(["jmmlu_IncorrectChoice", "jmmlu_SymbolChoice"])
+    
     if few_shots:
         num_few_shots = cfg.get("num_few_shots", None)
         if (num_few_shots is None) or (num_few_shots == 0):
             return
     else:
         num_few_shots = 0
-
-    if cfg.run.jmmlu_robustness and few_shots:
-        tasks.extend(sorted({p.stem for p in dataset_dir.glob("**/jmmlu*.json") if p.stem.endswith("Choice")}))
 
     evaluation_results = []
     for task in tasks:
@@ -96,6 +86,8 @@ def evaluate_n_shot(few_shots: bool):
 
             # read task data
             task_data_path = dataset_dir / subset / f"{task}.json"
+            if subset == "dev" and task == "mgsm":
+                task_data_path = dataset_dir / "train" / f"mgsm.json" # mgsm is not in the dev set
             if not task_data_path.exists():
                 print(f"skip {task} because it is not found in {artifact_dir}")
                 continue
@@ -105,12 +97,6 @@ def evaluate_n_shot(few_shots: bool):
             # number of evaluation samples
             if cfg.testmode:
                 test_max_num_samples = 1
-                val_max_num_samples = 1
-            elif "wiki" in task:
-                test_max_num_samples = 20
-                val_max_num_samples = 5
-            elif "mmlu" in task:
-                test_max_num_samples = 5
                 val_max_num_samples = 1
             else:
                 test_max_num_samples = 100
@@ -139,10 +125,7 @@ def evaluate_n_shot(few_shots: bool):
                 messages.append({"role": "user", "content": sample["input"]})
 
                 # instruction message
-                if "mmlu_en" in task:
-                    message_intro = "The following text provides instructions for a certain task."
-                else:
-                    message_intro = "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。"
+                message_intro = "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。"
                 
                 instruction = "\n".join(
                     [message_intro, task_data["instruction"]]
@@ -156,7 +139,6 @@ def evaluate_n_shot(few_shots: bool):
                 prompt = apply_chat_template(messages=messages)
                 y_pred = None
                 y_true: str = pipe(sample["output"], normalize)
-                #metrics: str = task_data["metrics"][0]
                 metrics: str = (
                                 "comet_wmt22" if task in ["alt-j-to-e", "wikicorpus-j-to-e"] else
                                 "comet_wmt22" if task in ["alt-e-to-j", "wikicorpus-e-to-j"] else
@@ -164,7 +146,7 @@ def evaluate_n_shot(few_shots: bool):
                                 task_data["metrics"][0]
                                 )
                 metrics_func: callable = jaster_metrics_dict[metrics]
-                control_task = "mmlu_en" if "mmlu_en" in task else "jmmlu" if "jmmlu" in task else task
+                control_task = task.replace("_IncorrectChoice", "").replace("_SymbolChoice", "")
                 control_method: str = controllability_dict[control_task].__name__
                 control_func: callable = controllability_dict[control_task]
 
@@ -223,14 +205,6 @@ def evaluate_n_shot(few_shots: bool):
         del evaluation_result["metrics_func"], evaluation_result["control_func"], evaluation_result["inputs"]
         
     output_df = pd.DataFrame(evaluation_results)
-    # group mmlu_en and jmmlu task category
-    output_df["task"] = output_df["task"].apply(lambda x: "mmlu_en" if x.startswith("mmlu_en") else x)
-    output_df['task'] = output_df['task'].apply(lambda x: jmmlu_dict.get(x, x))
-    output_df['task'] = output_df['task'].apply(
-                                    lambda task: 'jmmlu_SymbolChoice' if task.endswith('_SymbolChoice') 
-                                    else 'jmmlu_IncorrectChoice' if task.endswith('_IncorrectChoice') 
-                                    else task
-                                    )
 
     # log table
     if cfg.run.jmmlu_robustness and few_shots:
@@ -238,21 +212,11 @@ def evaluate_n_shot(few_shots: bool):
         output_robust_df.loc[:,"sub_category"] = "robust"
     output_df = output_df[~output_df['task'].isin(['jmmlu_SymbolChoice', 'jmmlu_IncorrectChoice'])]
 
-
-    # group mmlu_en and jmmlu task
+    # group task to sub_category
     output_df['sub_category'] = output_df['task'].map(task_to_sub_category)  
     dev_table = output_df.query("subset == 'dev'")
     test_table = output_df.query("subset == 'test'")
-
-    # calculate later in jaster_translation.py
-    #leaderboard_table = pd.pivot_table(
-    #    data=test_table,
-    #    values="score",
-    #    index=["run_name", "model_name"],
-    #    columns="task",
-    #    aggfunc="mean",
-    #).reset_index()
-
+    
     leaderboard_table_control = pd.pivot_table(
         data=test_table,
         values="control_score",
