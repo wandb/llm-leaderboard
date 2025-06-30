@@ -108,5 +108,5 @@ sample_dataset:
   # add necessary configration here
 
 hallulens:
-  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/hallulens:v0"
+  artifacts_path: "wandb-japan/nejumi-leaderboard4/hallulens:v1"
   judge_model: "gpt-4o"
