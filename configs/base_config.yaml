@@ -11,13 +11,13 @@ inference_interval: 0 # seconds
 run:
   jaster: true
   jmmlu_robustness: true # if this is set as true, jaster should set as true
-  mtbench: false
-  jbbq: false
-  toxicity: false
-  jtruthfulqa: false
-  swebench: false
-  hallulens: false
-  aggregate: false
+  mtbench: true
+  jbbq: true
+  toxicity: true
+  jtruthfulqa: true
+  swebench: true
+  hallulens: true
+  aggregate: true
 
 model:
   artifact_path: null
@@ -73,7 +73,7 @@ mtbench:
     coding: 0.0
     reasoning: 0.0
     stem: 0.1
-    humanities': 0.1
+    humanities: 0.1
   question_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_question:production' # if testmode is true, small dataset will be used
   question_artifacts_path_test: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_question_small_for_test:production'
   referenceanswer_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_referenceanswer:production' # if testmode is true, small dataset will be used
