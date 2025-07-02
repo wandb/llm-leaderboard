@@ -142,19 +142,13 @@ jaster_metrics_dict: dict[str, callable] = {
 task_to_sub_category = {
     "alt-e-to-j": "GLP_translation",
     "alt-j-to-e": "GLP_translation",
-    "wikicorpus-e-to-j": "GLP_translation",
-    "wikicorpus-j-to-e": "GLP_translation",
     "jsquad": "GLP_information_extraction",
     "mawps": "GLP_mathematical_reasoning",
-    "wiki_ner": "GLP_entity_extraction",
-    "wiki_coreference": "GLP_entity_extraction",
-    "chabsa": "GLP_entity_extraction",
     "jcommonsenseqa": "GLP_knowledge_QA",
     "jemhopqa": "GLP_knowledge_QA",
     "jmmlu": "GLP_knowledge_QA",
     "niilc": "GLP_knowledge_QA",
     "aio": "GLP_knowledge_QA",
-    "mmlu_en": "GLP_English_MMLU",
     "jnli": "GLP_semantic_analysis",
     "janli": "GLP_semantic_analysis",
     "jsem": "GLP_semantic_analysis",
@@ -163,9 +157,8 @@ task_to_sub_category = {
     "jcola-in-domain": "GLP_syntactic_analysis",
     "jcola-out-of-domain": "GLP_syntactic_analysis",
     "jblimp": "GLP_syntactic_analysis",
-    "wiki_reading": "GLP_syntactic_analysis",
-    "wiki_pas": "GLP_syntactic_analysis",
-    "wiki_dependency": "GLP_syntactic_analysis",
+    "mmlu_prox_ja": "GLP_knowledge_QA",
+    "jmmlu": "GLP_knowledge_QA",
     "commonsensemoralja": "ALT_ethics_moral",
     "toxicity": "ALT_toxicity",
     "humanities": "GLP_expression",
@@ -176,7 +169,7 @@ task_to_sub_category = {
     "mgsm": "GLP_mathematical_reasoning",
     "extraction": "GLP_entity_extraction",
     "stem": "GLP_knowledge_QA",
-    "coding": "ADVANCED_programing"
+    "coding": "ADVANCED_programing",
 }
 
 # ---------------------
@@ -190,7 +183,7 @@ def is_all_digit(text: str) -> int:
     except ValueError:
         return 0
 
-# jmmlu, mmlu
+# jmmlu, mmlu_prox_ja
 def is_one_of_ABCD(text: str) -> int:
     return 1 if text in {"A", "B", "C", "D"} else 0
 
@@ -222,44 +215,6 @@ def is_entailment3_format(text: str) -> int:
 def is_jsem_format(text: str) -> int:
     return 1 if text in {"yes", "no", "unknown", "undef"} else 0
 
-# wiki_ner
-def is_wiki_ner_format(text: str) -> int:
-    allowed_tags = {
-        "組織名",
-        "人名",
-        "地名",
-        "固有物名",
-        "日付表現",
-        "時刻表現",
-        "金額表現",
-        "割合表現",
-    }
-    pattern = re.compile(r"^(.+?)\（(" + "|".join(allowed_tags) + r")\）$")
-    segments = text.split()
-    for segment in segments:
-        if not pattern.match(segment):
-            return 0
-    return 1
-
-# wiki_dependency
-def is_wiki_dependecy_format(text: str) -> int:
-    pattern = re.compile(r"^.+\s*->\s*.+$")
-    lines = text.split("\n")
-    for line in lines:
-        if not pattern.match(line):
-            return 0
-    return 1
-
-# chabsa
-def is_chabsa_format(text: str) -> int:
-    pattern = re.compile(r"(\w+)\s+(positive|neutral|negative)")
-
-    lines = text.split("\n")
-    for line in lines:
-        if not pattern.match(line):
-            return 0
-    return 1
-
 # no_check
 def no_check(text: str):
     return None
@@ -268,7 +223,6 @@ controllability_dict = {
     "aio": no_check,
     "alt-e-to-j": no_check,
     "alt-j-to-e": no_check,
-    "chabsa": is_chabsa_format,
     "commonsensemoralja": is_0_1,
     "jamp": is_entailment3_format,
     "janli": is_entailment2_format,
@@ -282,73 +236,10 @@ controllability_dict = {
     "jsick": is_entailment3_format,
     "jsquad": no_check,
     "jmmlu": is_one_of_ABCD,
+    "mmlu_prox_ja": is_one_of_ABCD,
     "mmlu_en": is_one_of_ABCD,
     "kuci": is_0_3,
     "mawps": is_all_digit,
     "mgsm": is_all_digit,
     "niilc": no_check,
-    "wiki_coreference": no_check,
-    "wiki_dependency": is_wiki_dependecy_format,
-    "wiki_ner": is_wiki_ner_format,
-    "wiki_pas": no_check,
-    "wiki_reading": no_check,
-    "wikicorpus-e-to-j": no_check,
-    "wikicorpus-j-to-e": no_check,
-}
-
-
-jmmlu_dict = {
-    'jmmlu_abstract_algebra': 'jmmlu',
-    'jmmlu_anatomy': 'jmmlu',
-    'jmmlu_astronomy': 'jmmlu',
-    'jmmlu_business_ethics': 'jmmlu',
-    'jmmlu_clinical_knowledge': 'jmmlu',
-    'jmmlu_college_biology': 'jmmlu',
-    'jmmlu_college_chemistry': 'jmmlu',
-    'jmmlu_college_computer_science': 'jmmlu',
-    'jmmlu_college_mathematics': 'jmmlu',
-    'jmmlu_college_medicine': 'jmmlu',
-    'jmmlu_college_physics': 'jmmlu',
-    'jmmlu_computer_security': 'jmmlu',
-    'jmmlu_conceptual_physics': 'jmmlu',
-    'jmmlu_econometrics': 'jmmlu',
-    'jmmlu_electrical_engineering': 'jmmlu',
-    'jmmlu_elementary_mathematics': 'jmmlu',
-    'jmmlu_formal_logic': 'jmmlu',
-    'jmmlu_global_facts': 'jmmlu',
-    'jmmlu_high_school_biology': 'jmmlu',
-    'jmmlu_high_school_chemistry': 'jmmlu',
-    'jmmlu_high_school_computer_science': 'jmmlu',
-    'jmmlu_high_school_european_history': 'jmmlu',
-    'jmmlu_high_school_geography': 'jmmlu',
-    'jmmlu_high_school_macroeconomics': 'jmmlu',
-    'jmmlu_high_school_mathematics': 'jmmlu',
-    'jmmlu_high_school_microeconomics': 'jmmlu',
-    'jmmlu_high_school_physics': 'jmmlu',
-    'jmmlu_high_school_psychology': 'jmmlu',
-    'jmmlu_high_school_statistics': 'jmmlu',
-    'jmmlu_human_aging': 'jmmlu',
-    'jmmlu_human_sexuality': 'jmmlu',
-    'jmmlu_international_law': 'jmmlu',
-    'jmmlu_japanese_history': 'jmmlu',
-    'jmmlu_jurisprudence': 'jmmlu',
-    'jmmlu_logical_fallacies': 'jmmlu',
-    'jmmlu_machine_learning': 'jmmlu',
-    'jmmlu_management': 'jmmlu',
-    'jmmlu_marketing': 'jmmlu',
-    'jmmlu_medical_genetics': 'jmmlu',
-    'jmmlu_miscellaneous': 'jmmlu',
-    'jmmlu_moral_disputes': 'jmmlu',
-    'jmmlu_nutrition': 'jmmlu',
-    'jmmlu_philosophy': 'jmmlu',
-    'jmmlu_prehistory': 'jmmlu',
-    'jmmlu_professional_accounting': 'jmmlu',
-    'jmmlu_professional_medicine': 'jmmlu',
-    'jmmlu_professional_psychology': 'jmmlu',
-    'jmmlu_public_relations': 'jmmlu',
-    'jmmlu_security_studies': 'jmmlu',
-    'jmmlu_sociology': 'jmmlu',
-    'jmmlu_virology': 'jmmlu',
-    'jmmlu_world_history': 'jmmlu',
-    'jmmlu_world_religions': 'jmmlu'
 }
