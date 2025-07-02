@@ -15,6 +15,7 @@ from evaluator import (
     jaster_translation,
     toxicity,
     jtruthfulqa,
+    hle,
     hallulens,
     aggregate,
     swebench,
@@ -100,6 +101,10 @@ if cfg.run.toxicity:
 # JTruthfulQA
 if cfg.run.jtruthfulqa:
     jtruthfulqa.evaluate()
+
+# hle
+if cfg.run.hle:
+    hle.evaluate()
 
 # SWE-Bench Verified evaluation
 if cfg.run.swebench:
