@@ -8,6 +8,7 @@ from . import jtruthfulqa
 from . import aggregate
 from . import swebench
 from . import swebench_official
+from . import hallulens
 
 __all__ = [
     'jaster',
@@ -18,5 +19,6 @@ __all__ = [
     'jtruthfulqa',
     'aggregate',
     'swebench',
-    'swebench_official'
+    'swebench_official',
+    'hallulens',
 ]

@@ -19,6 +19,7 @@ from evaluator import (
     hallulens,
     aggregate,
     swebench,
+    arc_agi_2,
 )
 from utils import paginate_choices
 
@@ -117,6 +118,10 @@ if cfg.run.swebench:
 # HalluLens
 if cfg.run.hallulens:
     hallulens.evaluate()
+
+# ARC-AGI-2
+if cfg.run.arc_agi_2:
+    arc_agi_2.evaluate()
 
 # Evaluation phase
 if cfg.run.jaster:
