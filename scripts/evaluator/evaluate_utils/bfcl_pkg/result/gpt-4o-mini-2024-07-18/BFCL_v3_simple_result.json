@@ -1,0 +1,10 @@
+{"id": "simple_0", "result": "[calculate_triangle_area(base=10, height=5)]", "input_token_count": 378, "output_token_count": 12, "latency": 0.6137423515319824}
+{"id": "simple_1", "result": "[math.factorial(number=5)]", "input_token_count": 325, "output_token_count": 8, "latency": 0.5113861560821533}
+{"id": "simple_2", "result": "[math.hypot(x=4, y=5)]", "input_token_count": 412, "output_token_count": 13, "latency": 0.8189294338226318}
+{"id": "simple_3", "result": "[algebra.quadratic_roots(a=1, b=-3, c=2)]", "input_token_count": 378, "output_token_count": 20, "latency": 0.7169442176818848}
+{"id": "simple_4", "result": "[solve_quadratic_equation(a=2, b=6, c=5)]", "input_token_count": 366, "output_token_count": 19, "latency": 1.2633025646209717}
+{"id": "simple_5", "result": "[solve_quadratic(a=3, b=-11, c=-4)]", "input_token_count": 466, "output_token_count": 17, "latency": 0.6808638572692871}
+{"id": "simple_6", "result": "[solve_quadratic(a=2, b=5, c=3)]", "input_token_count": 374, "output_token_count": 17, "latency": 0.7176427841186523}
+{"id": "simple_7", "result": "[calculate_circumference(radius=4, unit='inches')]", "input_token_count": 355, "output_token_count": 15, "latency": 0.9206089973449707}
+{"id": "simple_8", "result": "[geometry.area_circle(radius=10)]", "input_token_count": 346, "output_token_count": 8, "latency": 0.4910907745361328}
+{"id": "simple_9", "result": "[geometry.calculate_area_circle(radius=5, unit='\u5358\u4f4d')]", "input_token_count": 350, "output_token_count": 14, "latency": 0.6340997219085693}
