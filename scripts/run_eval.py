@@ -14,6 +14,7 @@ from evaluator import (
     mtbench,
     jaster_translation,
     toxicity,
+    bfcl,
     jtruthfulqa,
     hle,
     hallulens,
@@ -114,6 +115,9 @@ if cfg.run.swebench:
         swebench_official.evaluate()
     else:
         swebench.evaluate()
+# BFCL
+if cfg.run.bfcl:
+    bfcl.evaluate()
 
 # HalluLens
 if cfg.run.hallulens:

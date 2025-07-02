@@ -5,7 +5,8 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: []
+              device_ids:
+                - "0"
               capabilities: [gpu]
 
   llm-leaderboard:
@@ -15,8 +16,5 @@ services:
           devices:
             - driver: nvidia
               device_ids:
-                - "0"
-                - "1"
-                - "2"
-                - "3"
+                - "0"  # デフォルトGPU
               capabilities: [gpu]
