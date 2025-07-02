@@ -1,6 +1,6 @@
 wandb:
-  entity: "llm-leaderboard"
-  project: "nejumi-leaderboard4-dev"
+  entity: 'llm-leaderboard'
+  project: 'nejumi-leaderboard4-dev'
   #run: please set up run name in a model-base config
 
 github_version: v3.0.0 #for recording
@@ -28,7 +28,7 @@ model:
   chat_template: null
   dtype: 'float16'
   trust_remote_code: true
-  device_map: "auto"
+  device_map: 'auto'
   load_in_8bit: false
   load_in_4bit: false
 
@@ -40,33 +40,32 @@ generator:
 num_few_shots: 2
 
 jaster:
-  message_intro: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。"
-  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/jaster:v0"
-  dataset_dir: "jaster"
-
+  message_intro: '以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。'
+  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/jaster:production'
+  dataset_dir: 'jaster'
 
 jbbq:
-  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4-private/jbbq:v0'
+  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4-private/jbbq:production'
   dataset_dir: 'jbbq'
   language: 'ja'
 
 toxicity:
-  artifact_path: 'llm-leaderboard/nejumi-leaderboard4-private/toxicity_dataset_full:v0'
-  judge_prompts_path: 'llm-leaderboard/nejumi-leaderboard4-private/toxicity_judge_prompts:v0'
+  artifact_path: 'llm-leaderboard/nejumi-leaderboard4-private/toxicity_dataset_full:production'
+  judge_prompts_path: 'llm-leaderboard/nejumi-leaderboard4-private/toxicity_judge_prompts:production'
   max_workers: 5
   judge_model: 'gpt-4o-2024-05-13'
 
 jtruthfulqa:
-  artifact_path: 'llm-leaderboard/nejumi-leaderboard4/jtruthfulqa_dataset:v0'  # JTruthfulQAデータセットのアーティファクトパス
+  artifact_path: 'llm-leaderboard/nejumi-leaderboard4/jtruthfulqa_dataset:production'  # JTruthfulQAデータセットのアーティファクトパス
   roberta_model_name: 'nlp-waseda/roberta_jtruthfulqa'  # 評価に使用するRoBERTaモデル名
 
 swebench:
-  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/swebench_verified_official:v0'  # SWE-Bench Verifiedデータセットのアーティファクトパス
-  dataset_dir: "swebench_verified_official"
+  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/swebench_verified_official:production'  # SWE-Bench Verifiedデータセットのアーティファクトパス
+  dataset_dir: 'swebench_verified_official'
   max_samples: 100  # 全500件は時間がかかるため制限（フルセットの場合は500を指定）
   max_tokens: 2048  # SWE-Benchのパッチ生成に必要なトークン数
   max_workers: 4  # 並列実行ワーカー数
-  evaluation_method: "official"  # "official" or "docker" - 公式パッケージまたは独自Docker実装
+  evaluation_method: 'official'  # 'official' or 'docker' - 公式パッケージまたは独自Docker実装
 
 mtbench:
   temperature_override:
@@ -78,13 +77,13 @@ mtbench:
     reasoning: 0.0
     stem: 0.1
     humanities: 0.1
-  question_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_question:v0' # if testmode is true, small dataset will be used
-  question_artifacts_path_test: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_question_small_for_test:v0'
-  referenceanswer_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_referenceanswer:v0' # if testmode is true, small dataset will be used
-  referenceanswer_artifacts_path_test: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_referenceanswer_small_for_test:v0'
-  judge_prompt_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_prompt:v0' 
+  question_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_question:production' # if testmode is true, small dataset will be used
+  question_artifacts_path_test: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_question_small_for_test:production'
+  referenceanswer_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_referenceanswer:production' # if testmode is true, small dataset will be used
+  referenceanswer_artifacts_path_test: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_referenceanswer_small_for_test:production'
+  judge_prompt_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_prompt:production' 
   bench_name: 'japanese_mt_bench'
-  model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
+  model_id: null # cannot use '<', '>', ':', ''', '/', '\\', '|', '?', '*', '.'
   question_begin: null 
   question_end: null 
   max_new_token: 1024
@@ -112,14 +111,14 @@ bfcl:
   local_model_path: None
   allow_overwrite: True
   samples_per_category: 10
-  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:v0'
+  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:production'
 
 hallulens:
-  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/hallulens:v0"
-  judge_model: "gpt-4o"
+  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/hallulens:production'
+  judge_model: 'gpt-4o'
   
 hle:
-  artifact_path: 'llm-leaderboard/hle-test/hle-ja:v1'
+  artifact_path: 'llm-leaderboard/hle-test/hle-ja:production'
   dataset_name: 'hle-ja.jsonl'
   max_completion_tokens: 8192
   max_workers: 100
@@ -127,7 +126,7 @@ hle:
   max_samples: 100
 
 arc_agi_2:
-  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2:v0"
+  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2:production"
   max_output_tokens: 4096
   num_attempts: 2
 
