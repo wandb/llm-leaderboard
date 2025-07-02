@@ -68,7 +68,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       
       # ローカルのスクリプトをマウント（開発用）
-      - ./scripts:/workspace/scripts:ro
+      - ./scripts:/workspace/scripts:rw
 
     command: >
       uv run scripts/run_eval.py

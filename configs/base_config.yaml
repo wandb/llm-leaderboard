@@ -15,9 +15,12 @@ run:
   jbbq: true
   toxicity: true
   jtruthfulqa: true
+  hle: true
   swebench: true
+  bfcl: true
   hallulens: true
-  aggregate: true
+  arc_agi_2: true
+  aggregate: false
 
 model:
   artifact_path: null
@@ -96,11 +99,37 @@ mtbench:
   parallel: 80
   first_n: null
 
+bfcl:
+  temperature: 0.001
+  num_gpus: 1
+  batch_size: 256  
+  backend: 'vllm'
+  test_category: 'all'
+  num_threads: 1
+  gpu_memory_utilization: 0.9
+  skip_server_setup: False
+  local_model_path: None
+  allow_overwrite: True
+  samples_per_category: 10
+  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:production'
+
 hallulens:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/hallulens:production'
   judge_model: 'gpt-4o'
+  
+hle:
+  artifact_path: 'llm-leaderboard/hle-test/hle-ja:production'
+  dataset_name: 'hle-ja.jsonl'
+  max_completion_tokens: 8192
+  max_workers: 100
+  judge_model: "o3-mini-2025-01-31"
+  max_samples: 100
+
+arc_agi_2:
+  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2:production"
+  max_output_tokens: 4096
+  num_attempts: 2
 
 sample_dataset:
-  artifacts_path: 'your artifact path here'
+  artifacts_path: "your artifact path here"
   # add necessary configration here
-

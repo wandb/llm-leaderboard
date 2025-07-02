@@ -14,10 +14,13 @@ from evaluator import (
     mtbench,
     jaster_translation,
     toxicity,
+    bfcl,
     jtruthfulqa,
+    hle,
     hallulens,
     aggregate,
     swebench,
+    arc_agi_2,
 )
 from utils import paginate_choices
 
@@ -100,6 +103,10 @@ if cfg.run.toxicity:
 if cfg.run.jtruthfulqa:
     jtruthfulqa.evaluate()
 
+# hle
+if cfg.run.hle:
+    hle.evaluate()
+
 # SWE-Bench Verified evaluation
 if cfg.run.swebench:
     evaluation_method = cfg.swebench.get("evaluation_method", "official")
@@ -108,10 +115,17 @@ if cfg.run.swebench:
         swebench_official.evaluate()
     else:
         swebench.evaluate()
+# BFCL
+if cfg.run.bfcl:
+    bfcl.evaluate()
 
 # HalluLens
 if cfg.run.hallulens:
     hallulens.evaluate()
+
+# ARC-AGI-2
+if cfg.run.arc_agi_2:
+    arc_agi_2.evaluate()
 
 # Evaluation phase
 if cfg.run.jaster:
