@@ -17,6 +17,7 @@ run:
   jtruthfulqa: true
   hle: true
   swebench: true
+  bfcl: true
   hallulens: true
   arc_agi_2: true
   aggregate: false
@@ -99,6 +100,24 @@ mtbench:
   parallel: 80
   first_n: null
 
+bfcl:
+  temperature: 0.001
+  num_gpus: 1
+  batch_size: 256  
+  backend: 'vllm'
+  test_category: 'all'
+  num_threads: 1
+  gpu_memory_utilization: 0.9
+  skip_server_setup: False
+  local_model_path: None
+  allow_overwrite: True
+  samples_per_category: 10
+  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:v0'
+
+hallulens:
+  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/hallulens:v0"
+  judge_model: "gpt-4o"
+  
 hle:
   artifact_path: 'llm-leaderboard/hle-test/hle-ja:v1'
   dataset_name: 'hle-ja.jsonl'
@@ -115,7 +134,3 @@ arc_agi_2:
 sample_dataset:
   artifacts_path: "your artifact path here"
   # add necessary configration here
-
-hallulens:
-  artifacts_path: "wandb-japan/nejumi-leaderboard4/hallulens:v1"
-  judge_model: "gpt-4o"

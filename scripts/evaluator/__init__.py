@@ -6,6 +6,7 @@ from . import jaster_translation
 from . import toxicity
 from . import jtruthfulqa
 from . import aggregate
+from . import bfcl
 from . import swebench
 from . import swebench_official
 from . import hallulens
@@ -18,6 +19,7 @@ __all__ = [
     'toxicity',
     'jtruthfulqa',
     'aggregate',
+    'bfcl',
     'swebench',
     'swebench_official',
     'hallulens',
