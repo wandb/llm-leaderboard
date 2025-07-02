@@ -1,0 +1,2 @@
+Rank,Model,Non_Live Overall Acc,AST Summary,Simple AST,Python Simple AST,Java Simple AST,JavaScript Simple AST,Multiple AST,Parallel AST,Parallel Multiple AST,Irrelevance Detection
+1,GPT-4o-mini-2024-07-18 (Prompt),0.7466666666666666,0.7083333333333333,0.5333333333333333,0.8,0.0,0.8,0.9,0.7,0.7,0.9
