@@ -9,6 +9,7 @@ from . import aggregate
 from . import bfcl
 from . import swebench
 from . import swebench_official
+from . import hallulens
 
 __all__ = [
     'jaster',
@@ -20,5 +21,6 @@ __all__ = [
     'aggregate',
     'bfcl',
     'swebench',
-    'swebench_official'
+    'swebench_official',
+    'hallulens',
 ]

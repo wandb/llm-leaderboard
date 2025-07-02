@@ -15,9 +15,11 @@ run:
   jbbq: true
   toxicity: true
   jtruthfulqa: true
+  hle: true
   swebench: true
   bfcl: true
   hallulens: true
+  arc_agi_2: true
   aggregate: false
 
 model:
@@ -75,7 +77,7 @@ mtbench:
     coding: 0.0
     reasoning: 0.0
     stem: 0.1
-    humanities": 0.1
+    humanities: 0.1
   question_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_question:v0' # if testmode is true, small dataset will be used
   question_artifacts_path_test: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_question_small_for_test:v0'
   referenceanswer_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_referenceanswer:v0' # if testmode is true, small dataset will be used
@@ -98,7 +100,6 @@ mtbench:
   parallel: 80
   first_n: null
 
-
 bfcl:
   temperature: 0.001
   num_gpus: 1
@@ -116,8 +117,20 @@ bfcl:
 hallulens:
   artifacts_path: "llm-leaderboard/nejumi-leaderboard4/hallulens:v0"
   judge_model: "gpt-4o"
+  
+hle:
+  artifact_path: 'llm-leaderboard/hle-test/hle-ja:v1'
+  dataset_name: 'hle-ja.jsonl'
+  max_completion_tokens: 8192
+  max_workers: 100
+  judge_model: "o3-mini-2025-01-31"
+  max_samples: 100
+
+arc_agi_2:
+  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2:v0"
+  max_output_tokens: 4096
+  num_attempts: 2
 
 sample_dataset:
   artifacts_path: "your artifact path here"
   # add necessary configration here
-
