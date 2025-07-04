@@ -161,6 +161,7 @@ python-json-logger==3.3.0
 python-levenshtein==0.27.1
 python-multipart==0.0.20
 pytorch-lightning==2.5.1.post0
+pylint==3.3.3
 pytz==2025.2
 pyyaml==6.0.2
 pyzmq==27.0.0
@@ -179,6 +180,7 @@ rsa==4.9.1
 s3transfer==0.13.0
 sacrebleu==2.5.1
 safetensors==0.5.3
+scikit-learn==1.5.2
 scipy==1.15.3
 sentencepiece==0.2.0
 sentry-sdk==2.30.0
