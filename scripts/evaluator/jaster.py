@@ -49,7 +49,7 @@ def evaluate_n_shot(few_shots: bool):
         "jcola-out-of-domain",
         "jcommonsenseqa",
         "jemhopqa",
-        #"jhumaneval",
+        "jhumaneval",
         "jnli",
         "jmmlu",
         "jsem",
@@ -64,6 +64,10 @@ def evaluate_n_shot(few_shots: bool):
 
     if cfg.run.jmmlu_robustness and few_shots:
         tasks.extend(["jmmlu_IncorrectChoice", "jmmlu_SymbolChoice"])
+    
+    # jhumaneval is 0-shot only
+    if few_shots and "jhumaneval" in tasks:
+        tasks.remove("jhumaneval")
     
     if few_shots:
         num_few_shots = cfg.get("num_few_shots", None)
@@ -139,38 +143,70 @@ def evaluate_n_shot(few_shots: bool):
                 prompt = apply_chat_template(messages=messages)
                 y_pred = None
                 y_true: str = pipe(sample["output"], normalize)
-                metrics: str = (
-                                "comet_wmt22" if task in ["alt-j-to-e", "wikicorpus-j-to-e"] else
-                                "comet_wmt22" if task in ["alt-e-to-j", "wikicorpus-e-to-j"] else
-                                "exact_match_figure" if task in ["mawps", "mgsm"] else
-                                task_data["metrics"][0]
-                                )
-                metrics_func: callable = jaster_metrics_dict[metrics]
-                control_task = task.replace("_IncorrectChoice", "").replace("_SymbolChoice", "")
-                control_method: str = controllability_dict[control_task].__name__
-                control_func: callable = controllability_dict[control_task]
+                
+                # Handle multiple metrics for jhumaneval
+                if task == "jhumaneval":
+                    metrics_list = ["code_exec_sandbox", "pylint_check"]
+                    for metric_name in metrics_list:
+                        metrics_func = jaster_metrics_dict[metric_name]
+                        control_task = task.replace("_IncorrectChoice", "").replace("_SymbolChoice", "")
+                        control_method: str = controllability_dict[control_task].__name__
+                        control_func: callable = controllability_dict[control_task]
 
-                generator_config = {"max_tokens": task_data["output_length"]}
-                inputs.extend([messages, generator_config])
+                        generator_config = {"max_tokens": task_data["output_length"]}
+                        inputs_copy = [messages.copy(), generator_config.copy()]
 
-                # collect data
-                evaluation_results.append(
-                    {
-                        **eval_matainfo,
-                        "index": idx,
-                        "input": sample["input"],
-                        "raw_output": None,  # to be filled
-                        "output": None,  # to be filled
-                        "expected_output": y_true,
-                        "prompt": prompt,
-                        "metrics": metrics,
-                        "metrics_func": metrics_func,
-                        "control_method": control_method,
-                        "control_func": control_func,
-                        "score": None,  # to be filled
-                        "inputs": inputs,
-                    }
-                )
+                        # collect data
+                        evaluation_results.append(
+                            {
+                                **eval_matainfo,
+                                "index": idx,
+                                "input": sample["input"],
+                                "raw_output": None,  # to be filled
+                                "output": None,  # to be filled
+                                "expected_output": y_true,
+                                "prompt": prompt,
+                                "metrics": metric_name,
+                                "metrics_func": metrics_func,
+                                "control_method": control_method,
+                                "control_func": control_func,
+                                "score": None,  # to be filled
+                                "inputs": inputs_copy,
+                            }
+                        )
+                else:
+                    # Handle single metric for other tasks
+                    metrics: str = (
+                                    "comet_wmt22" if task in ["alt-j-to-e", "alt-e-to-j"] else
+                                    "exact_match_figure" if task in ["mawps", "mgsm"] else
+                                    task_data["metrics"][0]
+                                    )
+                    metrics_func: callable = jaster_metrics_dict[metrics]
+                    control_task = task.replace("_IncorrectChoice", "").replace("_SymbolChoice", "")
+                    control_method: str = controllability_dict[control_task].__name__
+                    control_func: callable = controllability_dict[control_task]
+
+                    generator_config = {"max_tokens": task_data["output_length"]}
+                    inputs.extend([messages, generator_config])
+
+                    # collect data
+                    evaluation_results.append(
+                        {
+                            **eval_matainfo,
+                            "index": idx,
+                            "input": sample["input"],
+                            "raw_output": None,  # to be filled
+                            "output": None,  # to be filled
+                            "expected_output": y_true,
+                            "prompt": prompt,
+                            "metrics": metrics,
+                            "metrics_func": metrics_func,
+                            "control_method": control_method,
+                            "control_func": control_func,
+                            "score": None,  # to be filled
+                            "inputs": inputs,
+                        }
+                    )
 
     all_inputs = [er["inputs"] for er in evaluation_results]
     llm_ap = LLMAsyncProcessor(
@@ -179,6 +215,10 @@ def evaluate_n_shot(few_shots: bool):
     )
     results = llm_ap.get_results()
 
+    # Handle jhumaneval separately for multiple metrics
+    jhumaneval_results = []
+    other_results = []
+    
     for response, evaluation_result in tqdm(zip(results, evaluation_results)):
         raw_output = response.content
         y_pred: str = pipe(
@@ -190,13 +230,34 @@ def evaluate_n_shot(few_shots: bool):
             lambda x: x.strip(),
             normalize,
         )
-        metrics_func = evaluation_result["metrics_func"]
-        control_func = evaluation_result["control_func"]
-        if evaluation_result["metrics"] == "comet_wmt22":
-            score = np.nan
+        
+        if evaluation_result["task"] == "jhumaneval":
+            # For jhumaneval, we need to handle multiple metrics differently
+            if evaluation_result["metrics"] == "code_exec_sandbox":
+                # CodeExecMetricWithSandbox expects lists of predictions and ground truths
+                metrics_func = evaluation_result["metrics_func"]
+                y_preds = [y_pred]
+                y_trues = [evaluation_result["expected_output"]]
+                score = metrics_func(y_preds, y_trues)
+            elif evaluation_result["metrics"] == "pylint_check":
+                # PylintCheckMetric expects lists of predictions and ground truths
+                metrics_func = evaluation_result["metrics_func"]
+                y_preds = [y_pred]
+                y_trues = [evaluation_result["expected_output"]]
+                score = metrics_func(y_preds, y_trues)
+            else:
+                metrics_func = evaluation_result["metrics_func"]
+                score = metrics_func(y_pred, evaluation_result["expected_output"])
         else:
+            # Handle other tasks normally
             metrics_func = evaluation_result["metrics_func"]
-            score = metrics_func(y_pred, evaluation_result["expected_output"])        
+            control_func = evaluation_result["control_func"]
+            if evaluation_result["metrics"] == "comet_wmt22":
+                score = np.nan # will be evaluated later by loading model off from GPU
+            else:
+                score = metrics_func(y_pred, evaluation_result["expected_output"])
+        
+        control_func = evaluation_result["control_func"]
         control_score = control_func(y_pred)
         evaluation_result["raw_output"] = raw_output
         evaluation_result["output"] = y_pred
@@ -204,61 +265,107 @@ def evaluate_n_shot(few_shots: bool):
         evaluation_result["control_score"] = control_score
         del evaluation_result["metrics_func"], evaluation_result["control_func"], evaluation_result["inputs"]
         
-    output_df = pd.DataFrame(evaluation_results)
-
-    # log table
-    if cfg.run.jmmlu_robustness and few_shots:
-        output_robust_df = output_df[output_df["task"].str.contains("jmmlu")].copy()
-        output_robust_df.loc[:,"sub_category"] = "robust"
-    output_df = output_df[~output_df['task'].isin(['jmmlu_SymbolChoice', 'jmmlu_IncorrectChoice'])]
-
-    # group task to sub_category
-    output_df['sub_category'] = output_df['task'].map(task_to_sub_category)  
-    dev_table = output_df.query("subset == 'dev'")
-    test_table = output_df.query("subset == 'test'")
-    
-    leaderboard_table_control = pd.pivot_table(
-        data=test_table,
-        values="control_score",
-        index="model_name",
-        columns="task",
-        aggfunc="mean",
-    ).reset_index()
-
-    #leaderboard_table['AVG'] = leaderboard_table.iloc[:, 2:].mean(axis=1) # calculate later in jaster_translation.py
-    leaderboard_table_control.insert(0, 'AVG', leaderboard_table_control.iloc[:, 2:].mean(axis=1))
-    leaderboard_table_control.drop(columns=["model_name"], inplace=True)
-    leaderboard_table_control.insert(0, 'model_name', cfg.model.pretrained_model_name_or_path)
-    
-    new_order=["model_name","task","index","input","raw_output","output","expected_output",
-               "prompt","score","control_score","metrics","control_method",
-               "dataset","num_few_shots","subset","sub_category"]
-    dev_table = dev_table[new_order]
-    test_table = test_table[new_order]
-
-    run.log(
-        {
-            f"{dataset_name}_{num_few_shots}shot_output_table_dev": dev_table,
-            f"{dataset_name}_{num_few_shots}shot_output_table": test_table,
-            #f"{dataset_name}_{num_few_shots}shot_leaderboard_table": leaderboard_table,  # log later in jaster_translation.py
-            f"{dataset_name}_control_{num_few_shots}shot_leaderboard_table": leaderboard_table_control,
-        }
-    )
-    
-
-    if cfg.run.jmmlu_robustness and few_shots:
-        # need to be updated
-        dev_robust_table = output_robust_df.query("subset == 'dev'")
-        test_robust_table= output_robust_df.query("subset == 'test'")
-        dev_robust_table_for_log,_ = evaluate_robustness(subset="dev", df=dev_robust_table)
-        test_robust_table_for_log, leaderboard_robust_table= evaluate_robustness(subset="test", df=test_robust_table)
+        if evaluation_result["task"] == "jhumaneval":
+            jhumaneval_results.append(evaluation_result)
+        else:
+            other_results.append(evaluation_result)
+        
+    # Handle jhumaneval separately
+    if jhumaneval_results:
+        jhumaneval_df = pd.DataFrame(jhumaneval_results)
+        jhumaneval_df['sub_category'] = jhumaneval_df['task'].map(task_to_sub_category)
+        
+        # Separate dev and test tables for jhumaneval
+        jhumaneval_dev_table = jhumaneval_df.query("subset == 'dev'")
+        jhumaneval_test_table = jhumaneval_df.query("subset == 'test'")
+        
+        # Calculate average scores for jhumaneval leaderboard
+        jhumaneval_leaderboard_table = pd.pivot_table(
+            data=jhumaneval_test_table,
+            values="score",
+            index="model_name",
+            columns="metrics",
+            aggfunc="mean",
+        ).reset_index()
+        
+        # Add average of the two metrics
+        jhumaneval_leaderboard_table['AVG'] = jhumaneval_leaderboard_table[['code_exec_sandbox', 'pylint_check']].mean(axis=1)
+        jhumaneval_leaderboard_table.drop(columns=["model_name"], inplace=True)
+        jhumaneval_leaderboard_table.insert(0, 'model_name', cfg.model.pretrained_model_name_or_path)
+        
+        # Reorder columns for jhumaneval tables
+        new_order=["model_name","task","index","input","raw_output","output","expected_output",
+                   "prompt","score","control_score","metrics","control_method",
+                   "dataset","num_few_shots","subset","sub_category"]
+        jhumaneval_dev_table = jhumaneval_dev_table[new_order]
+        jhumaneval_test_table = jhumaneval_test_table[new_order]
+        
+        # Log jhumaneval tables separately
         run.log(
-        {
-            f"jmmlu_robust_{num_few_shots}shot_output_table_dev": dev_robust_table_for_log,
-            f"jmmlu_robust_{num_few_shots}shot_output_table": test_robust_table_for_log,
-            f"jmmlu_robust_{num_few_shots}shot_leaderboard_table": leaderboard_robust_table
-        }
-    )
+            {
+                "jhumaneval_output_table_dev": jhumaneval_dev_table,
+                "jhumaneval_output_table": jhumaneval_test_table,
+                "jhumaneval_leaderboard_table": jhumaneval_leaderboard_table,
+            }
+        )
+    
+    # Handle other tasks
+    if other_results:
+        output_df = pd.DataFrame(other_results)
+
+        # log table
+        if cfg.run.jmmlu_robustness and few_shots:
+            output_robust_df = output_df[output_df["task"].str.contains("jmmlu")].copy()
+            output_robust_df.loc[:,"sub_category"] = "robust"
+        output_df = output_df[~output_df['task'].isin(['jmmlu_SymbolChoice', 'jmmlu_IncorrectChoice'])]
+
+        # group task to sub_category
+        output_df['sub_category'] = output_df['task'].map(task_to_sub_category)  
+        dev_table = output_df.query("subset == 'dev'")
+        test_table = output_df.query("subset == 'test'")
+        
+        leaderboard_table_control = pd.pivot_table(
+            data=test_table,
+            values="control_score",
+            index="model_name",
+            columns="task",
+            aggfunc="mean",
+        ).reset_index()
+
+        #leaderboard_table['AVG'] = leaderboard_table.iloc[:, 2:].mean(axis=1) # calculate later in jaster_translation.py
+        leaderboard_table_control.insert(0, 'AVG', leaderboard_table_control.iloc[:, 2:].mean(axis=1))
+        leaderboard_table_control.drop(columns=["model_name"], inplace=True)
+        leaderboard_table_control.insert(0, 'model_name', cfg.model.pretrained_model_name_or_path)
+        
+        new_order=["model_name","task","index","input","raw_output","output","expected_output",
+                   "prompt","score","control_score","metrics","control_method",
+                   "dataset","num_few_shots","subset","sub_category"]
+        dev_table = dev_table[new_order]
+        test_table = test_table[new_order]
+
+        run.log(
+            {
+                f"{dataset_name}_{num_few_shots}shot_output_table_dev": dev_table,
+                f"{dataset_name}_{num_few_shots}shot_output_table": test_table,
+                #f"{dataset_name}_{num_few_shots}shot_leaderboard_table": leaderboard_table,  # log later in jaster_translation.py
+                f"{dataset_name}_control_{num_few_shots}shot_leaderboard_table": leaderboard_table_control,
+            }
+        )
+        
+
+        if cfg.run.jmmlu_robustness and few_shots:
+            # need to be updated
+            dev_robust_table = output_robust_df.query("subset == 'dev'")
+            test_robust_table= output_robust_df.query("subset == 'test'")
+            dev_robust_table_for_log,_ = evaluate_robustness(subset="dev", df=dev_robust_table)
+            test_robust_table_for_log, leaderboard_robust_table= evaluate_robustness(subset="test", df=test_robust_table)
+            run.log(
+            {
+                f"jmmlu_robust_{num_few_shots}shot_output_table_dev": dev_robust_table_for_log,
+                f"jmmlu_robust_{num_few_shots}shot_output_table": test_robust_table_for_log,
+                f"jmmlu_robust_{num_few_shots}shot_leaderboard_table": leaderboard_robust_table
+            }
+        )
         
 def evaluate():
     evaluate_n_shot(few_shots=False)

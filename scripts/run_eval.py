@@ -136,7 +136,7 @@ if cfg.run.jaster:
     # 1. evaluation for translation task in jaster with comet
     shutdown_vllm_server()
     jaster_translation.evaluate()
-
+    
 # Aggregation
 if cfg.run.aggregate:
     aggregate.evaluate()

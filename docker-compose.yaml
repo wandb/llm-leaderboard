@@ -58,6 +58,10 @@ services:
 
       # Docker in Docker settings for SWE-bench
       - DOCKER_HOST=unix:///var/run/docker.sock
+
+      # Dify Sandbox configuration
+      - CODE_EXECUTION_ENDPOINT=${CODE_EXECUTION_ENDPOINT:-http://dify-sandbox:8194}
+      - CODE_EXECUTION_API_KEY=${CODE_EXECUTION_API_KEY:-dify-sandbox}
     ipc: host
     volumes:
       - ~/.cache/huggingface:/root/.cache/huggingface
@@ -73,8 +77,53 @@ services:
     command: >
       uv run scripts/run_eval.py
       -c ${EVAL_CONFIG_PATH}
+    depends_on:
+      - dify-sandbox
+    networks:
+      - default
+      - ssrf_proxy_network
+
+  # Dify Sandbox service for secure code execution
+  dify-sandbox:
+    image: langgenius/dify-sandbox:0.2.1
+    container_name: dify-sandbox
+    restart: unless-stopped
+    environment:
+      # Sandbox configuration
+      - API_KEY=${CODE_EXECUTION_API_KEY:-dify-sandbox}
+      - GIN_MODE=release
+      - WORKER_TIMEOUT=15
+      - ENABLE_NETWORK=true
+      - HTTP_PROXY=http://ssrf-proxy:3128
+      - HTTPS_PROXY=http://ssrf-proxy:3128
+      - SANDBOX_PORT=8194
+    volumes:
+      # Mount sandbox dependencies directory
+      - ./volumes/sandbox/dependencies:/dependencies
+    ports:
+      - "8194:8194"
+    networks:
+      - ssrf_proxy_network
+      - default
+    depends_on:
+      - ssrf-proxy
+
+  # SSRF Proxy server for secure network access
+  ssrf-proxy:
+    image: ubuntu/squid:latest
+    container_name: ssrf-proxy
+    restart: unless-stopped
+    volumes:
+      # Squid configuration file
+      - ./configs/squid.conf:/etc/squid/squid.conf:ro
+    networks:
+      - ssrf_proxy_network
+      - default
 
 networks:
   default:
     name: llm-stack-network
     external: true
+  ssrf_proxy_network:
+    driver: bridge
+    internal: true
