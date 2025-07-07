@@ -12,6 +12,7 @@ from pathlib import Path
 from .sandbox_client import CodeExecutor, is_sandbox_running
 import logging
 
+
 logger = logging.getLogger(__name__)
 
 #import bert_score
@@ -176,27 +177,47 @@ class PylintCheckMetric(BaseMetric):
 
         for pred in y_preds:
             try:
+                print(f"DEBUG: Writing code to {tmp_path}: {repr(pred)}")
                 tmp_path.write_text(pred)
+                
+                # Check if pylintrc exists in the same directory as this file
+                pylintrc_path = Path(__file__).parent / "pylintrc"
+                if not pylintrc_path.exists():
+                    print(f"DEBUG: pylintrc not found at {pylintrc_path.absolute()}")
+                    scores.append(0.0)
+                    continue
+                
+                print(f"DEBUG: Running pylint with rc-file={pylintrc_path}")
                 result = (
                     subprocess.run(
-                        f"pylint --rc-file=pylintrc {tmp_path}",
+                        f"pylint --rc-file={pylintrc_path} {tmp_path}",
                         stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
                         shell=True,
                     )
-                    .stdout.decode("utf-8")
-                    .split("\n")[1:-1]
                 )
-
-                is_valid = not any("E" in line.split()[1] for line in result if line and line.split())
+                
+                print(f"DEBUG: pylint return code: {result.returncode}")
+                print(f"DEBUG: pylint stdout: {repr(result.stdout.decode('utf-8'))}")
+                print(f"DEBUG: pylint stderr: {repr(result.stderr.decode('utf-8'))}")
+                
+                output_lines = result.stdout.decode("utf-8").split("\n")[1:-1]
+                print(f"DEBUG: pylint output lines: {output_lines}")
+                
+                is_valid = not any("E" in line.split()[1] for line in output_lines if line and line.split())
+                print(f"DEBUG: is_valid: {is_valid}")
                 scores.append(1.0 if is_valid else 0.0)
 
-            except Exception:
+            except Exception as e:
+                print(f"DEBUG: Exception in pylint_check: {e}")
                 scores.append(0.0)
             finally:
                 if tmp_path.exists():
                     tmp_path.unlink()
 
+        print(f"DEBUG: Final scores: {scores}")
         return mean(scores)
+
 
 
 
