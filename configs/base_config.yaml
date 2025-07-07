@@ -62,9 +62,9 @@ jtruthfulqa:
 swebench:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/swebench_verified_official:production'  # SWE-Bench Verifiedデータセットのアーティファクトパス
   dataset_dir: 'swebench_verified_official'
-  max_samples: 100  # 全500件は時間がかかるため制限（フルセットの場合は500を指定）
+  max_samples: 50  # 全500件は時間がかかるため制限（フルセットの場合は500を指定）
   max_tokens: 2048  # SWE-Benchのパッチ生成に必要なトークン数
-  max_workers: 4  # 並列実行ワーカー数
+  max_workers: 8  # 並列実行ワーカー数
   evaluation_method: 'official'  # 'official' or 'docker' - 公式パッケージまたは独自Docker実装
 
 mtbench:
@@ -114,11 +114,11 @@ bfcl:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:production'
 
 hallulens:
-  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/hallulens:production'
+  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/hallulens:v1'
   judge_model: 'gpt-4o'
   
 hle:
-  artifact_path: 'llm-leaderboard/hle-test/hle-ja:production'
+  artifact_path: 'llm-leaderboard/nejumi-leaderboard4/hle-ja:production'
   dataset_name: 'hle-ja.jsonl'
   max_completion_tokens: 8192
   max_workers: 100
