@@ -66,92 +66,121 @@ def evaluate():
     artifact = run.use_artifact(cfg[task_name].artifacts_path, type="dataset")
     artifact_dir = artifact.download()
 
-    dataset_paths = {
-        "refusal_test": "hallulens/generation.jsonl",
-    }
+    for subset in ["test", "dev"]:
+        dataset_paths = {
+            "refusal_test": f"{subset}/generation.jsonl",
+        }
 
-    _samples = []
+        _samples = []
 
-    for key, dataset_path in dataset_paths.items():
-        full_path = Path(artifact_dir) / dataset_path
-        if not full_path.exists():
-            raise FileNotFoundError(f"Dataset file not found: {full_path}")
+        for key, dataset_path in dataset_paths.items():
+            full_path = Path(artifact_dir) / dataset_path
+            if not full_path.exists():
+                raise FileNotFoundError(f"Dataset file not found: {full_path}")
 
-        with full_path.open("r", encoding="utf-8") as f:
-            samples: Samples = [json.loads(line) for line in f if line.strip()]
+            match (subset, cfg.testmode):
+                case ("test", False):
+                    num_sample = 100
+                case ("test", True):
+                    num_sample = 10
+                case ("dev", False):
+                    num_sample = 10
+                case ("dev", True):
+                    num_sample = 1
+                case _:
+                    raise ValueError(
+                        f"Invalid subset or testmode: subset={subset}, testmode={cfg.testmode}"
+                    )
 
-        if cfg.testmode:
-            num_sample = 10
-            slice = len(samples) // num_sample
-            samples = samples[::slice]
+            with full_path.open("r", encoding="utf-8") as f:
+                samples: Samples = [json.loads(line) for line in f if line.strip()][
+                    :num_sample
+                ]
 
-        # === Prepare inputs for LLM === #
-        all_inputs = []
-        generator_config = {"max_tokens": 256, "temperature": 0.0, "top_p": 1.0}
-        for sample in samples:
-            messages = [
-                {
-                    "role": "user",
-                    "content": sample["prompt"],
-                },
-            ]
-            all_inputs.append([messages, generator_config])
-
-        # === Inference === #
-        llm_ap = LLMAsyncProcessor(
-            llm=llm,
-            inputs=all_inputs,
-        )
-        results = llm_ap.get_results()
-
-        # === judge === #
-        judge_client = OpenAI()
-        judge_model = cfg[task_name].judge_model
-
-        for sample, result in zip(samples, results):
-            sample.update({"answer": result.content})
-            judge_prompt: str = ABSTAIN_PROMPT_PLACE_NONSENSE.format(
-                name=sample["name"],
-                TYPE=sample["type_"],
-                PLACE=" in " + sample["place"] if sample["place"] else "",
-                generation=sample["answer"],
-            )
-            response = judge_client.responses.parse(
-                model=judge_model,
-                input=[
+            # === Prepare inputs for LLM === #
+            all_inputs = []
+            generator_config = {"max_tokens": 256, "temperature": 0.0, "top_p": 1.0}
+            for sample in samples:
+                messages = [
                     {
                         "role": "user",
-                        "content": judge_prompt,
+                        "content": sample["prompt"],
                     },
-                ],
-                text_format=JudgeOutput,
+                ]
+                all_inputs.append([messages, generator_config])
+
+            # === Inference === #
+            llm_ap = LLMAsyncProcessor(
+                llm=llm,
+                inputs=all_inputs,
             )
-            parsed_output = response.output_parsed
-            if parsed_output is None:
-                raise ValueError(
-                    "Parsed response is None, check the judge model response."
+            results = llm_ap.get_results()
+
+            # === judge === #
+            judge_client = OpenAI()
+            judge_model = cfg[task_name].judge_model
+
+            for sample, result in zip(samples, results):
+                sample.update({"answer": result.content})
+                judge_prompt: str = ABSTAIN_PROMPT_PLACE_NONSENSE.format(
+                    name=sample["name"],
+                    TYPE=sample["type_"],
+                    PLACE=" in " + sample["place"] if sample["place"] else "",
+                    generation=sample["answer"],
                 )
+                response = judge_client.responses.parse(
+                    model=judge_model,
+                    input=[
+                        {
+                            "role": "user",
+                            "content": judge_prompt,
+                        },
+                    ],
+                    text_format=JudgeOutput,
+                )
+                parsed_output = response.output_parsed
+                if parsed_output is None:
+                    raise ValueError(
+                        "Parsed response is None, check the judge model response."
+                    )
 
-            sample.update(parsed_output.model_dump())
-        _samples.extend(samples)
+                sample.update(parsed_output.model_dump())
+            _samples.extend(samples)
 
-    # === Logging === #
-    output_df = pd.DataFrame(_samples)
-    output_df["model_name"] = cfg.model.pretrained_model_name_or_path
-    output_df["task"] = f"{task_name}_{key}"
-    output_df["dataset"] = "nonsense_all"
-    output_df["judge_model"] = judge_model
-    ordered_columns = [
-        "model_name",
-        "task",
-        "dataset",
-        "prompt",
-        "answer",
-        "judge_model",
-        "does_believe",
-    ]
-    run.log(
-        {
-            f"{task_name}_output_table": output_df[ordered_columns],
-        }
-    )
+        # === Logging === #
+        output_df = pd.DataFrame(_samples)
+        output_df["model_name"] = cfg.model.pretrained_model_name_or_path
+        output_df["task"] = task_name
+        output_df["dataset"] = "refusal_test"
+        output_df["judge_model"] = judge_model
+        ordered_columns = [
+            "model_name",
+            "task",
+            "dataset",
+            "prompt",
+            "answer",
+            "judge_model",
+            "does_believe",
+        ]
+        table_name = f"{task_name}_output_table"
+        if subset == "test":
+            run.log(
+                {
+                    table_name: output_df[ordered_columns],
+                }
+            )
+            leaderboard_table = pd.pivot_table(
+                data=output_df.assign(task="hallucination_resistance"),
+                values="does_believe",
+                index="model_name",
+                columns="task",
+                aggfunc="mean",
+            ).reset_index()
+            run.log({"hallulens_leaderboard_table": leaderboard_table})
+
+        elif subset == "dev":
+            run.log(
+                {
+                    table_name + "_dev": output_df[ordered_columns],
+                }
+            )
