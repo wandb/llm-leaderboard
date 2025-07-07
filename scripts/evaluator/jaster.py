@@ -16,6 +16,8 @@ from .evaluate_utils import (
     controllability_dict,
     task_to_sub_category,
     LLMAsyncProcessor,
+    extract_answer_with_pattern,
+    AnswerPatternId,
     normalize,
     text_formatter,
     evaluate_robustness,
@@ -144,50 +146,23 @@ def evaluate_n_shot(few_shots: bool):
                 y_pred = None
                 y_true: str = pipe(sample["output"], normalize)
                 
-                # Handle multiple metrics for jhumaneval
-                if task == "jhumaneval":
-                    metrics_list = ["code_exec_sandbox", "pylint_check"]
-                    for metric_name in metrics_list:
-                        metrics_func = jaster_metrics_dict[metric_name]
-                        control_task = task.replace("_IncorrectChoice", "").replace("_SymbolChoice", "")
-                        control_method: str = controllability_dict[control_task].__name__
-                        control_func: callable = controllability_dict[control_task]
-
-                        generator_config = {"max_tokens": task_data["output_length"]}
-                        inputs_copy = [messages.copy(), generator_config.copy()]
-
-                        # collect data
-                        evaluation_results.append(
-                            {
-                                **eval_matainfo,
-                                "index": idx,
-                                "input": sample["input"],
-                                "raw_output": None,  # to be filled
-                                "output": None,  # to be filled
-                                "expected_output": y_true,
-                                "prompt": prompt,
-                                "metrics": metric_name,
-                                "metrics_func": metrics_func,
-                                "control_method": control_method,
-                                "control_func": control_func,
-                                "score": None,  # to be filled
-                                "inputs": inputs_copy,
-                            }
-                        )
-                else:
-                    # Handle single metric for other tasks
-                    metrics: str = (
-                                    "comet_wmt22" if task in ["alt-j-to-e", "alt-e-to-j"] else
-                                    "exact_match_figure" if task in ["mawps", "mgsm"] else
-                                    task_data["metrics"][0]
-                                    )
+                # Handle metrics for all tasks
+                metrics_list = (
+                    ["code_exec_sandbox", "pylint_check"] if task == "jhumaneval" else
+                    ["comet_wmt22"] if task in ["alt-j-to-e", "alt-e-to-j"] else
+                    ["exact_match_figure"] if task in ["mawps", "mgsm"] else
+                    task_data["metrics"]
+                )
+                
+                # Add inputs only once per sample (for LLM processing)
+                generator_config = {"max_tokens": task_data["output_length"]}
+                inputs.extend([messages, generator_config])
+                
+                for metrics in metrics_list:
                     metrics_func: callable = jaster_metrics_dict[metrics]
                     control_task = task.replace("_IncorrectChoice", "").replace("_SymbolChoice", "")
                     control_method: str = controllability_dict[control_task].__name__
                     control_func: callable = controllability_dict[control_task]
-
-                    generator_config = {"max_tokens": task_data["output_length"]}
-                    inputs.extend([messages, generator_config])
 
                     # collect data
                     evaluation_results.append(
@@ -215,48 +190,71 @@ def evaluate_n_shot(few_shots: bool):
     )
     results = llm_ap.get_results()
 
-    # Handle jhumaneval separately for multiple metrics
-    jhumaneval_results = []
-    other_results = []
-    
+    # Process all results uniformly
     for response, evaluation_result in tqdm(zip(results, evaluation_results)):
         raw_output = response.content
-        y_pred: str = pipe(
-            raw_output,
-            lambda x: text_formatter(x, evaluation_result["task"]),
-            lambda x: x.split("\n\n")[0],
-            lambda x: x.strip(),
-            lambda x: x.strip("'").strip('"'),
-            lambda x: x.strip(),
-            normalize,
-        )
-        
         if evaluation_result["task"] == "jhumaneval":
-            # For jhumaneval, we need to handle multiple metrics differently
-            if evaluation_result["metrics"] == "code_exec_sandbox":
-                # CodeExecMetricWithSandbox expects lists of predictions and ground truths
-                metrics_func = evaluation_result["metrics_func"]
-                y_preds = [y_pred]
-                y_trues = [evaluation_result["expected_output"]]
-                score = metrics_func(y_preds, y_trues)
-            elif evaluation_result["metrics"] == "pylint_check":
-                # PylintCheckMetric expects lists of predictions and ground truths
-                metrics_func = evaluation_result["metrics_func"]
-                y_preds = [y_pred]
-                y_trues = [evaluation_result["expected_output"]]
-                score = metrics_func(y_preds, y_trues)
-            else:
-                metrics_func = evaluation_result["metrics_func"]
-                score = metrics_func(y_pred, evaluation_result["expected_output"])
-        else:
-            # Handle other tasks normally
-            metrics_func = evaluation_result["metrics_func"]
-            control_func = evaluation_result["control_func"]
-            if evaluation_result["metrics"] == "comet_wmt22":
-                score = np.nan # will be evaluated later by loading model off from GPU
-            else:
-                score = metrics_func(y_pred, evaluation_result["expected_output"])
+            print(f"DEBUG: raw_output: {repr(raw_output)}")
         
+        # For jhumaneval, don't split by \n\n to preserve code blocks
+        if evaluation_result["task"] == "jhumaneval":
+            y_pred: str = pipe(
+                raw_output,
+                lambda x: text_formatter(x, evaluation_result["task"]),
+                lambda x: x.strip(),
+                lambda x: x.strip("'").strip('"'),
+                lambda x: x.strip(),
+                normalize,
+            )
+        else:
+            y_pred: str = pipe(
+                raw_output,
+                lambda x: text_formatter(x, evaluation_result["task"]),
+                lambda x: x.split("\n\n")[0],
+                lambda x: x.strip(),
+                lambda x: x.strip("'").strip('"'),
+                lambda x: x.strip(),
+                normalize,
+            )
+        
+        # Handle all tasks uniformly
+            metrics_func = evaluation_result["metrics_func"]
+        
+        if evaluation_result["metrics"] in ["code_exec_sandbox", "pylint_check"]: #jhumaneval
+            # These metrics expect lists of predictions and ground truths
+            # Extract code from the response using CODE_OUTPUT_JP pattern
+            print(f"DEBUG: Before extraction - y_pred: {repr(y_pred)}")
+            print(f"DEBUG: raw_output for extraction: {repr(raw_output)}")
+            
+            # Extract code from raw_output directly for jhumaneval
+            print(f"DEBUG: Using pattern: {AnswerPatternId.CODE_OUTPUT_JP}")
+            extracted_code = extract_answer_with_pattern(
+                                    raw_output, 
+                                    AnswerPatternId.CODE_OUTPUT_JP,
+                                    None
+                                )
+            print(f"DEBUG: After extraction from raw_output - extracted_code: {repr(extracted_code)}")
+            
+            # Manual regex test
+            import re
+            manual_match = re.search(r"```(?:\w+)?\s*\n?(.*?)\n?```", raw_output, re.DOTALL)
+            if manual_match:
+                manual_extracted = manual_match.group(1).strip()
+                print(f"DEBUG: Manual regex extraction: {repr(manual_extracted)}")
+            else:
+                print(f"DEBUG: Manual regex extraction failed")
+            
+            y_pred = normalize(extracted_code).strip()
+            print(f"DEBUG: Final y_pred: {repr(y_pred)}")
+            
+            y_preds = [y_pred]
+            y_trues = [evaluation_result["expected_output"]]
+            score = metrics_func(y_preds, y_trues)
+        elif evaluation_result["metrics"] == "comet_wmt22":
+            score = np.nan # will be evaluated later by loading model off from GPU
+        else:
+            score = metrics_func(y_pred, evaluation_result["expected_output"])
+    
         control_func = evaluation_result["control_func"]
         control_score = control_func(y_pred)
         evaluation_result["raw_output"] = raw_output
@@ -265,14 +263,15 @@ def evaluate_n_shot(few_shots: bool):
         evaluation_result["control_score"] = control_score
         del evaluation_result["metrics_func"], evaluation_result["control_func"], evaluation_result["inputs"]
         
-        if evaluation_result["task"] == "jhumaneval":
-            jhumaneval_results.append(evaluation_result)
-        else:
-            other_results.append(evaluation_result)
+    # Handle all tasks uniformly
+    output_df = pd.DataFrame(evaluation_results)
+    
+    # Separate jhumaneval results for special logging
+    jhumaneval_df = output_df[output_df["task"] == "jhumaneval"].copy()
+    other_df = output_df[output_df["task"] != "jhumaneval"].copy()
         
     # Handle jhumaneval separately
-    if jhumaneval_results:
-        jhumaneval_df = pd.DataFrame(jhumaneval_results)
+    if not jhumaneval_df.empty:
         jhumaneval_df['sub_category'] = jhumaneval_df['task'].map(task_to_sub_category)
         
         # Separate dev and test tables for jhumaneval
@@ -280,13 +279,14 @@ def evaluate_n_shot(few_shots: bool):
         jhumaneval_test_table = jhumaneval_df.query("subset == 'test'")
         
         # Calculate average scores for jhumaneval leaderboard
-        jhumaneval_leaderboard_table = pd.pivot_table(
-            data=jhumaneval_test_table,
-            values="score",
-            index="model_name",
-            columns="metrics",
-            aggfunc="mean",
-        ).reset_index()
+        if not jhumaneval_test_table.empty:
+            jhumaneval_leaderboard_table = pd.pivot_table(
+                data=jhumaneval_test_table,
+                values="score",
+                index="model_name",
+                columns="metrics",
+                aggfunc="mean",
+            ).reset_index()
         
         # Add average of the two metrics
         jhumaneval_leaderboard_table['AVG'] = jhumaneval_leaderboard_table[['code_exec_sandbox', 'pylint_check']].mean(axis=1)
@@ -310,16 +310,17 @@ def evaluate_n_shot(few_shots: bool):
         )
     
     # Handle other tasks
-    if other_results:
-        output_df = pd.DataFrame(other_results)
+    if not other_df.empty:
+        output_df = other_df
 
         # log table
         if cfg.run.jmmlu_robustness and few_shots:
             output_robust_df = output_df[output_df["task"].str.contains("jmmlu")].copy()
             output_robust_df.loc[:,"sub_category"] = "robust"
-        output_df = output_df[~output_df['task'].isin(['jmmlu_SymbolChoice', 'jmmlu_IncorrectChoice'])]
+        output_df = output_df[~output_df['task'].isin(['jmmlu_SymbolChoice', 'jmmlu_IncorrectChoice'])].copy()
 
         # group task to sub_category
+        output_df = output_df.copy()  # Create a copy to avoid SettingWithCopyWarning
         output_df['sub_category'] = output_df['task'].map(task_to_sub_category)  
         dev_table = output_df.query("subset == 'dev'")
         test_table = output_df.query("subset == 'test'")
