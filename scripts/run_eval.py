@@ -129,7 +129,7 @@ if cfg.run.arc_agi_2:
 
 # Evaluation phase
 if cfg.run.jaster:
-    # llm-jp-eval evaluation (jmmlu含む)
+    # llm-jp-eval evaluation
     jaster.evaluate()
 
     #### open weight model base evaluation

@@ -124,7 +124,7 @@ bfcl:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:production'
 
 hallulens:
-  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/hallulens:production'
+  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/hallulens:v1'
   judge_model: 'gpt-4o'
   
 hle:
@@ -136,7 +136,7 @@ hle:
   max_samples: 100
 
 arc_agi_2:
-  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2:production"
+  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval:production"
   max_output_tokens: 4096
   num_attempts: 2
 

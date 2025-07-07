@@ -82,6 +82,9 @@ services:
     networks:
       - default
       - ssrf_proxy_network
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
 
   # Dify Sandbox service for secure code execution
   dify-sandbox:
@@ -126,4 +129,4 @@ networks:
     external: true
   ssrf_proxy_network:
     driver: bridge
-    internal: true
+    internal: false
