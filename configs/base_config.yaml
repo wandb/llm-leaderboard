@@ -43,6 +43,16 @@ jaster:
   message_intro: '以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。'
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/jaster:production'
   dataset_dir: 'jaster'
+  jhumaneval:
+    # Dify Sandbox configuration for secure code execution
+    dify_sandbox:
+      endpoint: 'http://dify-sandbox:8194'  # Sandbox service endpoint
+      api_key: 'dify-sandbox'               # API key for authentication
+      connect_timeout: 10.0                 # Connection timeout in seconds
+      read_timeout: 60.0                    # Read timeout in seconds  
+      write_timeout: 60.0                   # Write timeout in seconds
+      enable_network: true                  # Enable network access in sandbox
+      worker_timeout: 15                    # Worker process timeout in seconds
 
 jbbq:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4-private/jbbq:production'
@@ -126,7 +136,7 @@ hle:
   max_samples: 100
 
 arc_agi_2:
-  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2:production"
+  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval:production"
   max_output_tokens: 4096
   num_attempts: 2
 
