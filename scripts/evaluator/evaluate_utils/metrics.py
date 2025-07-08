@@ -2,14 +2,35 @@ import math
 import re
 from fuzzywuzzy import fuzz
 from scipy.stats import pearsonr, spearmanr
+from statistics import mean
 from sacrebleu import BLEU
+import textwrap
+from jinja2 import Template
+import ast
+import subprocess
+from pathlib import Path
+from .sandbox_client import CodeExecutor, is_sandbox_running
+import logging
+
+
+logger = logging.getLogger(__name__)
+
 #import bert_score
 import shutil
 from comet import download_model, load_from_checkpoint
+from abc import ABC, abstractmethod
 
 # ---------------------
 # For jaster
 # ---------------------
+
+
+class BaseMetric(ABC):
+    name: str
+    
+    @abstractmethod
+    def __call__(self, y_pred: str, y_true: str, **kwargs) -> float:
+        pass
 
 
 def parse_float(input_str: str) -> float:
@@ -23,6 +44,14 @@ def parse_float(input_str: str) -> float:
 
 def exact_match(y_pred: str, y_true: str) -> float:
     return (y_pred == y_true) * 1.0
+
+
+class ExactMatchMetric(BaseMetric):
+    name = "exact_match"
+
+    def __call__(self, y_pred: str, y_true: str, **kwargs) -> float:
+        from sklearn.metrics import accuracy_score
+        return accuracy_score([y_true], [y_pred])
 
 
 def exact_match_figure(y_pred: str, y_true: str) -> float:
@@ -116,6 +145,82 @@ def commet_score(commet_srcs, commet_mt, commet_ref):
     #delete_model_directory(comet_model_path)
     return scores
     
+
+class CodeExecMetricWithSandbox(BaseMetric):
+    name = "code_exec_sandbox"
+    code_template = textwrap.dedent("""
+    {{ code}}
+    {% for testcase in testcases %}
+    {{ testcase }}
+    {% endfor %}
+    """)
+
+    def __call__(self, y_preds: list[str], y_trues: list[str], **kwargs) -> float:
+        if not is_sandbox_running():
+            logger.warning("Sandbox is not running. Skipping code execution.")
+            return 0.0
+
+        scores = []
+        for pred, true in zip(y_preds, y_trues, strict=False):
+            testcases = ast.literal_eval(true)
+            template = Template(self.code_template)
+            scores.append(CodeExecutor.check_all_passed(code=template.render(code=pred, testcases=testcases)) * 1.0)
+        return mean(scores)
+
+
+class PylintCheckMetric(BaseMetric):
+    name = "pylint_check"
+
+    def __call__(self, y_preds: list[str], y_trues: list[str], **kwargs) -> float:
+        scores = []
+        tmp_path = Path("pylint.test.tmp.py")
+
+        for pred in y_preds:
+            try:
+                print(f"DEBUG: Writing code to {tmp_path}: {repr(pred)}")
+                tmp_path.write_text(pred)
+                
+                # Check if pylintrc exists in the same directory as this file
+                pylintrc_path = Path(__file__).parent / "pylintrc"
+                if not pylintrc_path.exists():
+                    print(f"DEBUG: pylintrc not found at {pylintrc_path.absolute()}")
+                    scores.append(0.0)
+                    continue
+                
+                print(f"DEBUG: Running pylint with rc-file={pylintrc_path}")
+                result = (
+                    subprocess.run(
+                        f"pylint --rc-file={pylintrc_path} {tmp_path}",
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        shell=True,
+                    )
+                )
+                
+                print(f"DEBUG: pylint return code: {result.returncode}")
+                print(f"DEBUG: pylint stdout: {repr(result.stdout.decode('utf-8'))}")
+                print(f"DEBUG: pylint stderr: {repr(result.stderr.decode('utf-8'))}")
+                
+                output_lines = result.stdout.decode("utf-8").split("\n")[1:-1]
+                print(f"DEBUG: pylint output lines: {output_lines}")
+                
+                is_valid = not any("E" in line.split()[1] for line in output_lines if line and line.split())
+                print(f"DEBUG: is_valid: {is_valid}")
+                scores.append(1.0 if is_valid else 0.0)
+
+            except Exception as e:
+                print(f"DEBUG: Exception in pylint_check: {e}")
+                scores.append(0.0)
+            finally:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+
+        print(f"DEBUG: Final scores: {scores}")
+        return mean(scores)
+
+
+
+
 def delete_model_directory(directory):
     """Deletes the specified directory."""
     try:
@@ -126,7 +231,7 @@ def delete_model_directory(directory):
 
 
 jaster_metrics_dict: dict[str, callable] = {
-    "exact_match": exact_match,
+    "exact_match": ExactMatchMetric(),
     "exact_match_figure": exact_match_figure,
     "char_f1": char_f1,
     "set_f1": set_f1,
@@ -137,6 +242,8 @@ jaster_metrics_dict: dict[str, callable] = {
     #"bert_score_en_f1": bert_score_en_f1,
     #"bert_score_ja_f1": bert_score_ja_f1,
     "comet_wmt22": comet_wmt22,
+    "code_exec_sandbox": CodeExecMetricWithSandbox(),
+    "pylint_check": PylintCheckMetric(),
 }
 
 task_to_sub_category = {
@@ -170,6 +277,7 @@ task_to_sub_category = {
     "extraction": "GLP_entity_extraction",
     "stem": "GLP_knowledge_QA",
     "coding": "ADVANCED_programing",
+    "jhumaneval": "ADVANCED_programing",
 }
 
 # ---------------------
@@ -231,6 +339,7 @@ controllability_dict = {
     "jcola-out-of-domain": is_0_1,
     "jcommonsenseqa": is_0_4,
     "jemhopqa": no_check,
+    "jhumaneval": no_check,
     "jnli": is_entailment3_format,
     "jsem": is_jsem_format,
     "jsick": is_entailment3_format,
