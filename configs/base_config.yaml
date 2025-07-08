@@ -124,7 +124,7 @@ bfcl:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:production'
 
 hallulens:
-  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/hallulens:v1'
+  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/hallulens:production'
   judge_model: 'gpt-4o'
   
 hle:
