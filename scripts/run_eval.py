@@ -129,14 +129,14 @@ if cfg.run.arc_agi_2:
 
 # Evaluation phase
 if cfg.run.jaster:
-    # llm-jp-eval evaluation (jmmlu含む)
+    # llm-jp-eval evaluation
     jaster.evaluate()
 
     #### open weight model base evaluation
     # 1. evaluation for translation task in jaster with comet
     shutdown_vllm_server()
     jaster_translation.evaluate()
-
+    
 # Aggregation
 if cfg.run.aggregate:
     aggregate.evaluate()
