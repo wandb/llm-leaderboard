@@ -265,29 +265,40 @@ def build_prompt(instance: Dict) -> str:
     return format_problem_statement(instance)
 
 def generate_predictions(samples: List[Dict], llm, generator_config, output_file: Path, model_name: str):
-    """パッチ生成とJSONL保存"""
+    """パッチ生成とJSONL保存（並列処理版）"""
     print(f"Generating patches for {len(samples)} samples...")
     
-    for i, sample in enumerate(tqdm(samples, desc="Generating predictions")):
+    # 全サンプルのプロンプトを事前に準備
+    all_inputs = []
+    sample_data = []
+    
+    for sample in samples:
         instance_id = sample["instance_id"]
+        prompt = build_prompt(sample)
+        messages = [{"role": "user", "content": prompt}]
+        
+        all_inputs.append([messages, generator_config])
+        sample_data.append({
+            "instance_id": instance_id,
+            "sample": sample
+        })
+    
+    # 並列処理でLLM呼び出し
+    llm_ap = LLMAsyncProcessor(
+        llm=llm,
+        inputs=all_inputs,
+    )
+    responses = llm_ap.get_results()
+    
+    # 結果を処理
+    for i, (response, sample_info) in enumerate(zip(responses, sample_data)):
+        instance_id = sample_info["instance_id"]
         
         try:
-            # プロンプト作成
-            prompt = build_prompt(sample)
-            messages = [{"role": "user", "content": prompt}]
-            
-            # LLM呼び出し
-            llm_ap = LLMAsyncProcessor(
-                llm=llm,
-                inputs=[[messages, generator_config]],
-            )
-            responses = llm_ap.get_results()
-            
-            if not responses or len(responses) == 0:
+            if not response:
                 logger.error(f"No response for {instance_id}")
                 continue
                 
-            response = responses[0]
             raw_output = response.content if hasattr(response, 'content') else str(response)
             
             logger.debug(f"LLM raw output (first 300 chars): {raw_output[:300].replace(chr(10),' ')}")
@@ -326,12 +337,10 @@ def generate_predictions(samples: List[Dict], llm, generator_config, output_file
         except Exception as e:
             logger.error(f"Error processing {instance_id}: {e}")
             logger.error(traceback.format_exc()) #詳細なトレースバックをログに記録
-            # エラー時も空のパッチを保存する（オプション）
-            # pred_data = { ... "model_patch": "" ... } ... f.write ...
             continue # 次のサンプルへ
 
-def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4) -> Dict:
-    """公式SWE-bench評価実行"""
+def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instance_ids: List[str] = None, samples: List[Dict] = None) -> Dict:
+    """公式SWE-bench評価実行（Arrow形式データセットから直接構築）"""
     from swebench.harness.run_evaluation import main as run_evaluation
     
     # run_id生成
@@ -339,25 +348,107 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4) -> Dic
     
     print(f"Running SWE-bench evaluation (run_id: {run_id})...")
     
-    # 公式評価実行
-    result = run_evaluation(
-        dataset_name="princeton-nlp/SWE-bench_Verified",
-        split="test",
-        instance_ids=None,
-        predictions_path=str(predictions_file),
-        max_workers=max_workers,
-        force_rebuild=False,
-        cache_level="env",
-        clean=False,
-        open_file_limit=4096,
-        run_id=run_id,
-        timeout=1800,
-        namespace="swebench",
-        rewrite_reports=False,
-        modal=False,
-        instance_image_tag="latest",
-        report_dir="."
-    )
+    if samples is not None:
+        # Arrow形式データセットから直接評価用データを構築
+        print("Building evaluation dataset from Arrow format data...")
+        
+        # 一時的な評価用データセットを作成
+        import tempfile
+        import json
+        
+        temp_dir = Path(tempfile.mkdtemp(prefix="swebench_eval_"))
+        eval_dataset_file = temp_dir / "eval_dataset.jsonl"
+        
+        # サンプルを評価用形式に変換
+        with open(eval_dataset_file, 'w', encoding='utf-8') as f:
+            for sample in samples:
+                # 公式SWE-bench形式に変換
+                eval_sample = {
+                    "repo": sample["repo"],
+                    "instance_id": sample["instance_id"],
+                    "base_commit": sample["base_commit"],
+                    "patch": sample["patch"],
+                    "test_patch": sample["test_patch"],
+                    "problem_statement": sample["problem_statement"],
+                    "hints_text": sample.get("hints_text", ""),
+                    "created_at": sample["created_at"],
+                    "version": sample["version"],
+                    "FAIL_TO_PASS": sample["FAIL_TO_PASS"],
+                    "PASS_TO_PASS": sample["PASS_TO_PASS"],
+                    "environment_setup_commit": sample.get("environment_setup_commit", ""),
+                }
+                f.write(json.dumps(eval_sample, ensure_ascii=False) + '\n')
+        
+        # ローカルファイルパスを使用（公式ハーネスがサポートしている場合）
+        print(f"Using local dataset file: {eval_dataset_file}")
+        try:
+            result = run_evaluation(
+                dataset_name=str(eval_dataset_file),  # ローカルファイルパス
+                split="train",
+                instance_ids=instance_ids,
+                predictions_path=str(predictions_file),
+                max_workers=max_workers,
+                force_rebuild=False,
+                cache_level="env",
+                clean=False,
+                open_file_limit=4096,
+                run_id=run_id,
+                timeout=1800,
+                namespace="swebench",
+                rewrite_reports=False,
+                modal=False,
+                instance_image_tag="latest",
+                report_dir="."
+            )
+        except Exception as e:
+            print(f"Local file approach failed: {e}")
+            print("Falling back to internet-based dataset...")
+            result = run_evaluation(
+                dataset_name="nejumi/swe-bench-verified-50-ja",
+                split="train",
+                instance_ids=instance_ids,
+                predictions_path=str(predictions_file),
+                max_workers=max_workers,
+                force_rebuild=False,
+                cache_level="env",
+                clean=False,
+                open_file_limit=4096,
+                run_id=run_id,
+                timeout=1800,
+                namespace="swebench",
+                rewrite_reports=False,
+                modal=False,
+                instance_image_tag="latest",
+                report_dir="."
+            )
+        
+        # 一時ファイルをクリーンアップ（成功時のみ）
+        try:
+            import shutil
+            shutil.rmtree(temp_dir)
+        except:
+            pass  # デバッグのため保持
+        
+    else:
+        # 従来の方法（インターネット経由）
+        result = run_evaluation(
+            dataset_name="nejumi/swe-bench-verified-50-ja",
+            split="train",
+            instance_ids=instance_ids,
+            predictions_path=str(predictions_file),
+            max_workers=max_workers,
+            force_rebuild=False,
+            cache_level="env",
+            clean=False,
+            open_file_limit=4096,
+            run_id=run_id,
+            timeout=1800,
+            namespace="swebench",
+            rewrite_reports=False,
+            modal=False,
+            instance_image_tag="latest",
+            report_dir="."
+        )
     
     print(f"Evaluation result type: {type(result)}")
     
@@ -429,10 +520,14 @@ def evaluate():
         
         # 公式評価実行
         max_workers = cfg.swebench.get("max_workers", 4)
-        results = run_swebench_evaluation(predictions_file, max_workers)
+        # サンプリングしたIDを取得
+        instance_ids = [sample["instance_id"] for sample in samples]
+        results = run_swebench_evaluation(predictions_file, max_workers, instance_ids, samples)
         
         print(f"=== SWE-Bench Results ===")
         print(f"Total samples: {len(samples)}")
+        print(f"Results type: {type(results)}")
+        print(f"Results content: {results}")
         
         if isinstance(results, dict):
             resolved = results.get("resolved_instances", results.get("resolved", 0))
@@ -501,7 +596,7 @@ def evaluate():
                 })
 
             instance_df = pd.DataFrame(table_rows)
-            run.log({"swebench_instance_table": wandb.Table(dataframe=instance_df)})
+            run.log({"swebench_output_table": wandb.Table(dataframe=instance_df)})
         except Exception as e:
             logger.warning(f"Failed to log per-instance table: {e}")
         

@@ -25,6 +25,7 @@ dependencies = [
     "omegaconf>=2.3.0",
     "openai>=1.86.0", # より新しい方に統一
     "overrides",
+    "matplotlib>=3.10.3",
     "pandas>=2.3.0",
     "pathlib",
     "pydantic>=2.8.2",
