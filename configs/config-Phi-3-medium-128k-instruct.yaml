@@ -1,17 +1,14 @@
 wandb:
-  run_name: "microsoft/Phi-3-medium-128k-instruct" # use run_name defined above
-
-# if you don't use api, please set "api" as "false"
-# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+  run_name: microsoft/Phi-3-medium-128k-instruct
 api: vllm
 num_gpus: 2
-batch_size: 256 # vllmは256, apiは32を推奨
-
+batch_size: 256
 model:
   use_wandb_artifacts: false
-  max_model_len: 3500 # update 
-  pretrained_model_name_or_path: "microsoft/Phi-3-medium-128k-instruct" #if you use openai api, put the name of model
-  chat_template: "microsoft/Phi-3-medium-128k-instruct"
-  size_category: "10B≤ <30B"
+  max_model_len: 3500
+  pretrained_model_name_or_path: microsoft/Phi-3-medium-128k-instruct #if you use openai api, put the name of model
+  bfcl_model_name: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  chat_template: microsoft/Phi-3-medium-128k-instruct
+  size_category: 10B≤ <30B
   size: 13960238080
-  release_date: "5/21/2024"
+  release_date: 5/21/2024
