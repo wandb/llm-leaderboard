@@ -24,6 +24,7 @@ run:
 
 model:
   artifact_path: null
+  ### deprecated: for in-process vllm launch ###
   max_model_len: 3000
   chat_template: null
   dtype: 'float16'
@@ -31,8 +32,19 @@ model:
   device_map: 'auto'
   load_in_8bit: false
   load_in_4bit: false
+  ### deprecated ###
 
-generator:
+vllm: # vLLM server-side launch configuration
+  extra_args: []
+  # example
+  # extra_args:
+  #   - --dtype=bfloat16
+  #   - --max_model_len=3000
+  #   - '--override_generation_config={"temperature":0.6,"top_p":0.95}' # do not include space
+  #   - --trust_remote_code
+  #   - --reasoning-parser=deepseek_r1
+
+generator: # LLM client default configuration: to be overridden by each benchmark
   top_p: 1.0
   temperature: 0.1
   max_tokens: 128
