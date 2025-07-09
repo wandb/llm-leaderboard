@@ -1,10 +1,8 @@
 wandb:
-  entity: "llm-leaderboard"  # 指定されたWandBエンティティ
-  project: "nejumi-leaderboard4"  # 指定されたプロジェクト名
-  run_name: "gpt-4.1-2025-04-14 (SWE-Bench Verified Test)"
-
-testmode: false  # テストモード
-
+  entity: llm-leaderboard
+  project: nejumi-leaderboard4
+  run_name: gpt-4.1-2025-04-14 (SWE-Bench Verified Test)
+testmode: false
 run:
   jaster: false
   jmmlu_robustness: false
@@ -13,30 +11,26 @@ run:
   lctg: false
   toxicity: false
   jtruthfulqa: false
-  swebench: true  # SWE-Bench Verifiedのみ実行
+  swebench: true
   aggregate: true
-
-# テスト用にOpenAI GPT-4を使用（実際の使用時は適切なモデルに変更してください）
 api: openai
-batch_size: 4  # テスト時は小さく
+batch_size: 4
 inference_interval: 1
-
 model:
-  pretrained_model_name_or_path: "gpt-4.1-2025-04-14"
-  size_category: "api"
+  pretrained_model_name_or_path: gpt-4.1-2025-04-14 #if you use openai api, put the name of model
+  bfcl_model_name: "gpt-4.1-2025-04-14-FC" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  size_category: api
   size: null
-  release_date: "4/14/2025"
-
+  release_date: 4/14/2025
 generator:
   top_p: 1.0
   temperature: 0.1
   max_tokens: 32768
-
 swebench:
-  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/swebench_verified_official:v0"  # 新しいプロジェクトのアーティファクトパス
-  dataset_dir: "swebench_verified_official"  # Arrow形式データセットのフォルダ名
-  max_samples: 500  # テスト用に極少数のサンプルのみ
+  artifacts_path: llm-leaderboard/nejumi-leaderboard4/swebench_verified_official:v0
+  dataset_dir: swebench_verified_official
+  max_samples: 500
   max_tokens: 32768
-  max_workers: 32  # 並列実行数を制限
-  evaluation_method: "official"  # 公式パッケージを使用
-  upload_data: false  # データを自動アップロードするフラグ 
+  max_workers: 32
+  evaluation_method: official
+  upload_data: false

@@ -1,15 +1,10 @@
 wandb:
-  run_name: "openai/chatgpt-4o-latest" # use run_name defined above
-
-# if you don't use api, please set "api" as "false"
-# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+  run_name: openai/chatgpt-4o-latest
 api: openai
-batch_size: 32 # vllmは256, apiは32を推奨
-# inference_interval: 1 # seconds
-
+batch_size: 32
 model:
-  pretrained_model_name_or_path: "chatgpt-4o-latest" #if you use openai api, put the name of model
-  size_category: "api"
+  pretrained_model_name_or_path: chatgpt-4o-latest #if you use openai api, put the name of model
+  bfcl_model_name: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  size_category: api
   size: null
-  release_date: "8/8/2024"
-
+  release_date: 8/8/2024

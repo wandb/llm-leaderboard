@@ -1,16 +1,13 @@
 wandb:
-  run_name: "elyza/Llama-3-ELYZA-JP-8B" # use run_name defined above
-
-# if you don't use api, please set "api" as "false"
-# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+  run_name: elyza/Llama-3-ELYZA-JP-8B
 api: vllm
-batch_size: 256 # vllmは256, apiは32を推奨
-
+batch_size: 256
 model:
   use_wandb_artifacts: false
-  pretrained_model_name_or_path: "elyza/Llama-3-ELYZA-JP-8B" #if you use openai api, put the name of model
-  chat_template: "meta-llama/Meta-Llama-3-8B-Instruct"
-  size_category: "<10B"
+  pretrained_model_name_or_path: elyza/Llama-3-ELYZA-JP-8B #if you use openai api, put the name of model
+  bfcl_model_name: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  chat_template: meta-llama/Meta-Llama-3-8B-Instruct
+  size_category: <10B
   size: 8030261248
-  release_date: "6/26/2024"
+  release_date: 6/26/2024
   max_model_len: 4096

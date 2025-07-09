@@ -1,15 +1,11 @@
 wandb:
-  run_name: "cohere/command-r-plus-v1:0" # use run_name defined above
-
-# if you don't use api, please set "api" as "false"
-# if you use api, please select from "openai", "anthropic", "google", "cohere", "vllm", "mistral", "bedrock"
-api: "amazon_bedrock"
-batch_size: 1 # vllmは256, apiは32を推奨
-# inference_interval
-
+  run_name: cohere/command-r-plus-v1:0
+api: amazon_bedrock
+batch_size: 1
 model:
   use_wandb_artifacts: false
-  pretrained_model_name_or_path: "cohere.command-r-plus-v1:0" #if you use openai api, put the name of model
-  size_category: "api"
+  pretrained_model_name_or_path: cohere.command-r-plus-v1:0 #if you use openai api, put the name of model
+  bfcl_model_name: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  size_category: api
   size: null
-  release_date: "4/4/2024"
+  release_date: 4/4/2024
