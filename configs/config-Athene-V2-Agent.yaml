@@ -1,18 +1,13 @@
 wandb:
-  run_name: "Nexusflow/Athene-V2-Agent" # use run_name defined above
-
-# if you don't use api, please set "api" as "false"
-# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+  run_name: Nexusflow/Athene-V2-Agent
 api: vllm
 num_gpus: 4
-batch_size: 256 # vllmは256, apiは32を推奨
-# inference_interval: 1 # seconds
-
+batch_size: 256
 model:
   use_wandb_artifacts: false
-  pretrained_model_name_or_path: "Nexusflow/Athene-V2-Agent" #if you use openai api, put the name of model
-  chat_template: "Nexusflow/Athene-V2-Agent"
-  size_category: "30B≤"
+  pretrained_model_name_or_path: Nexusflow/Athene-V2-Agent #if you use openai api, put the name of model
+  bfcl_model_name: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  chat_template: Nexusflow/Athene-V2-Agent
+  size_category: 30B≤
   size: 72706203648
-  release_date: "11/15/2024"
-
+  release_date: 11/15/2024
