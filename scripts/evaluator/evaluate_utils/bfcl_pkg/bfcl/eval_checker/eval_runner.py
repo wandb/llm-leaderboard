@@ -157,7 +157,17 @@ def multi_turn_runner(
     output_file_dir = score_dir / model_name
     write_list_of_dicts_to_file(output_file_name, result, output_file_dir)
 
-    return accuracy, len(model_result)
+    # Create individual accuracy results
+    individual_results = []
+    for entry in result[1:]:  # Skip the first entry (overall accuracy)
+        if 'id' in entry:
+            individual_results.append({
+                'id': entry['id'],
+                'accuracy': 1.0 if entry.get('valid', False) else 0.0,
+                'category': test_category
+            })
+
+    return accuracy, len(model_result), individual_results
 
 
 def relevance_file_runner(
@@ -232,7 +242,17 @@ def relevance_file_runner(
     output_file_dir = score_dir / model_name
     write_list_of_dicts_to_file(output_file_name, result, output_file_dir)
 
-    return accuracy, len(model_result)
+    # Create individual accuracy results
+    individual_results = []
+    for entry in result[1:]:  # Skip the first entry (overall accuracy)
+        if 'id' in entry:
+            individual_results.append({
+                'id': entry['id'],
+                'accuracy': 1.0 if entry.get('valid', False) else 0.0,
+                'category': test_category
+            })
+
+    return accuracy, len(model_result), individual_results
 
 
 def ast_file_runner(
@@ -334,7 +354,17 @@ def ast_file_runner(
     output_file_dir = score_dir / model_name
     write_list_of_dicts_to_file(output_file_name, result, output_file_dir)
 
-    return accuracy, len(model_result)
+    # Create individual accuracy results
+    individual_results = []
+    for entry in result[1:]:  # Skip the first entry (overall accuracy)
+        if 'id' in entry:
+            individual_results.append({
+                'id': entry['id'],
+                'accuracy': 1.0 if entry.get('valid', False) else 0.0,
+                'category': test_category
+            })
+
+    return accuracy, len(model_result), individual_results
 
 
 #### Main runner function ####
@@ -434,7 +464,7 @@ def evaluate_task(
         prompt = prompt[:samples_per_category]
 
     if is_relevance_or_irrelevance(test_category):
-        accuracy, total_count = relevance_file_runner(
+        accuracy, total_count, individual_results = relevance_file_runner(
             handler, model_result, prompt, model_name, test_category, score_dir
         )
 
@@ -448,7 +478,7 @@ def evaluate_task(
             possible_answer = possible_answer[:samples_per_category]
 
         if is_multi_turn(test_category):
-            accuracy, total_count = multi_turn_runner(
+            accuracy, total_count, individual_results = multi_turn_runner(
                 handler,
                 model_result,
                 prompt,
@@ -460,7 +490,7 @@ def evaluate_task(
 
         # Single turn test
         else:
-            accuracy, total_count = ast_file_runner(
+            accuracy, total_count, individual_results = ast_file_runner(
                 handler,
                 model_result,
                 prompt,
@@ -473,6 +503,13 @@ def evaluate_task(
 
     record_result(state, model_name, test_category, accuracy, total_count)
     print(f"✅ Test completed: {test_category}. 🎯 Accuracy: {accuracy}")
+
+    # Store individual results in state for later use
+    if 'individual_results' not in state:
+        state['individual_results'] = {}
+    if model_name not in state['individual_results']:
+        state['individual_results'][model_name] = {}
+    state['individual_results'][model_name][test_category] = individual_results
 
     return state
 
@@ -505,13 +542,55 @@ def main(model, test_categories, result_dir, score_dir, samples_per_category=Non
     # Driver function to run the evaluation for all categories involved.
     non_live_df, live_df, multi_turn_df, overall_df = runner(model_names, all_test_categories, result_dir, score_dir, samples_per_category, artifacts_path)
 
+    # Collect individual accuracy results from score files
+    accuracies = []
+    
+    for subdir in score_dir.iterdir():
+        if subdir.is_dir():
+            model_name = subdir.relative_to(score_dir).name
+            if model_names is not None and model_name not in model_names:
+                continue
+            
+            score_files = list(subdir.glob("BFCL_v3_*_score.json"))
+            
+            for score_file in score_files:
+                test_category = extract_test_category(score_file)
+                if test_category not in all_test_categories:
+                    continue
+                
+                try:
+                    score_entries = load_file(score_file)
+                    
+                    if score_entries:
+                        if len(score_entries) > 1:  # Has individual entries
+                            for entry in score_entries[1:]:  # Individual test case results
+                                if 'id' in entry:
+                                    accuracy = 1.0 if entry.get('valid', False) else 0.0
+                                    accuracies.append({
+                                        'id': entry['id'],
+                                        'accuracy': accuracy,
+                                        'category': test_category
+                                    })
+                        else:  # Only overall accuracy, create individual entry
+                            overall_entry = score_entries[0]
+                            if 'accuracy' in overall_entry:
+                                # Create a synthetic ID for single test case
+                                test_id = f"{test_category}_0"
+                                accuracies.append({
+                                    'id': test_id,
+                                    'accuracy': overall_entry['accuracy'],
+                                    'category': test_category
+                                })
+                except Exception as e:
+                    print(f"Warning: Could not load accuracy data from {score_file}: {e}")
+
     print(
         f"🏁 Evaluation completed. See {score_dir / 'data_overall.csv'} for overall evaluation results on BFCL V3."
     )
     print(
         f"See {score_dir / 'data_live.csv'}, {score_dir / 'data_non_live.csv'} and {score_dir / 'data_multi_turn.csv'} for detailed evaluation results on each sub-section categories respectively."
     )
-    return non_live_df, live_df, multi_turn_df, overall_df
+    return non_live_df, live_df, multi_turn_df, overall_df, accuracies
 
 
 if __name__ == "__main__":
