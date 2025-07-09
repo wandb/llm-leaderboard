@@ -17,6 +17,8 @@ from types import SimpleNamespace
 # Import directly from bfcl_pkg
 from evaluator.evaluate_utils.bfcl_pkg import generation_main, evaluation_main
 from evaluator.evaluate_utils.bfcl_pkg.bfcl.constants.eval_config import RESULT_PATH, SCORE_PATH
+from evaluator.evaluate_utils.bfcl_pkg.bfcl.utils import extract_test_category, load_file
+from evaluator.evaluate_utils.bfcl_pkg.bfcl.constants.eval_config import PROMPT_PATH, POSSIBLE_ANSWER_PATH
 
 def get_default_config() -> Dict[str, Any]:
     """BFCLのデフォルト設定を返す"""
@@ -63,7 +65,13 @@ def evaluate():
     # configからbfcl設定を取得し、デフォルト値とマージ
     user_config = cfg.get('bfcl', {})
     bfcl_cfg = merge_config(default_config, user_config)
-    bfcl_cfg['model_name'] = cfg.model.pretrained_model_name_or_path
+    
+    # BFCL対応モデル名がある場合はそれを使用、なければ従来の方法を使用
+    if hasattr(cfg.model, 'bfcl_model_name') and cfg.model.bfcl_model_name:
+        bfcl_cfg['model_name'] = cfg.model.bfcl_model_name
+    else:
+        bfcl_cfg['model_name'] = cfg.model.pretrained_model_name_or_path
+    
     bfcl_cfg['backend'] = cfg.api
 
 
@@ -104,10 +112,13 @@ def evaluate():
     )
     
     # Prediction 
-    generation_main(gen_args)
+    print("=== Starting generation_main ===")
+    prompts = generation_main(gen_args)
+    print(f"=== generation_main completed. prompts type: {type(prompts)}, length: {len(prompts) if prompts else 0} ===")
         
     # Evaluation
-    _, _, _, overall_df = evaluation_main(
+    print("=== Starting evaluation_main ===")
+    _, _, _, overall_df, accuracies = evaluation_main(
         model=[bfcl_cfg['model_name']],
         test_categories=bfcl_cfg['test_category'],
         result_dir=bfcl_cfg['result_dir'],
@@ -115,6 +126,7 @@ def evaluate():
         samples_per_category=bfcl_cfg['samples_per_category'],
         artifacts_path=artifact_dir
     )
+    print(f"=== evaluation_main completed. accuracies type: {type(accuracies)}, length: {len(accuracies) if accuracies else 0} ===")
 
     # Leaderboard Table
     overall_df.drop(columns=['Organization','License','Model Link'], inplace=True)
@@ -145,17 +157,82 @@ def evaluate():
     model_dir = Path(bfcl_cfg['result_dir']) / bfcl_cfg['model_name'].replace("/", "_")
     results = []
     
-    for json_file in model_dir.glob("BFCL_v3_*_result.json"):
+    # Use prompts from generation_main and accuracies from evaluation_main
+    # Create a mapping from test case ID to prompt
+    prompts_map = {}
+    if prompts:
+        for prompt_entry in prompts:
+            if 'id' in prompt_entry:
+                prompts_map[prompt_entry['id']] = prompt_entry
+    
+    # Create a mapping from test case ID to accuracy
+    accuracies_map = {}
+    if accuracies:
+        for accuracy_entry in accuracies:
+            if 'id' in accuracy_entry:
+                accuracies_map[accuracy_entry['id']] = accuracy_entry
+    
+
+    
+    print(f"=== Processing result files from {model_dir} ===")
+    result_files = list(model_dir.glob("BFCL_v3_*_result.json"))
+    print(f"=== Found {len(result_files)} result files ===")
+    
+    for json_file in result_files:
+        test_category = extract_test_category(json_file.name)
+        print(f"=== Processing file: {json_file.name}, category: {test_category} ===")
+        
         with open(json_file, 'r') as f:
+            line_count = 0
             for line in f:
                 if line.strip():
+                    line_count += 1
                     entry = json.loads(line)
+                    entry_id = entry.get('id', '')
+                    
+                    # Get prompt from prompts_map
+                    prompt_text = ""
+                    if entry_id in prompts_map:
+                        prompt_entry = prompts_map[entry_id]
+                        if 'question' in prompt_entry and prompt_entry['question']:
+                            # Extract text content from the question structure
+                            question_data = prompt_entry['question']
+                            if isinstance(question_data, list) and len(question_data) > 0:
+                                # Check if this is a multi-turn conversation
+                                if len(question_data) > 1:
+                                    # Multi-turn: show all instructions
+                                    prompt_parts = []
+                                    for i, turn in enumerate(question_data):
+                                        if isinstance(turn, list) and len(turn) > 0:
+                                            first_message = turn[0]
+                                            if isinstance(first_message, dict) and 'content' in first_message:
+                                                prompt_parts.append(f"Turn {i+1}: {first_message['content']}")
+                                    prompt_text = " | ".join(prompt_parts)
+                                else:
+                                    # Single turn: show first instruction
+                                    first_question = question_data[0]
+                                    if isinstance(first_question, list) and len(first_question) > 0:
+                                        first_message = first_question[0]
+                                        if isinstance(first_message, dict) and 'content' in first_message:
+                                            prompt_text = first_message['content']
+                    
+                    # Get accuracy from accuracies_map
+                    accuracy = 0.0
+                    if entry_id in accuracies_map:
+                        accuracy_entry = accuracies_map[entry_id]
+                        accuracy = accuracy_entry.get('accuracy', 0.0)
+                    
                     results.append({
-                        'id': entry.get('id', ''),
-                        'result': str(entry.get('result', '')),
+                        'id': entry_id,
+                        'category': test_category,
+                        'prompt': prompt_text,
+                        'output': str(entry.get('result', '')),
+                        'accuracy': accuracy,
                         'input_token_count': flatten_and_sum(entry.get('input_token_count', 0)),
                         'output_token_count': flatten_and_sum(entry.get('output_token_count', 0))
                     })
+            
+            print(f"=== Processed {line_count} entries from {json_file.name} ===")
     
     table_log = wandb.Table(dataframe=pd.DataFrame(results))
 
