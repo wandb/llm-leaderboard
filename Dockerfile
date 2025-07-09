@@ -1,3 +1,16 @@
+FROM python:3.11-slim AS juman-build
+
+WORKDIR /workspace
+
+RUN apt-get update && apt-get install -y \
+    cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Juman++
+COPY scripts/install_jumanpp.sh .
+RUN bash install_jumanpp.sh
+
+
 # Use official Python runtime as base image
 FROM python:3.11-slim
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
@@ -40,11 +53,17 @@ ENV LC_ALL=ja_JP.UTF-8
 # Set working directory and change ownership
 WORKDIR /workspace
 
-# Clone the repository
-#RUN git clone -b nejumi4-dev https://github.com/wandb/llm-leaderboard.git .
-COPY . .
+# Copy Juman++ from juman-build stage
+COPY --from=juman-build /usr/local/bin/jumanpp /usr/local/bin/
+COPY --from=juman-build /usr/local/libexec/jumanpp /usr/local/libexec/jumanpp
+
+# Juman++ を評価スクリプトから確実に見えるように
+ENV PATH="/usr/local/bin:${PATH}" \
+    JUMANPP_COMMAND=/usr/local/bin/jumanpp \
+    JUMANPP_DICDIR=/usr/local/share/jumandic
 
 # Initialize uv project and sync dependencies
+COPY pyproject.toml uv.lock .
 RUN uv sync
 
 # SWE-benchを公式リポジトリからインストール（ソースコードは保持）
@@ -54,13 +73,9 @@ RUN git clone https://github.com/princeton-nlp/SWE-bench.git /opt/SWE-bench && \
 
 RUN echo 'source /workspace/.venv/bin/activate' >> ~/.bashrc
 
-# Juman++
-RUN bash scripts/install_jumanpp.sh
-
-# Juman++ を評価スクリプトから確実に見えるように
-ENV PATH="/usr/local/bin:${PATH}" \
-    JUMANPP_COMMAND=/usr/local/bin/jumanpp \
-    JUMANPP_DICDIR=/usr/local/share/jumandic
+# Clone the repository
+#RUN git clone -b nejumi4-dev https://github.com/wandb/llm-leaderboard.git .
+COPY scripts ./scripts
 
 # Set permissions for scripts (if they exist)
 RUN chmod +x scripts/*.py 2>/dev/null || true
