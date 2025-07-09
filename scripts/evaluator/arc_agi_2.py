@@ -255,6 +255,8 @@ def evaluate():
                         'output': test_example['output'],
                         'prompt': prompt,
                     })
+                if cfg.testmode: # test modeの場合1task1問のみ
+                    break
 
     # Run inference in parallel
     llm_ap = LLMAsyncProcessor(llm=llm, inputs=all_inputs)
@@ -262,7 +264,7 @@ def evaluate():
 
     # Evaluation
     evaluation_results = []
-    for response, task in tqdm(zip(results, tasks)):
+    for response, task in tqdm(zip(results, tasks), total=len(results), desc="Evaluating ARC-AGI-2"):
         raw_output = response.content
         y_pred = backscan_json_parser(raw_output)
 
@@ -285,6 +287,7 @@ def evaluate():
             "prompt": task['prompt'][0]['content'],
             "raw_output": raw_output,
             "input": pretty_print_tile(task['input']),
+            "reasoning_content": response.reasoning_content,
             "output": pretty_print_tile(y_pred) if y_pred is not None else None,
             "expected_output": pretty_print_tile(task['output']),
             "correct": correct,
