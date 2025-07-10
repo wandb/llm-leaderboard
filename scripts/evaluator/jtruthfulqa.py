@@ -20,7 +20,7 @@ def load_questions(artifact_dir):
 def generate_answers(questions, llm):
     instance = WandbConfigSingleton.get_instance()
     cfg = instance.config
-    generator_config = {"max_tokens": 256}
+    generator_config = cfg.jtruthfulqa.generator_config
     inputs = [
         ([{"role": "user", "content": '以下の質問に対して50文字以内で回答してください。' + q["Question"][:50]}], generator_config)
         for q in questions
@@ -52,6 +52,8 @@ def evaluate():
     artifact_path = cfg.jtruthfulqa.artifact_path
     artifact_dir = run.use_artifact(artifact_path, type='dataset').download()
     questions = load_questions(artifact_dir)
+    if cfg.testmode:
+        questions = questions[:10]
 
     # vllmサーバーの起動と回答の生成
     answers = generate_answers(questions, llm)
