@@ -1,9 +1,14 @@
 import os
 import asyncio
 from dataclasses import dataclass
+from abc import ABC, abstractmethod
+from typing import List, Dict, Optional
 import json
 from config_singleton import WandbConfigSingleton
+from omegaconf import OmegaConf, DictConfig
 import openai
+from openai.types.responses import Response as OpenAIResponse
+from openai.types.chat import ChatCompletion as OpenAIChatCompletion
 from mistralai import Mistral
 import google.generativeai as genai
 from anthropic import Anthropic
@@ -17,6 +22,7 @@ from openai import AzureOpenAI
 @dataclass
 class LLMResponse:
     content: str
+    reasoning_content: str = ""
 
 
 def filter_params(params, allowed_params):
@@ -29,11 +35,28 @@ def map_common_params(params, param_mapping):
     mapped_params = {}
     for key, value in params.items():
         mapped_key = param_mapping.get(key, key)
+        if isinstance(value, DictConfig):
+            value = OmegaConf.to_container(value)
         mapped_params[mapped_key] = value
     return mapped_params
 
 
-class ChatBedrock:
+class BaseLLMClient(ABC):
+    def invoke(self, messages: List[Dict[str, str]], max_tokens: Optional[int] = None, **kwargs) -> LLMResponse:
+        """同期版のinvoke（後方互換性のため）"""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self.ainvoke(messages, max_tokens, **kwargs))
+        finally:
+            loop.close()
+
+    @abstractmethod
+    async def ainvoke(self, messages: List[Dict[str, str]], max_tokens: Optional[int] = None, **kwargs) -> LLMResponse:
+        raise NotImplementedError
+
+
+class ChatBedrock(BaseLLMClient):
     def __init__(self, cfg) -> None:
         self.bedrock_runtime = boto3.client(
             service_name="bedrock-runtime",
@@ -132,13 +155,7 @@ class ChatBedrock:
         """同期版のinvoke（後方互換性のため）"""
         if max_tokens is None:
             max_tokens = 1024
-        # 同期処理として実行
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(self.ainvoke(messages, max_tokens, **kwargs))
-        finally:
-            loop.close()
+        return super().invoke(messages, max_tokens, **kwargs)
 
     async def ainvoke(self, messages, max_tokens=None, **kwargs):
         """非同期版のinvoke"""
@@ -176,19 +193,10 @@ class OpenAIClient:
             'temperature', 'top_p', 'n', 'stream', 'stop', 
             'max_tokens', 'presence_penalty', 'frequency_penalty',
             'logit_bias', 'user', 'response_format', 'seed',
-            'tools', 'tool_choice', 'parallel_tool_calls'
+            'tools', 'tool_choice', 'parallel_tool_calls', 'extra_body',
         }
         
         self.param_mapping = {}
-
-    def invoke(self, messages, max_tokens=None, **kwargs):
-        """同期版のinvoke（後方互換性のため）"""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(self.ainvoke(messages, max_tokens, **kwargs))
-        finally:
-            loop.close()
 
     async def ainvoke(self, messages, max_tokens=None, **kwargs):
         """非同期版のinvoke"""
@@ -205,11 +213,61 @@ class OpenAIClient:
         if max_tokens:
             params["max_tokens"] = max_tokens
         
-        response = await self.async_client.chat.completions.create(**params)
-        return LLMResponse(content=response.choices[0].message.content)
+        response: OpenAIChatCompletion = await self.async_client.chat.completions.create(**params)
+        content = response.choices[0].message.content
+        # vLLM reasoning parser output
+        # https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#quickstart
+        reasoning_content = getattr(response.choices[0].message, 'reasoning_content', '')
+        return LLMResponse(content=content, reasoning_content=reasoning_content)
 
 
-class MistralClient:
+class OpenAIResponsesClient(BaseLLMClient):
+    """
+    OpenAIのResponses APIを使用するクライアント(Reasoning対応)
+    """
+    def __init__(self, api_key=None, base_url=None, model=None, **kwargs):
+        self.async_client = openai.AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url
+        )
+        self.model = model
+        self.kwargs = kwargs
+        
+        self.allowed_params = {
+            'instructions', 'max_output_tokens', 'max_tool_calls', 'metadata',
+            'parallel_tool_calls', 'previous_response_id', 'reasoning', 
+            'service_tier', 'store', 'stream', 'temperature', 'text',
+            'tool_choice', 'tools', 'top_logprobs', 'top_p', 'truncation', 'user',
+        }
+        
+        self.param_mapping = {'max_tokens': 'max_output_tokens', 'top_k': 'top_logprobs'}
+
+    async def ainvoke(self, messages, max_tokens=None, **kwargs):
+        """非同期版のinvoke"""
+        all_kwargs = {**self.kwargs, **kwargs}
+        mapped_params = map_common_params(all_kwargs, self.param_mapping)
+        filtered_params = filter_params(mapped_params, self.allowed_params)
+        
+        params = {
+            "model": self.model,
+            "input": messages,
+            **filtered_params
+        }
+        
+        if max_tokens:
+            params["max_output_tokens"] = max_tokens
+        
+        response: OpenAIResponse = await self.async_client.responses.create(**params)
+        content, reasoning_content = "", ""
+        for output in response.output:
+            if output.type == "message":
+                content = output.content[0].text
+            elif output.type == "reasoning" and len(output.summary) > 0: # reasoning contentは長さ0の場合がある
+                reasoning_content = output.summary[0].text
+        return LLMResponse(content=content, reasoning_content=reasoning_content)
+
+
+class MistralClient(BaseLLMClient):
     def __init__(self, api_key, model, **kwargs):
         self.client = Mistral(api_key=api_key)
         self.model = model
@@ -223,15 +281,6 @@ class MistralClient:
         self.param_mapping = {
             'seed': 'random_seed',
         }
-
-    def invoke(self, messages, max_tokens=None, **kwargs):
-        """同期版のinvoke（後方互換性のため）"""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(self.ainvoke(messages, max_tokens, **kwargs))
-        finally:
-            loop.close()
 
     async def ainvoke(self, messages, max_tokens=None, **kwargs):
         """非同期版のinvoke"""
@@ -253,7 +302,7 @@ class MistralClient:
         return LLMResponse(content=response.choices[0].message.content)
 
 
-class GoogleClient:
+class GoogleClient(BaseLLMClient):
     def __init__(self, api_key, model, **kwargs):
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel(model)
@@ -268,15 +317,6 @@ class GoogleClient:
             'max_tokens': 'max_output_tokens',
             'stop': 'stop_sequences',
         }
-
-    def invoke(self, messages, max_tokens=None, **kwargs):
-        """同期版のinvoke（後方互換性のため）"""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(self.ainvoke(messages, max_tokens, **kwargs))
-        finally:
-            loop.close()
 
     async def ainvoke(self, messages, max_tokens=None, **kwargs):
         """非同期版のinvoke"""
@@ -328,7 +368,7 @@ class GoogleClient:
         return LLMResponse(content=response.text)
 
 
-class AnthropicClient:
+class AnthropicClient(BaseLLMClient):
     def __init__(self, api_key, model, **kwargs):
         self.client = Anthropic(api_key=api_key)
         self.model = model
@@ -342,15 +382,6 @@ class AnthropicClient:
         self.param_mapping = {
             'stop': 'stop_sequences',
         }
-
-    def invoke(self, messages, max_tokens=None, **kwargs):
-        """同期版のinvoke（後方互換性のため）"""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(self.ainvoke(messages, max_tokens, **kwargs))
-        finally:
-            loop.close()
 
     async def ainvoke(self, messages, max_tokens=None, **kwargs):
         """非同期版のinvoke"""
@@ -386,7 +417,7 @@ class AnthropicClient:
         return LLMResponse(content=response.content[0].text)
 
 
-class AzureOpenAIClient:
+class AzureOpenAIClient(BaseLLMClient):
     def __init__(self, api_key, azure_endpoint, azure_deployment, api_version, **kwargs):
         self.client = AzureOpenAI(
             api_key=api_key,
@@ -410,15 +441,6 @@ class AzureOpenAIClient:
         
         self.param_mapping = {}
 
-    def invoke(self, messages, max_tokens=None, **kwargs):
-        """同期版のinvoke（後方互換性のため）"""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(self.ainvoke(messages, max_tokens, **kwargs))
-        finally:
-            loop.close()
-
     async def ainvoke(self, messages, max_tokens=None, **kwargs):
         """非同期版のinvoke"""
         all_kwargs = {**self.kwargs, **kwargs}
@@ -438,7 +460,7 @@ class AzureOpenAIClient:
         return LLMResponse(content=response.choices[0].message.content)
 
 
-class CohereClient:
+class CohereClient(BaseLLMClient):
     def __init__(self, api_key, model, **kwargs):
         self.client = cohere.Client(api_key)
         self.model = model
@@ -454,15 +476,6 @@ class CohereClient:
             'top_k': 'k',
             'stop': 'stop_sequences',
         }
-
-    def invoke(self, messages, max_tokens=None, **kwargs):
-        """同期版のinvoke（後方互換性のため）"""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(self.ainvoke(messages, max_tokens, **kwargs))
-        finally:
-            loop.close()
 
     async def ainvoke(self, messages, max_tokens=None, **kwargs):
         """非同期版のinvoke"""
@@ -503,7 +516,7 @@ class CohereClient:
         return LLMResponse(content=response.text)
 
 
-def get_llm_inference_engine():
+def get_llm_inference_engine() -> BaseLLMClient:
     instance = WandbConfigSingleton.get_instance()
     cfg = instance.config
     api_type = cfg.api
@@ -544,7 +557,14 @@ def get_llm_inference_engine():
             **cfg.generator,
         )
 
-    elif api_type == "openai":
+    elif api_type == "openai_responses":
+        llm = OpenAIResponsesClient(
+            api_key=os.environ["OPENAI_API_KEY"],
+            model=cfg.model.pretrained_model_name_or_path,
+            **cfg.generator,
+        )
+
+    elif api_type in ["openai", "openai_chat"]: # "openai" は後方互換性のため
         llm = OpenAIClient(
             api_key=os.environ["OPENAI_API_KEY"],
             model=cfg.model.pretrained_model_name_or_path,

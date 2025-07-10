@@ -66,6 +66,8 @@ def evaluate():
     artifact = run.use_artifact(cfg[task_name].artifacts_path, type="dataset")
     artifact_dir = artifact.download()
 
+    generator_config = cfg[task_name].generator_config
+
     for subset in ["test", "dev"]:
         dataset_paths = {
             "refusal_test": f"{subset}/generation.jsonl",
@@ -99,7 +101,6 @@ def evaluate():
 
             # === Prepare inputs for LLM === #
             all_inputs = []
-            generator_config = {"max_tokens": 256, "temperature": 0.0, "top_p": 1.0}
             for sample in samples:
                 messages = [
                     {
