@@ -71,6 +71,8 @@ jbbq:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4-private/jbbq:production'
   dataset_dir: 'jbbq'
   language: 'ja'
+  generator_config:
+    max_tokens: 10
 
 toxicity:
   artifact_path: 'llm-leaderboard/nejumi-leaderboard4-private/toxicity_dataset_full:production'
