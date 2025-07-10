@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Optional
 import json
 from config_singleton import WandbConfigSingleton
+from omegaconf import OmegaConf, DictConfig
 import openai
 from openai.types.responses import Response as OpenAIResponse
 from openai.types.chat import ChatCompletion as OpenAIChatCompletion
@@ -34,6 +35,8 @@ def map_common_params(params, param_mapping):
     mapped_params = {}
     for key, value in params.items():
         mapped_key = param_mapping.get(key, key)
+        if isinstance(value, DictConfig):
+            value = OmegaConf.to_container(value)
         mapped_params[mapped_key] = value
     return mapped_params
 
@@ -190,10 +193,7 @@ class OpenAIClient:
             'temperature', 'top_p', 'n', 'stream', 'stop', 
             'max_tokens', 'presence_penalty', 'frequency_penalty',
             'logit_bias', 'user', 'response_format', 'seed',
-            'tools', 'tool_choice', 'parallel_tool_calls',
-            # vLLM specific parameters: To be added as needed
-            # https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html#chat-api_1
-            'top_k', 'min_p', 'repetition_penalty', 'length_penalty', 'chat_template_kwargs',
+            'tools', 'tool_choice', 'parallel_tool_calls', 'extra_body',
         }
         
         self.param_mapping = {}
