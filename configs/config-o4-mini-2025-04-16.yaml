@@ -23,6 +23,10 @@ generator:
 jaster:
   override_max_tokens: 131072
 
+jbbq:
+  generator_config:
+    max_tokens: 131072
+
 jtruthfulqa:
   generator_config:
     max_tokens: 131072
@@ -59,7 +63,7 @@ run:
   jaster: true
   jmmlu_robustness: true # if this is set as true, jaster should set as true
   mtbench: true
-  jbbq: false
+  jbbq: true
   toxicity: true
   jtruthfulqa: true
   hle: true

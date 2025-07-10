@@ -16,12 +16,17 @@ model:
   size: 1
   release_date: "4/28/2025"
 
+generator:
+  extra_body:
+    chat_template_kwargs:
+      enable_thinking: false
+
 testmode: true
 run:
   jaster: true
   jmmlu_robustness: true # if this is set as true, jaster should set as true
   mtbench: true
-  jbbq: false
+  jbbq: true
   toxicity: true
   jtruthfulqa: true
   hle: true
