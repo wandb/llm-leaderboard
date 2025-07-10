@@ -65,6 +65,7 @@ jaster:
       write_timeout: 60.0                   # Write timeout in seconds
       enable_network: true                  # Enable network access in sandbox
       worker_timeout: 15                    # Worker process timeout in seconds
+  override_max_tokens: null # if null, use value defined in task dataset files
 
 jbbq:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4-private/jbbq:production'
@@ -80,6 +81,8 @@ toxicity:
 jtruthfulqa:
   artifact_path: 'llm-leaderboard/nejumi-leaderboard4/jtruthfulqa_dataset:production'  # JTruthfulQAデータセットのアーティファクトパス
   roberta_model_name: 'nlp-waseda/roberta_jtruthfulqa'  # 評価に使用するRoBERTaモデル名
+  generator_config:
+    max_tokens: 256
 
 swebench:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/swebench_verified_official:production'  # SWE-Bench Verifiedデータセットのアーティファクトパス
@@ -138,6 +141,10 @@ bfcl:
 hallulens:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/hallulens:production'
   judge_model: 'gpt-4o'
+  generator_config:
+    max_tokens: 256
+    temperature: 0.0
+    top_p: 1.0
   
 hle:
   artifact_path: 'llm-leaderboard/nejumi-leaderboard4/hle-ja:production'
