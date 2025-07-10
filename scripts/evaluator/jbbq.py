@@ -187,6 +187,7 @@ def process_results(results, evaluation_results):
         raw_output = r.content
         y_pred: str = pipe(
             raw_output,
+            lambda x: x.lstrip(),
             lambda x: text_formatter(x, e_r["dataset"]),
             lambda x: x.split("\n\n")[0],
             lambda x: x.strip(),
@@ -302,7 +303,7 @@ def evaluate_n_shot(few_shots: bool):
                     # generate output
                     prompt = apply_chat_template(messages=messages)
                     #generator_config = {"max_tokens": task_data["output_length"]}
-                    generator_config = {"max_tokens": 10}
+                    generator_config = cfg.jbbq.generator_config
                     inputs.append((messages, generator_config))
 
                     y_true: str = pipe(str(sample["output"]), normalize)
@@ -342,6 +343,14 @@ def evaluate_n_shot(few_shots: bool):
     dev_table = output_df.query("subset == 'dev'")
     test_table = output_df.query("subset == 'test'")
 
+    # Log output table before calculate metrics due to exception will be raised if all outputs are format_error
+    wandb.log(
+        {
+            f"{dataset_name}_{num_few_shots}shot_output_table_dev": dev_table,
+            f"{dataset_name}_{num_few_shots}shot_output_table": test_table,
+        }
+    )
+
     # Subset and calculate additional metrics
     test_subset = [result for result in evaluation_results if result.get("subset") == "test"]
     test_score_dict = calculate_additional_metrics(test_subset, "test", num_few_shots)
@@ -359,8 +368,6 @@ def evaluate_n_shot(few_shots: bool):
 
     wandb.log(
         {
-            f"{dataset_name}_{num_few_shots}shot_output_table_dev": dev_table,
-            f"{dataset_name}_{num_few_shots}shot_output_table": test_table,
             f"{dataset_name}_{num_few_shots}shot_leaderboard_table": leaderboard_table,
         }
     )
