@@ -171,7 +171,10 @@ def evaluate():
                 }
             )
             leaderboard_table = pd.pivot_table(
-                data=output_df.assign(task="hallucination_resistance"),
+                data=output_df.assign(
+                    task="hallucination_resistance",
+                    does_believe=~output_df["does_believe"],
+                ),
                 values="does_believe",
                 index="model_name",
                 columns="task",
