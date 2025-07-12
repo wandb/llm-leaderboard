@@ -54,6 +54,7 @@ def merge_config(default_config: Dict[str, Any], config: Dict[str, Any]) -> Dict
 
 def evaluate():
     """BFCLの評価を実行する"""
+    print("BFCLの評価を開始します")
     # WandbConfigSingletonからインスタンスを取得
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
@@ -110,14 +111,10 @@ def evaluate():
         samples_per_category=bfcl_cfg['samples_per_category'],
         artifacts_path=artifact_dir,
     )
-    
     # Prediction 
-    print("=== Starting generation_main ===")
     prompts = generation_main(gen_args)
-    print(f"=== generation_main completed. prompts type: {type(prompts)}, length: {len(prompts) if prompts else 0} ===")
-        
+
     # Evaluation
-    print("=== Starting evaluation_main ===")
     _, _, _, overall_df, accuracies = evaluation_main(
         model=[bfcl_cfg['model_name']],
         test_categories=bfcl_cfg['test_category'],
@@ -126,7 +123,7 @@ def evaluate():
         samples_per_category=bfcl_cfg['samples_per_category'],
         artifacts_path=artifact_dir
     )
-    print(f"=== evaluation_main completed. accuracies type: {type(accuracies)}, length: {len(accuracies) if accuracies else 0} ===")
+    
 
     # Leaderboard Table
     overall_df.drop(columns=['Organization','License','Model Link'], inplace=True)
@@ -172,16 +169,11 @@ def evaluate():
             if 'id' in accuracy_entry:
                 accuracies_map[accuracy_entry['id']] = accuracy_entry
     
-
-    
-    print(f"=== Processing result files from {model_dir} ===")
     result_files = list(model_dir.glob("BFCL_v3_*_result.json"))
-    print(f"=== Found {len(result_files)} result files ===")
-    
+
     for json_file in result_files:
         test_category = extract_test_category(json_file.name)
-        print(f"=== Processing file: {json_file.name}, category: {test_category} ===")
-        
+   
         with open(json_file, 'r') as f:
             line_count = 0
             for line in f:
@@ -232,8 +224,7 @@ def evaluate():
                         'output_token_count': flatten_and_sum(entry.get('output_token_count', 0))
                     })
             
-            print(f"=== Processed {line_count} entries from {json_file.name} ===")
-    
+       
     table_log = wandb.Table(dataframe=pd.DataFrame(results))
 
     # Log
