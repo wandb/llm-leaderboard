@@ -64,7 +64,13 @@ def evaluate():
     model_name_safe = cfg.model.pretrained_model_name_or_path.replace('/', '__')
 
     # M-IFEval 데이터셋 경로 설정
-    input_data_path = Path("../M-IFEval/data/ja_input_data.jsonl")
+
+    dataset_name = "m_ifeval"
+    artifact = run.use_artifact(cfg[dataset_name].artifacts_path, type="dataset")
+    artifact_dir = artifact.download()
+    input_data_path = Path(artifact_dir) / cfg[dataset_name].dataset_dir
+    print(f"input_data_path: {input_data_path}")
+    # input_data_path = Path("../M-IFEval/data/ja_input_data.jsonl")
     if not input_data_path.exists():
         print(f"Input data not found: {input_data_path}")
         return
