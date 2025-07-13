@@ -396,7 +396,7 @@ mypy-extensions==1.1.0
     # via black
 nest-asyncio==1.6.0
     # via outlines
-networkx==3.5
+networkx==3.4.2
     # via torch
 ninja==1.11.1.4
     # via
@@ -964,3 +964,13 @@ zipp==3.23.0
     # via importlib-metadata
 zstandard==0.23.0
     # via langsmith
+absl-py==1.4.0
+datasets
+immutabledict==4.2.1
+janome==0.5.0
+ja_sentence_segmenter==0.0.2
+langdetect==1.0.9
+nltk==3.9.1
+spacy==3.7.5
+bitsandbytes==0.45.1
+hf-transfer==0.1.9
