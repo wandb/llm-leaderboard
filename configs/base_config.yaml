@@ -9,19 +9,19 @@ testmode: true
 inference_interval: 0 # seconds
 
 run:
-  jaster: false
-  jmmlu_robustness: false # if this is set as true, jaster should set as true
-  mtbench: false
-  jbbq: false
-  toxicity: false
-  jtruthfulqa: false
-  hle: false
-  swebench: false
-  bfcl: false
-  hallulens: false
-  arc_agi_2: false
+  jaster: true
+  jmmlu_robustness: true # if this is set as true, jaster should set as true
+  mtbench: true
+  jbbq: true
+  toxicity: true
+  jtruthfulqa: true
+  hle: true
+  swebench: true
+  bfcl: true
+  hallulens: true
+  arc_agi_2: true
   m_ifeval: true
-  aggregate: false
+  aggregate: true
 
 model:
   artifact_path: null

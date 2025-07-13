@@ -18,6 +18,7 @@ from evaluator import (
     jtruthfulqa,
     hle,
     hallulens,
+    m_ifeval,
     aggregate,
     swebench,
     arc_agi_2,
@@ -126,6 +127,10 @@ if cfg.run.hallulens:
 # ARC-AGI-2
 if cfg.run.arc_agi_2:
     arc_agi_2.evaluate()
+
+# M-IFEval
+if cfg.run.m_ifeval:
+    m_ifeval.evaluate()
 
 # Evaluation phase
 if cfg.run.jaster:
