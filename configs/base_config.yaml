@@ -20,7 +20,7 @@ run:
   bfcl: true
   hallulens: true
   arc_agi_2: true
-  aggregate: false
+  aggregate: true
 
 model:
   artifact_path: null
