@@ -10,6 +10,8 @@ from . import bfcl
 from . import swebench
 from . import swebench_official
 from . import hallulens
+from . import arc_agi_2
+from . import hle
 
 __all__ = [
     'jaster',
@@ -23,4 +25,6 @@ __all__ = [
     'swebench',
     'swebench_official',
     'hallulens',
+    'arc_agi_2',
+    'hle',
 ]
