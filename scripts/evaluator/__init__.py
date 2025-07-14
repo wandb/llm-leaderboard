@@ -12,6 +12,7 @@ from . import swebench_official
 from . import hallulens
 from . import arc_agi_2
 from . import hle
+from . import m_ifeval
 
 __all__ = [
     'jaster',
@@ -27,4 +28,5 @@ __all__ = [
     'hallulens',
     'arc_agi_2',
     'hle',
+    'm_ifeval',
 ]
