@@ -20,6 +20,7 @@ run:
   bfcl: true
   hallulens: true
   arc_agi_2: true
+  m_ifeval: true
   aggregate: true
 
 model:
@@ -160,6 +161,10 @@ arc_agi_2:
   artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval:production"
   max_output_tokens: 4096
   num_attempts: 2
+
+m_ifeval:
+  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/m_ifeval:production"
+  dataset_dir: "ja_input_data.jsonl"
 
 sample_dataset:
   artifacts_path: "your artifact path here"
