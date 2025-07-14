@@ -296,10 +296,15 @@ def evaluate():
             
             # Handle sample size
             if cfg.testmode:
-                num_samples = 5
+                # In test mode, limit samples for both dev and test (though test is usually skipped)
+                num_samples = max_samples if max_samples is not None else 5
                 questions = questions[:num_samples]
-            elif max_samples is not None:
-                questions = questions[:max_samples]
+            else:
+                # In normal mode, only limit samples for the 'dev' set
+                if subset == "dev":
+                    if max_samples is not None:
+                        questions = questions[:max_samples]
+                # For the 'test' set, we do nothing, so all samples are used.
                 
             print(f"Loaded {len(questions)} questions from {data_file.name}")
             
