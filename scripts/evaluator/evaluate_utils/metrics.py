@@ -247,15 +247,32 @@ jaster_metrics_dict: dict[str, callable] = {
 }
 
 task_to_sub_category = {
+    # 応用的言語性能
     "alt-e-to-j": "GLP_translation",
     "alt-j-to-e": "GLP_translation",
     "jsquad": "GLP_information_extraction",
+    "humanities": "GLP_expression",
+    "roleplay": "GLP_expression",
+    "writing": "GLP_expression",
+    
+    # 推論能力
+    "reasoning": "GLP_logical_reasoning",
     "mawps": "GLP_mathematical_reasoning",
-    "jcommonsenseqa": "GLP_knowledge_QA",
-    "jemhopqa": "GLP_knowledge_QA",
-    "jmmlu": "GLP_knowledge_QA",
-    "niilc": "GLP_knowledge_QA",
-    "aio": "GLP_knowledge_QA",
+    "mgsm": "GLP_mathematical_reasoning",
+    "math": "GLP_mathematical_reasoning",
+    "arc_agi_2": "GLP_abstract_reasoning",
+    
+    # 知識・質問応答
+    "jcommonsenseqa": "GLP_general_knowledge",
+    "jemhopqa": "GLP_general_knowledge",
+    "niilc": "GLP_general_knowledge",
+    "aio": "GLP_general_knowledge",
+    "stem": "GLP_general_knowledge",
+    "jmmlu": "GLP_expert_knowledge",
+    "mmlu_prox_ja": "GLP_expert_knowledge",
+    "hle": "GLP_expert_knowledge",
+    
+    # 基礎的言語性能
     "jnli": "GLP_semantic_analysis",
     "janli": "GLP_semantic_analysis",
     "jsem": "GLP_semantic_analysis",
@@ -264,20 +281,22 @@ task_to_sub_category = {
     "jcola-in-domain": "GLP_syntactic_analysis",
     "jcola-out-of-domain": "GLP_syntactic_analysis",
     "jblimp": "GLP_syntactic_analysis",
-    "mmlu_prox_ja": "GLP_knowledge_QA",
-    "jmmlu": "GLP_knowledge_QA",
+    
+    # アプリケーション開発
+    "coding": "GLP_coding",
+    "jhumaneval": "GLP_coding",
+    "swebench": "GLP_coding",
+    "bfcl": "GLP_function_calling",
+    
+    # アラインメント
     "commonsensemoralja": "ALT_ethics_moral",
     "toxicity": "ALT_toxicity",
-    "humanities": "GLP_expression",
-    "roleplay": "GLP_expression",
-    "writing": "GLP_expression",
-    "reasoning": "GLP_reasoning",
-    "math": "GLP_mathematical_reasoning",
-    "mgsm": "GLP_mathematical_reasoning",
+    "jbbq": "ALT_bias",
+    "jtruthfulqa": "ALT_truthfulness",
+    "hallulens": "ALT_truthfulness",
+    
+    # その他（旧カテゴリ、互換性のため残す）
     "extraction": "GLP_entity_extraction",
-    "stem": "GLP_knowledge_QA",
-    "coding": "ADVANCED_programing",
-    "jhumaneval": "ADVANCED_programing",
 }
 
 # ---------------------
