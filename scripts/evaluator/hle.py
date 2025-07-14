@@ -72,38 +72,15 @@ class ExtractedAnswer(BaseModel):
     confidence: int
     strict: Literal[True] = True  # 100% reliability
 
-def load_questions(artifact_dir: str, dataset_name: str) -> List[Dict[str, Any]]:
-    """Load questions from JSONL file"""
+def load_questions(file_path: Path) -> List[Dict[str, Any]]:
+    """Load questions from a JSONL file."""
     questions = []
-    hle_file_path = Path(artifact_dir) / dataset_name
-    
-    if not hle_file_path.exists():
-        raise FileNotFoundError(f"Dataset file not found: {hle_file_path}")
-    
-    with open(hle_file_path, "r", encoding="utf-8") as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         for line in f:
             if line.strip():
                 questions.append(json.loads(line))
     
     return questions
-
-def format_message(question: Dict[str, Any], model_name: str) -> List[Dict[str, Any]]:
-    """Format question into message format"""
-    question_text = question['question']
-    
-    text_content = {"type": "text", "text": question_text}
-    if question.get('image') and question['image']:  # Check for non-empty image
-        image_content = {"type": "image_url", "image_url": {"url": question['image']}}
-        content = [text_content, image_content]
-    else:
-        content = [text_content]
-    
-    system_role = "user" if "o1" in model_name else "system"  # o1 no sys prompt
-    messages = [
-        {"role": system_role, "content": SYSTEM_PROMPT}, 
-        {"role": "user", "content": content}
-    ]
-    return messages
 
 def format_message_for_llm_processor(question: Dict[str, Any], model_name: str) -> List[Dict[str, str]]:
     """Format message for LLMAsyncProcessor (simplified format)"""
@@ -255,8 +232,7 @@ def calculate_metrics(predictions: Dict[str, Dict[str, Any]], total_questions: i
         "answered_questions": len(correct)
     }
 
-async def evaluate_batch(questions: List[Dict[str, Any]], predictions: Dict[str, Dict[str, Any]], 
-                        judge_model: str, max_workers: int = 10) -> Dict[str, Dict[str, Any]]:
+async def evaluate_batch(questions: List[Dict[str, Any]], predictions: Dict[str, Dict[str, Any]], judge_model: str, max_workers: int = 10) -> Dict[str, Dict[str, Any]]:
     """Evaluate a batch of questions with judge"""
     semaphore = asyncio.Semaphore(max_workers)
     
@@ -294,130 +270,127 @@ def evaluate():
     max_workers = cfg.hle.get("max_workers", 10)
     judge_model = cfg.hle.get("judge_model", "o3-mini-2025-01-31")
     max_samples = cfg.hle.get("max_samples", None)
-    dataset_name = cfg.hle.get("dataset_name", "hle.jsonl")
-    
-    if cfg.testmode:
-        max_samples = 50
-    
-    print(f"Starting HLE evaluation with max_completion_tokens={max_completion_tokens}, max_workers={max_workers}")
-    print(f"Using judge model: {judge_model}")
-    print(f"Using dataset file: {dataset_name}")
-    
-    # Load dataset from wandb artifact
+
     try:
         artifact_path = cfg.hle.artifact_path
         artifact = run.use_artifact(artifact_path, type="dataset")
         artifact_dir = artifact.download()
-        
-        questions = load_questions(artifact_dir, dataset_name)
-        
-        if max_samples:
-            questions = questions[:max_samples]
+    except Exception as e:
+        print(f"Error downloading artifact: {e}")
+        return
+
+    for subset in ("test", "dev"):
+        if cfg.testmode and subset == "test":
+            print("Skipping test set in test mode.")
+            continue
+
+        data_file = Path(artifact_dir) / "hle-ja" / f"{subset}.jsonl"
+        if not data_file.exists():
+            print(f"Dataset file not found for subset '{subset}': {data_file}")
+            continue
             
-        print(f"Loaded {len(questions)} questions from HLE dataset")
+        print(f"--- Evaluating subset: {subset} --- ")
         
-        # Check for multimodal questions
-        multimodal_count = sum(1 for q in questions if q.get('image'))
-        if multimodal_count > 0:
-            print(f"Warning: {multimodal_count} questions contain images. Ensure your LLM supports multimodal input.")
+        try:
+            questions = load_questions(data_file)
+            
+            # Handle sample size
+            if cfg.testmode:
+                num_samples = 5
+                questions = questions[:num_samples]
+            elif max_samples is not None:
+                questions = questions[:max_samples]
+                
+            print(f"Loaded {len(questions)} questions from {data_file.name}")
+            
+            multimodal_count = sum(1 for q in questions if q.get('image'))
+            if multimodal_count > 0:
+                print(f"Warning: {multimodal_count} questions contain images. Ensure your LLM supports multimodal input.")
+            
+        except Exception as e:
+            print(f"Error loading dataset for subset '{subset}': {e}")
+            continue
         
-    except Exception as e:
-        print(f"Error loading dataset: {e}")
-        return
-    
-    # Generate model predictions
-    print("Generating model responses...")
-    predictions = {}
-    
-    # Use LLMAsyncProcessor for batch processing
-    generator_config = {"max_tokens": max_completion_tokens}
-    
-    # Format inputs with proper system prompts
-    inputs = [
-        (format_message_for_llm_processor(q, cfg.model.pretrained_model_name_or_path), generator_config)
-        for q in questions
-    ]
-    
-    try:
-        llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
-        results = llm_ap.get_results()
+        print("Generating model responses...")
+        predictions = {}
+        generator_config = {"max_tokens": max_completion_tokens}
         
-        for q, result in zip(questions, results):
-            if result and result.content:
-                predictions[q["id"]] = {
-                    "model": cfg.model.pretrained_model_name_or_path,
-                    "response": result.content,
-                    "usage": {
-                        "completion_tokens": len(result.content.split()),
-                        "prompt_tokens": len(q["question"].split())
+        inputs = [
+            (format_message_for_llm_processor(q, cfg.model.pretrained_model_name_or_path), generator_config)
+            for q in questions
+        ]
+        
+        try:
+            llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
+            results = llm_ap.get_results()
+            
+            for q, result in zip(questions, results):
+                if result and result.content:
+                    predictions[q["id"]] = {
+                        "model": cfg.model.pretrained_model_name_or_path,
+                        "response": result.content,
+                        "usage": {
+                            "completion_tokens": len(result.content.split()),
+                            "prompt_tokens": len(q["question"].split())
+                        }
                     }
-                }
+            print(f"Generated {len(predictions)} model responses for {subset}")
+            
+        except Exception as e:
+            print(f"Error generating model responses for subset '{subset}': {e}")
+            continue
         
-        print(f"Generated {len(predictions)} model responses")
+        print("Judging responses...")
+        try:
+            judged_predictions = asyncio.run(
+                evaluate_batch(questions, predictions, judge_model, max_workers)
+            )
+            print(f"Judged {len(judged_predictions)} responses for {subset}")
+            
+        except Exception as e:
+            print(f"Error in judging responses for subset '{subset}': {e}")
+            continue
         
-    except Exception as e:
-        print(f"Error generating model responses: {e}")
-        return
-    
-    # Judge responses
-    print("Judging responses...")
-    try:
-        judged_predictions = asyncio.run(
-            evaluate_batch(questions, predictions, judge_model, max_workers)
-        )
-        print(f"Judged {len(judged_predictions)} responses")
+        metrics = calculate_metrics(judged_predictions, len(questions))
         
-    except Exception as e:
-        print(f"Error in judging responses: {e}")
-        return
-    
-    # Calculate metrics
-    metrics = calculate_metrics(judged_predictions, len(questions))
-    
-    print("*** HLE Evaluation Results ***")
-    print(f"Accuracy: {metrics['accuracy']}% +/- {metrics['confidence_half_width']}% | n = {metrics['total_questions']}")
-    print(f"Calibration Error: {metrics['calibration_error']}")
-    
-    # Prepare data for logging
-    results_data = []
-    for q in questions:
-        if q["id"] in judged_predictions:
-            pred = judged_predictions[q["id"]]
-            judge_resp = pred.get("judge_response", {})
-            results_data.append({
-                "id": q["id"],
-                "question": q["question"],
-                "correct_answer": q["answer"],
-                "model_response": pred["response"],
-                "model_answer": judge_resp.get("model_answer", ""),
-                "correct": judge_resp.get("correct", ""),
-                "confidence": judge_resp.get("confidence", 0),
-                "reasoning": judge_resp.get("reasoning", ""),
-            })
-    
-    # Create output table
-    output_df = pd.DataFrame(results_data)
-    output_df.insert(0, 'model_name', cfg.model.pretrained_model_name_or_path)
-    hle_output_table = wandb.Table(dataframe=output_df)
-    
-    # Create leaderboard table
-    leaderboard_data = {
-        "model_name": cfg.model.pretrained_model_name_or_path,
-        "accuracy": metrics["accuracy"],
-        "calibration_error": metrics["calibration_error"],
-        "confidence_half_width": metrics["confidence_half_width"],
-        "total_questions": metrics["total_questions"],
-        "answered_questions": metrics["answered_questions"]
-    }
-    leaderboard_df = pd.DataFrame([leaderboard_data])
-    hle_leaderboard_table = wandb.Table(dataframe=leaderboard_df)
-    
-    # Log to wandb
-    run.log({
-        "hle_output_table": hle_output_table,
-        "hle_leaderboard_table": hle_leaderboard_table,
-        "hle_accuracy": metrics["accuracy"],
-        "hle_calibration_error": metrics["calibration_error"]
-    })
-    
-    print("HLE evaluation completed and logged to wandb")
+        print(f"*** HLE Evaluation Results for {subset} ***")
+        print(f"Accuracy: {metrics['accuracy']}% +/- {metrics['confidence_half_width']}% | n = {metrics['total_questions']}")
+        print(f"Calibration Error: {metrics['calibration_error']}")
+        
+        results_data = []
+        for q in questions:
+            if q["id"] in judged_predictions:
+                pred = judged_predictions[q["id"]]
+                judge_resp = pred.get("judge_response", {})
+                results_data.append({
+                    "id": q["id"],
+                    "question": q["question"],
+                    "correct_answer": q["answer"],
+                    "model_response": pred["response"],
+                    "model_answer": judge_resp.get("model_answer", ""),
+                    "correct": judge_resp.get("correct", ""),
+                    "confidence": judge_resp.get("confidence", 0),
+                    "reasoning": judge_resp.get("reasoning", ""),
+                })
+        
+        output_df = pd.DataFrame(results_data)
+        output_df.insert(0, 'model_name', cfg.model.pretrained_model_name_or_path)
+        
+        leaderboard_data = {
+            "model_name": cfg.model.pretrained_model_name_or_path,
+            "accuracy": metrics["accuracy"],
+            "calibration_error": metrics["calibration_error"],
+            "confidence_half_width": metrics["confidence_half_width"],
+            "total_questions": metrics["total_questions"],
+            "answered_questions": metrics["answered_questions"]
+        }
+        leaderboard_df = pd.DataFrame([leaderboard_data])
+        
+        run.log({
+            f"hle_{subset}_output_table": wandb.Table(dataframe=output_df),
+            f"hle_{subset}_leaderboard_table": wandb.Table(dataframe=leaderboard_df),
+            f"hle_{subset}_accuracy": metrics["accuracy"],
+            f"hle_{subset}_calibration_error": metrics["calibration_error"]
+        })
+        
+        print(f"HLE evaluation for subset '{subset}' completed and logged to wandb")
