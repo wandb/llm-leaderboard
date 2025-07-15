@@ -30,8 +30,8 @@ def get_default_config() -> Dict[str, Any]:
         "num_threads": 1,  # 使用するスレッド数
         "gpu_memory_utilization": 0.9,  # GPU メモリ使用率
         "backend": "vllm",  # 使用するバックエンド
-        "skip_server_setup": True,  # サーバーセットアップをスキップするかどうか
-        "local_model_path": None,  # ローカルモデルのパス
+        "skip_server_setup": True,  # サーバーセットアップをスキップするかどうか（既存のvLLMサービスを使用）
+        "local_model_path": None,  # ローカルモデルのパス（動的に設定される）
         "allow_overwrite": False,  # 既存の結果を上書きするかどうか
         "include_input_log": False,  # 推論ログに入力ログを含めるかどうか
         "exclude_state_log": False,  # 推論ログから状態ログを除外するかどうか
@@ -72,9 +72,8 @@ def evaluate():
         bfcl_cfg['model_name'] = cfg.model.bfcl_model_name
     else:
         bfcl_cfg['model_name'] = cfg.model.pretrained_model_name_or_path
-    
-    bfcl_cfg['backend'] = cfg.api
 
+    bfcl_cfg['backend'] = cfg.api
 
     # testmodeの場合はサンプル数を1に設定
     if cfg.testmode:
@@ -112,10 +111,10 @@ def evaluate():
         artifacts_path=artifact_dir,
     )
     # Prediction 
-    prompts = generation_main(gen_args)
+    generation_main(gen_args)
 
     # Evaluation
-    _, _, _, overall_df, accuracies = evaluation_main(
+    _, _, _, overall_df = evaluation_main(
         model=[bfcl_cfg['model_name']],
         test_categories=bfcl_cfg['test_category'],
         result_dir=bfcl_cfg['result_dir'],
@@ -126,7 +125,13 @@ def evaluate():
     
 
     # Leaderboard Table
-    overall_df.drop(columns=['Organization','License','Model Link'], inplace=True)
+    print(f"DEBUG: Overall DataFrame columns: {list(overall_df.columns)}")
+    columns_to_drop = ['Organization','License','Model Link','Cost ($ Per 1k Function Calls)','Latency Mean (s)','Latency Standard Deviation (s)','Latency 95th Percentile (s)']
+
+    # Only drop columns that exist
+    existing_columns_to_drop = [col for col in columns_to_drop if col in overall_df.columns]
+    print(f"DEBUG: Dropping columns: {existing_columns_to_drop}")
+    overall_df.drop(columns=existing_columns_to_drop, inplace=True)
     overall_df.rename(columns={'Model': 'BFCL Model Name'}, inplace=True)
     overall_df["model_name"] = cfg.model.pretrained_model_name_or_path
     table_metric = wandb.Table(dataframe=overall_df)
@@ -151,43 +156,36 @@ def evaluate():
         else:
             return 0
     
-    model_dir = Path(bfcl_cfg['result_dir']) / bfcl_cfg['model_name'].replace("/", "_")
+    print("DEBUG: Starting bfcl_output_table generation...")
+    model_dir = Path(bfcl_cfg['score_dir']) / bfcl_cfg['model_name'].replace("/", "_")
     results = []
     
-    # Use prompts from generation_main and accuracies from evaluation_main
-    # Create a mapping from test case ID to prompt
-    prompts_map = {}
-    if prompts:
-        for prompt_entry in prompts:
-            if 'id' in prompt_entry:
-                prompts_map[prompt_entry['id']] = prompt_entry
+    print(f"DEBUG: Looking for score files in: {model_dir}")
+    print(f"DEBUG: Model directory exists: {model_dir.exists()}")
     
-    # Create a mapping from test case ID to accuracy
-    accuracies_map = {}
-    if accuracies:
-        for accuracy_entry in accuracies:
-            if 'id' in accuracy_entry:
-                accuracies_map[accuracy_entry['id']] = accuracy_entry
+    # Extract information from score files (contains all test case details)
+    score_files = list(model_dir.glob("BFCL_v3_*_score.json"))
+    print(f"DEBUG: Found {len(score_files)} score files: {[f.name for f in score_files]}")
     
-    result_files = list(model_dir.glob("BFCL_v3_*_result.json"))
-
-    for json_file in result_files:
+    for json_file in score_files:
         test_category = extract_test_category(json_file.name)
-   
+        print(f"DEBUG: Processing file: {json_file.name}, category: {test_category}")
+        
         with open(json_file, 'r') as f:
-            line_count = 0
-            for line in f:
+            lines = f.readlines()
+            print(f"DEBUG: File {json_file.name} has {len(lines)} lines")
+            # Skip the first line (overall accuracy summary)
+            for line_num, line in enumerate(lines[1:], 2):
                 if line.strip():
-                    line_count += 1
                     entry = json.loads(line)
                     entry_id = entry.get('id', '')
+                    print(f"DEBUG: Processing entry {entry_id} from line {line_num}")
                     
-                    # Get prompt from prompts_map
+                    # Extract prompt text
                     prompt_text = ""
-                    if entry_id in prompts_map:
-                        prompt_entry = prompts_map[entry_id]
+                    if 'prompt' in entry:
+                        prompt_entry = entry['prompt']
                         if 'question' in prompt_entry and prompt_entry['question']:
-                            # Extract text content from the question structure
                             question_data = prompt_entry['question']
                             if isinstance(question_data, list) and len(question_data) > 0:
                                 # Check if this is a multi-turn conversation
@@ -208,30 +206,45 @@ def evaluate():
                                         if isinstance(first_message, dict) and 'content' in first_message:
                                             prompt_text = first_message['content']
                     
-                    # Get accuracy from accuracies_map
-                    accuracy = 0.0
-                    if entry_id in accuracies_map:
-                        accuracy_entry = accuracies_map[entry_id]
-                        accuracy = accuracy_entry.get('accuracy', 0.0)
+                    # Prepare result entry
+                    # Handle different field names used by different evaluation functions
+                    output_raw = entry.get('model_result_raw', entry.get('model_result', ''))
+                    possible_answer_raw = entry.get('possible_answer', '')
                     
-                    results.append({
+                    result_entry = {
                         'id': entry_id,
                         'category': test_category,
                         'prompt': prompt_text,
-                        'output': str(entry.get('result', '')),
-                        'accuracy': accuracy,
-                        'input_token_count': flatten_and_sum(entry.get('input_token_count', 0)),
-                        'output_token_count': flatten_and_sum(entry.get('output_token_count', 0))
-                    })
-            
-       
+                        'output': str(output_raw),  # Check both model_result_raw and model_result
+                        'accuracy': entry.get('success', 0),  # Use success field (1=success, 0=failure)
+                        'possible_answer': str(possible_answer_raw),
+                    }
+                    
+                    # Add error information only if it exists
+                    if entry.get('error') is not None:
+                        result_entry['error'] = str(entry.get('error', ''))
+                    
+                    results.append(result_entry)
+                    print(f"DEBUG: Added result entry for {entry_id}")
+    
+    print(f"DEBUG: Total results collected: {len(results)}")
+    
+    if len(results) > 0:
+        print(f"DEBUG: Sample result: {results[0]}")
+    else:
+        print("DEBUG: No results found!")
+    
+    print(f"DEBUG: Creating wandb table with {len(results)} results")
     table_log = wandb.Table(dataframe=pd.DataFrame(results))
+    print(f"DEBUG: Wandb table created successfully")
 
     # Log
+    print("DEBUG: Starting wandb logging...")
     run.log({
             "bfcl_output_table": table_log,
             "bfcl_leaderboard_table": table_metric,
             "bfcl_radar_table": table_radar,
         })
+    print("DEBUG: Wandb logging completed successfully")
 
     print("BFCLの評価が正常に完了しました！")
