@@ -155,7 +155,7 @@ def evaluate_n_shot(few_shots: bool):
                 )
                 
                 # Add inputs only once per sample (for LLM processing)
-                generator_config = {"max_tokens": task_data["output_length"]}
+                generator_config = {"max_tokens": cfg.jaster.override_max_tokens or task_data["output_length"]}
                 inputs.extend([messages, generator_config])
                 
                 for metrics in metrics_list:

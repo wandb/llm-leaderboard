@@ -1,0 +1,37 @@
+wandb:
+  run_name: "Qwen/Qwen3-14B" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+api: vllm-external
+base_url: 'http://vllm:8000/v1'
+num_gpus: 1
+batch_size: 256 # vllmは256, apiは32を推奨
+# inference_interval: 1 # seconds
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "Qwen/Qwen3-14B" #if you use openai api, put the name of model
+  size_category: "10B≤ <30B"
+  size: 1
+  release_date: "4/28/2025"
+
+generator:
+  extra_body:
+    chat_template_kwargs:
+      enable_thinking: false
+
+testmode: true
+run:
+  jaster: true
+  jmmlu_robustness: true # if this is set as true, jaster should set as true
+  mtbench: true
+  jbbq: true
+  toxicity: true
+  jtruthfulqa: true
+  hle: true
+  swebench: true
+  bfcl: false
+  hallulens: true
+  arc_agi_2: true
+  aggregate: false
