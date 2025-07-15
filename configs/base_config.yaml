@@ -9,21 +9,23 @@ testmode: true
 inference_interval: 0 # seconds
 
 run:
-  jaster: false
-  jmmlu_robustness: False # if this is set as true, jaster should set as true
-  mtbench: false
-  jbbq: false
-  toxicity: false
-  jtruthfulqa: false
-  hle: false
-  swebench: false
+  jaster: true
+  jmmlu_robustness: true # if this is set as true, jaster should set as true
+  mtbench: true
+  jbbq: true
+  toxicity: true
+  jtruthfulqa: true
+  hle: true
+  swebench: true
   bfcl: true
-  hallulens: false
-  arc_agi_2: false
-  aggregate: false  
+  hallulens: true
+  arc_agi_2: true
+  m_ifeval: true
+  aggregate: true
 
 model:
   artifact_path: null
+  ### deprecated: for in-process vllm launch ###
   max_model_len: 3000
   chat_template: null
   dtype: 'float16'
@@ -31,8 +33,19 @@ model:
   device_map: 'auto'
   load_in_8bit: false
   load_in_4bit: false
+  ### deprecated ###
 
-generator:
+vllm: # vLLM server-side launch configuration
+  extra_args: []
+  # example
+  # extra_args:
+  #   - --dtype=bfloat16
+  #   - --max_model_len=3000
+  #   - '--override_generation_config={"temperature":0.6,"top_p":0.95}' # do not include space
+  #   - --trust_remote_code
+  #   - --reasoning-parser=deepseek_r1
+
+generator: # LLM client default configuration: to be overridden by each benchmark
   top_p: 1.0
   temperature: 0.1
   max_tokens: 128
@@ -53,11 +66,14 @@ jaster:
       write_timeout: 60.0                   # Write timeout in seconds
       enable_network: true                  # Enable network access in sandbox
       worker_timeout: 15                    # Worker process timeout in seconds
+  override_max_tokens: null # if null, use value defined in task dataset files
 
 jbbq:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4-private/jbbq:production'
   dataset_dir: 'jbbq'
   language: 'ja'
+  generator_config:
+    max_tokens: 10
 
 toxicity:
   artifact_path: 'llm-leaderboard/nejumi-leaderboard4-private/toxicity_dataset_full:production'
@@ -68,6 +84,8 @@ toxicity:
 jtruthfulqa:
   artifact_path: 'llm-leaderboard/nejumi-leaderboard4/jtruthfulqa_dataset:production'  # JTruthfulQAデータセットのアーティファクトパス
   roberta_model_name: 'nlp-waseda/roberta_jtruthfulqa'  # 評価に使用するRoBERTaモデル名
+  generator_config:
+    max_tokens: 256
 
 swebench:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/swebench_verified_official:production'  # SWE-Bench Verifiedデータセットのアーティファクトパス
@@ -126,6 +144,10 @@ bfcl:
 hallulens:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/hallulens:production'
   judge_model: 'gpt-4o'
+  generator_config:
+    max_tokens: 256
+    temperature: 0.0
+    top_p: 1.0
   
 hle:
   artifact_path: 'llm-leaderboard/nejumi-leaderboard4/hle-ja:production'
@@ -139,6 +161,10 @@ arc_agi_2:
   artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval:production"
   max_output_tokens: 4096
   num_attempts: 2
+
+m_ifeval:
+  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/m_ifeval:production"
+  dataset_dir: "ja_input_data.jsonl"
 
 sample_dataset:
   artifacts_path: "your artifact path here"

@@ -141,15 +141,6 @@ case $model_choice in
         ;;
 esac
 
-# API使用時以外は最大トークン長を設定
-if [ "$USE_API" = false ]; then
-    # 最大トークン長の入力
-    read -p "最大トークン長 [デフォルト: 4096]: " MAX_MODEL_LEN
-    MAX_MODEL_LEN=${MAX_MODEL_LEN:-4096}
-else
-    MAX_MODEL_LEN=4096  # APIの場合はデフォルト値
-fi
-
 # API設定
 if [ "$USE_API" = true ]; then
     echo ""
@@ -305,7 +296,6 @@ else
             fi
             VLLM_GPUS="0,1"
             LEADERBOARD_GPUS="2,3"
-            TENSOR_PARALLEL_SIZE=2
             ;;
         3)
             if [ "$GPU_COUNT" -lt 8 ]; then
@@ -314,7 +304,6 @@ else
             fi
             VLLM_GPUS="0,1,2,3"
             LEADERBOARD_GPUS="4,5,6,7"
-            TENSOR_PARALLEL_SIZE=4
             ;;
         4)
             read -p "vLLM用GPU (カンマ区切り, 例: 0,1): " VLLM_GPUS
@@ -325,7 +314,6 @@ else
         5)
             VLLM_GPUS="0"
             LEADERBOARD_GPUS=""
-            TENSOR_PARALLEL_SIZE=1
             ;;
         *)
             echo "無効な選択です。"
@@ -515,7 +503,6 @@ if [ "$USE_API" = true ]; then
 else
     echo "モード: ローカル/HuggingFace"
     echo "選択されたモデル: $MODEL_NAME"
-    echo "最大トークン長: $MAX_MODEL_LEN"
 fi
 
 echo "WANDB APIキー: [設定済み]"
@@ -617,8 +604,6 @@ cat > "$ENV_FILEPATH" << EOL
 MODEL_NAME=$MODEL_NAME
 SERVED_MODEL_NAME=$MODEL_NAME
 EVAL_CONFIG_PATH=$EVAL_CONFIG_PATH
-DTYPE=half
-MAX_MODEL_LEN=$MAX_MODEL_LEN
 VLLM_PORT=8000
 
 # API Configuration
@@ -680,7 +665,6 @@ if [ "$USE_API" = true ]; then
 else
     echo "モード: ローカル/HuggingFace"
     echo "モデル: $MODEL_NAME"
-    echo "最大トークン長: $MAX_MODEL_LEN"
     echo "vLLM GPU: $VLLM_GPU_IDS (Tensor Parallel: $TENSOR_PARALLEL_SIZE)"
     if [ -n "$LEADERBOARD_GPUS" ]; then
         echo "Leaderboard GPU: $LEADERBOARD_GPU_IDS"
