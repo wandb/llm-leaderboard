@@ -22,6 +22,7 @@ semaphore = asyncio.Semaphore(MAX_CONCURRENT_CALLS)
 async def translate_content(content, retry_count=0):
     try:
         async with semaphore:  # セマフォを使用して並列数を制限
+            print(f"翻訳中: {content[:50]}...")
             completion = await client.chat.completions.create(
                 extra_body={},
                 model="qwen/qwen3-235b-a22b:free",
@@ -32,25 +33,33 @@ async def translate_content(content, retry_count=0):
                     }
                 ]
             )
-            return completion.choices[0].message.content
+            translated = completion.choices[0].message.content
+            print(f"翻訳完了: {translated[:50]}...")
+            return translated
     except Exception as e:
         if retry_count < MAX_RETRIES:
-            print(f"Error occurred, retrying ({retry_count + 1}/{MAX_RETRIES}): {str(e)}")
+            print(f"エラーが発生しました。再試行中 ({retry_count + 1}/{MAX_RETRIES}): {str(e)}")
             await asyncio.sleep(RETRY_DELAY)
             return await translate_content(content, retry_count + 1)
         else:
-            print(f"Failed after {MAX_RETRIES} retries: {str(e)}")
-            raise
+            print(f"{MAX_RETRIES}回の再試行後に失敗しました: {str(e)}")
+            # エラーが発生しても元のコンテンツを返す（翻訳されていない状態）
+            return content
 
 async def process_item(item):
     try:
-        # Translate the question content
-        for message in item['question'][0]:
-            if message['role'] == 'user':
-                message['content'] = await translate_content(message['content'])
+        # 質問内容を翻訳 - 全てのターンを処理
+        message_count = 0
+        for turn_idx, turn in enumerate(item['question']):
+            for message_idx, message in enumerate(turn):
+                if message['role'] in ['user', 'system']:
+                    message_count += 1
+                    print(f"  Turn {turn_idx + 1}, Message {message_idx + 1}: {message['role']} message")
+                    message['content'] = await translate_content(message['content'])
+        print(f"  Total messages translated: {message_count}")
         return item
     except Exception as e:
-        print(f"Error processing item: {str(e)}")
+        print(f"アイテム処理中にエラーが発生しました: {str(e)}")
         return item  # エラーが発生しても元のアイテムを返す
 
 async def process_bfcl_file(input_file, output_file):
@@ -59,21 +68,39 @@ async def process_bfcl_file(input_file, output_file):
         with open(input_file, 'r', encoding='utf-8') as f:
             data = [json.loads(line) for line in f]
 
+        print(f"Loaded {len(data)} items from {input_file}")
+
         # Create output directory if it doesn't exist
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
-        # Process items in parallel using asyncio with progress bar
-        tasks = [process_item(item) for item in data]
+        # Process items in batches for efficiency
+        batch_size = 5  # Process 5 items at a time
         translated_data = []
-        for coro in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc=f"Translating {os.path.basename(input_file)}"):
-            try:
-                result = await coro
-                translated_data.append(result)
-            except Exception as e:
-                print(f"Error in task: {str(e)}")
-                continue
+        
+        for batch_start in range(0, len(data), batch_size):
+            batch_end = min(batch_start + batch_size, len(data))
+            batch = data[batch_start:batch_end]
+            
+            print(f"Processing batch {batch_start//batch_size + 1}/{(len(data) + batch_size - 1)//batch_size} (items {batch_start + 1}-{batch_end})")
+            
+            # Create tasks for this batch
+            tasks = [process_item(item) for item in batch]
+            
+            # Process batch with progress bar
+            batch_results = []
+            for coro in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc=f"Batch {batch_start//batch_size + 1}"):
+                try:
+                    result = await coro
+                    batch_results.append(result)
+                except Exception as e:
+                    print(f"Error in batch task: {str(e)}")
+                    continue
+            
+            translated_data.extend(batch_results)
+            print(f"Completed batch {batch_start//batch_size + 1}")
 
         # Write the translated data
+        print(f"Writing {len(translated_data)} items to {output_file}")
         with open(output_file, 'w', encoding='utf-8') as f:
             for item in translated_data:
                 f.write(json.dumps(item, ensure_ascii=False) + '\n')
@@ -83,16 +110,18 @@ async def process_bfcl_file(input_file, output_file):
 
 async def main():
     # Get all BFCL JSON files from the data directory
-    input_dir = "scripts/evaluator/evaluate_utils/bfcl_pkg/data"
-    output_dir = "scripts/evaluator/evaluate_utils/bfcl_pkg/data_jp"
+    input_dir = "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v0/bfcl"
+    output_dir = "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v0/bfcl_improved"
     
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
     
     # Get list of all files to process
-    input_files = glob.glob(os.path.join(input_dir, "BFCL_v3_*.json"))
-    total_files = len(input_files)
-    
+    #input_files = glob.glob(os.path.join(input_dir, "BFCL_v3_*.json"))
+    input_files = [
+        "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v0/bfcl/BFCL_v3_multi_turn_base.json",
+    ]
+
     # Process all JSON files
     for idx, input_file in enumerate(input_files, 1):
         # Generate output filename by replacing the input directory with output directory

@@ -1,15 +1,12 @@
 wandb:
-  run_name: "google/gemini-1.5-pro-exp-0801" # use run_name defined above
-
-# if you don't use api, please set "api" as "false"
-# if you use api, please select from "openai", "anthropic", "google", "cohere", "vllm", "mistral", "bedrock"
+  run_name: google/gemini-1.5-pro-exp-0801
 api: google
-batch_size: 2 # vllmは256, apiは32を推奨
-inference_interval: 1 # seconds
-
+batch_size: 2
+inference_interval: 1
 model:
   use_wandb_artifacts: false
-  pretrained_model_name_or_path: "gemini-1.5-pro-exp-0801" #if you use openai api, put the name of model
-  size_category: "api"
+  pretrained_model_name_or_path: gemini-1.5-pro-exp-0801 #if you use openai api, put the name of model
+  bfcl_model_name: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  size_category: api
   size: null
-  release_date: "8/1/2024"
+  release_date: 8/1/2024

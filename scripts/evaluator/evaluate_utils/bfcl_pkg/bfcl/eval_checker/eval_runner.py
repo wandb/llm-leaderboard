@@ -54,6 +54,7 @@ def multi_turn_runner(
                     "model_name": model_name,
                     "test_category": test_category,
                     "valid": False,
+                    "success": 0,  # Explicit success field (1=success, 0=failure)
                     "error": {
                         "error_message": [
                             "Error during inference phase. Model did not output a list of model responses."
@@ -63,6 +64,7 @@ def multi_turn_runner(
                     "prompt": test_entry,
                     "model_result": multi_turn_model_result_list,
                     "possible_answer": multi_turn_ground_truth_list,
+                    "status": "failed",
                 }
             )
         # Check if force-terminated during inference phase.
@@ -75,6 +77,7 @@ def multi_turn_runner(
                     "model_name": model_name,
                     "test_category": test_category,
                     "valid": False,
+                    "success": 0,  # Explicit success field (1=success, 0=failure)
                     "error": {
                         "error_message": [
                             f"Model was force-terminated during inference phase. The length of the model result turns ({len(multi_turn_model_result_list)}) does not match the length of the ground truth turns ({len(multi_turn_ground_truth_list)})."
@@ -84,6 +87,7 @@ def multi_turn_runner(
                     "prompt": test_entry,
                     "model_result": multi_turn_model_result_list,
                     "possible_answer": multi_turn_ground_truth_list,
+                    "status": "failed",
                 }
             )
             continue
@@ -128,21 +132,31 @@ def multi_turn_runner(
         #     multi_turn_ground_truth_list,
         # )
 
+        # Create detailed entry for both successful and failed cases
+        temp = {}
+        temp["id"] = index
+        temp["model_name"] = model_name
+        temp["test_category"] = test_category
+        temp["valid"] = accuracy_checker_result["valid"]
+        temp["success"] = 1 if accuracy_checker_result["valid"] else 0  # Explicit success field (1=success, 0=failure)
+        temp["prompt"] = test_entry
+        temp["model_result_raw"] = multi_turn_model_result_list
+        temp["model_result_decoded"] = multi_turn_model_result_list_decoded
+        temp["possible_answer"] = multi_turn_ground_truth_list
+        temp["inference_log"] = model_result[i].get("inference_log", "")
+        
         if not accuracy_checker_result["valid"]:
-            temp = {}
-            temp["id"] = index
-            temp["model_name"] = model_name
-            temp["test_category"] = test_category
-            temp["valid"] = accuracy_checker_result.pop("valid")
-            temp["error"] = accuracy_checker_result
-            temp["prompt"] = test_entry
-            temp["model_result_raw"] = multi_turn_model_result_list
-            temp["model_result_decoded"] = multi_turn_model_result_list_decoded
-            temp["possible_answer"] = multi_turn_ground_truth_list
-            temp["inference_log"] = model_result[i].get("inference_log", "")
-            result.append(temp)
+            # For failed cases, add error information
+            temp["error"] = accuracy_checker_result.copy()
+            temp["error"].pop("valid", None)  # Remove 'valid' key from error info
+            temp["status"] = "failed"
         else:
+            # For successful cases, add success information
             correct_count += 1
+            temp["error"] = None
+            temp["status"] = "success"
+        
+        result.append(temp)
 
     accuracy = correct_count / len(model_result)
     result.insert(
@@ -157,7 +171,17 @@ def multi_turn_runner(
     output_file_dir = score_dir / model_name
     write_list_of_dicts_to_file(output_file_name, result, output_file_dir)
 
-    return accuracy, len(model_result)
+    # Create individual accuracy results
+    individual_results = []
+    for entry in result[1:]:  # Skip the first entry (overall accuracy)
+        if 'id' in entry:
+            individual_results.append({
+                'id': entry['id'],
+                'accuracy': 1.0 if entry.get('valid', False) else 0.0,
+                'category': test_category
+            })
+
+    return accuracy, len(model_result), individual_results
 
 
 def relevance_file_runner(
@@ -195,14 +219,25 @@ def relevance_file_runner(
         else:
             success = contain_func_call
 
+        # Create detailed entry for both successful and failed cases
+        temp = {}
+        temp["id"] = index
+        temp["model_name"] = model_name
+        temp["test_category"] = test_category
+        temp["valid"] = success
+        temp["success"] = 1 if success else 0  # Explicit success field (1=success, 0=failure)
+        temp["prompt"] = prompt[i]
+        temp["model_result"] = model_result_item
+        temp["decoded_result"] = decoded_result
+        
         if success:
             correct_count += 1
+            # For successful cases, add success information
+            temp["error"] = None
+            temp["error_type"] = None
+            temp["status"] = "success"
         else:
-            temp = {}
-            temp["id"] = index
-            temp["model_name"] = model_name
-            temp["test_category"] = test_category
-            temp["valid"] = success
+            # For failed cases, add error information
             if "irrelevance" in test_category:
                 temp["error"] = [
                     f"Valid syntax. Successfully decode AST when it should not."
@@ -213,11 +248,9 @@ def relevance_file_runner(
                     f"Invalid syntax. Failed to decode AST when it should have. {decode_error}"
                 ]
                 temp["error_type"] = "relevance_error:decoder_failed"
-            temp["prompt"] = prompt[i]
-            temp["model_result"] = model_result_item
-            temp["decoded_result"] = decoded_result
-
-            result.append(temp)
+            temp["status"] = "failed"
+        
+        result.append(temp)
 
     accuracy = correct_count / len(model_result)
     result.insert(
@@ -232,7 +265,17 @@ def relevance_file_runner(
     output_file_dir = score_dir / model_name
     write_list_of_dicts_to_file(output_file_name, result, output_file_dir)
 
-    return accuracy, len(model_result)
+    # Create individual accuracy results
+    individual_results = []
+    for entry in result[1:]:  # Skip the first entry (overall accuracy)
+        if 'id' in entry:
+            individual_results.append({
+                'id': entry['id'],
+                'accuracy': 1.0 if entry.get('valid', False) else 0.0,
+                'category': test_category
+            })
+
+    return accuracy, len(model_result), individual_results
 
 
 def ast_file_runner(
@@ -257,44 +300,51 @@ def ast_file_runner(
         prompt_item = prompt[i]["function"]
         possible_answer_item = possible_answer[i]["ground_truth"]
 
+        model_result_item_raw = model_result_item
+        decode_error = None
+        decoder_output_valid = False
+        
         try:
-            model_result_item_raw = model_result_item
             model_result_item = handler.decode_ast(model_result_item, language)
+            decoder_output_valid = is_function_calling_format_output(model_result_item)
         except Exception as e:
-            result.append(
-                {
-                    "id": index,
-                    "model_name": model_name,
-                    "test_category": test_category,
-                    "valid": False,
-                    "error": [f"Invalid syntax. Failed to decode AST. {str(e)}"],
-                    "error_type": "ast_decoder:decoder_failed",
-                    "prompt": prompt[i],
-                    "model_result_raw": model_result_item_raw,
-                    "possible_answer": possible_answer_item,
-                }
-            )
+            decode_error = str(e)
+            
+        # Create detailed entry for all cases (decode error, format error, and successful cases)
+        temp = {}
+        temp["id"] = index
+        temp["model_name"] = model_name
+        temp["test_category"] = test_category
+        temp["prompt"] = prompt[i]
+        temp["model_result_raw"] = model_result_item_raw
+        temp["possible_answer"] = possible_answer_item
+        
+        if decode_error:
+            # AST decode failed
+            temp["valid"] = False
+            temp["success"] = 0  # Explicit success field (1=success, 0=failure)
+            temp["error"] = [f"Invalid syntax. Failed to decode AST. {decode_error}"]
+            temp["error_type"] = "ast_decoder:decoder_failed"
+            temp["model_result_decoded"] = None
+            temp["status"] = "failed"
+            result.append(temp)
             continue
-
-        decoder_output_valid = is_function_calling_format_output(model_result_item)
+            
         if not decoder_output_valid:
-            result.append(
-                {
-                    "id": index,
-                    "model_name": model_name,
-                    "test_category": test_category,
-                    "valid": False,
-                    "error": [
-                        "Did not output in the specified format. Note: the model_result is wrapped in a string to ensure json serializability."
-                    ],
-                    "error_type": "ast_decoder:decoder_wrong_output_format",
-                    "prompt": prompt[i],
-                    "model_result_raw": str(model_result_item_raw),
-                    "model_result_decoded": str(model_result_item),
-                    "possible_answer": possible_answer_item,
-                }
-            )
+            # Wrong output format
+            temp["valid"] = False
+            temp["success"] = 0  # Explicit success field (1=success, 0=failure)
+            temp["error"] = [
+                "Did not output in the specified format. Note: the model_result is wrapped in a string to ensure json serializability."
+            ]
+            temp["error_type"] = "ast_decoder:decoder_wrong_output_format"
+            temp["model_result_decoded"] = str(model_result_item)
+            temp["status"] = "failed"
+            result.append(temp)
             continue
+            
+        # If we reach here, decoding was successful, now check the actual result
+        temp["model_result_decoded"] = model_result_item
 
         checker_result = ast_checker(
             prompt_item,
@@ -305,21 +355,23 @@ def ast_file_runner(
             model_name,
         )
 
+        # Update temp with checker result information
+        temp["valid"] = checker_result["valid"]
+        temp["success"] = 1 if checker_result["valid"] else 0  # Explicit success field (1=success, 0=failure)
+        
         if checker_result["valid"]:
             correct_count += 1
+            # For successful cases, add success information
+            temp["error"] = None
+            temp["error_type"] = None
+            temp["status"] = "success"
         else:
-            temp = {}
-            temp["id"] = index
-            temp["model_name"] = model_name
-            temp["test_category"] = test_category
-            temp["valid"] = checker_result["valid"]
+            # For failed cases, add error information
             temp["error"] = checker_result["error"]
             temp["error_type"] = checker_result["error_type"]
-            temp["prompt"] = prompt[i]
-            temp["model_result_raw"] = model_result_item_raw
-            temp["model_result_decoded"] = model_result_item
-            temp["possible_answer"] = possible_answer_item
-            result.append(temp)
+            temp["status"] = "failed"
+        
+        result.append(temp)
 
     accuracy = correct_count / len(model_result)
     result.insert(
@@ -334,7 +386,17 @@ def ast_file_runner(
     output_file_dir = score_dir / model_name
     write_list_of_dicts_to_file(output_file_name, result, output_file_dir)
 
-    return accuracy, len(model_result)
+    # Create individual accuracy results
+    individual_results = []
+    for entry in result[1:]:  # Skip the first entry (overall accuracy)
+        if 'id' in entry:
+            individual_results.append({
+                'id': entry['id'],
+                'accuracy': 1.0 if entry.get('valid', False) else 0.0,
+                'category': test_category
+            })
+
+    return accuracy, len(model_result), individual_results
 
 
 #### Main runner function ####
@@ -396,7 +458,7 @@ def runner(model_names, test_categories, result_dir, score_dir, samples_per_cate
     # This function reads all the score files from local folder and updates the
     # leaderboard table. This is helpful when you only want to run the
     # evaluation for a subset of models and test categories.
-    update_leaderboard_table_with_local_score_file(state["leaderboard_table"], score_dir)
+    update_leaderboard_table_with_local_score_file(state["leaderboard_table"], score_dir, model_names)
     # Write the leaderboard table to a file
     non_live_df, live_df, multi_turn_df, overall_df = generate_leaderboard_csv(
         state["leaderboard_table"], score_dir, model_names, test_categories, artifacts_path
@@ -434,7 +496,7 @@ def evaluate_task(
         prompt = prompt[:samples_per_category]
 
     if is_relevance_or_irrelevance(test_category):
-        accuracy, total_count = relevance_file_runner(
+        accuracy, total_count, individual_results = relevance_file_runner(
             handler, model_result, prompt, model_name, test_category, score_dir
         )
 
@@ -448,7 +510,7 @@ def evaluate_task(
             possible_answer = possible_answer[:samples_per_category]
 
         if is_multi_turn(test_category):
-            accuracy, total_count = multi_turn_runner(
+            accuracy, total_count, individual_results = multi_turn_runner(
                 handler,
                 model_result,
                 prompt,
@@ -460,7 +522,7 @@ def evaluate_task(
 
         # Single turn test
         else:
-            accuracy, total_count = ast_file_runner(
+            accuracy, total_count, individual_results = ast_file_runner(
                 handler,
                 model_result,
                 prompt,
@@ -473,6 +535,13 @@ def evaluate_task(
 
     record_result(state, model_name, test_category, accuracy, total_count)
     print(f"✅ Test completed: {test_category}. 🎯 Accuracy: {accuracy}")
+
+    # Store individual results in state for later use
+    if 'individual_results' not in state:
+        state['individual_results'] = {}
+    if model_name not in state['individual_results']:
+        state['individual_results'][model_name] = {}
+    state['individual_results'][model_name][test_category] = individual_results
 
     return state
 
@@ -511,6 +580,7 @@ def main(model, test_categories, result_dir, score_dir, samples_per_category=Non
     print(
         f"See {score_dir / 'data_live.csv'}, {score_dir / 'data_non_live.csv'} and {score_dir / 'data_multi_turn.csv'} for detailed evaluation results on each sub-section categories respectively."
     )
+        
     return non_live_df, live_df, multi_turn_df, overall_df
 
 
