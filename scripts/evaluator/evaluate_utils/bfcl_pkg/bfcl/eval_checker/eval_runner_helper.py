@@ -188,6 +188,23 @@ def write_score_csv_file(
 def generate_leaderboard_csv(
     leaderboard_table, output_path, eval_models=None, eval_categories=None, artifacts_path=None
 ):
+    # Remove existing CSV files in output directory before generating new ones
+    csv_files_to_remove = [
+        'data_overall.csv',
+        'data_live.csv', 
+        'data_non_live.csv',
+        'data_multi_turn.csv'
+    ]
+    
+    for csv_file in csv_files_to_remove:
+        csv_path = output_path / csv_file
+        if csv_path.exists():
+            try:
+                os.remove(csv_path)
+                print(f"Removed existing CSV file: {csv_path}")
+            except Exception as e:
+                print(f"Warning: Could not remove existing CSV file {csv_path}: {e}")
+    
     print("📈 Aggregating data to generate leaderboard score table..")
     data_non_live = []
     data_live = []
@@ -472,11 +489,13 @@ def generate_leaderboard_csv(
 
     # Log artifact
     #run.log_artifact(bfcl_artifact)
+
+    
     return non_live_df, live_df, multi_turn_df, overall_df
 
 
 def update_leaderboard_table_with_local_score_file(
-    leaderboard_table, score_path: Path
+    leaderboard_table, score_path: Path, model_names=None
 ) -> None:
 
     entries = score_path.iterdir()
@@ -487,6 +506,11 @@ def update_leaderboard_table_with_local_score_file(
     # Traverse each subdirectory
     for subdir in subdirs:
         model_name = subdir.relative_to(score_path).name
+        
+        # Filter by model_names if specified
+        if model_names is not None and model_name not in model_names:
+            continue
+            
         # Find and process all JSON files in the subdirectory
         for model_score_json in subdir.glob("*.json"):
             metadata = load_file(model_score_json)[0]

@@ -1,14 +1,11 @@
 wandb:
-  run_name: "us.amazon.nova-pro-v1:0" # use run_name defined above
-
-# if you don't use api, please set "api" as "false"
-# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
-api: "amazon_bedrock"
-batch_size: 1 # vllmは256, apiは32を推奨
-inference_interval: 16 # seconds
-
+  run_name: us.amazon.nova-pro-v1:0
+api: amazon_bedrock
+batch_size: 1
+inference_interval: 16
 model:
-  pretrained_model_name_or_path: "us.amazon.nova-pro-v1:0" #if you use openai api, put the name of model
-  size_category: "api"
-  size: null 
-  release_date: "12/3/2024"
+  pretrained_model_name_or_path: us.amazon.nova-pro-v1:0 #if you use openai api, put the name of model
+  bfcl_model_name: "nova-pro-v1.0" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  size_category: api
+  size: null
+  release_date: 12/3/2024
