@@ -1,16 +1,13 @@
 wandb:
-  run_name: "upstage/solar-1-mini-chat-ja" # use run_name defined above
-
-# if you don't use api, please set "api" as "false"
-# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+  run_name: upstage/solar-1-mini-chat-ja
 api: upstage
-batch_size: 16 # vllmは256, apiは32を推奨
-inference_interval: 2 # seconds
-
+batch_size: 16
+inference_interval: 2
 model:
   use_wandb_artifacts: false
-  pretrained_model_name_or_path: "solar-1-mini-chat-ja" #if you use openai api, put the name of model
+  pretrained_model_name_or_path: solar-1-mini-chat-ja #if you use openai api, put the name of model
+  bfcl_model_name: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
   chat_template: null
-  size_category: "api"
+  size_category: api
   size: null
-  release_date: "5/22/2024"
+  release_date: 5/22/2024
