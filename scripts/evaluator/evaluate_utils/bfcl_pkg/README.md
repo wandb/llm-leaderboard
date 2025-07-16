@@ -246,6 +246,10 @@ We welcome contributions! To add a new model:
 
 For detailed steps, please see the [Contributing Guide](./CONTRIBUTING.md).
 
+## 補足 by Nejumi Leaderboard
+1. 新しいモデルを追加したい場合は、[SUPPORTED_MODELS.md](./SUPPORTED_MODELS.md)を確認し、IDをconfig fileに追加してください。FCという名前がついているものと、ついていないものがある場合、FCの方を優先してください。Function Callingの機能を駆使した回答が行われます。
+2. 新しいモデルを追加する際は、[Contributing Guide](./CONTRIBUTING.md)を参照してください。
+
 ---
 
 ## Additional Resources

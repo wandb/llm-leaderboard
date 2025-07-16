@@ -1,21 +1,17 @@
-# SWE-Bench Verified evaluation configuration for Docker environment
 model:
   api_type: openai
-  pretrained_model_name_or_path: gpt-4.1-2025-04-14
+  pretrained_model_name_or_path: gpt-4.1-2025-04-14 #if you use openai api, put the name of model
+  bfcl_model_name: "gpt-4.1-2025-04-14-FC" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
   max_seq_length: 32768
-
 generator:
   temperature: 0.0
   top_p: 1.0
   max_tokens: 32768
-
 wandb:
   entity: ${WANDB_ENTITY}
   project: nejumi-swebench
   run_name: swebench-verified-docker-test
-
 testmode: false
-
 run:
   jaster: false
   jbbq: false
@@ -26,10 +22,9 @@ run:
   swebench: true
   hallulens: false
   aggregate: false
-
 swebench:
-  max_samples: 10  # テスト用に少数のサンプルで実行
-  max_workers: 2  # Docker環境では並列実行数を制限
-  evaluation_method: official  # 公式評価を使用
-  artifacts_path: "your-wandb-entity/nejumi-swebench/swebench-verified:latest"
-  dataset_dir: swebench_verified 
+  max_samples: 10
+  max_workers: 2
+  evaluation_method: official
+  artifacts_path: your-wandb-entity/nejumi-swebench/swebench-verified:latest
+  dataset_dir: swebench_verified
