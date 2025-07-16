@@ -17,6 +17,8 @@ from types import SimpleNamespace
 # Import directly from bfcl_pkg
 from evaluator.evaluate_utils.bfcl_pkg import generation_main, evaluation_main
 from evaluator.evaluate_utils.bfcl_pkg.bfcl.constants.eval_config import RESULT_PATH, SCORE_PATH
+from evaluator.evaluate_utils.bfcl_pkg.bfcl.utils import extract_test_category, load_file
+from evaluator.evaluate_utils.bfcl_pkg.bfcl.constants.eval_config import PROMPT_PATH, POSSIBLE_ANSWER_PATH
 
 def get_default_config() -> Dict[str, Any]:
     """BFCLのデフォルト設定を返す"""
@@ -28,8 +30,8 @@ def get_default_config() -> Dict[str, Any]:
         "num_threads": 1,  # 使用するスレッド数
         "gpu_memory_utilization": 0.9,  # GPU メモリ使用率
         "backend": "vllm",  # 使用するバックエンド
-        "skip_server_setup": True,  # サーバーセットアップをスキップするかどうか
-        "local_model_path": None,  # ローカルモデルのパス
+        "skip_server_setup": True,  # サーバーセットアップをスキップするかどうか（既存のvLLMサービスを使用）
+        "local_model_path": None,  # ローカルモデルのパス（動的に設定される）
         "allow_overwrite": False,  # 既存の結果を上書きするかどうか
         "include_input_log": False,  # 推論ログに入力ログを含めるかどうか
         "exclude_state_log": False,  # 推論ログから状態ログを除外するかどうか
@@ -52,6 +54,7 @@ def merge_config(default_config: Dict[str, Any], config: Dict[str, Any]) -> Dict
 
 def evaluate():
     """BFCLの評価を実行する"""
+    print("BFCLの評価を開始します")
     # WandbConfigSingletonからインスタンスを取得
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
@@ -63,9 +66,14 @@ def evaluate():
     # configからbfcl設定を取得し、デフォルト値とマージ
     user_config = cfg.get('bfcl', {})
     bfcl_cfg = merge_config(default_config, user_config)
-    bfcl_cfg['model_name'] = cfg.model.pretrained_model_name_or_path
-    bfcl_cfg['backend'] = cfg.api
+    
+    # BFCL対応モデル名がある場合はそれを使用、なければ従来の方法を使用
+    if hasattr(cfg.model, 'bfcl_model_name') and cfg.model.bfcl_model_name:
+        bfcl_cfg['model_name'] = cfg.model.bfcl_model_name
+    else:
+        bfcl_cfg['model_name'] = cfg.model.pretrained_model_name_or_path
 
+    bfcl_cfg['backend'] = cfg.api
 
     # testmodeの場合はサンプル数を1に設定
     if cfg.testmode:
@@ -102,10 +110,9 @@ def evaluate():
         samples_per_category=bfcl_cfg['samples_per_category'],
         artifacts_path=artifact_dir,
     )
-    
     # Prediction 
     generation_main(gen_args)
-        
+
     # Evaluation
     _, _, _, overall_df = evaluation_main(
         model=[bfcl_cfg['model_name']],
@@ -115,9 +122,16 @@ def evaluate():
         samples_per_category=bfcl_cfg['samples_per_category'],
         artifacts_path=artifact_dir
     )
+    
 
     # Leaderboard Table
-    overall_df.drop(columns=['Organization','License','Model Link'], inplace=True)
+    print(f"DEBUG: Overall DataFrame columns: {list(overall_df.columns)}")
+    columns_to_drop = ['Organization','License','Model Link','Cost ($ Per 1k Function Calls)','Latency Mean (s)','Latency Standard Deviation (s)','Latency 95th Percentile (s)']
+
+    # Only drop columns that exist
+    existing_columns_to_drop = [col for col in columns_to_drop if col in overall_df.columns]
+    print(f"DEBUG: Dropping columns: {existing_columns_to_drop}")
+    overall_df.drop(columns=existing_columns_to_drop, inplace=True)
     overall_df.rename(columns={'Model': 'BFCL Model Name'}, inplace=True)
     overall_df["model_name"] = cfg.model.pretrained_model_name_or_path
     table_metric = wandb.Table(dataframe=overall_df)
@@ -142,28 +156,95 @@ def evaluate():
         else:
             return 0
     
-    model_dir = Path(bfcl_cfg['result_dir']) / bfcl_cfg['model_name'].replace("/", "_")
+    print("DEBUG: Starting bfcl_output_table generation...")
+    model_dir = Path(bfcl_cfg['score_dir']) / bfcl_cfg['model_name'].replace("/", "_")
     results = []
     
-    for json_file in model_dir.glob("BFCL_v3_*_result.json"):
+    print(f"DEBUG: Looking for score files in: {model_dir}")
+    print(f"DEBUG: Model directory exists: {model_dir.exists()}")
+    
+    # Extract information from score files (contains all test case details)
+    score_files = list(model_dir.glob("BFCL_v3_*_score.json"))
+    print(f"DEBUG: Found {len(score_files)} score files: {[f.name for f in score_files]}")
+    
+    for json_file in score_files:
+        test_category = extract_test_category(json_file.name)
+        print(f"DEBUG: Processing file: {json_file.name}, category: {test_category}")
+        
         with open(json_file, 'r') as f:
-            for line in f:
+            lines = f.readlines()
+            print(f"DEBUG: File {json_file.name} has {len(lines)} lines")
+            # Skip the first line (overall accuracy summary)
+            for line_num, line in enumerate(lines[1:], 2):
                 if line.strip():
                     entry = json.loads(line)
-                    results.append({
-                        'id': entry.get('id', ''),
-                        'result': str(entry.get('result', '')),
-                        'input_token_count': flatten_and_sum(entry.get('input_token_count', 0)),
-                        'output_token_count': flatten_and_sum(entry.get('output_token_count', 0))
-                    })
+                    entry_id = entry.get('id', '')
+                    print(f"DEBUG: Processing entry {entry_id} from line {line_num}")
+                    
+                    # Extract prompt text
+                    prompt_text = ""
+                    if 'prompt' in entry:
+                        prompt_entry = entry['prompt']
+                        if 'question' in prompt_entry and prompt_entry['question']:
+                            question_data = prompt_entry['question']
+                            if isinstance(question_data, list) and len(question_data) > 0:
+                                # Check if this is a multi-turn conversation
+                                if len(question_data) > 1:
+                                    # Multi-turn: show all instructions
+                                    prompt_parts = []
+                                    for i, turn in enumerate(question_data):
+                                        if isinstance(turn, list) and len(turn) > 0:
+                                            first_message = turn[0]
+                                            if isinstance(first_message, dict) and 'content' in first_message:
+                                                prompt_parts.append(f"Turn {i+1}: {first_message['content']}")
+                                    prompt_text = " | ".join(prompt_parts)
+                                else:
+                                    # Single turn: show first instruction
+                                    first_question = question_data[0]
+                                    if isinstance(first_question, list) and len(first_question) > 0:
+                                        first_message = first_question[0]
+                                        if isinstance(first_message, dict) and 'content' in first_message:
+                                            prompt_text = first_message['content']
+                    
+                    # Prepare result entry
+                    # Handle different field names used by different evaluation functions
+                    output_raw = entry.get('model_result_raw', entry.get('model_result', ''))
+                    possible_answer_raw = entry.get('possible_answer', '')
+                    
+                    result_entry = {
+                        'id': entry_id,
+                        'category': test_category,
+                        'prompt': prompt_text,
+                        'output': str(output_raw),  # Check both model_result_raw and model_result
+                        'accuracy': entry.get('success', 0),  # Use success field (1=success, 0=failure)
+                        'possible_answer': str(possible_answer_raw),
+                    }
+                    
+                    # Add error information only if it exists
+                    if entry.get('error') is not None:
+                        result_entry['error'] = str(entry.get('error', ''))
+                    
+                    results.append(result_entry)
+                    print(f"DEBUG: Added result entry for {entry_id}")
     
+    print(f"DEBUG: Total results collected: {len(results)}")
+    
+    if len(results) > 0:
+        print(f"DEBUG: Sample result: {results[0]}")
+    else:
+        print("DEBUG: No results found!")
+    
+    print(f"DEBUG: Creating wandb table with {len(results)} results")
     table_log = wandb.Table(dataframe=pd.DataFrame(results))
+    print(f"DEBUG: Wandb table created successfully")
 
     # Log
+    print("DEBUG: Starting wandb logging...")
     run.log({
             "bfcl_output_table": table_log,
             "bfcl_leaderboard_table": table_metric,
             "bfcl_radar_table": table_radar,
         })
+    print("DEBUG: Wandb logging completed successfully")
 
     print("BFCLの評価が正常に完了しました！")

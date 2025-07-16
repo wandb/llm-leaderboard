@@ -1,15 +1,12 @@
 wandb:
-  run_name: "tokyotech-llm/Swallow-7b-instruct-v0.1" # use run_name defined above
-
-# if you don't use api, please set "api" as "false"
-# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+  run_name: tokyotech-llm/Swallow-7b-instruct-v0.1
 api: vllm
-batch_size: 256 # vllmは256, apiは32を推奨
-
+batch_size: 256
 model:
   use_wandb_artifacts: false
-  pretrained_model_name_or_path: "tokyotech-llm/Swallow-7b-instruct-v0.1" #if you use openai api, put the name of model
-  chat_template: "tokyotech-llm/Swallow-7b-instruct-v0.1"
-  size_category: "<10B"
+  pretrained_model_name_or_path: tokyotech-llm/Swallow-7b-instruct-v0.1 #if you use openai api, put the name of model
+  bfcl_model_name: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  chat_template: tokyotech-llm/Swallow-7b-instruct-v0.1
+  size_category: <10B
   size: 6829969408
-  release_date: "4/26/2024"
+  release_date: 4/26/2024
