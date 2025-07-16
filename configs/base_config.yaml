@@ -155,7 +155,7 @@ hle:
   max_completion_tokens: 8192
   max_workers: 100
   judge_model: "o3-mini-2025-01-31"
-  max_samples: 100
+  max_samples: 10
 
 arc_agi_2:
   artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval:production"
