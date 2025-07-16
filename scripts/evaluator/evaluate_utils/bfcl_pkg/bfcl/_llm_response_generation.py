@@ -304,3 +304,5 @@ def main(args):
         )
     else:
         generate_results(args, args.model, test_cases_total)
+    
+    return test_cases_total
