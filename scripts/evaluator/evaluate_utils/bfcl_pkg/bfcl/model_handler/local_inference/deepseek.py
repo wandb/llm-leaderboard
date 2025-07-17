@@ -26,40 +26,40 @@ class DeepseekHandler(OSSHandler):
             result = result[len("```python"):]
         return super().decode_execute(result)
 
-    @override
-    def _format_prompt(self, messages, function):
-        """
-        "bos_token": {
-            "__type": "AddedToken",
-            "content": "<｜begin▁of▁sentence｜>",
-            "lstrip": false,
-            "normalized": true,
-            "rstrip": false,
-            "single_word": false
-        },
-        "eos_token": {
-            "__type": "AddedToken",
-            "content": "<｜end▁of▁sentence｜>",
-            "lstrip": false,
-            "normalized": true,
-            "rstrip": false,
-            "single_word": false
-        },
-        "chat_template": "{% if not add_generation_prompt is defined %}{% set add_generation_prompt = false %}{% endif %}{{ bos_token }}{% for message in messages %}{% if message['role'] == 'user' %}{{ 'User: ' + message['content'] + '\n\n' }}{% elif message['role'] == 'assistant' %}{{ 'Assistant: ' + message['content'] + eos_token }}{% elif message['role'] == 'system' %}{{ message['content'] + '\n\n' }}{% endif %}{% endfor %}{% if add_generation_prompt %}{{ 'Assistant:' }}{% endif %}"
-        """
-        formatted_prompt = "<｜begin▁of▁sentence｜>"
+    # @override
+    # def _format_prompt(self, messages, function):
+    #     """
+    #     "bos_token": {
+    #         "__type": "AddedToken",
+    #         "content": "<｜begin▁of▁sentence｜>",
+    #         "lstrip": false,
+    #         "normalized": true,
+    #         "rstrip": false,
+    #         "single_word": false
+    #     },
+    #     "eos_token": {
+    #         "__type": "AddedToken",
+    #         "content": "<｜end▁of▁sentence｜>",
+    #         "lstrip": false,
+    #         "normalized": true,
+    #         "rstrip": false,
+    #         "single_word": false
+    #     },
+    #     "chat_template": "{% if not add_generation_prompt is defined %}{% set add_generation_prompt = false %}{% endif %}{{ bos_token }}{% for message in messages %}{% if message['role'] == 'user' %}{{ 'User: ' + message['content'] + '\n\n' }}{% elif message['role'] == 'assistant' %}{{ 'Assistant: ' + message['content'] + eos_token }}{% elif message['role'] == 'system' %}{{ message['content'] + '\n\n' }}{% endif %}{% endfor %}{% if add_generation_prompt %}{{ 'Assistant:' }}{% endif %}"
+    #     """
+    #     formatted_prompt = "<｜begin▁of▁sentence｜>"
 
-        for message in messages:
-            if message["role"] == "user":
-                formatted_prompt += f"User: {message['content']}\n\n"
-            elif message["role"] == "assistant":
-                formatted_prompt += f"Assistant: {message['content']}<｜end▁of▁sentence｜>"
-            elif message["role"] == "system":
-                formatted_prompt += f"{message['content']}\n\n"
+    #     for message in messages:
+    #         if message["role"] == "user":
+    #             formatted_prompt += f"User: {message['content']}\n\n"
+    #         elif message["role"] == "assistant":
+    #             formatted_prompt += f"Assistant: {message['content']}<｜end▁of▁sentence｜>"
+    #         elif message["role"] == "system":
+    #             formatted_prompt += f"{message['content']}\n\n"
 
-        formatted_prompt += "Assistant:"
+    #     formatted_prompt += "Assistant:"
 
-        return formatted_prompt
+    #     return formatted_prompt
 
     @override
     def _add_execution_results_prompting(
