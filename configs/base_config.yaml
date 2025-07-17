@@ -135,9 +135,6 @@ bfcl:
   test_category: 'all'
   num_threads: 1
   gpu_memory_utilization: 0.9
-  skip_server_setup: False
-  local_model_path: None
-  allow_overwrite: True
   samples_per_category: 10
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:production'
 
