@@ -21,26 +21,26 @@ class LlamaHandler(OSSHandler):
         super().__init__(model_name, temperature)
         self.model_name_huggingface = model_name.replace("-FC", "")
 
-    @override
-    def _format_prompt(self, messages, function):
-        # For Llama 4 series, they use a different set of tokens than Llama 3
-        if "Llama-4" in self.model_name:
-            formatted_prompt = "<|begin_of_text|>"
+    # @override
+    # def _format_prompt(self, messages, function):
+    #     # For Llama 4 series, they use a different set of tokens than Llama 3
+    #     if "Llama-4" in self.model_name:
+    #         formatted_prompt = "<|begin_of_text|>"
 
-            for message in messages:
-                formatted_prompt += f"<|header_start|>{message['role']}<|header_end|>\n\n{message['content'].strip()}<|eot|>"
+    #         for message in messages:
+    #             formatted_prompt += f"<|header_start|>{message['role']}<|header_end|>\n\n{message['content'].strip()}<|eot|>"
 
-            formatted_prompt += f"<|header_start|>assistant<|header_end|>\n\n"
-        # For Llama 3 series
-        else:
-            formatted_prompt = "<|begin_of_text|>"
+    #         formatted_prompt += f"<|header_start|>assistant<|header_end|>\n\n"
+    #     # For Llama 3 series
+    #     else:
+    #         formatted_prompt = "<|begin_of_text|>"
 
-            for message in messages:
-                formatted_prompt += f"<|start_header_id|>{message['role']}<|end_header_id|>\n\n{message['content'].strip()}<|eot_id|>"
+    #         for message in messages:
+    #             formatted_prompt += f"<|start_header_id|>{message['role']}<|end_header_id|>\n\n{message['content'].strip()}<|eot_id|>"
 
-            formatted_prompt += f"<|start_header_id|>assistant<|end_header_id|>\n\n"
+    #         formatted_prompt += f"<|start_header_id|>assistant<|end_header_id|>\n\n"
 
-        return formatted_prompt
+    #     return formatted_prompt
 
     @override
     def _add_execution_results_prompting(
