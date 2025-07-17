@@ -22,65 +22,66 @@ class PhiFCHandler(OSSHandler):
         self.model_name_huggingface = model_name.replace("-FC", "")
         self.is_fc_model = True
 
-    @override
-    def _format_prompt(self, messages, function):
-        """
-        "bos_token": "<|endoftext|>",
-        "chat_template":
-        {% for message in messages %}
-          {% if message['role'] == 'system' and 'tools' in message and message['tools'] is not none %}
-            {{ '<|' + message['role'] + '|>' + message['content'] + '<|tool|>' + message['tools'] + '<|/tool|>' + '<|end|>' }}
-          {% else %}
-            {{ '<|' + message['role'] + '|>' + message['content'] + '<|end|>' }}
-          {% endif %}
-        {% endfor %}
-        {% if add_generation_prompt %}
-          {{ '<|assistant|>' }}
-        {% else %}
-          {{ eos_token }}
-        {% endif %}
-        """
-
-        # Here's Microsoft's documentation on how the Phi-4-mini-instruct model expects tools to be provided to it:
-        # Tool-enabled function-calling format
-        #
-        # # Tools
-        # This format is used when the user wants the model to provide function calls based on the given tools.
-        # The user should provide the available tools in the system prompt, wrapped by <|tool|> and <|/tool|> tokens.
-        # The tools should be specified in JSON format, using a JSON dump structure. Example:
-        #
-        # <|system|>You are a helpful assistant with some tools.<|tool|>[{"name": "get_weather_updates", "description": "Fetches weather updates for a given city using the RapidAPI Weather API.", "parameters": {"city": {"description": "The name of the city for which to retrieve weather information.", "type": "str", "default": "London"}}}]<|/tool|><|end|><|user|>What is the weather like in Paris today?<|end|><|assistant|>
-        #
-
-        # sanity check
-        system_messages = [msg for msg in messages if msg["role"] == "system"]
-        assert 0 <= len(system_messages) <= 1
-
-        # set the system message
-        system_message = "You are a helpful assistant with some tools."
-        if messages[0]["role"] == "system":
-            system_message = messages[0]["content"]
-            messages = messages[1:]
-
-        # extract the tool contents
-        tool_contents = ""
-        for func in function:
-            # microsoft documentation has no guidance on indentation
-            tool_contents += json.dumps(func)
-            tool_contents += "\n"
-
-        # format the rest of the prompt
-        formatted_prompt = (
-            f"<|system|>{system_message}<|tool|>{tool_contents}<|/tool|><|end|>"
-        )
-        for msg in messages:
-            role = msg["role"]
-            content = msg["content"]
-            formatted_prompt += f"<|{role}|>{content}<|end|>"
-
-        # provide the generation prompt token
-        formatted_prompt += "<|assistant|>"
-        return formatted_prompt
+    # Commented out for Chat Completion API support - chat template now handled by vLLM server
+    # @override
+    # def _format_prompt(self, messages, function):
+    #     """
+    #     "bos_token": "<|endoftext|>",
+    #     "chat_template":
+    #     {% for message in messages %}
+    #       {% if message['role'] == 'system' and 'tools' in message and message['tools'] is not none %}
+    #         {{ '<|' + message['role'] + '|>' + message['content'] + '<|tool|>' + message['tools'] + '<|/tool|>' + '<|end|>' }}
+    #       {% else %}
+    #         {{ '<|' + message['role'] + '|>' + message['content'] + '<|end|>' }}
+    #       {% endif %}
+    #     {% endfor %}
+    #     {% if add_generation_prompt %}
+    #       {{ '<|assistant|>' }}
+    #     {% else %}
+    #       {{ eos_token }}
+    #     {% endif %}
+    #     """
+    #
+    #     # Here's Microsoft's documentation on how the Phi-4-mini-instruct model expects tools to be provided to it:
+    #     # Tool-enabled function-calling format
+    #     #
+    #     # # Tools
+    #     # This format is used when the user wants the model to provide function calls based on the given tools.
+    #     # The user should provide the available tools in the system prompt, wrapped by <|tool|> and <|/tool|> tokens.
+    #     # The tools should be specified in JSON format, using a JSON dump structure. Example:
+    #     #
+    #     # <|system|>You are a helpful assistant with some tools.<|tool|>[{"name": "get_weather_updates", "description": "Fetches weather updates for a given city using the RapidAPI Weather API.", "parameters": {"city": {"description": "The name of the city for which to retrieve weather information.", "type": "str", "default": "London"}}}]<|/tool|><|end|><|user|>What is the weather like in Paris today?<|end|><|assistant|>
+    #     #
+    #
+    #     # sanity check
+    #     system_messages = [msg for msg in messages if msg["role"] == "system"]
+    #     assert 0 <= len(system_messages) <= 1
+    #
+    #     # set the system message
+    #     system_message = "You are a helpful assistant with some tools."
+    #     if messages[0]["role"] == "system":
+    #         system_message = messages[0]["content"]
+    #         messages = messages[1:]
+    #
+    #     # extract the tool contents
+    #     tool_contents = ""
+    #     for func in function:
+    #         # microsoft documentation has no guidance on indentation
+    #         tool_contents += json.dumps(func)
+    #         tool_contents += "\n"
+    #
+    #     # format the rest of the prompt
+    #     formatted_prompt = (
+    #         f"<|system|>{system_message}<|tool|>{tool_contents}<|/tool|><|end|>"
+    #     )
+    #     for msg in messages:
+    #         role = msg["role"]
+    #         content = msg["content"]
+    #         formatted_prompt += f"<|{role}|>{content}<|end|>"
+    #
+    #     # provide the generation prompt token
+    #     formatted_prompt += "<|assistant|>"
+    #     return formatted_prompt
 
     @override
     def decode_ast(self, result, language="Python"):
