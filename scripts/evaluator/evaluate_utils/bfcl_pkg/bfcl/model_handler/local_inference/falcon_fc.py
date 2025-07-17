@@ -10,17 +10,17 @@ class Falcon3FCHandler(OSSHandler):
         super().__init__(model_name, temperature)
         self.model_name_huggingface = model_name.replace("-FC", "")
 
-    @override
-    def _format_prompt(self, messages, function):
-        """Format the prompt according to Falcon 3's chat template."""
-        tokenizer = self.tokenizer
-        formatted_prompt = tokenizer.apply_chat_template(
-            messages,
-            tools=function,
-            tokenize=False,
-            add_generation_prompt=True
-        )
-        return formatted_prompt
+    # @override
+    # def _format_prompt(self, messages, function):
+    #     """Format the prompt according to Falcon 3's chat template."""
+    #     tokenizer = self.tokenizer
+    #     formatted_prompt = tokenizer.apply_chat_template(
+    #         messages,
+    #         tools=function,
+    #         tokenize=False,
+    #         add_generation_prompt=True
+    #     )
+    #     return formatted_prompt
 
     @override
     def decode_ast(self, result, language="Python"):
