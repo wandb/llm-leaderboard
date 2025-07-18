@@ -33,18 +33,35 @@ class ClaudeHandler(BaseHandler):
         
         if self.is_bedrock_model:
             # Use AWS Bedrock for models with anthropic. prefix
-            self.bedrock_client = boto3.client(
-                'bedrock-runtime',
-                region_name=os.getenv('AWS_DEFAULT_REGION', 'us-east-1'),
-                aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-                aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY')
-            )
+            # Set longer timeout for Claude Opus 4 and Sonnet 4 models
+            if any(model in model_name for model in ["claude-opus-4", "claude-sonnet-4"]):
+                # 30 minutes timeout for slow models (Opus 4 & Sonnet 4)
+                from botocore.config import Config
+                bedrock_config = Config(
+                    read_timeout=1800,  # 30 minutes
+                    connect_timeout=60,
+                    retries={'max_attempts': 3}
+                )
+                self.bedrock_client = boto3.client(
+                    'bedrock-runtime',
+                    region_name=os.getenv('AWS_DEFAULT_REGION', 'us-east-1'),
+                    aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+                    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+                    config=bedrock_config
+                )
+            else:
+                self.bedrock_client = boto3.client(
+                    'bedrock-runtime',
+                    region_name=os.getenv('AWS_DEFAULT_REGION', 'us-east-1'),
+                    aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+                    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY')
+                )
             self.client = None  # Will use bedrock_client instead
         else:
             # Use Anthropic direct API for models without prefix
-            # Set longer timeout for Claude Opus 4 and other slow models
+            # Set longer timeout for Claude Opus 4 and Sonnet 4 models
             if any(model in model_name for model in ["claude-opus-4", "claude-sonnet-4"]):
-                # 30 minutes timeout for slow models
+                # 30 minutes timeout for slow models (Opus 4 & Sonnet 4)
                 self.client = Anthropic(
                     api_key=os.getenv("ANTHROPIC_API_KEY"),
                     timeout=1800.0  # 30 minutes
