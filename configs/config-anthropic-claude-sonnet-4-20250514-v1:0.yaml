@@ -9,3 +9,4 @@ model:
   size_category: api
   size: null
   release_date: 5/14/2025
+  enable_thinking: false  # Set to true to enable thinking mode (extended thinking)

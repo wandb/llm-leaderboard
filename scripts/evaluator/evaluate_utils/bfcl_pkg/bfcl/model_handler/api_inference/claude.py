@@ -27,6 +27,45 @@ class ClaudeHandler(BaseHandler):
         super().__init__(model_name, temperature)
         self.model_style = ModelStyle.Anthropic
         self.client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        
+        # Enable thinking mode for Claude 4 and Claude 3.7 models by default (can be disabled)
+        self.thinking_enabled = self._supports_thinking_mode(model_name)
+    
+    def _supports_thinking_mode(self, model_name: str) -> bool:
+        """Check if the model supports thinking mode (extended thinking)"""
+        thinking_models = [
+            "claude-opus-4",
+            "claude-sonnet-4", 
+            "claude-3-7-sonnet",
+            "anthropic.claude-opus-4",
+            "anthropic.claude-sonnet-4",
+            "anthropic.claude-3-7-sonnet"
+        ]
+        return any(model in model_name for model in thinking_models)
+    
+    def _get_anthropic_model_name(self, model_name: str) -> str:
+        """Convert model name to Anthropic API format"""
+        if model_name.startswith("anthropic."):
+            # Remove the "anthropic." prefix and convert bedrock format to API format
+            api_name = model_name.replace("anthropic.", "")
+            if "-v1:0" in api_name:
+                api_name = api_name.replace("-v1:0", "")
+            return api_name
+        return model_name
+    
+    def _get_max_tokens(self, model_name: str) -> int:
+        """Get max tokens based on model type"""
+        # Updated max tokens based on Anthropic's latest specifications
+        if "claude-opus-4" in model_name:
+            return 32000  # Claude Opus 4: 32,000 tokens
+        elif "claude-sonnet-4" in model_name or "claude-3-7-sonnet" in model_name:
+            return 64000  # Claude Sonnet 4 & 3.7: 64,000 tokens  
+        elif "claude-3-5-haiku" in model_name:
+            return 8192   # Claude 3.5 Haiku: 8,192 tokens
+        elif "claude-3-opus-20240229" in model_name:
+            return 4096   # Claude 3 Opus: 4,096 tokens
+        else:
+            return 8192   # Default for other Claude models
 
     def decode_ast(self, result, language="Python"):
         if "FC" not in self.model_name:
@@ -100,14 +139,23 @@ class ClaudeHandler(BaseHandler):
                             del message["content"][0]["cache_control"]
                     count += 1
 
-        return self.generate_with_backoff(
-            model=self.model_name.strip("-FC"),
-            max_tokens=(
-                4096 if "claude-3-opus-20240229" in self.model_name else 8192
-            ),  # 3.5 Sonnet has a higher max token limit
-            tools=inference_data["tools"],
-            messages=messages,
-        )
+        # Get the proper model name and max tokens
+        api_model_name = self._get_anthropic_model_name(self.model_name.strip("-FC"))
+        max_tokens = self._get_max_tokens(self.model_name)
+        
+        # Prepare parameters for API call
+        api_params = {
+            "model": api_model_name,
+            "max_tokens": max_tokens,
+            "tools": inference_data["tools"],
+            "messages": messages,
+        }
+        
+        # Add thinking mode if supported and enabled (default disabled for now)
+        if self.thinking_enabled and inference_data.get("enable_thinking", False):
+            api_params["thinking"] = "enabled"
+
+        return self.generate_with_backoff(**api_params)
 
     def _pre_query_processing_FC(self, inference_data: dict, test_entry: dict) -> dict:
         for round_idx in range(len(test_entry["question"])):
@@ -247,13 +295,24 @@ class ClaudeHandler(BaseHandler):
                             del message["content"][0]["cache_control"]
                     count += 1
 
-        return self.generate_with_backoff(
-            model=self.model_name,
-            max_tokens=(4096 if "claude-3-opus-20240229" in self.model_name else 8192),
-            temperature=self.temperature,
-            system=inference_data["system_prompt"],
-            messages=inference_data["message"],
-        )
+        # Get the proper model name and max tokens
+        api_model_name = self._get_anthropic_model_name(self.model_name)
+        max_tokens = self._get_max_tokens(self.model_name)
+        
+        # Prepare parameters for API call
+        api_params = {
+            "model": api_model_name,
+            "max_tokens": max_tokens,
+            "temperature": self.temperature,
+            "system": inference_data["system_prompt"],
+            "messages": inference_data["message"],
+        }
+        
+        # Add thinking mode if supported and enabled (default disabled for now)
+        if self.thinking_enabled and inference_data.get("enable_thinking", False):
+            api_params["thinking"] = "enabled"
+
+        return self.generate_with_backoff(**api_params)
 
     def _pre_query_processing_prompting(self, test_entry: dict) -> dict:
         functions: list = test_entry["function"]

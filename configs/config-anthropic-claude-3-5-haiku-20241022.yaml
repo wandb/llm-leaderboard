@@ -9,3 +9,4 @@ model:
   size_category: api
   size: null
   release_date: 10/22/2024
+  enable_thinking: false  # Disable thinking mode by default (Claude 3.5 Haiku doesn't support it)

@@ -1,0 +1,12 @@
+wandb:
+  run_name: anthropic/claude-3-7-sonnet-20250219-v1:0
+api: amazon_bedrock
+batch_size: 1
+inference_interval: 5
+model:
+  pretrained_model_name_or_path: anthropic.claude-3-7-sonnet-20250219-v1:0 #if you use openai api, put the name of model
+  bfcl_model_name: anthropic.claude-3-7-sonnet-20250219-v1:0 # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  size_category: api
+  size: null
+  release_date: 2/19/2025
+  enable_thinking: false  # Set to true to enable thinking mode (extended thinking) 

@@ -27,8 +27,16 @@ For model names containing `{...}`, multiple versions are available. For example
 | claude-3.5-haiku-20241022                      | Prompt           | Anthropic      | claude-3-5-haiku-20241022                                   |
 | Claude-3.5-Sonnet-20241022                     | Function Calling | Anthropic      | claude-3-5-sonnet-20241022-FC                               |
 | Claude-3.5-Sonnet-20241022                     | Prompt           | Anthropic      | claude-3-5-sonnet-20241022                                  |
-| Claude-3.7-Sonnet-20250219                     | Function Calling | Anthropic      | claude-3-7-sonnet-20250219-FC                               |
-| Claude-3.7-Sonnet-20250219                     | Prompt           | Anthropic      | claude-3-7-sonnet-20250219                                  |
+| Claude-3.7-Sonnet-20250219 (Direct API)        | Function Calling | Anthropic      | claude-3-7-sonnet-20250219-FC                               |
+| Claude-3.7-Sonnet-20250219 (Direct API)        | Prompt           | Anthropic      | claude-3-7-sonnet-20250219                                  |
+| Claude-3.7-Sonnet-20250219 (Bedrock)           | Function Calling | Anthropic      | anthropic.claude-3-7-sonnet-20250219-v1:0-FC                |
+| Claude-3.7-Sonnet-20250219 (Bedrock)           | Prompt           | Anthropic      | anthropic.claude-3-7-sonnet-20250219-v1:0                   |
+| Claude-3.5-Haiku-20241022 (Bedrock)            | Function Calling | Anthropic      | anthropic.claude-3-5-haiku-20241022-FC                      |
+| Claude-3.5-Haiku-20241022 (Bedrock)            | Prompt           | Anthropic      | anthropic.claude-3-5-haiku-20241022                         |
+| Claude-Sonnet-4-20250514 (Bedrock)             | Function Calling | Anthropic      | anthropic.claude-sonnet-4-20250514-v1:0-FC                  |
+| Claude-Sonnet-4-20250514 (Bedrock)             | Prompt           | Anthropic      | anthropic.claude-sonnet-4-20250514-v1:0                     |
+| Claude-Opus-4-20250514 (Bedrock)               | Function Calling | Anthropic      | anthropic.claude-opus-4-20250514-v1:0-FC                    |
+| Claude-Opus-4-20250514 (Bedrock)               | Prompt           | Anthropic      | anthropic.claude-opus-4-20250514-v1:0                       |
 | CoALM-{8B, 70B, 405B}                          | Function Calling | Self-hosted 💻 | uiuc-convai/CoALM-{8B,70B,405B}                             |
 | Command A                                      | Function Calling | Cohere         | command-a-03-2025-FC                                        |
 | Command R7B                                    | Function Calling | Cohere         | command-r7b-12-2024-FC                                      |
