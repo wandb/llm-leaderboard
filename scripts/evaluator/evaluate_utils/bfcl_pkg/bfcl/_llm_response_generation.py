@@ -218,7 +218,8 @@ def multi_threaded_inference(handler, test_case, include_input_log, exclude_stat
 
 
 def generate_results(args, model_name, test_cases_total):
-    update_mode = args.allow_overwrite
+    # Always use update_mode=True to prevent duplicate entries for the same test case
+    update_mode = True
     handler = build_handler(model_name, args.temperature)
 
     if handler.model_style == ModelStyle.OSSMODEL:
@@ -257,8 +258,8 @@ def generate_results(args, model_name, test_cases_total):
                     # This will wait for the task to complete, so that we are always writing in order
                     result = future.result()
                     handler.write(
-                        result, result_dir=args.result_dir, update_mode=args.run_ids
-                    )  # Only when we run specific test ids, we will need update_mode=True to keep entries in the same order
+                        result, result_dir=args.result_dir, update_mode=True
+                    )  # Always use update_mode=True to prevent duplicate entries for the same test case
                     pbar.update()
 
 
