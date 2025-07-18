@@ -67,6 +67,7 @@ def multi_turn_runner(
                     "status": "failed",
                 }
             )
+            continue  # Skip further checks for this entry to prevent duplicate results
         # Check if force-terminated during inference phase.
         # This happens when the model has retried too many times and still haven't figured out the answer.
         # When force-terminated, no further evaluation is needed. This whole entry will be failed.
