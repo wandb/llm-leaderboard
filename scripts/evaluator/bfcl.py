@@ -32,13 +32,13 @@ def get_default_config() -> Dict[str, Any]:
         "backend": "vllm",  # 使用するバックエンド
         "skip_server_setup": True,  # サーバーセットアップをスキップするかどうか（既存のvLLMサービスを使用）
         "local_model_path": None,  # ローカルモデルのパス（動的に設定される）
-        "allow_overwrite": False,  # 既存の結果を上書きするかどうか
+        "allow_overwrite": True,  # 既存の結果を上書きするかどうか
         "include_input_log": False,  # 推論ログに入力ログを含めるかどうか
         "exclude_state_log": False,  # 推論ログから状態ログを除外するかどうか
         "result_dir": RESULT_PATH,
         "score_dir": SCORE_PATH,
         "run_ids": False,  # テストエントリーIDを実行するかどうか
-        "samples_per_category": None,  # 各カテゴリから取得するサンプル数
+        "samples_per_category": 20,  # 各カテゴリから取得するサンプル数
         "artifacts_path": None,  # WandB Artifactのパス
     }
 
