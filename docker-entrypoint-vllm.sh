@@ -27,9 +27,22 @@ echo "num_gpus: ${num_gpus}"
 extra_args=($(yq -r '.vllm.extra_args[]' configs/$EVAL_CONFIG_PATH))
 echo "extra_args: ${extra_args[@]}"
 
-python3 -m vllm.entrypoints.openai.api_server \
-    --model "${model_name}" \
-    --served-model-name "${served_model_name}" \
-    --tensor-parallel-size "${num_gpus}"\
-    "${extra_args[@]}" \
-    "$@"
+# Build vLLM command arguments
+vllm_args=(
+    "--model" "${model_name}"
+    "--served-model-name" "${served_model_name}"
+    "--dtype" "float16"
+)
+
+# Add tensor-parallel-size only if num_gpus is set and not null
+if [ ! -z "$num_gpus" ] && [ "$num_gpus" != "null" ]; then
+    vllm_args+=("--tensor-parallel-size" "${num_gpus}")
+fi
+
+# Add extra arguments
+vllm_args+=("${extra_args[@]}")
+
+# Add any additional arguments passed to the script
+vllm_args+=("$@")
+
+python3 -m vllm.entrypoints.openai.api_server "${vllm_args[@]}"

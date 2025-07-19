@@ -5,7 +5,7 @@ wandb:
 
 github_version: v3.0.0 #for recording
 
-testmode: true
+testmode: false
 inference_interval: 0 # seconds
 
 run:
@@ -119,7 +119,7 @@ mtbench:
   num_gpus_per_model: 1
   num_gpus_total: 1
   max_gpu_memory: null
-  dtype: bfloat16 # None or float32 or float16 or bfloat16
+  dtype: float16 # None or float32 or float16 or bfloat16
   # for gen_judgment
   judge_model: 'gpt-4o-2024-05-13'
   mode: 'single'
@@ -152,7 +152,7 @@ hallulens:
 hle:
   artifact_path: 'llm-leaderboard/nejumi-leaderboard4/hle-ja:production'
   dataset_name: 'hle-ja.jsonl'
-  max_completion_tokens: 8192
+  max_completion_tokens: 4096
   max_workers: 100
   judge_model: "o3-mini-2025-01-31"
   max_samples: 10

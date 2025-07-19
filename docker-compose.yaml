@@ -1,5 +1,6 @@
 services:
   vllm:
+    profiles: ["vllm-docker"]  # vllm-dockerモードでのみ起動
     # image: vllm/vllm-openai:latest
     build:
       context: .

@@ -5,11 +5,12 @@ from typing import Any, TypeAlias, List, Tuple
 
 import backoff
 from tqdm import tqdm
+import openai
 
 from config_singleton import WandbConfigSingleton
 
 
-MAX_TRIES = 100
+MAX_TRIES = 50  # リトライ回数を50回に削減（100回は多すぎる）
 
 Messages: TypeAlias = List[dict[str, str]]
 Inputs: TypeAlias = List[Tuple[Messages, dict[str, Any]]]
@@ -44,7 +45,13 @@ class LLMAsyncProcessor:
         self.inference_interval = cfg.inference_interval
 
     @error_handler
-    @backoff.on_exception(backoff.expo, Exception, max_tries=MAX_TRIES)
+    @backoff.on_exception(
+        backoff.expo, 
+        (openai.APIConnectionError, openai.APITimeoutError, openai.RateLimitError, openai.APIError),
+        max_tries=MAX_TRIES,
+        max_time=1800,  # 最大30分でタイムアウト
+        jitter=backoff.full_jitter
+    )
     async def _ainvoke(self, messages: Messages, **kwargs) -> Any:
         """非同期でLLMを呼び出す統一メソッド"""
         await asyncio.sleep(self.inference_interval)
