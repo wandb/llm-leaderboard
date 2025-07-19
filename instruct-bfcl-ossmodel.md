@@ -1,11 +1,8 @@
 
 
-# Task: BFCLにモデルを追加
-##　追加したいモデル
-- anthropic.claude-3-5-haiku-20241022
-- anthropic.claude-3-7-sonnet-20250219-v1:0 #すでにあるように見えるが、bedrockではなく、AnthropicのAPIになっている
-- anthropic.claude-sonnet-4-20250514-v1:0
-- anthropic.claude-opus-4-20250514-v1:0
+# Task: BFCLにOSSモデルを簡単に追加できるようにしたい
+
+
 
 ## 変更するファイル
 - /home/olachinkeigpu/Project/llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/bfcl/model_handler/api_inference/claude.py
@@ -14,7 +11,7 @@
 - /home/olachinkeigpu/Project/llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md # Nejumi Leaderboardで追加したということをわかりやすく入れる
 
 ## 変更ポイント
-- 名前で"anthropic."と入っていると、bedrockが実装されるようにする
+- ~~名前で"anthropic."と入っていると、bedrockが実装されるようにする~~ → **削除済み**
 - thinking modeを入れるようにする。ただし、defaultではthinking modeは使わない
 - max tokensなどは https://docs.anthropic.com/en/docs/about-claude/models/overview#model-comparison-table　を参考にして
 

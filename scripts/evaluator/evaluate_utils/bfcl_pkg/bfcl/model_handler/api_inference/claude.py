@@ -4,7 +4,6 @@ import time
 
 from anthropic import Anthropic, RateLimitError
 from anthropic.types import TextBlock, ToolUseBlock
-import boto3
 from ..base_handler import BaseHandler
 from ...constants.type_mappings import GORILLA_TO_OPENAPI
 from ..model_style import ModelStyle
@@ -28,49 +27,16 @@ class ClaudeHandler(BaseHandler):
         super().__init__(model_name, temperature)
         self.model_style = ModelStyle.Anthropic
         
-        # Determine if this is a Bedrock model (has anthropic. prefix) or direct API model
-        self.is_bedrock_model = model_name.startswith("anthropic.")
-        
-        if self.is_bedrock_model:
-            # Use AWS Bedrock for models with anthropic. prefix
-            # Set longer timeout for Claude Opus 4 and Sonnet 4 models
-            if any(model in model_name for model in ["claude-opus-4", "claude-sonnet-4"]):
-                # 30 minutes timeout for slow models (Opus 4 & Sonnet 4)
-                from botocore.config import Config
-                bedrock_config = Config(
-                    read_timeout=1800,  # 30 minutes
-                    connect_timeout=60,
-                    retries={'max_attempts': 3}
-                )
-                self.bedrock_client = boto3.client(
-                    'bedrock-runtime',
-                    region_name=os.getenv('AWS_DEFAULT_REGION', 'us-east-1'),
-                    aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-                    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-                    aws_session_token=os.getenv('AWS_SESSION_TOKEN'),
-                    config=bedrock_config
-                )
-            else:
-                self.bedrock_client = boto3.client(
-                    'bedrock-runtime',
-                    region_name=os.getenv('AWS_DEFAULT_REGION', 'us-east-1'),
-                    aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-                    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-                    aws_session_token=os.getenv('AWS_SESSION_TOKEN')
-                )
-            self.client = None  # Will use bedrock_client instead
+        # Use Anthropic direct API
+        # Set longer timeout for Claude Opus 4 and Sonnet 4 models
+        if any(model in model_name for model in ["claude-opus-4", "claude-sonnet-4"]):
+            # 30 minutes timeout for slow models (Opus 4 & Sonnet 4)
+            self.client = Anthropic(
+                api_key=os.getenv("ANTHROPIC_API_KEY"),
+                timeout=1800.0  # 30 minutes
+            )
         else:
-            # Use Anthropic direct API for models without prefix
-            # Set longer timeout for Claude Opus 4 and Sonnet 4 models
-            if any(model in model_name for model in ["claude-opus-4", "claude-sonnet-4"]):
-                # 30 minutes timeout for slow models (Opus 4 & Sonnet 4)
-                self.client = Anthropic(
-                    api_key=os.getenv("ANTHROPIC_API_KEY"),
-                    timeout=1800.0  # 30 minutes
-                )
-            else:
-                self.client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-            self.bedrock_client = None
+            self.client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
         
         # Enable thinking mode for Claude 4 and Claude 3.7 models by default (can be disabled)
         self.thinking_enabled = self._supports_thinking_mode(model_name)
@@ -80,21 +46,12 @@ class ClaudeHandler(BaseHandler):
         thinking_models = [
             "claude-opus-4",
             "claude-sonnet-4", 
-            "claude-3-7-sonnet",
-            "anthropic.claude-opus-4",
-            "anthropic.claude-sonnet-4",
-            "anthropic.claude-3-7-sonnet"
+            "claude-3-7-sonnet"
         ]
         return any(model in model_name for model in thinking_models)
     
     def _get_anthropic_model_name(self, model_name: str) -> str:
         """Convert model name to Anthropic API format"""
-        if model_name.startswith("anthropic."):
-            # Remove the "anthropic." prefix and convert bedrock format to API format
-            api_name = model_name.replace("anthropic.", "")
-            if "-v1:0" in api_name:
-                api_name = api_name.replace("-v1:0", "")
-            return api_name
         return model_name
     
     def _get_max_tokens(self, model_name: str) -> int:
@@ -157,101 +114,13 @@ class ClaudeHandler(BaseHandler):
     def generate_with_backoff(self, **kwargs):
         start_time = time.time()
         
-        if self.is_bedrock_model:
-            # Use AWS Bedrock API
-            api_response = self._call_bedrock_api(**kwargs)
-        else:
-            # Use Anthropic direct API with extended timeout for slow models
-            print(f"[DEBUG] Using Anthropic direct API for model: {self.model_name}")
-            api_response = self.client.messages.create(**kwargs)
+        # Use Anthropic direct API
+        print(f"[DEBUG] Using Anthropic direct API for model: {self.model_name}")
+        api_response = self.client.messages.create(**kwargs)
         
         end_time = time.time()
         return api_response, end_time - start_time
-    
-    def _call_bedrock_api(self, **kwargs):
-        """Call AWS Bedrock API and convert response to Anthropic-compatible format"""
-        # Convert Anthropic API format to Bedrock format
-        bedrock_request = self._convert_to_bedrock_format(**kwargs)
-        
-        # Get the actual model name for Bedrock
-        bedrock_model_id = self.model_name  # Use the full model name as is for Bedrock
-        
-        # Debug info
-        print(f"[DEBUG] Using Bedrock API for model: {bedrock_model_id}")
-        
-        # Call Bedrock
-        response = self.bedrock_client.invoke_model(
-            modelId=bedrock_model_id,
-            body=json.dumps(bedrock_request)
-        )
-        
-        # Parse response
-        response_body = json.loads(response['body'].read())
-        
-        # Convert Bedrock response back to Anthropic format
-        return self._convert_from_bedrock_format(response_body)
-    
-    def _convert_to_bedrock_format(self, **kwargs):
-        """Convert Anthropic API request to Bedrock format"""
-        bedrock_request = {
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": kwargs.get("max_tokens", 8192),
-            "messages": kwargs.get("messages", [])
-        }
-        
-        # Add system prompt if provided
-        if "system" in kwargs:
-            if isinstance(kwargs["system"], list):
-                # Handle list format
-                system_text = kwargs["system"][0].get("text", "") if kwargs["system"] else ""
-            else:
-                system_text = kwargs["system"]
-            bedrock_request["system"] = system_text
-        
-        # Add temperature if provided
-        if "temperature" in kwargs:
-            bedrock_request["temperature"] = kwargs["temperature"]
-        
-        # Add tools if provided (for function calling)
-        if "tools" in kwargs:
-            bedrock_request["tools"] = kwargs["tools"]
-        
-        # Add thinking mode if enabled
-        if "thinking" in kwargs:
-            bedrock_request["thinking"] = kwargs["thinking"]
-        
-        return bedrock_request
-    
-    def _convert_from_bedrock_format(self, bedrock_response):
-        """Convert Bedrock response to Anthropic format"""
-        class BedrockResponse:
-            def __init__(self, bedrock_data):
-                self.content = []
-                
-                # Parse content from Bedrock response
-                if "content" in bedrock_data:
-                    for content_item in bedrock_data["content"]:
-                        if content_item.get("type") == "text":
-                            text_block = TextBlock(text=content_item["text"], type="text")
-                            self.content.append(text_block)
-                        elif content_item.get("type") == "tool_use":
-                            tool_block = ToolUseBlock(
-                                id=content_item["id"],
-                                name=content_item["name"],
-                                input=content_item["input"],
-                                type="tool_use"
-                            )
-                            self.content.append(tool_block)
-                
-                # Parse usage information
-                class Usage:
-                    def __init__(self, usage_data):
-                        self.input_tokens = usage_data.get("input_tokens", 0)
-                        self.output_tokens = usage_data.get("output_tokens", 0)
-                
-                self.usage = Usage(bedrock_data.get("usage", {}))
-        
-        return BedrockResponse(bedrock_response)
+
 
     #### FC methods ####
 
