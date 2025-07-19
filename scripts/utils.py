@@ -25,6 +25,32 @@ def cleanup_gpu():
     gc.collect()
     torch.cuda.empty_cache()
 
+def wait_for_gpu_ready(timeout: int = 30):
+    """
+    GPUが利用可能になるまで待機
+    """
+    if not torch.cuda.is_available():
+        return
+
+    import time
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        try:
+            # 少量のメモリを確保してGPUが使えることを確認
+            test_tensor = torch.zeros(1).cuda()
+            del test_tensor
+            torch.cuda.synchronize()
+            return
+        except RuntimeError as e:
+            if "out of memory" in str(e):
+                cleanup_gpu()
+                time.sleep(1)
+            else:
+                raise
+
+    raise TimeoutError(f"GPU did not become ready within {timeout} seconds")
+
 @retry(stop=stop_after_attempt(10), wait=wait_fixed(10))
 def read_wandb_table(
     table_name: str,

@@ -1,0 +1,20 @@
+wandb:
+  run_name: "example-vllm-docker-swallow-7b"
+
+api: "vllm-docker"
+base_url: "http://vllm:8000/v1"  # Dockerネットワーク内のサービス名
+
+model:
+  pretrained_model_name_or_path: "tokyotech-llm/Swallow-7b-instruct-v0.1"
+  dtype: 'float16'
+  max_model_len: 3000
+  trust_remote_code: true
+
+# vLLM server configuration
+vllm:
+  extra_args:
+    - --max-model-len=3000
+    - --trust-remote-code
+
+# Number of GPUs for tensor parallelism
+num_gpus: 1 

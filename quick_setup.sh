@@ -31,19 +31,22 @@ fi
 echo ""
 echo "=== モデル設定 ==="
 echo "モデルの種類を選択してください:"
-echo "1) ローカルモデル"
-echo "2) HuggingFaceモデル"
-echo "3) API"
+echo "1) ローカルモデル（Docker vLLM）"
+echo "2) HuggingFaceモデル（Docker vLLM）"
+echo "3) 外部OpenAI互換API"
+echo "4) 商用API（OpenAI, Anthropic等）"
+echo ""
+echo "※ 注意: コンテナ内vLLM起動（旧vllm/vllm-local）は非推奨です"
 echo ""
 
 while true; do
-    read -p "選択 (1-3): " model_choice
+    read -p "選択 (1-4): " model_choice
     case $model_choice in
-        1|2|3)
+        1|2|3|4)
             break
             ;;
         *)
-            echo "無効な選択です。1-3の中から選択してください。"
+            echo "無効な選択です。1-4の中から選択してください。"
             ;;
     esac
 done
@@ -53,12 +56,14 @@ LOCAL_MODEL_PATH=""
 USE_API=false
 API_PROVIDER=""
 API_MODEL_NAME=""
+API_TYPE=""
 
 case $model_choice in
     1)
-        # ローカルモデル
+        # ローカルモデル（Docker vLLM）
+        API_TYPE="vllm-docker"
         echo ""
-        echo "=== ローカルモデル設定 ==="
+        echo "=== ローカルモデル設定（Docker vLLM） ==="
         echo "モデルの絶対パスを入力してください"
         echo "例: /models/Swallow-7b-instruct-v0.1"
         echo ""
@@ -86,9 +91,10 @@ case $model_choice in
         done
         ;;
     2)
-        # HuggingFaceモデル
+        # HuggingFaceモデル（Docker vLLM）
+        API_TYPE="vllm-docker"
         echo ""
-        echo "=== HuggingFaceモデル設定 ==="
+        echo "=== HuggingFaceモデル設定（Docker vLLM） ==="
         echo "HuggingFaceのリポジトリ名を入力してください"
         echo "例: tokyotech-llm/Swallow-7b-instruct-v0.1"
         echo ""
@@ -103,7 +109,25 @@ case $model_choice in
         done
         ;;
     3)
-        # API
+        # 外部OpenAI互換API
+        API_TYPE="openai-compatible"
+        echo ""
+        echo "=== 外部OpenAI互換API設定 ==="
+        echo "APIエンドポイントを入力してください"
+        read -p "API URL [デフォルト: http://localhost:8000/v1]: " API_BASE_URL
+        API_BASE_URL=${API_BASE_URL:-http://localhost:8000/v1}
+        
+        while true; do
+            read -p "モデル名: " MODEL_NAME
+            if [ -n "$MODEL_NAME" ]; then
+                break
+            else
+                echo "エラー: モデル名は必須です。再度入力してください。"
+            fi
+        done
+        ;;
+    4)
+        # 商用API
         echo ""
         echo "=== API設定 ==="
         echo "APIプロバイダーを選択してください:"
@@ -268,8 +292,58 @@ if [ "$USE_API" = true ]; then
             done
             ;;
     esac
+fi
+
+# vllmまたはvllm-dockerモードの場合のGPU設定
+if [ "$API_TYPE" = "vllm-docker" ] || [ "$API_TYPE" = "vllm" ]; then
+    echo ""
+    echo "=== GPU設定 ==="
+    echo "vLLM Dockerコンテナに割り当てるGPUを設定します"
+    echo ""
+    
+    # GPUの自動検出と推奨設定
+    if [ "$GPU_COUNT" -ge 2 ]; then
+        echo "推奨設定:"
+        echo "1) 1GPU（GPU 0）"
+        echo "2) 2GPU（GPU 0-1）"
+        echo "3) 4GPU（GPU 0-3）"
+        echo "4) カスタム設定"
+        
+        read -p "選択 (1-4): " gpu_choice
+        
+        case $gpu_choice in
+            1)
+                VLLM_GPUS="0"
+                TENSOR_PARALLEL_SIZE=1
+                ;;
+            2)
+                VLLM_GPUS="0,1"
+                TENSOR_PARALLEL_SIZE=2
+                ;;
+            3)
+                VLLM_GPUS="0,1,2,3"
+                TENSOR_PARALLEL_SIZE=4
+                ;;
+            4)
+                read -p "vLLM用GPU (カンマ区切り, 例: 0,1): " VLLM_GPUS
+                IFS=',' read -ra VLLM_ARRAY <<< "$VLLM_GPUS"
+                TENSOR_PARALLEL_SIZE=${#VLLM_ARRAY[@]}
+            ;;
+    esac
 else 
-    # 設定の選択
+        VLLM_GPUS="0"
+        TENSOR_PARALLEL_SIZE=1
+    fi
+    
+    # 評価用GPUは自動的にすべてのGPUを使用
+    LEADERBOARD_GPUS=$(seq -s, 0 $((GPU_COUNT-1)))
+elif [ "$USE_API" = true ] || [ "$API_TYPE" = "openai-compatible" ]; then
+    # APIモードの場合は評価用のGPUのみ設定
+    LEADERBOARD_GPUS=$(seq -s, 0 $((GPU_COUNT-1)))
+    VLLM_GPUS=""
+    TENSOR_PARALLEL_SIZE=0
+elif [ "$API_TYPE" = "vllm-local" ]; then
+    # 非推奨のvllm-localモードの場合（後方互換性）
     echo "GPU構成を選択してください:"
     echo "1) 2GPU環境 (vLLM: GPU 0, Leaderboard: GPU 1)"
     echo "2) 4GPU環境 (vLLM: GPU 0-1, Leaderboard: GPU 2-3)"
@@ -499,9 +573,26 @@ done
 echo ""
 echo "=== 入力確認 ==="
 if [ "$USE_API" = true ]; then
-    echo "モード: API (${API_PROVIDER^^})"
-else
-    echo "モード: ローカル/HuggingFace"
+    echo "モード: 商用API (${API_PROVIDER^^})"
+    echo "APIプロバイダー: $API_PROVIDER"
+elif [ "$API_TYPE" = "vllm-docker" ]; then
+    echo "モード: Docker vLLM"
+    echo "選択されたモデル: $MODEL_NAME"
+    if [ -n "$VLLM_GPUS" ]; then
+        echo "vLLM GPU: $VLLM_GPUS (Tensor Parallel: $TENSOR_PARALLEL_SIZE)"
+    fi
+elif [ "$API_TYPE" = "openai-compatible" ]; then
+    echo "モード: 外部OpenAI互換API"
+    echo "APIエンドポイント: $API_BASE_URL"
+    echo "モデル名: $MODEL_NAME"
+elif [ "$API_TYPE" = "vllm" ]; then
+    echo "モード: Docker vLLM（vllm）"
+    echo "選択されたモデル: $MODEL_NAME"
+    if [ -n "$VLLM_GPUS" ]; then
+        echo "vLLM GPU: $VLLM_GPUS (Tensor Parallel: $TENSOR_PARALLEL_SIZE)"
+    fi
+elif [ "$API_TYPE" = "vllm-local" ]; then
+    echo "モード: ローカル（非推奨）"
     echo "選択されたモデル: $MODEL_NAME"
 fi
 
@@ -609,6 +700,8 @@ VLLM_PORT=8000
 # API Configuration
 USE_API=$USE_API
 API_PROVIDER=$API_PROVIDER
+API_TYPE=$API_TYPE
+API_BASE_URL=$API_BASE_URL
 
 # GPU Configuration - Array Format (for compatibility)
 VLLM_GPU_IDS=$VLLM_GPU_IDS
@@ -661,9 +754,20 @@ echo "設定完了！"
 echo ""
 echo "=== 設定サマリー ==="
 if [ "$USE_API" = true ]; then
-    echo "モード: API (${API_PROVIDER^^})"
-else
-    echo "モード: ローカル/HuggingFace"
+    echo "モード: 商用API (${API_PROVIDER^^})"
+elif [ "$API_TYPE" = "vllm-docker" ] || [ "$API_TYPE" = "vllm" ]; then
+    echo "モード: Docker vLLM"
+    echo "モデル: $MODEL_NAME"
+    if [ -n "$VLLM_GPUS" ]; then
+        echo "vLLM GPU: $VLLM_GPU_IDS (Tensor Parallel: $TENSOR_PARALLEL_SIZE)"
+    fi
+    echo "Leaderboard GPU: $LEADERBOARD_GPU_IDS"
+elif [ "$API_TYPE" = "openai-compatible" ]; then
+    echo "モード: 外部OpenAI互換API"
+    echo "APIエンドポイント: $API_BASE_URL"
+    echo "モデル: $MODEL_NAME"
+elif [ "$API_TYPE" = "vllm-local" ]; then
+    echo "モード: ローカル（非推奨）"
     echo "モデル: $MODEL_NAME"
     echo "vLLM GPU: $VLLM_GPU_IDS (Tensor Parallel: $TENSOR_PARALLEL_SIZE)"
     if [ -n "$LEADERBOARD_GPUS" ]; then
@@ -718,17 +822,17 @@ if [ -f "./generate_docker_override.sh" ]; then
         echo "   docker-compose ps"
         echo "   # ssrf-proxyとdify-sandboxが'Running'状態であることを確認"
         echo ""
-        if [ "$USE_API" = true ]; then
-            echo "🌐 APIモード実行ステップ:"
+        if [ "$USE_API" = true ] || [ "$API_TYPE" = "openai-compatible" ]; then
+            echo "🌐 API/外部サーバーモード実行ステップ:"
             echo "4. 評価の実行:"
             echo "   docker-compose up llm-leaderboard"
             echo ""
-            echo "💡 APIモードのため、vLLMサービスは不要です。"
+            echo "💡 外部APIまたはサーバーを使用するため、vLLMサービスは不要です。"
             echo "   サンドボックス環境と評価サービスのみを使用します。"
-        else
-            echo "🔧 vLLMモード実行ステップ:"
+        elif [ "$API_TYPE" = "vllm-docker" ] || [ "$API_TYPE" = "vllm" ]; then
+            echo "🔧 Docker vLLMモード実行ステップ:"
             echo "4. vLLMサービスの起動:"
-            echo "   docker-compose up -d vllm"
+            echo "   docker-compose --profile vllm-docker up -d vllm"
             echo ""
             echo "5. vLLMサーバーの起動確認:"
             echo "   docker-compose logs -f vllm"
@@ -736,6 +840,16 @@ if [ -f "./generate_docker_override.sh" ]; then
             echo "   # Ctrl+Cでログ表示を終了"
             echo ""
             echo "6. 評価の実行:"
+            echo "   docker-compose --profile vllm-docker up llm-leaderboard"
+        elif [ "$API_TYPE" = "vllm-local" ]; then
+            echo "⚠️  vLLMローカルモード（非推奨）実行ステップ:"
+            echo "4. 評価の実行（vLLMは内部で起動）:"
+            echo "   docker-compose up llm-leaderboard"
+            echo ""
+            echo "💡 推奨: vllm または vllm-docker モードへの移行をご検討ください。"
+        else
+            echo "ℹ️  その他のモード実行ステップ:"
+            echo "4. 評価の実行:"
             echo "   docker-compose up llm-leaderboard"
         fi
         echo ""

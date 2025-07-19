@@ -75,7 +75,8 @@ def apply_chat_template(messages: list[dict[str, str]]) -> str:
     instance = WandbConfigSingleton.get_instance()
     cfg = instance.config
 
-    if cfg.api == "vllm":
+    # vllmの場合でもtokenizer_configが必要な場合のみ特別処理を行う
+    if cfg.api == "vllm" and hasattr(cfg, 'tokenizer_config'):
         tokenizer_config = cfg.tokenizer_config
         if cfg.model.chat_template.startswith("mistralai/"):
             kwargs = {
