@@ -2,6 +2,20 @@
 
 Below is a comprehensive table of models supported for running leaderboard evaluations. Each model entry indicates whether it supports native Function Calling (FC) or requires a special prompt format to generate function calls. Models marked with `💻` are intended to be hosted locally (using vllm or sglang), while models without the `💻` icon are accessed via API calls. To quickly see all available models, you can also run the `bfcl models` command.
 
+## 🆕 Nejumi Leaderboard Enhancement: Simplified OSS Model Addition
+
+**For Nejumi Leaderboard users:** You can now easily add new OSS models without creating custom handler files! Use the **`oss_handler`** model identifier in your configuration files. This unified handler automatically detects and processes various output patterns from different models.
+
+### How to use the unified OSS handler:
+1. Set `bfcl_model_name: "oss_handler"` in your model configuration YAML
+2. The handler will automatically detect and process output patterns from:
+   - Standard JSON arrays (Hammer-style)
+   - Markdown code blocks (DeepSeek-style)
+   - XML tags (Hermes-style)
+   - Special model-specific tags (Llama 3.1, Granite, MiniCPM, etc.)
+   
+3. No need to create individual handler files for new OSS models!
+
 ## Function Calling (FC) vs. Prompt Mode
 
 - **Function Calling (FC) Mode:**  
@@ -121,6 +135,7 @@ For model names containing `{...}`, multiple versions are available. For example
 | xLAM-2-70b-fc-r                                | Function Calling | Self-hosted 💻 | Salesforce/Llama-xLAM-2-70b-fc-r                            |
 | xLAM-2-8b-fc-r                                 | Function Calling | Self-hosted 💻 | Salesforce/Llama-xLAM-2-8b-fc-r                             |
 | yi-large                                       | Function Calling | 01.AI          | yi-large-fc                                                 |
+| **🆕 Generic OSS Handler (Nejumi Leaderboard)** | **Auto-Detect**     | **Self-hosted 💻** | **oss_handler**                                              |
 
 ---
 

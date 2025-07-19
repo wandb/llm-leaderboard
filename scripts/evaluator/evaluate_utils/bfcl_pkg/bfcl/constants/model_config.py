@@ -87,6 +87,7 @@ from ..model_handler.local_inference.salesforce_llama import SalesforceLlamaHand
 from ..model_handler.local_inference.salesforce_qwen import SalesforceQwenHandler
 from ..model_handler.local_inference.think_agent import ThinkAgentHandler
 from ..model_handler.api_inference.qwq import QwenAPIHandler
+from ..model_handler.local_inference.unified_oss_handler import UnifiedOSSHandler
 
 # -----------------------------------------------------------------------------
 # A mapping of model identifiers to their respective model configurations.
@@ -1659,6 +1660,19 @@ local_inference_model_map = {
         org="ThinkAgents",
         license="apache-2.0",
         model_handler=ThinkAgentHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=False,
+        underscore_to_dot=False,
+    ),
+    # Nejumi Leaderboard: 統合OSSハンドラー - 新しいOSSモデルを簡単に追加するため
+    "oss_handler": ModelConfig(
+        model_name="oss_handler",
+        display_name="Generic OSS Model (Auto-Detect)",
+        url="https://github.com/your-repo/nejumi-leaderboard",
+        org="Nejumi Leaderboard",
+        license="Various",
+        model_handler=UnifiedOSSHandler,
         input_price=None,
         output_price=None,
         is_fc_model=False,
