@@ -13,11 +13,11 @@ class QuickTestingOSSHandler(OSSHandler):
     def __init__(self, model_name, temperature) -> None:
         super().__init__(model_name, temperature)
 
-    @override
-    def _format_prompt(self, messages, function):
+    # @override
+    # def _format_prompt(self, messages, function):
 
-        formatted_prompt = self.tokenizer.apply_chat_template(
-            messages, add_generation_prompt=True, tokenize=False
-        )
+    #     formatted_prompt = self.tokenizer.apply_chat_template(
+    #         messages, add_generation_prompt=True, tokenize=False
+    #     )
 
-        return formatted_prompt
+    #     return formatted_prompt

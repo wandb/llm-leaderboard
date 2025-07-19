@@ -299,26 +299,34 @@ class OSSHandler(BaseHandler, EnforceOverrides):
 
     #### Prompting methods ####
 
-    def _format_prompt(self, messages, function):
-        """
-        Manually apply the chat template to construct the formatted prompt.
-        This way, we can have full control over the final formatted prompt and is generally recommended for advanced use cases.
-        """
-        raise NotImplementedError(
-            "OSS Models should implement their own prompt formatting."
-        )
+    # NOTE: _format_prompt is no longer used since we switched to Chat Completion API
+    # The vLLM server now applies the chat template automatically
+    # def _format_prompt(self, messages, function):
+    #     """
+    #     Manually apply the chat template to construct the formatted prompt.
+    #     This way, we can have full control over the final formatted prompt and is generally recommended for advanced use cases.
+    #     """
+    #     raise NotImplementedError(
+    #         "OSS Models should implement their own prompt formatting."
+    #     )
 
     @override
     def _query_prompting(self, inference_data: dict):
-        # We use the OpenAI Completions API
+        # We use the OpenAI Chat Completions API
         function: list[dict] = inference_data["function"]
         message: list[dict] = inference_data["message"]
 
-        formatted_prompt: str = self._format_prompt(message, function)
-        inference_data["inference_input_log"] = {"formatted_prompt": formatted_prompt}
+        # Chat Completion API uses messages directly, no need for _format_prompt
+        # The vLLM server will apply the chat template automatically
+        inference_data["inference_input_log"] = {"messages": message}
 
-        # Tokenize the formatted prompt to get token count
-        input_token_count = len(self.tokenizer.tokenize(formatted_prompt))
+        # For chat completions, we need to estimate token count from messages
+        # This is a rough estimation
+        total_content = ""
+        for msg in message:
+            total_content += f"{msg['role']}: {msg['content']}\n"
+        
+        input_token_count = len(self.tokenizer.tokenize(total_content))
 
         # Determine the number of tokens to request. Cap it at 4096 if the model has a larger limit.
         if self.max_context_length < input_token_count + 2:
@@ -338,19 +346,19 @@ class OSSHandler(BaseHandler, EnforceOverrides):
 
         start_time = time.time()
         if len(extra_body) > 0:
-            api_response = self.client.completions.create(
+            api_response = self.client.chat.completions.create(
                 model=self.model_path_or_id,
                 temperature=self.temperature,
-                prompt=formatted_prompt,
+                messages=message,
                 max_tokens=leftover_tokens_count,
                 extra_body=extra_body,
                 timeout=72000,  # Avoid timeout errors
             )
         else:
-            api_response = self.client.completions.create(
+            api_response = self.client.chat.completions.create(
                 model=self.model_path_or_id,
                 temperature=self.temperature,
-                prompt=formatted_prompt,
+                messages=message,
                 max_tokens=leftover_tokens_count,
                 timeout=72000,  # Avoid timeout errors
             )
@@ -374,7 +382,7 @@ class OSSHandler(BaseHandler, EnforceOverrides):
     @override
     def _parse_query_response_prompting(self, api_response: any) -> dict:
         return {
-            "model_responses": api_response.choices[0].text,
+            "model_responses": api_response.choices[0].message.content,
             "input_token": api_response.usage.prompt_tokens,
             "output_token": api_response.usage.completion_tokens,
         }
