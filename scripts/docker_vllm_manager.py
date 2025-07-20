@@ -15,9 +15,16 @@ class DockerVLLMManager:
     def __init__(self):
         self.container_name = "llm-stack-vllm-1"
         self.service_name = "vllm"
-        # llm-leaderboardコンテナ内から実行する場合は、コンテナ名を使用
-        self.health_check_url = "http://llm-stack-vllm-1:8000/health"
-        self.models_check_url = "http://llm-stack-vllm-1:8000/v1/models"
+        # Docker networkでサービス名を使用
+        if os.path.exists("/workspace"):
+            # コンテナ内から実行されている場合
+            # vLLMコンテナ名で通信（docker runで起動した場合）
+            self.health_check_url = "http://llm-stack-vllm-1:8000/health"
+            self.models_check_url = "http://llm-stack-vllm-1:8000/v1/models"
+        else:
+            # ホストから実行されている場合
+            self.health_check_url = "http://localhost:8000/health"
+            self.models_check_url = "http://localhost:8000/v1/models"
         
     def is_container_running(self) -> bool:
         """コンテナが実行中かチェック"""
@@ -102,54 +109,47 @@ class DockerVLLMManager:
             logger.error(f"Failed to remove container: {e}")
             return False
     
+    def container_exists(self) -> bool:
+        """コンテナの存在チェック（実行中・停止中を問わず）"""
+        try:
+            result = subprocess.run(
+                ["docker", "ps", "-a", "--filter", f"name={self.container_name}", "--format", "{{.Names}}"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            return self.container_name in result.stdout
+        except subprocess.CalledProcessError:
+            return False
+
     def start_container(self, wait_for_ready: bool = True) -> bool:
-        """Dockerコンテナを起動"""
+        """Dockerコンテナを起動（compose優先）。既に存在する場合は docker start を使用"""
+        # すでに実行中ならそのまま
         if self.is_container_running():
             logger.info(f"Container {self.container_name} is already running")
-            if wait_for_ready:
-                return self.wait_for_service_ready()
-            return True
-            
-        try:
-            logger.info(f"Starting Docker container with service: {self.service_name}")
-            
-            # 既存のコンテナを削除（クリーンな状態から開始）
-            if not self.remove_container_if_exists():
-                logger.warning("Failed to remove existing container, continuing anyway")
-            
-            # docker compose downでクリーンアップ（スキップ可能）
-            logger.info("Trying to clean up with docker compose...")
+            return self.wait_for_service_ready() if wait_for_ready else True
+
+        # 停止状態で存在していれば docker start
+        if self.container_exists():
+            logger.info(f"Container {self.container_name} exists (stopped). Starting it...")
             try:
-                # docker composeまたはdocker-composeを試す
-                compose_cmd = None
-                for cmd in ["docker", "compose"], ["docker-compose"]:
-                    try:
-                        subprocess.run(cmd + ["--version"], capture_output=True, check=True)
-                        compose_cmd = cmd
-                        break
-                    except (subprocess.CalledProcessError, FileNotFoundError):
-                        continue
-                
-                if compose_cmd:
-                    subprocess.run(
-                        compose_cmd + ["--profile", "vllm-docker", "down"],
-                        check=True,
-                        capture_output=True,
-                        text=True
-                    )
-                    time.sleep(3)  # クリーンアップ完了を待つ
-                else:
-                    logger.warning("docker compose not available, skipping cleanup")
+                subprocess.run(["docker", "start", self.container_name], check=True)
+                return self.wait_for_service_ready() if wait_for_ready else True
             except subprocess.CalledProcessError as e:
-                logger.warning(f"docker compose down failed (this is usually OK): {e}")
-            
-            # docker runで直接起動を試みる
-            logger.info("Starting vLLM container with docker run...")
-            return self._start_with_docker_run()
-            
+                logger.warning(f"docker start failed: {e}. Will attempt fresh start via compose.")
+
+        # compose でサービス名が登録されている場合は up
+        try:
+            logger.info("Starting vLLM container via docker compose ...")
+            subprocess.run([
+                "docker", "compose", "--profile", "vllm-docker", "up", "-d", self.container_name
+            ], check=True)
+            return self.wait_for_service_ready() if wait_for_ready else True
         except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to start container: {e}")
-            return False
+            logger.warning(f"docker compose up failed: {e}. Falling back to docker run …")
+
+        # 最後のフォールバック（従来の docker run）
+        return self._start_with_docker_run()
     
     def _start_with_docker_run(self) -> bool:
         """docker runを使用してコンテナを起動（フォールバック）"""
@@ -160,35 +160,16 @@ class DockerVLLMManager:
             env_vars = []
             
             # HUGGINGFACE_HUB_TOKENは特別扱い（重複を避ける）
-            hf_token = None
-            
-            # まずllm-leaderboardコンテナから取得を試みる
-            try:
-                result = subprocess.run(
-                    ["docker", "exec", "llm-leaderboard", "bash", "-c", "echo $HUGGINGFACE_HUB_TOKEN"],
-                    capture_output=True,
-                    text=True,
-                    check=True
-                )
-                hf_token = result.stdout.strip()
-                if hf_token and hf_token != "$HUGGINGFACE_HUB_TOKEN":
-                    logger.info("Hugging Face token retrieved from llm-leaderboard container")
-                else:
-                    hf_token = None
-            except subprocess.CalledProcessError as e:
-                logger.warning(f"Failed to get Hugging Face token from llm-leaderboard container: {e}")
-            
-            # コンテナから取得できなかった場合は環境変数から取得
+            hf_token = os.environ.get("HUGGINGFACE_HUB_TOKEN")
             if not hf_token:
-                hf_token = os.environ.get("HUGGINGFACE_HUB_TOKEN")
-                if hf_token:
-                    logger.info("Hugging Face token retrieved from environment variable")
-            
+                hf_token = os.environ.get("HF_TOKEN") # Fallback for alternative name
+
             # トークンが取得できた場合のみ追加
             if hf_token:
                 env_vars.extend(["-e", f"HUGGINGFACE_HUB_TOKEN={hf_token}"])
                 # vLLM v0.5.5ではHF_TOKENも必要な場合がある
                 env_vars.extend(["-e", f"HF_TOKEN={hf_token}"])
+                logger.info("Hugging Face token retrieved from environment variables.")
             else:
                 logger.error("No Hugging Face token found! Model download may fail.")
             
@@ -218,45 +199,102 @@ class DockerVLLMManager:
             
             # 絶対パスを取得
             import pathlib
-            # llm-leaderboardコンテナ内から実行されている場合は、コンテナ内のパスを使用
-            if os.path.exists("/workspace"):
-                config_path = "/workspace/configs"
-                cache_path = "/root/.cache/huggingface"
-            else:
-                # ホストから実行されている場合
-                config_path = str(pathlib.Path("./configs").resolve())
-                cache_path = str(pathlib.Path("~/.cache/huggingface").expanduser().resolve())
-            
-            # docker runコマンドを構築
+            inside_container = os.path.exists("/workspace")
+
             cmd = [
                 "docker", "run", "-d",
                 "--name", self.container_name,
                 "--network", "llm-stack-network",
                 "--gpus", "all",
                 "-p", "8000:8000",
-                "-v", f"{config_path}:/workspace/configs:ro",
-                "-v", f"{cache_path}:/root/.cache/huggingface",
             ]
-            
+
+            if not inside_container:
+                # ホストから実行している場合のみ、ホストパスをマウント
+                config_path = str(pathlib.Path("./configs").resolve())
+                cache_path = str(pathlib.Path("~/.cache/huggingface").expanduser().resolve())
+                cmd.extend(["-v", f"{config_path}:/workspace/configs:ro"])
+                cmd.extend(["-v", f"{cache_path}:/root/.cache/huggingface"])
+            else:
+                # コンテナ内から実行している場合は、ボリュームソースパスの不一致を避けるためマウントをスキップ
+                logger.warning("Running inside a container; skipping host config mount")
+
+                # ただし、キャッシュを再利用するためにホスト側 HuggingFace キャッシュを指定された場合はマウントする
+                host_cache_path = os.environ.get("HOST_HF_CACHE_PATH")
+                if host_cache_path:
+                    logger.info(f"Mounting host HuggingFace cache from {host_cache_path}")
+                    cmd.extend(["-v", f"{host_cache_path}:/root/.cache/huggingface"])
+                else:
+                    logger.warning("HOST_HF_CACHE_PATH not provided; model will be re-downloaded if not cached in image")
+
             if os.environ.get("LOCAL_MODEL_PATH"):
                 local_model_path = str(pathlib.Path(os.environ['LOCAL_MODEL_PATH']).resolve())
                 cmd.extend(["-v", f"{local_model_path}:/workspace/models:ro"])
             
+            # disable_triton_mma フラグを反映
+            try:
+                from config_singleton import WandbConfigSingleton
+                instance = WandbConfigSingleton.get_instance()
+                if instance and instance.config:
+                    if instance.config.vllm.get("disable_triton_mma", False):
+                        env_vars.extend(["-e", "VLLM_DISABLE_TRITON_MMA=1"])
+                        logger.info("VLLM_DISABLE_TRITON_MMA=1 is set due to config")
+            except Exception as e:
+                logger.warning(f"Failed to get disable_triton_mma from config: {e}")
+
             cmd.extend(env_vars)
             
-            # vLLMのバージョンを決定（V100 GPU対応）
-            # TODO: GPUタイプを自動検出して適切なバージョンを選択
-            vllm_image = "vllm/vllm-openai:v0.5.5"  # V100対応バージョン
+            # vLLMのバージョンを決定
+            vllm_image = "vllm/vllm-openai:v0.5.5"  # デフォルト
+            try:
+                from config_singleton import WandbConfigSingleton
+                instance = WandbConfigSingleton.get_instance()
+                if instance and instance.config:
+                    tag = instance.config.vllm.get("vllm_tag")
+                    image = instance.config.vllm.get("vllm_docker_image")
+                    if image:
+                        vllm_image = image
+                    elif tag:
+                        vllm_image = f"vllm/vllm-openai:{tag}"
+            except Exception as e:
+                logger.warning(f"Failed to get vLLM image from config: {e}")
             
             cmd.append(vllm_image)
             
             # vLLMの起動コマンドを追加（CMDとして渡される引数のみ）
+
+            # dtypeをYAMLから取得
+            dtype = "bfloat16" # デフォルト
+            try:
+                from config_singleton import WandbConfigSingleton
+                instance = WandbConfigSingleton.get_instance()
+                if instance and instance.config:
+                    dtype = instance.config.vllm.get("dtype", dtype)
+            except Exception as e:
+                logger.warning(f"Failed to get dtype from config: {e}")
+
             cmd.extend([
                 "--host", "0.0.0.0",
                 "--port", "8000",
                 "--model", model_name,
-                "--dtype", "half"  # V100ではfloat16を使用
+                "--dtype", dtype
             ])
+
+            # YAMLからの追加引数を反映
+            try:
+                from config_singleton import WandbConfigSingleton
+                instance = WandbConfigSingleton.get_instance()
+                if instance and instance.config:
+                    extra_args = instance.config.vllm.get("extra_args", [])
+                    if extra_args:
+                        # extra_argsがリスト形式であることを確認
+                        if isinstance(extra_args, list) or hasattr(extra_args, '__iter__'):
+                            cmd.extend(extra_args)
+                            logger.info(f"Added extra vLLM args from config: {extra_args}")
+                        else:
+                            logger.warning(f"vllm.extra_args is not a list, skipping: {extra_args}")
+            except Exception as e:
+                logger.warning(f"Failed to get extra_args from config: {e}")
             
             logger.info(f"Running command: {' '.join(cmd)}")
             result = subprocess.run(cmd, capture_output=True, text=True)
@@ -369,20 +407,17 @@ class DockerVLLMManager:
         return False
     
     def restart_container(self) -> bool:
-        """コンテナを再起動"""
-        logger.info("Restarting vLLM container...")
-        if not self.stop_container():
-            logger.error("Failed to stop container for restart")
-            return False
-            
-        # GPUメモリが解放されるのを待つ
+        """コンテナを再起動 (compose 管理優先)"""
+        logger.info("Restarting vLLM container…")
+        if self.container_exists():
+            try:
+                subprocess.run(["docker", "stop", self.container_name], check=True)
+            except subprocess.CalledProcessError as e:
+                logger.warning(f"docker stop failed: {e}")
+
+        # GPUメモリ解放待ち
         time.sleep(5)
-        
-        if not self.start_container(wait_for_ready=True):
-            logger.error("Failed to start container after restart")
-            return False
-            
-        return True
+        return self.start_container(wait_for_ready=True)
 
 
 # シングルトンインスタンス

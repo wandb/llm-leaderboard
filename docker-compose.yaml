@@ -1,23 +1,28 @@
 services:
   vllm:
-    profiles: ["vllm-docker"]  # vllm-dockerモードでのみ起動
-    # image: vllm/vllm-openai:latest
+    profiles: ["vllm-docker"]
     build:
       context: .
       dockerfile: Dockerfile.vllm
       args:
-        VLLM_VERSION: ${VLLM_VERSION:-latest}
+        VLLM_VERSION: ${VLLM_VERSION:-v0.5.5}
+    container_name: llm-stack-vllm-1
+    runtime: nvidia
+    working_dir: /workspace
     environment:
       - HUGGINGFACE_HUB_TOKEN=${HUGGINGFACE_HUB_TOKEN}
       - LOCAL_MODEL_PATH=${LOCAL_MODEL_PATH}
       - EVAL_CONFIG_PATH=${EVAL_CONFIG_PATH}
+      - NVIDIA_VISIBLE_DEVICES=all
     volumes:
+      - ./docker-entrypoint-vllm.sh:/workspace/docker-entrypoint-vllm.sh:ro
       - ./configs:/workspace/configs:ro
       - ~/.cache/huggingface:/root/.cache/huggingface
       - ${LOCAL_MODEL_PATH:-/tmp/empty}:/workspace/models:ro
     ports:
       - "${VLLM_PORT:-8000}:8000"
     ipc: host
+    entrypoint: ["/workspace/docker-entrypoint-vllm.sh"]
 
   llm-leaderboard:
     build:
@@ -41,6 +46,10 @@ services:
       - MISTRAL_API_KEY=${MISTRAL_API_KEY}
       - UPSTAGE_API_KEY=${UPSTAGE_API_KEY}
       - XAI_API_KEY=${XAI_API_KEY}
+      
+      # VLLM Configuration
+      - VLLM_ENDPOINT=vllm
+      - VLLM_PORT=8000
 
       # AWS Configuration (optional)
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
@@ -74,6 +83,7 @@ services:
       
       # ローカルのスクリプトをマウント（開発用）
       - ./scripts:/workspace/scripts:rw
+      - ./docker-entrypoint-vllm.sh:/workspace/docker-entrypoint-vllm.sh:ro
 
     command: >
       uv run scripts/run_eval.py
@@ -102,7 +112,7 @@ services:
       - HTTPS_PROXY=http://ssrf-proxy:3128
       - SANDBOX_PORT=8194
     volumes:
-      # Mount sandbox dependencies directory
+      # Mount sandbox dependencies directory using a named volume
       - ./volumes/sandbox/dependencies:/dependencies
     ports:
       - "8194:8194"

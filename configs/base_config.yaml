@@ -9,16 +9,16 @@ testmode: false
 inference_interval: 0 # seconds
 
 run:
-  jaster: true
-  jmmlu_robustness: true # if this is set as true, jaster should set as true
-  mtbench: true
-  jbbq: true
-  toxicity: true
-  jtruthfulqa: true
-  hle: true
-  swebench: true
-  bfcl: true
-  hallulens: true
+  jaster: false
+  jmmlu_robustness: false # if this is set as true, jaster should set as true
+  mtbench: false
+  jbbq: false
+  toxicity: false
+  jtruthfulqa: false
+  hle: false
+  swebench: false
+  bfcl: false
+  hallulens: false
   arc_agi_2: true
   m_ifeval: true
   aggregate: true
@@ -37,6 +37,14 @@ model:
 
 vllm: # vLLM server-side launch configuration
   extra_args: []
+  # vLLM docker image tag (default). Override in each model config with `vllm_tag:` or `vllm_docker_image:`
+  vllm_tag: latest
+  # Volta/Turing など Ampere 未満の GPU で vLLM が Triton MMA カーネルを使ってクラッシュする場合に true に設定
+  disable_triton_mma: false
+  # vLLMコンテナのライフサイクル管理: auto | always_on | stop_restart
+  lifecycle: auto
+  # モデルのデータ型: bfloat16 (推奨), float16, half, auto
+  dtype: bfloat16
   # example
   # extra_args:
   #   - --dtype=bfloat16
