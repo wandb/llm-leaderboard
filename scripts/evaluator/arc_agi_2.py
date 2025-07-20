@@ -37,7 +37,7 @@ PROMPT_TEMPLATE = """\
 
 
 def pretty_print_json(tile: List[List[int]]) -> str:
-    return json.dumps(tile).replace("[[", "[\n  [").replace("]]", "]\n]").replace("], [", "],\n  [")
+    return json.dumps(tile).replace("[[", "[\n  [").replace("]]", "]\n]").replace("], [", "],\n  [").replace(", ", ",")
 
 
 def pretty_print_tile( tile: List[List[int]]) -> str:
