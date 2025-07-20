@@ -1,0 +1,18 @@
+wandb:
+  run_name: "microsoft/phi-4" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+api: openai-compatible
+batch_size: 32 # vllmは256, apiは32を推奨
+base_url: "https://openrouter.ai/api/v1"
+
+model:
+  use_wandb_artifacts: false
+  max_model_len: 16384 # update 
+  pretrained_model_name_or_path: "microsoft/phi-4" #if you use openai api, put the name of model
+  bfcl_model_name: "microsoft/phi-4"
+  chat_template: "microsoft/phi-4"
+  size_category: "10B≤ <30B"
+  size: 14659507200
+  release_date: "12/12/2024"
