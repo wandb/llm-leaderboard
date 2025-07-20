@@ -150,6 +150,7 @@ from ..utils import (
     system_prompt_pre_processing_chat_model,
 )
 from overrides import override
+from ...constants.eval_config import RESULT_PATH
 
 # Config singletonから設定を取得するためのインポート
 try:
@@ -231,17 +232,12 @@ class UnifiedOSSHandler(OSSHandler):
         # Chat templateからの設定取得
         self._load_config_from_chat_template()
         
-        # モデル名から特徴を推定（FC対応かどうかなど）
-        self.is_fc_model = "-FC" in model_name or "fc" in model_name.lower()
-        if self.is_fc_model:
-            self.model_name_huggingface = model_name.replace("-FC", "")
-        
-        # モデル固有の設定を推定
-        self._detect_model_characteristics(model_name)
+        # Chat templateから特徴を検出（model_nameは使用しない）
+        self._detect_model_characteristics_from_chat_template()
         
         # 生の出力を保存するディレクトリを設定
         self._setup_raw_output_logging()
-        
+    
     def _load_config_from_chat_template(self):
         """Chat templateと設定をconfig_singletonから取得"""
         self.chat_template = None
@@ -278,7 +274,7 @@ class UnifiedOSSHandler(OSSHandler):
         """生の出力を保存するためのセットアップ"""
         try:
             # 結果ディレクトリを作成
-            self.raw_output_dir = Path("scripts/evaluator/evaluate_utils/bfcl_pkg/result") / f"{self.model_name.replace('/', '_')}"
+            self.raw_output_dir = Path(RESULT_PATH) / f"{self.model_name.replace('/', '_')}"
             self.raw_output_dir.mkdir(parents=True, exist_ok=True)
             
             # 生の出力を保存するファイル
@@ -313,33 +309,137 @@ class UnifiedOSSHandler(OSSHandler):
         except Exception as e:
             print(f"[UnifiedOSSHandler] 生の出力ログ記録中にエラー: {e}")
 
-    def _detect_model_characteristics(self, model_name: str):
-        """モデル名から特徴を自動検出"""
-        model_lower = model_name.lower()
+    def _detect_model_characteristics_from_chat_template(self):
+        """Chat templateから具体的なトークン・タグベースで特徴を自動検出（model_nameは使用しない）"""
+        # デフォルト値の設定
+        self.has_thinking_tags = False          # <think>...</think>タグの有無
+        self.has_header_tags = False           # <|start_header_id|>などのヘッダータグの有無
+        self.has_im_tags = False               # <|im_start|>/<|im_end|>タグの有無
+        self.has_tool_call_tags = False        # <|tool_call_start|>などのツール呼び出しタグの有無
+        self.has_function_call_tags = False    # <function_call>タグの有無
+        self.has_python_tags = False           # <|python_tag|>タグの有無
+        self.has_tool_xml_tags = False         # <tool_call>XMLタグの有無
+        self.has_coder_tokens = False          # コーダー関連のトークンの有無
+        self.has_ipython_role = False          # ipythonロールの有無
+        self.has_model_role = False            # modelロール（Gemma用）の有無
+        self.has_fc_tokens = False             # FC（Function Calling）関連トークンの有無
+        self.supports_reasoning = False        # 推論サポートの有無
         
-        # 各モデルの特徴を検出
-        self.is_deepseek_family = "deepseek" in model_lower
-        self.is_deepseek_reasoning = "deepseek-r" in model_lower or "reasoning" in model_lower
-        self.is_deepseek_coder = "deepseek" in model_lower and ("coder" in model_lower or "code" in model_lower)
-        self.is_llama_family = "llama" in model_lower
-        self.is_llama_31 = "llama-3.1" in model_lower or "llama_3_1" in model_lower
-        self.is_gemma_family = "gemma" in model_lower
-        self.is_phi_family = "phi" in model_lower
-        self.is_phi_mini = "phi-4-mini" in model_lower
-        self.is_qwen_family = "qwen" in model_lower
-        self.is_granite_family = "granite" in model_lower
-        self.is_hermes_family = "hermes" in model_lower
-        self.is_hammer_family = "hammer" in model_lower
-        self.is_minicpm_family = "minicpm" in model_lower
-        self.is_glm_family = "glm" in model_lower
+        # Chat templateから特徴を検出（model_nameは一切使用しない）
+        if self.chat_template:
+            chat_template_lower = self.chat_template.lower()
+            
+            # 思考タグの検出（推論機能）
+            if "<think>" in chat_template_lower and "</think>" in chat_template_lower:
+                self.has_thinking_tags = True
+                self.supports_reasoning = True
+            
+            # ヘッダータグの検出（Llama系で使用）
+            if any(keyword in chat_template_lower for keyword in [
+                "<|start_header_id|>", "<|end_header_id|>", "<|eot_id|>"
+            ]):
+                self.has_header_tags = True
+            
+            # im_start/im_endタグの検出（Qwen系で使用）
+            if "<|im_start|>" in chat_template_lower and "<|im_end|>" in chat_template_lower:
+                self.has_im_tags = True
+            
+            # ツール呼び出しタグの検出（MiniCPM系で使用）
+            if any(keyword in chat_template_lower for keyword in [
+                "<|tool_call_start|>", "<|tool_call_end|>", "<|thought_start|>", "<|thought_end|>"
+            ]):
+                self.has_tool_call_tags = True
+            
+            # 関数呼び出しタグの検出（Granite系で使用）
+            if "<function_call>" in chat_template_lower:
+                self.has_function_call_tags = True
+            
+            # Pythonタグの検出（Llama 3.1系で使用）
+            if "<|python_tag|>" in chat_template_lower:
+                self.has_python_tags = True
+            
+            # XMLツールタグの検出（Hermes系で使用）
+            if "<tool_call>" in chat_template_lower and "</tool_call>" in chat_template_lower:
+                self.has_tool_xml_tags = True
+            
+            # コーダー関連トークンの検出
+            if any(keyword in chat_template_lower for keyword in [
+                "｜tool▁call▁begin｜", "｜tool▁sep｜", "｜tool▁call▁end｜",
+                "coding", "programming", "code generation"
+            ]):
+                self.has_coder_tokens = True
+            
+            # ipythonロールの検出
+            if "ipython" in chat_template_lower:
+                self.has_ipython_role = True
+            
+            # modelロールの検出（Gemma用）
+            if '"model"' in chat_template_lower or "'model'" in chat_template_lower:
+                self.has_model_role = True
+            
+            # FC関連トークンの検出
+            if any(keyword in chat_template_lower for keyword in [
+                "function call", "tool_calls", "function_name", 
+                "function calling", "fc", "-fc"
+            ]):
+                self.has_fc_tokens = True
         
-        # 推論機能の有無を検出
-        self.supports_reasoning = (
-            self.is_deepseek_reasoning or 
-            self.is_qwen_family or
-            "reasoning" in model_lower or
-            "think" in model_lower
-        )
+        # Chat templateが取得できない場合の処理
+        if not self.chat_template:
+            print(f"[UnifiedOSSHandler] Chat templateが取得できません。デフォルト処理を使用します。")
+            # トークンベースの検出ができないため、全てFalseのまま（汎用処理を使用）
+        
+        # 検出結果をログ出力
+        detected_features = []
+        if self.has_thinking_tags:
+            detected_features.append("Thinking Tags (<think>)")
+        if self.has_header_tags:
+            detected_features.append("Header Tags (<|start_header_id|>)")
+        if self.has_im_tags:
+            detected_features.append("IM Tags (<|im_start|>)")
+        if self.has_tool_call_tags:
+            detected_features.append("Tool Call Tags (<|tool_call_start|>)")
+        if self.has_function_call_tags:
+            detected_features.append("Function Call Tags (<function_call>)")
+        if self.has_python_tags:
+            detected_features.append("Python Tags (<|python_tag|>)")
+        if self.has_tool_xml_tags:
+            detected_features.append("Tool XML Tags (<tool_call>)")
+        if self.has_coder_tokens:
+            detected_features.append("Coder Tokens")
+        if self.has_ipython_role:
+            detected_features.append("IPython Role")
+        if self.has_model_role:
+            detected_features.append("Model Role")
+        if self.has_fc_tokens:
+            detected_features.append("FC Tokens")
+        if self.supports_reasoning:
+            detected_features.append("Reasoning Support")
+        
+        if detected_features:
+            print(f"[UnifiedOSSHandler] 検出されたトークン・タグ特徴: {', '.join(detected_features)}")
+        else:
+            print(f"[UnifiedOSSHandler] 特定のトークン・タグ特徴は検出されませんでした（汎用処理を使用）")
+
+        # 後方互換性のための変数設定（既存のコードで使用されているため）
+        # model_nameは一切使用せず、純粋にトークンベースで設定
+        self.is_deepseek_family = self.has_thinking_tags or self.has_coder_tokens
+        self.is_deepseek_reasoning = self.has_thinking_tags
+        self.is_deepseek_coder = self.has_coder_tokens
+        self.is_llama_family = self.has_header_tags or self.has_ipython_role
+        self.is_llama_31 = self.has_python_tags
+        self.is_qwen_family = self.has_im_tags
+        self.is_gemma_family = self.has_model_role
+        self.is_phi_family = False  # Phiは特定のトークンパターンがないため
+        self.is_phi_mini = False
+        self.is_granite_family = self.has_function_call_tags
+        self.is_hermes_family = self.has_tool_xml_tags
+        self.is_hammer_family = False  # Hammerは標準JSONなので特定のタグなし
+        self.is_minicpm_family = self.has_tool_call_tags
+        self.is_glm_family = False  # GLMは特定のトークンパターンがないため
+        
+        # FCモデルの判定もトークンベースで実行
+        self.is_fc_model = self.has_fc_tokens
 
     @override
     def decode_ast(self, result: str, language="Python") -> List[Dict[str, Any]]:
