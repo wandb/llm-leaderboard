@@ -6,7 +6,6 @@ wandb:
 api: "cohere"
 batch_size: 32 # vllmは256, apiは32を推奨
 # inference_interval: 1 # seconds
-
 model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: "command-a-03-2025" #if you use openai api, put the name of model
