@@ -1,5 +1,5 @@
 # vLLMの公式イメージをベースとして使用
-ARG VLLM_VERSION=v0.5.5
+ARG VLLM_VERSION=latest
 FROM vllm/vllm-openai:${VLLM_VERSION}
 
 # rootユーザーに切り替えてシステムパッケージをインストール
