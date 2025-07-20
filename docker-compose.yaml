@@ -50,6 +50,8 @@ services:
       # VLLM Configuration
       - VLLM_ENDPOINT=vllm
       - VLLM_PORT=8000
+      - VLLM_API_KEY=${VLLM_API_KEY}
+      - OPENAI_COMPATIBLE_API_KEY=${OPENAI_COMPATIBLE_API_KEY}
 
       # AWS Configuration (optional)
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
