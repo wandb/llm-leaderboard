@@ -143,7 +143,7 @@ def blend_run(run_chain: bool) -> None:
         cfg = instance.config
         instance.blend_config = blend_cfg
     else:
-        wandb.login()
+        # run_chain=Falseの場合のみ新しいrunを作成
         run = wandb.init(
             entity=blend_cfg_dict["new_run"]["entity"],
             project=blend_cfg_dict["new_run"]["project"],
