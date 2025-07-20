@@ -163,7 +163,7 @@ hle:
   max_samples: 10
 
 arc_agi_2:
-  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval:production"
+  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval_50:production"
   max_output_tokens: 4096
   num_attempts: 2
 
