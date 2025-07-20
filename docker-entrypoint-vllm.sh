@@ -27,9 +27,40 @@ echo "num_gpus: ${num_gpus}"
 extra_args=($(yq -r '.vllm.extra_args[]' configs/$EVAL_CONFIG_PATH))
 echo "extra_args: ${extra_args[@]}"
 
-python3 -m vllm.entrypoints.openai.api_server \
-    --model "${model_name}" \
-    --served-model-name "${served_model_name}" \
-    --tensor-parallel-size "${num_gpus}"\
-    "${extra_args[@]}" \
-    "$@"
+# 追加パラメータ
+max_model_len=$(yq -r '.model.max_model_len' configs/$EVAL_CONFIG_PATH)
+[ "$max_model_len" == "null" ] && max_model_len=8192
+echo "max_model_len: ${max_model_len}"
+
+dtype=$(yq -r '.vllm.dtype' configs/$EVAL_CONFIG_PATH)
+[ "$dtype" == "null" ] && dtype="half"
+echo "dtype: ${dtype}"
+
+disable_triton_mma=$(yq -r '.vllm.disable_triton_mma' configs/$EVAL_CONFIG_PATH)
+echo "disable_triton_mma: ${disable_triton_mma}"
+
+# Build vLLM command arguments
+vllm_args=(
+    "--model" "${model_name}"
+    "--served-model-name" "${served_model_name}"
+    "--dtype" "${dtype}"
+    "--max-model-len" "${max_model_len}"
+)
+
+# Add tensor-parallel-size only if num_gpus is set and not null
+if [ ! -z "$num_gpus" ] && [ "$num_gpus" != "null" ]; then
+    vllm_args+=("--tensor-parallel-size" "${num_gpus}")
+fi
+
+# Triton MMA を無効にする場合
+if [ "$disable_triton_mma" == "true" ]; then
+    export VLLM_DISABLE_TRITON_MMA=1
+fi
+
+# Add extra arguments
+vllm_args+=("${extra_args[@]}")
+
+# Add any additional arguments passed to the script
+vllm_args+=("$@")
+
+python3 -m vllm.entrypoints.openai.api_server "${vllm_args[@]}"

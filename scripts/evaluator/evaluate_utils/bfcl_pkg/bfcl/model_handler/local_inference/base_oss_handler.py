@@ -334,7 +334,7 @@ class OSSHandler(BaseHandler, EnforceOverrides):
             leftover_tokens_count = 1000
         else:
             leftover_tokens_count = min(
-                4096,
+                4096,  # ここが問題！
                 self.max_context_length - input_token_count - 2,
             )
 

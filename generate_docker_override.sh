@@ -87,3 +87,63 @@ fi
 cat >> docker-compose.override.yaml << EOL
               capabilities: [gpu]
 EOL
+
+echo ""
+echo "✅ docker-compose.override.yaml が生成されました"
+echo ""
+
+# API_TYPEに応じた起動コマンドの案内
+echo "=== 起動コマンド ==="
+echo ""
+
+if [ "$API_TYPE" = "vllm-docker" ] || [ "$API_TYPE" = "vllm" ]; then
+    echo "Docker vLLMモードで起動するには:"
+    echo ""
+    echo "# 1. ネットワークの作成（初回のみ）"
+    echo "docker network create llm-stack-network"
+    echo ""
+    echo "# 2. サンドボックス環境の起動"
+    echo "docker-compose up -d ssrf-proxy dify-sandbox"
+    echo ""
+    echo "# 3. vLLMサービスの起動"
+    echo "docker-compose --profile vllm-docker up -d vllm"
+    echo ""
+    echo "# 4. 評価の実行"
+    echo "docker-compose --profile vllm-docker up llm-leaderboard"
+elif [ "$USE_API" = true ] || [ "$API_TYPE" = "openai-compatible" ]; then
+    echo "API/外部サーバーモードで起動するには:"
+    echo ""
+    echo "# 1. ネットワークの作成（初回のみ）"
+    echo "docker network create llm-stack-network"
+    echo ""
+    echo "# 2. サンドボックス環境の起動"
+    echo "docker-compose up -d ssrf-proxy dify-sandbox"
+    echo ""
+    echo "# 3. 評価の実行（vLLMサービスは起動しません）"
+    echo "docker-compose up llm-leaderboard"
+elif [ "$API_TYPE" = "vllm-local" ]; then
+    echo "vLLMローカルモード（非推奨）で起動するには:"
+    echo ""
+    echo "# 1. ネットワークの作成（初回のみ）"
+    echo "docker network create llm-stack-network"
+    echo ""
+    echo "# 2. サンドボックス環境の起動"
+    echo "docker-compose up -d ssrf-proxy dify-sandbox"
+    echo ""
+    echo "# 3. 評価の実行（vLLMは内部で起動します）"
+    echo "docker-compose up llm-leaderboard"
+    echo ""
+    echo "⚠️  注意: このモードは非推奨です。vllmまたはvllm-dockerモードへの移行を推奨します。"
+else
+    echo "評価を実行するには:"
+    echo ""
+    echo "# 1. ネットワークの作成（初回のみ）"
+    echo "docker network create llm-stack-network"
+    echo ""
+    echo "# 2. サンドボックス環境の起動"
+    echo "docker-compose up -d ssrf-proxy dify-sandbox"
+    echo ""
+    echo "# 3. 評価の実行"
+    echo "docker-compose up llm-leaderboard"
+fi
+echo ""
