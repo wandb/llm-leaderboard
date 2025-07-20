@@ -22,7 +22,25 @@ export EVAL_CONFIG_PATH=$CFG_BASENAME
 API_TYPE=$(grep '^api:' "$CFG" | awk '{print $2}' | tr -d '"')
 API_TYPE=${API_TYPE:-openai}
 
+# VLLM_VERSIONをYAMLから取得（vllm_tagまたはvllm_docker_image）
+VLLM_TAG=$(grep -E '^\s*vllm_tag:' "$CFG" | awk '{print $2}' | tr -d '"' || echo "")
+VLLM_DOCKER_IMAGE=$(grep -E '^\s*vllm_docker_image:' "$CFG" | awk '{print $2}' | tr -d '"' || echo "")
+
+# 優先順位: vllm_docker_image > vllm_tag > デフォルト(latest)
+if [[ -n "$VLLM_DOCKER_IMAGE" ]]; then
+    # フルイメージ名が指定されている場合はタグを抽出
+    VLLM_VERSION=$(echo "$VLLM_DOCKER_IMAGE" | awk -F':' '{print $NF}')
+    [[ "$VLLM_VERSION" == "$VLLM_DOCKER_IMAGE" ]] && VLLM_VERSION="latest"
+elif [[ -n "$VLLM_TAG" ]]; then
+    VLLM_VERSION="$VLLM_TAG"
+else
+    VLLM_VERSION="latest"
+fi
+
+export VLLM_VERSION
+
 $DEBUG && echo "API_TYPE=$API_TYPE"
+$DEBUG && echo "VLLM_VERSION=$VLLM_VERSION"
 
 # Pre-create sandbox dependencies dir for dify-sandbox
 mkdir -p ./volumes/sandbox/dependencies

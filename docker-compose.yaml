@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: Dockerfile.vllm
       args:
-        VLLM_VERSION: ${VLLM_VERSION:-v0.5.5}
+        VLLM_VERSION: ${VLLM_VERSION:-latest}
     container_name: llm-stack-vllm-1
     runtime: nvidia
     working_dir: /workspace
