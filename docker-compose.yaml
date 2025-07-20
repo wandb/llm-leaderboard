@@ -66,7 +66,7 @@ services:
       # Other settings
       - LANG=${LANG:-ja_JP.UTF-8}
       - PYTHONPATH=${PYTHONPATH}
-      - JUMANPP_COMMAND=${JUMANPP_COMMAND}
+      - JUMANPP_COMMAND=${JUMANPP_COMMAND:-/usr/local/bin/jumanpp}
 
       # Docker in Docker settings for SWE-bench
       - DOCKER_HOST=unix:///var/run/docker.sock
