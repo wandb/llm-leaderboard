@@ -65,11 +65,16 @@ def evaluate():
     for q, a in zip(questions, answers):
         q.update({"answer": a})
     
-    # APIタイプに応じてvLLMサーバー/コンテナをシャットダウン
-    if api_type == "vllm-local":
-    shutdown_vllm_server()
-    elif api_type in ["vllm", "vllm-docker"]:
-        stop_vllm_container_if_needed()
+        # APIタイプに応じてvLLMサーバー/コンテナをシャットダウン
+    lifecycle_mode = cfg.vllm.get("lifecycle", "auto")
+    
+    # RoBERTaの推論中はGPUメモリを専有するため、vLLMを一時停止する
+    # lifecycle: 'always_on' が指定されている場合を除く
+    if lifecycle_mode != 'always_on':
+        if api_type == "vllm-local":
+            shutdown_vllm_server()
+        elif api_type in ["vllm", "vllm-docker"]:
+            stop_vllm_container_if_needed()
 
     # RoBERTa評価器の初期化
     roberta_evaluator = RoBERTaEvaluator(cfg.jtruthfulqa.roberta_model_name)
@@ -89,7 +94,7 @@ def evaluate():
     del roberta_evaluator
     torch.cuda.empty_cache()
     try:
-    torch.cuda.synchronize()
+        torch.cuda.synchronize()
     except RuntimeError as e:
         if "No CUDA GPUs are available" not in str(e):
             raise  # 他のエラーの場合は再度発生させる
@@ -131,13 +136,15 @@ def evaluate():
 
     print(f"JTruthfulQA Evaluation Complete. Overall Score: {overall_score:.4f}")
 
-    # APIタイプに応じてvLLMサーバー/コンテナを再起動
-    if api_type == "vllm-local":
-    llm = get_llm_inference_engine()
-    instance.llm = llm
-    elif api_type in ["vllm", "vllm-docker"]:
-        start_vllm_container_if_needed()
-        # llmインスタンスは同じものを使い続ける（コンテナが再起動しても接続情報は同じ）
+    # 評価後にvLLMを再起動
+    if lifecycle_mode != 'always_on':
+        if api_type == "vllm-local":
+            llm = get_llm_inference_engine()
+            instance.llm = llm
+        elif api_type in ["vllm", "vllm-docker"]:
+            start_vllm_container_if_needed()
+            # llmインスタンスは同じものを使い続ける（コンテナが再起動しても接続情報は同じ）
+            pass
 
 if __name__ == "__main__":
     evaluate()

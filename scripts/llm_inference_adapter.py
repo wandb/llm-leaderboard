@@ -480,7 +480,38 @@ class AzureOpenAIClient(BaseLLMClient):
 
 class CohereClient(BaseLLMClient):
     def __init__(self, api_key, model, **kwargs):
-        self.client = cohere.Client(api_key)
+        # タイムアウト設定
+        import httpx
+        timeout_config = httpx.Timeout(
+            connect=30.0,   # 接続タイムアウト30秒
+            read=300.0,     # 読み取りタイムアウト5分
+            write=300.0,    # 書き込みタイムアウト5分
+            pool=30.0       # プールタイムアウト30秒
+        )
+        
+        # モデル名に基づいてクライアントバージョンを選択
+        # command-a-* や新しいモデルはv2を使用
+        self.use_v2 = "command-a" in model.lower() or "2025" in model
+        
+        try:
+            if self.use_v2:
+                print(f"Using Cohere v2 client for model: {model}")
+                self.client = cohere.ClientV2(
+                    api_key=api_key,
+                    timeout=timeout_config,
+                    max_retries=3
+                )
+            else:
+                print(f"Using Cohere v1 client for model: {model}")
+                self.client = cohere.Client(
+                    api_key=api_key,
+                    timeout=timeout_config,
+                    max_retries=3
+                )
+        except Exception as e:
+            print(f"Failed to initialize Cohere client: {e}")
+            raise
+            
         self.model = model
         self.kwargs = kwargs
         
@@ -496,7 +527,56 @@ class CohereClient(BaseLLMClient):
         }
 
     async def ainvoke(self, messages, max_tokens=None, **kwargs):
-        """非同期版のinvoke"""
+        """非同期版のinvoke - v1/v2両対応"""
+        if self.use_v2:
+            return await self._ainvoke_v2(messages, max_tokens, **kwargs)
+        else:
+            return await self._ainvoke_v1(messages, max_tokens, **kwargs)
+    
+    async def _ainvoke_v2(self, messages, max_tokens=None, **kwargs):
+        """v2 API用の非同期実装"""
+        # v2 API用のメッセージ形式に変換
+        v2_messages = []
+        system_message = None
+        
+        for msg in messages:
+            if msg["role"] == "system":
+                system_message = msg["content"]
+            elif msg["role"] == "user":
+                v2_messages.append({"role": "user", "content": msg["content"]})
+            elif msg["role"] == "assistant":
+                v2_messages.append({"role": "assistant", "content": msg["content"]})
+        
+        all_kwargs = {**self.kwargs, **kwargs}
+        mapped_params = map_common_params(all_kwargs, self.param_mapping)
+        filtered_params = filter_params(mapped_params, self.allowed_params)
+        
+        params = {
+            "model": self.model,
+            "messages": v2_messages,
+            **filtered_params
+        }
+        
+        if system_message:
+            params["system"] = system_message
+            
+        if max_tokens:
+            params["max_tokens"] = max_tokens
+        
+        try:
+            # Cohere v2 APIを非同期で実行
+            response = await asyncio.to_thread(self.client.chat, **params)
+            # v2 APIのレスポンス形式に対応
+            content = response.message.content[0].text if response.message.content else ""
+            return LLMResponse(content=content)
+        except Exception as e:
+            print(f"Cohere v2 API error: {type(e).__name__}: {e}")
+            if "timeout" in str(e).lower():
+                print("Connection timeout - check network connectivity and API status")
+            raise
+    
+    async def _ainvoke_v1(self, messages, max_tokens=None, **kwargs):
+        """v1 API用の非同期実装（既存のコード）"""
         chat_history = []
         message = ""
         preamble = None
@@ -529,9 +609,15 @@ class CohereClient(BaseLLMClient):
         if max_tokens:
             params["max_tokens"] = max_tokens
         
-        # Cohere APIを非同期で実行
-        response = await asyncio.to_thread(self.client.chat, **params)
-        return LLMResponse(content=response.text)
+        try:
+            # Cohere v1 APIを非同期で実行
+            response = await asyncio.to_thread(self.client.chat, **params)
+            return LLMResponse(content=response.text)
+        except Exception as e:
+            print(f"Cohere v1 API error: {type(e).__name__}: {e}")
+            if "timeout" in str(e).lower():
+                print("Connection timeout - check network connectivity and API status")
+            raise
 
 
 def get_llm_inference_engine() -> BaseLLMClient:
