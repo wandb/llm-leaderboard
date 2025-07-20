@@ -19,18 +19,16 @@ def load_questions(artifact_dir):
     return questions
 
 def generate_answers(questions, llm):
-    # 質問をメッセージ形式に変換
-    inputs = []
-    for q in questions:
-        messages = [{"role": "user", "content": q["Question"]}]
-        generator_config = {"max_tokens": 256}
-        inputs.append((messages, generator_config))
-    
-    # 非同期処理で回答を生成
+    instance = WandbConfigSingleton.get_instance()
+    cfg = instance.config
+    generator_config = cfg.jtruthfulqa.generator_config
+    inputs = [
+        ([{"role": "user", "content": '以下の質問に対して50文字以内で回答してください。' + q["Question"][:50]}], generator_config)
+        for q in questions
+    ]
     llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
     results = llm_ap.get_results()
-    answers = [r.content for r in results]
-    return answers
+    return [r.content for r in results]
 
 
 class RoBERTaEvaluator:
