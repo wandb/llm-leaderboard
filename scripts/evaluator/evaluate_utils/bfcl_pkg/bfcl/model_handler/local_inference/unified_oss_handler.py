@@ -22,32 +22,111 @@
 - Phi-FC: <|tool_call|>形式 
 - Qwen-FC: <tool_call>形式
 
-## D. 出力パターン自動検出
-1. **標準JSONパターン (Hammer系)**
-   例: [{"name": "func_name", "arguments": {"arg1": "val1"}}]
+## D. 出力パターン自動検出とデコード
 
-2. **Markdown JSONパターン (DeepSeek系)**  
-   例: ```json\n[{"name": "func", "arguments": {...}}]\n```
+### パターン1: 標準JSONパターン (Hammer系)
+```
+入力例: [{"name": "func_name", "arguments": {"arg1": "val1"}}]
+説明: 純粋なJSON配列形式。最もシンプルで確実
+検出: `[` で始まり `]` で終わる
+処理: 直接JSON.loads() -> name/argumentsキーを抽出
+```
 
-3. **XMLタグパターン (Hermes系)**
-   例: <tool_call>\n{"name": "func", "arguments": {...}}\n</tool_call>
+### パターン2: Markdownコードブロック内JSON (DeepSeek系)
+```
+入力例: 
+```json
+[{"name": "func", "arguments": {"arg": "value"}}]
+```
+または
+```python
+[{"name": "func", "arguments": {"arg": "value"}}]
+```
+説明: マークダウンのコードブロック内にJSONが含まれる
+検出: ```json または ```python で包まれたJSONを正規表現で抽出
+処理: コードブロックを除去 -> JSON解析
+```
 
-4. **特殊タグパターン (Llama 3.1系)**
-   例: <|python_tag|>{"name": "func", "arguments": {...}}; {"name": "func2", ...}
+### パターン3: XMLタグパターン (Hermes系)
+```
+入力例:
+<tool_call>
+{"name": "func", "arguments": {"arg": "value"}}
+</tool_call>
+説明: XMLライクなタグでツール呼び出しを包む
+検出: <tool_call>...</tool_call> パターンを正規表現で抽出
+処理: タグ内容を抽出 -> JSON解析 -> name/argumentsキーを抽出
+```
 
-5. **関数呼び出しタグパターン (Granite系)**
-   例: <function_call> {"name": "func", "arguments": {...}}
+### パターン4: 特殊タグパターン (Llama 3.1系)
+```
+入力例: 
+<|python_tag|>{"name": "func", "arguments": {"arg": "val"}}; {"name": "func2", "arguments": {"arg2": "val2"}}
+説明: 特殊なPythonタグ + セミコロン区切りで複数関数
+検出: <|python_tag|> プレフィックスの有無
+処理: タグ除去 -> セミコロン分割 -> 各部分をJSON解析
+```
 
-6. **複雑な思考タグパターン (MiniCPM系)**
-   例: <|thought_start|>...<|thought_end|>\n<|tool_call_start|>\n```python\nfunc(...)\n```\n<|tool_call_end|>
+### パターン5: 関数呼び出しタグパターン (Granite系)
+```
+入力例:
+<function_call> {"name": "func", "arguments": {"arg": "value"}}
+説明: <function_call> タグで包む + 特殊な"no_function"処理
+検出: <function_call> で始まるパターン
+処理: タグ内容抽出 -> "no_function"チェック -> JSON解析
+```
 
-7. **改行区切りパターン (GLM系)**
-   例: func_name\n{"arg1": "val1"}
+### パターン6: 複雑な思考タグパターン (MiniCPM系)
+```
+入力例:
+<|thought_start|>
+ユーザーは計算を求めているので、calculate関数を使います
+<|thought_end|>
+<|tool_call_start|>
+```python
+calculate(x=5, y=10)
+```
+<|tool_call_end|>
+計算結果をお見せします
+説明: 思考過程とツール呼び出しを分離
+検出: <|tool_call_start|>...<|tool_call_end|> パターン
+処理: fc2dict()関数で思考過程分離 -> Python AST解析で関数抽出
+```
+
+### パターン7: 改行区切りパターン (GLM系)
+```
+入力例:
+func_name
+{"arg1": "val1"}
+説明: 1行目に関数名、2行目に引数JSON
+検出: 改行で分割して行数チェック
+処理: 1行目を関数名として取得 -> 2行目をJSON解析
+```
+
+### パターン8: 単純なJSONオブジェクト
+```
+入力例: {"name": "func", "arguments": {"arg": "value"}}
+説明: 配列ではない単一のJSONオブジェクト
+検出: JSON形式だが配列でない
+処理: 直接JSON解析 -> name/argumentsキーを抽出
+```
+
+### パターン9: デフォルトのAST解析 (最後の手段)
+```
+説明: 上記パターンがすべて失敗した場合のフォールバック
+処理: default_decode_ast_prompting()を使用してAST解析を試行
+失敗時: 元のテキストをそのまま返す
+```
 
 ## E. モデル固有の実行結果処理
 - Llama系: ipythonロール使用
 - DeepSeek系: userロール使用（toolロール非対応）
 - 標準: toolロール使用
+
+## F. 生の出力保存機能
+- 全てのモデル出力を元の形で保存
+- デバッグとパターン解析のため
+- 失敗したデコードの原因分析に使用
 
 # 使用方法
 model_config.pyで新しいモデルに対して model_handler=UnifiedOSSHandlerを指定するだけ
@@ -57,6 +136,8 @@ import ast
 import json
 import re
 from typing import Dict, List, Any, Union, Optional
+from pathlib import Path
+import os
 
 from .base_oss_handler import OSSHandler
 from ..utils import (
@@ -69,6 +150,13 @@ from ..utils import (
     system_prompt_pre_processing_chat_model,
 )
 from overrides import override
+
+# Config singletonから設定を取得するためのインポート
+try:
+    from config_singleton import WandbConfigSingleton
+except ImportError:
+    # テスト環境などでconfig_singletonが利用できない場合のフォールバック
+    WandbConfigSingleton = None
 
 
 def fc2dict(sequence: str, 
@@ -133,10 +221,15 @@ class UnifiedOSSHandler(OSSHandler):
     - 推論内容の抽出（reasoning content、思考過程）
     - 複雑なツール呼び出し形式の解析
     - モデル固有のメッセージ処理と実行結果追加
+    - chat templateからの設定自動取得
+    - 生の出力保存機能（デバッグ用）
     """
     
     def __init__(self, model_name, temperature) -> None:
         super().__init__(model_name, temperature)
+        
+        # Chat templateからの設定取得
+        self._load_config_from_chat_template()
         
         # モデル名から特徴を推定（FC対応かどうかなど）
         self.is_fc_model = "-FC" in model_name or "fc" in model_name.lower()
@@ -146,6 +239,80 @@ class UnifiedOSSHandler(OSSHandler):
         # モデル固有の設定を推定
         self._detect_model_characteristics(model_name)
         
+        # 生の出力を保存するディレクトリを設定
+        self._setup_raw_output_logging()
+        
+    def _load_config_from_chat_template(self):
+        """Chat templateと設定をconfig_singletonから取得"""
+        self.chat_template = None
+        self.model_local_path = None
+        
+        if WandbConfigSingleton is None:
+            return
+            
+        try:
+            instance = WandbConfigSingleton.get_instance()
+            cfg = instance.config
+            
+            # モデルのローカルパスを取得
+            self.model_local_path = cfg.model.get("local_path", None)
+            
+            # Chat templateを取得
+            model_id = cfg.model.pretrained_model_name_or_path
+            chat_template_name = cfg.model.get("chat_template")
+            
+            if chat_template_name:
+                # ローカルのchat templateファイルから取得
+                local_chat_template_path = Path(f"chat_templates/{chat_template_name}.jinja")
+                if local_chat_template_path.exists():
+                    with local_chat_template_path.open(encoding="utf-8") as f:
+                        self.chat_template = f.read()
+                        print(f"[UnifiedOSSHandler] Chat templateをローカルファイルから読み込み: {local_chat_template_path}")
+                else:
+                    print(f"[UnifiedOSSHandler] Chat templateファイルが見つかりません: {local_chat_template_path}")
+                    
+        except Exception as e:
+            print(f"[UnifiedOSSHandler] Config singleton取得中にエラー: {e}")
+    
+    def _setup_raw_output_logging(self):
+        """生の出力を保存するためのセットアップ"""
+        try:
+            # 結果ディレクトリを作成
+            self.raw_output_dir = Path("scripts/evaluator/evaluate_utils/bfcl_pkg/result") / f"{self.model_name.replace('/', '_')}"
+            self.raw_output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 生の出力を保存するファイル
+            self.raw_output_file = self.raw_output_dir / "raw_outputs_debug.txt"
+            
+            # ファイルを初期化
+            with self.raw_output_file.open("w", encoding="utf-8") as f:
+                f.write(f"# 生の出力ログ - {self.model_name}\n")
+                f.write(f"# このファイルは、{self.model_name}の生の出力を記録します\n")
+                f.write(f"# デコードパターンの分析やデバッグに使用してください\n\n")
+                
+            print(f"[UnifiedOSSHandler] 生の出力ログファイルを初期化: {self.raw_output_file}")
+            
+        except Exception as e:
+            print(f"[UnifiedOSSHandler] 生の出力ログセットアップ中にエラー: {e}")
+            self.raw_output_file = None
+    
+    def _log_raw_output(self, raw_output: str, test_entry_id: str = "unknown", step: str = "decode"):
+        """生の出力をファイルに記録"""
+        if not self.raw_output_file:
+            return
+            
+        try:
+            with self.raw_output_file.open("a", encoding="utf-8") as f:
+                f.write(f"\n{'='*80}\n")
+                f.write(f"Test Entry ID: {test_entry_id}\n")
+                f.write(f"Step: {step}\n")
+                f.write(f"Timestamp: {__import__('datetime').datetime.now().isoformat()}\n")
+                f.write(f"{'='*80}\n")
+                f.write(f"Raw Output:\n{raw_output}\n")
+                f.write(f"{'='*80}\n")
+        except Exception as e:
+            print(f"[UnifiedOSSHandler] 生の出力ログ記録中にエラー: {e}")
+
     def _detect_model_characteristics(self, model_name: str):
         """モデル名から特徴を自動検出"""
         model_lower = model_name.lower()
@@ -179,6 +346,9 @@ class UnifiedOSSHandler(OSSHandler):
         """
         出力パターンを自動検出してデコード
         """
+        # 生の出力をログに記録
+        self._log_raw_output(result, step="decode_ast")
+        
         if not result or not isinstance(result, str):
             return []
             
@@ -326,6 +496,9 @@ class UnifiedOSSHandler(OSSHandler):
         """
         実行結果のデコード - decode_astと同じパターンを適用
         """
+        # 生の出力をログに記録
+        self._log_raw_output(result, step="decode_execute")
+        
         if not result or not isinstance(result, str):
             return result
             
@@ -460,6 +633,9 @@ class UnifiedOSSHandler(OSSHandler):
         APIレスポンス解析 - 推論内容やツール呼び出しを抽出
         """
         model_response = api_response.choices[0].text
+        
+        # 生の出力をログに記録
+        self._log_raw_output(model_response, step="parse_query_response")
         
         # DeepSeek-Coder: 特殊なツール呼び出し抽出
         if self.is_deepseek_coder:
@@ -639,7 +815,7 @@ class UnifiedOSSHandler(OSSHandler):
         入力例: "<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>function_name\n```json\n{...}\n```<｜tool▁call▁end｜>..."
         """
         pattern = re.compile(
-            r"<｜tool▁call▁begin｜>(\w+)<｜tool▁sep｜>(.*?)(?:\n|\\n)```json(?:\n|\\n)(.*?)(?:\n|\\n)```<｜tool▁call▁end｜>"
+            r"<｜tool▁call▁begin｜>(\w+)(\n)?```json(?:\n|\\n)(.*?)(?:\n|\\n)```<｜tool▁call▁end｜>"
         )
         
         matches = pattern.findall(input_string)

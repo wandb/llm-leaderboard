@@ -1667,7 +1667,7 @@ local_inference_model_map = {
     ),
     # Nejumi Leaderboard: 統合OSSハンドラー - 新しいOSSモデルを簡単に追加するため
     "oss_handler": ModelConfig(
-        model_name="oss_handler",
+        model_name=None, # will be set later
         display_name="Generic OSS Model (Auto-Detect)",
         url="https://github.com/your-repo/nejumi-leaderboard",
         org="Nejumi Leaderboard",

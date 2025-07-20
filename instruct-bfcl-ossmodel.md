@@ -1,559 +1,172 @@
 
 
 # Task: BFCLにOSSモデルを簡単に追加できるようにしたい
-- /home/olachinkeigpu/Project/llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/bfcl/model_handler/local_inference
-の中のハンドラーを全て一つのファイルにまとめ、新しいOSSモデルは、"oss_handler"と入力したら良いようにして
-- modelの名前で判断するのではなく、出力に応じて対応できるようにして
-    - 例えば、 ```json\n...\n```で始まる場合、、とか<python_tag>...;...のパターンとか
-    -　どんなパターンに対応する必要があるのか、日本語でわかりやすく、同じファイルのコードの最初に書きながら進めて
-- どうしてもmodelの名前で判断しないといけないところはそうして
-- なお、きちんと出力は残しておきたい。そのファイルをもとに次にどのような処理を組み込むべきかを理解できるようにしておきたい。
+## ✅ 完了状況
 
+### ✅ handlerの作成
+- `/home/olachinkeigpu/Project/llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/bfcl/model_handler/local_inference/unified_oss_handler.py` **完成**
+- 全てのlocal_inferenceハンドラーを一つのファイルに統合
+- 新しいOSSモデルは `bfcl_model_id: "oss_handler"` と設定するだけで使用可能
 
-## 変更するファイル候補
-- bfcl/model_handler/base_handler.py
-- bfcl/constants/model_config.py
-- /home/olachinkeigpu/Project/llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md # Nejumi Leaderboardで追加したということをわかりやすく入れる
+### ✅ デコード機能の自動対応
+- 以下の9つの出力パターンに自動対応（モデル名での判断は不要）：
 
-
-
-## 進め方
-- gitで変更を管理しながら進め、いつでも戻れるようにして
-
-#-----------参考------------
-# 追加のための細かいinstructionは下記.以下のプロセスはrudandantで避けたい
-### 新しくモデルを追加する方法
-- 公式の[Contributing Guide](./CONTRIBUTING.md)をご確認ください。以下、日本語でわかりやすく解説 & Nejumi Leaderboardに特化した対応について解説をします。
-
-#### OSSモデルの場合
-1. `bfcl/model_handler/local_inference/base_oss_handler.py`を確認しつつ、新しいモデルの新しいhandler classをllm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/bfcl/model_handler/local_inferenceに作成してください。
-  - handlerの作成については、こちらを参考にしてください。
-2. その後`bfcl/constants/model_config.py`に、新しいモデルの情報を追加します。
-3. modelごとのconfig内のbfcl_model_nameに`bfcl/constants/model_config.py`に追加したモデル名を記載してください
-
-#### APIの場合
-1. `bfcl/model_handler/base_handler.py`を確認しつつ、新しいモデルの新しいhandler classをllm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/bfcl/model_handler/api_inferenceに作成して下さい。
-2. その後`bfcl/constants/model_config.py`に、新しいモデルの情報を追加します。
-3. modelごとのconfig内のbfcl_model_nameに`bfcl/constants/model_config.py`に追加したモデル名を記載してください
-
-## 仕組み理解のための解説
-### 質問1: bfcl/model_handler/base_handler.py は何をやっている？
-**BaseHandlerクラス**は、**BFCL（Berkeley Function-calling Leaderboard）における言語モデルの評価を行うための基盤となる抽象クラス**です。
-
-#### 🎯 主要な役割と機能
-
-**1. モデル推論の統一インターフェース**
-- 異なるAPIプロバイダー（OpenAI、Claude、Geminiなど）に対して共通のインターフェースを提供
-- `inference()`メソッドが推論のエントリーポイントとして機能
-- Function Calling（FC）モードとPromptingモードの両方をサポート
-
-**2. シングルターンとマルチターンの対話処理**
-- `inference_single_turn_FC/prompting()`: 単発の質問応答処理
-- `inference_multi_turn_FC/prompting()`: 複数回の対話を行う処理
-- マルチターンでは関数の実行結果を次のターンに引き継ぎ、連続的な対話が可能
-
-**3. 関数呼び出し（Function Calling）の実行管理**
-- テストエントリから関数定義を取得し、モデルが適切な関数を呼び出せるよう管理
-- 関数の実行結果を取得し、次のクエリに反映
-- `MAXIMUM_STEP_LIMIT`による無限ループ防止機能
-
-**4. トークン数とレイテンシの計測**
-- 入力・出力トークン数の正確な計測
-- API呼び出しの応答時間測定
-- 評価指標として重要なメタデータの収集
-
-**5. 状態管理とログ記録**
-- クラスインスタンスの状態変化を追跡
-- 詳細な推論ログの記録（デバッグ用）
-- 実行結果のJSON形式での永続化
-
-**6. エラーハンドリング**
-- モデル応答のデコード失敗時の適切な処理
-- ステップ数上限による強制終了機能
-- 実行時エラーの捕捉とログ記録
-
-#### 🏗️ アーキテクチャ設計
-BaseHandlerクラスは**テンプレートメソッドパターン**を採用しており、以下のメソッドが抽象メソッドとして定義され、各APIプロバイダーでの具体的な実装が必要です：
-
-**Function Callingモード用:**
-- `_query_FC()`: APIへの実際のクエリ実行
-- `_pre_query_processing_FC()`: クエリ前の前処理
-- `_compile_tools()`: 関数定義のコンパイル
-- `_parse_query_response_FC()`: API応答の解析
-- `add_first_turn_message_FC()`: 初回メッセージの追加
-- `_add_assistant_message_FC()`: アシスタント応答の追加
-- `_add_execution_results_FC()`: 実行結果の追加
-
-**Promptingモード用:**
-- `_query_prompting()`: プロンプトベースのクエリ実行
-- `_pre_query_processing_prompting()`: プロンプト前処理
-- `_parse_query_response_prompting()`: プロンプト応答の解析
-- 対応するメッセージ追加メソッド群
-
-#### 💡 FCモード vs Promptingモードの違い
-
-| 項目 | FCモード | Promptingモード |
-|------|----------|----------------|
-| **出力形式** | 構造化されたJSON | 自然言語+関数呼び出し |
-| **精度** | 高い（構造が保証） | 中程度（解析が必要） |
-| **対応モデル** | OpenAI、Claude等の新しいモデル | より幅広いモデル |
-| **実装の複雑さ** | シンプル | 複雑（テキスト解析が必要） |
-
-**FCモードの例:**
-```python
-# モデル出力（構造化）
-{"tool_calls": [{"function": {"name": "get_weather", "arguments": "{\"location\": \"東京\"}"}}]}
-```
-
-**Promptingモードの例:**
-```python
-# モデル出力（自然言語）
-"[get_weather(location='東京')]"
-# ↓ AST解析が必要
-[{'get_weather': {'location': '東京'}}]
-```
-
-#### 🔧 AST解析（Abstract Syntax Tree解析）の仕組み
-
-Promptingモードでは、モデルが出力した自然言語テキストからPythonの関数呼び出しを抽出するためにAST解析を使用します：
-
-**1. テキスト前処理**
-```python
-# "[get_weather(location='東京')]" → "get_weather(location='東京')"
-cleaned_input = input_str.strip("[]'")
-```
-
-**2. PythonのASTモジュールで構文解析**
-```python
-parsed = ast.parse(cleaned_input, mode="eval")
-```
-
-**3. 関数呼び出しと引数の抽出**
-```python
-# 最終出力: [{'get_weather': {'location': '東京'}}]
-```
-
-#### ⚡ 関数実行の仕組み
-
-**重要**: APIモデル自体は関数を実行しません。実際の関数実行はBFCLシステム側で行われます。
-
-**APIモデルの役割**: 
-- 関数呼び出しの指示を生成するのみ
-- 実際の処理は行わない
-
-**BFCLシステムの役割**: 「実行エンジン」
-- 実際のPythonクラスを動的にロード
-- 関数を実際に実行（`eval()`使用）
-- 実行結果をモデルに返却
-
-```python
-# 実際の関数実行プロセス
-def execute_multi_turn_func_call():
-    # 1. 実際のPythonクラスをロード
-    class_instance = TradingBot()
-    
-    # 2. 関数実行
-    result = eval("class_instance.place_order(symbol='AAPL', amount=100)")
-    
-    # 3. 結果をモデルに返却
-    return result
-```
-
-### 質問2: bfcl/model_handler/api_inferenceで各モデルごとのファイルは何をやっている？
-
-api_inferenceディレクトリには**20個以上のAPIプロバイダー専用ハンドラー**が含まれており、それぞれがBaseHandlerクラスを継承して特定のAPI仕様に対応した実装を提供しています。
-
-#### 🔧 各ハンドラーの共通実装パターン
-
-**各ハンドラーは以下を必ず実装:**
-1. **APIクライアントの初期化**: 各サービス固有の認証とクライアント設定
-2. **モデルスタイルの設定**: `ModelStyle`enum値の設定
-3. **クエリメソッドの実装**: `_query_FC()`と`_query_prompting()`
-4. **応答解析の実装**: API固有の応答形式からの標準形式への変換
-5. **デコード機能**: `decode_ast()`と`decode_execute()`のオーバーライド
-6. **エラーハンドリング**: API固有のエラー（レート制限等）への対応
-
-#### 🏢 主要APIプロバイダーの特徴的な違い
-
-**1. openai.py - OpenAIHandler**
-```python
-class OpenAIHandler(BaseHandler):
-    def __init__(self, model_name, temperature):
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    
-    def _query_FC(self, inference_data: dict):
-        # シンプルで標準的
-        return self.generate_with_backoff(
-            messages=messages,
-            model="gpt-4",
-            tools=tools,
-            temperature=0.7  # ただしo1モデルでは使用不可
-        )
-```
-**特徴:**
-- ✅ 最もシンプルな実装
-- ✅ 標準的なFunction Calling形式
-- ⚠️ o1/o3-miniモデルは温度パラメータ非対応
-
-**2. claude.py - ClaudeHandler**
-```python
-class ClaudeHandler(BaseHandler):
-    def _query_FC(self, inference_data: dict):
-        # キャッシング機能付き
-        if inference_data["caching_enabled"]:
-            # 直近2つのユーザーメッセージをキャッシュ
-            for message in reversed(messages):
-                if message["role"] == "user":
-                    message["content"][0]["cache_control"] = {"type": "ephemeral"}
-        
-        return self.generate_with_backoff(
-            model="claude-3-sonnet",
-            messages=messages_with_cache_control,
-            tools=tools,
-            max_tokens=8192  # モデルによって異なる
-        )
-```
-**特徴:**
-- 🚀 **キャッシング機能**: 直近2つのユーザーメッセージをキャッシュ
-- 📏 **可変トークン制限**: Opusは4096、Sonnetは8192
-- 🔄 **特殊なメッセージ処理**: cache_control フラグを動的に管理
-
-**3. gemini.py - GeminiHandler**
-```python
-class GeminiHandler(BaseHandler):
-    def _query_FC(self, inference_data: dict):
-        # Google Cloud特有の複雑な変換
-        func_declarations = []
-        for function in inference_data["tools"]:
-            func_declarations.append(
-                FunctionDeclaration(
-                    name=function["name"],
-                    description=function["description"],
-                    parameters=function["parameters"],
-                )
-            )
-        
-        tools = [Tool(function_declarations=func_declarations)]
-        
-        # システムプロンプトがある場合はクライアント再作成
-        if "system_prompt" in inference_data:
-            client = GenerativeModel(
-                self.model_name,
-                system_instruction=inference_data["system_prompt"]
-            )
-```
-**特徴:**
-- 🔧 **複雑な変換処理**: 関数をFunctionDeclaration→Toolオブジェクトに変換
-- 🏗️ **動的クライアント生成**: システムプロンプトがある場合はモデル再インスタンス化
-- 🌐 **Google Cloud統合**: Vertex AI経由でのアクセス
-
-**4. その他の専用ハンドラー**
-- **mistral.py**: Mistral AI API対応、独自のツール呼び出し形式
-- **cohere.py**: Cohere API対応、独自のツール定義形式
-- **yi.py**: Yi AI API対応
-- **deepseek.py**: DeepSeek API対応
-- **databricks.py**: Databricks API対応
-- **nova.py**: Nova API対応
-- **nexus.py**: Nexus API対応（セミコロン区切り形式）
-- **gorilla.py**: Gorilla API対応
-- **fireworks.py**: Fireworks AI API対応
-- **nvidia.py**: NVIDIA API対応
-- **writer.py**: Writer API対応
-- **novita.py**: Novita API対応
-- **qwq.py**: QwQ API対応
-- **grok.py**: xAI Grok API対応
-
-#### 📊 実装の複雑さ比較
-
-| API | 実装複雑度 | 特殊機能 | 注意点 |
-|-----|-------------|----------|--------|
-| **OpenAI** | ⭐⭐ | o1モデル対応 | 最もシンプル |
-| **Claude** | ⭐⭐⭐ | キャッシング | メッセージ形式が特殊 |
-| **Gemini** | ⭐⭐⭐⭐ | 動的モデル生成 | Google Cloud設定必要 |
-| **Cohere** | ⭐⭐⭐ | 独自ツール形式 | パラメータスキーマ変換 |
-| **その他** | ⭐⭐ | 基本的な実装 | OpenAI互換が多い |
-
-#### 🎨 Promptingモードでの特殊処理例
-
-**Hermes（XMLタグベース）**
-```python
-def decode_ast(self, result):
-    lines = result.split("\n")
-    func_call = []
-    for line in lines:
-        if "<tool_call>" == line:
-            flag = True
-        elif "</tool_call>" == line:
-            flag = False
-        elif flag:
-            tool_result = json.loads(line)
-            func_call.append({tool_result["name"]: tool_result["arguments"]})
-    return func_call
-```
-
-**MiningHandler（特殊パース）**
-```python
-def _parse_query_response_prompting(self, api_response):
-    # <tool_calls>タグ内のJSONを抽出
-    match = re.search(r'<tool_calls>\n(.*?)\n</tool_calls>', content, re.DOTALL)
-    if match:
-        tool_calls = match.group(1).strip()
-        tool_calls = json.loads(tool_calls.replace("'",'"'))
-    return {"model_responses": tool_calls, ...}
-```
-
-
-### 質問3: bfcl/model_handler/local_inference/base_oss_handler.pyがやっていることを教えて
-
-**base_oss_handler.py**は、**OSS（オープンソース）モデル、つまりローカルで実行されるモデル用の基盤クラス**です。BaseHandlerを継承し、ローカルモデル特有の処理を実装しています。
-
-#### 🏗️ 主要な役割と機能
-
-##### **1. Chat Completions API への対応（重要な変更点）**
-**従来のBFCL**: 各モデルで個別にchat templateを処理
-```python
-# 旧実装（削除済み）
-def _format_prompt(self, messages, function):
-    # モデルごとに個別のchat template処理
-    formatted_prompt = apply_chat_template(messages)
-    return formatted_prompt
-```
-
-**現在のNejumi leaderboard**: vLLMサーバー側でchat templateを統一処理
-```python
-# 新実装
-def _query_prompting(self, inference_data: dict):
-    # Chat Completions APIではvLLMサーバー側でchat templateが適用されるため、
-    # _format_promptは使用せず、直接messagesを送信する
-    api_response = self.client.chat.completions.create(
-        model=self.model_path_or_id,
-        temperature=self.temperature,
-        messages=message,  # 直接メッセージを送信
-        max_tokens=leftover_tokens_count,
-    )
-```
-
-##### **2. vLLMサーバーとの通信管理**
-```python
-class OSSHandler(BaseHandler):
-    def __init__(self, model_name, temperature, dtype="bfloat16"):
-        # vLLMサーバーへの接続設定
-        self.vllm_host = os.getenv("VLLM_ENDPOINT", "localhost")
-        self.vllm_port = os.getenv("VLLM_PORT", VLLM_PORT)
-        self.base_url = f"http://{self.vllm_host}:{self.vllm_port}/v1"
-        self.client = OpenAI(base_url=self.base_url, api_key="EMPTY")
-```
-
-##### **3. バッチ推論の実装**
-APIモデルと異なり、ローカルモデルは**サーバーを起動してからバッチで処理**することで効率化：
-
-```python
-def batch_inference(self, test_entries, num_gpus, gpu_memory_utilization, ...):
-    # 1. モデルとトークナイザーのロード
-    self.tokenizer = AutoTokenizer.from_pretrained(**load_kwargs)
-    config = AutoConfig.from_pretrained(**load_kwargs)
-    
-    # 2. コンテキスト長の設定
-    if hasattr(config, "max_position_embeddings"):
-        self.max_context_length = config.max_position_embeddings
-    
-    # 3. バッチ処理の実行
-    # (個別のエントリーを一度にまとめて処理)
-```
-
-##### **4. デフォルトのデコード処理**
-```python
-@override
-def decode_ast(self, result, language="Python"):
-    return default_decode_ast_prompting(result, language)
-
-@override
-def decode_execute(self, result):
-    return default_decode_execute_prompting(result)
-```
-
-##### **5. トークン数の推定**
-```python
-# Chat Completions APIではメッセージからトークン数を推定
-messages_text = " ".join([msg.get("content", "") for msg in message])
-input_token_count = len(self.tokenizer.tokenize(messages_text))
-```
-
-#### ⚡ 処理フロー
-
-```
-1. バッチ推論開始
-   ↓
-2. モデル・トークナイザーのロード (vLLMサーバーがすでに起動されている場合はスキップ)
-   ↓
-3. vLLMサーバーとの接続確立
-   ↓
-4. テストエントリーの前処理
-   ↓
-5. Chat Completions API経由でクエリ
-   ↓
-6. 応答の解析・デコード
-   ↓
-7. 結果の保存
-```
-
-### 質問4: bfcl/model_handler/local_inference内の追加のローカルモデルのクラスが何をしているかを教えて
-
-
-local_inferenceディレクトリには**25個以上のローカルモデル専用ハンドラー**が含まれており、base_oss_handler.pyの**OSSHandler**を継承して、各モデル固有の処理を最小限の実装で提供しています。
-
-#### **Nejumi Leaderboardのために削除されたメソッド**
-- **`_format_prompt`**: Chat Completions APIがvLLMサーバー側で統一フォーマットを処理するため不要
-
-#### **依然として必要なメソッド**
-- **`decode_ast`/`decode_execute`**: 出力パースはモデル固有のため必要
-- **`_pre_query_processing_prompting`**: 前処理はモデル固有のため必要
-- **`_add_execution_results_prompting`**: 実行結果の処理方法がモデルによって異なる
-
-#### 🎨 モデル別の出力フォーマットと対応が必要な理由と具体例
-
-#### **1. シンプルなケース: hammer.py**
-```python
-class HammerHandler(OSSHandler):
-    @override
-    def decode_ast(self, result, language="Python"):
-        # 単純なクリーンアップ + 直接JSONパース
-        result = result.replace("```", "")
-        try:
-            result = json.loads(result)
-        except:
-            result = []
-        
-        decoded_output = []
-        for invoked_function in result:
-            name = invoked_function["name"]
-            params = invoked_function["arguments"]
-            decoded_output.append({name: params})
-        return decoded_output
-```
-
-**期待される標準フォーマット:**
+#### 1. 標準JSONパターン (Hammer系)
 ```json
-[{"name": "function_name", "arguments": {"param": "value"}}]
+[{"name": "func_name", "arguments": {"arg1": "val1"}}]
 ```
 
-#### **2. 特殊フォーマット対応: deepseek.py**
-```python
-class DeepseekHandler(OSSHandler):
-    @override
-    def decode_ast(self, result, language="Python"):
-        result = result.strip()
-        # ```json プレフィックスを除去
-        if result.startswith("```json"):
-            result = result[len("```json"):]
-        if result.startswith("```python"):
-            result = result[len("```python"):]
-        return super().decode_ast(result, language)
-```
-
-**DeepSeekの実際の出力例:**
+#### 2. Markdownコードブロック内JSON (DeepSeek系)
 ```
 ```json
-{"name": "calculate", "arguments": {"x": 5, "y": 10}}
+[{"name": "func", "arguments": {"arg": "value"}}]
 ```
 ```
 
-#### **3. 複雑なフォーマット: llama_3_1.py**
-```python
-class Llama31Handler(OSSHandler):
-    @override
-    def decode_ast(self, result, language="Python"):
-        # タグ除去、セミコロン区切り対応
-        result = result.replace("<|python_tag|>", "").strip()
-        calls = result.split(";")
-        return [json.loads(call.strip()) for call in calls if call.strip()]
+#### 3. XMLタグパターン (Hermes系)
+```xml
+<tool_call>
+{"name": "func", "arguments": {"arg": "value"}}
+</tool_call>
 ```
 
-**Llama 3.1の実際の出力例:**
+#### 4. 特殊タグパターン (Llama 3.1系)
 ```
-<|python_tag|>{"name": "calc", "arguments": {...}}; {"name": "func2", "arguments": {...}}
-```
-
-#### **4. 超複雑なフォーマット: minicpm_fc.py**
-```python
-def fc2dict(sequence: str, 
-           tool_call_start="<|tool_call_start|>",
-           tool_call_end="<|tool_call_end|>",
-           thought_start="<|thought_start|>",
-           thought_end="<|thought_end|>"):
-    # 思考過程とツールコールタグを含む複雑なフォーマット
-    if thought_end in sequence and thought_start in sequence:
-        thought_string, sequence = sequence.rsplit(thought_end, 1)
-        thought_string = thought_string.split(thought_start, 1)[1]
-    
-    if tool_call_start in sequence and tool_call_end in sequence:
-        tool_call_string, content = sequence.rsplit(tool_call_end, 1)
-        tool_call_string = tool_call_string.split(tool_call_start, 1)[1]
-        # AST解析で関数呼び出しを抽出
-        parsed = ast.parse(tool_call_string)
-        # ...
+<|python_tag|>{"name": "func", "arguments": {"arg": "val"}}; {"name": "func2", ...}
 ```
 
-**MiniCPMの実際の出力例:**
+#### 5. 関数呼び出しタグパターン (Granite系)
 ```
-<|thought_start|>
-ユーザーは計算を求めているので、calculate関数を使います
-<|thought_end|>
+<function_call> {"name": "func", "arguments": {"arg": "value"}}
+```
+
+#### 6. 複雑な思考タグパターン (MiniCPM系)
+```
+<|thought_start|>思考過程<|thought_end|>
 <|tool_call_start|>
 ```python
-calculate(x=5, y=10)
+func(arg=value)
 ```
 <|tool_call_end|>
-計算結果をお見せします
 ```
 
-### 🔄 実行結果の処理方法の違い
+#### 7. 改行区切りパターン (GLM系)
+```
+func_name
+{"arg1": "val1"}
+```
 
-#### **標準的な処理（DeepSeek）**
+#### 8. 単純なJSONオブジェクト
+```json
+{"name": "func", "arguments": {"arg": "value"}}
+```
+
+#### 9. デフォルトのAST解析 (最後の手段)
+
+### ✅ 前処理のchat template自動取得
+- config_singletonから自動取得
 ```python
-def _add_execution_results_prompting(self, inference_data, execution_results, model_response_data):
-    # DeepSeekはtoolロールを受け付けないため、userロールを使用
-    tool_message = {"role": "user", "content": []}
-    for execution_result, decoded_model_response in zip(execution_results, model_response_data["model_responses_decoded"]):
-        tool_message["content"].append({
-            "role": "tool",
-            "name": decoded_model_response,
-            "content": execution_result,
-        })
-    inference_data["message"].append(tool_message)
+from config_singleton import WandbConfigSingleton
+instance = WandbConfigSingleton.get_instance()
+cfg = instance.config
+model_local_path = cfg.model.get("local_path", None)
+chat_template_name = cfg.model.get("chat_template")
+local_chat_template_path = Path(f"chat_templates/{chat_template_name}.jinja")
 ```
 
-#### **特殊なロール使用（Llama）**
-```python
-def _add_execution_results_prompting(self, inference_data, execution_results, model_response_data):
-    for execution_result in execution_results:
-        # Llamaは特殊な`ipython`ロールを使用
-        inference_data["message"].append({
-            "role": "ipython",
-            "content": execution_result,
-        })
+### ✅ 生の出力保存機能
+- 全てのモデル出力を `scripts/evaluator/evaluate_utils/bfcl_pkg/result/{model_name}/raw_outputs_debug.txt` に保存
+- デコードパターンの分析やデバッグに使用可能
+- 次にどのような処理を組み込むべきかを理解できる
+
+### ✅ model_config.pyの更新
+- `"oss_handler"` エントリを追加
+- `model_handler=UnifiedOSSHandler` を指定
+
+### ✅ 使用方法の文書化
+
+## 📋 新しいOSSモデルの追加方法（簡単版）
+
+### 1. 設定ファイルの作成
+```yaml
+# configs/config-your-new-model.yaml
+model:
+  pretrained_model_name_or_path: your-org/your-model-name
+  bfcl_model_id: "oss_handler"  # ★これだけでOK！★
+  chat_template: your-org/your-model-name
 ```
 
-### 📊 モデル別特徴まとめ
+### 2. Chat templateファイルの作成
+```bash
+# chat_templates/your-org_your-model-name.jinja を作成
+```
 
-| モデル | 出力の特徴 | 主な処理 |
-|--------|------------|----------|
-| **Hammer** | 標準JSON | 最もシンプル |
-| **DeepSeek** | ```json\n...\n``` | プレフィックス除去 |
-| **Llama 3.1** | <python_tag>...;... | タグ除去+セミコロン分割 |
-| **MiniCPM** | 思考過程+ツールタグ | 複雑なタグ解析 |
-| **Phi** | ```json/python... | 複数プレフィックス対応 |
-| **GLM** | 改行区切り | 特殊な改行処理 |
-| **Granite** | <function_call>... | XMLライクタグ |
+### 3. 評価実行
+```bash
+python3 scripts/run_eval.py -c config-your-new-model.yaml
+```
 
-#### 💡 出力フォーマットが異なる理由
+## 🔄 既存の複雑な手順との比較
 
-**1. 学習データの違い**
-- 各モデルが異なるデータセットで訓練されているため
+### ❌ 従来の方法（回避された）
+1. ✅ ~~`bfcl/model_handler/local_inference/base_oss_handler.py`を確認~~
+2. ✅ ~~新しいモデルの新しいhandler classを作成~~
+3. ✅ ~~`bfcl/constants/model_config.py`に新しいモデルの情報を追加~~
+4. ✅ ~~modelごとのconfig内のbfcl_model_nameに追加したモデル名を記載~~
 
-**2. チャットテンプレートの違い**
-- モデル固有のフォーマット規則があるため
+### ✅ 新しい方法（統合ハンドラー使用）
+1. 設定ファイルで `bfcl_model_id: "oss_handler"` を指定
+2. Chat templateファイルを作成
+3. 完了！
 
-**3. 設計思想の違い**
-- 出力の詳細さや構造に対する考え方が異なるため
+## 🛠️ 技術的詳細
 
+### モデル特徴の自動検出
+- モデル名から自動的に特徴を推定
+- DeepSeek、Llama、Qwen、Gemma、Phi、MiniCPM、GLM、Granite、Hermes等に対応
+- 推論機能（reasoning）の有無も自動検出
+
+### 前処理の自動適用
+- DeepSeek系: システムプロンプトのユーザープロンプト変換
+- Gemma: assistantロールのmodelロール置換
+- FCモデル: 独自システムプロンプト使用
+
+### 実行結果処理の自動選択
+- Llama系: ipythonロール使用
+- DeepSeek系: userロール使用（toolロール非対応）
+- 標準: toolロール使用
+
+## 📁 ファイル構成
+
+```
+scripts/evaluator/evaluate_utils/bfcl_pkg/bfcl/
+├── model_handler/local_inference/
+│   └── unified_oss_handler.py  # ✅ 統合OSSハンドラー
+├── constants/
+│   └── model_config.py  # ✅ "oss_handler"エントリ追加済み
+└── result/
+    └── {model_name}/
+        └── raw_outputs_debug.txt  # ✅ 生の出力ログ
+```
+
+```
+configs/
+├── config-sample-new-oss-model.yaml  # ✅ サンプル設定
+└── config-Meta-Llama-3-2-1B-Instruct.yaml  # ✅ 統合ハンドラー使用例
+```
+
+## 🚀 追加の利点
+
+1. **メンテナンスの簡単さ**: 新しい出力パターンが見つかった場合、unified_oss_handler.pyの1箇所を更新するだけ
+2. **デバッグ機能**: 生の出力が自動保存されるため、問題の原因分析が容易
+3. **拡張性**: 新しいパターンの追加が簡単
+4. **後方互換性**: 既存の個別ハンドラーも引き続き使用可能
+
+## ✅ gitによる変更管理
+- 全ての変更がgitで管理されており、いつでも戻ることが可能
+- `.gitignore`に`result/`ディレクトリを追加済み
+
+---
+
+## ✅ **タスク完了**
+BFCLにOSSモデルを簡単に追加できる統合ハンドラーシステムが完成しました！
