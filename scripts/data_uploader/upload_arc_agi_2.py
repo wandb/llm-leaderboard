@@ -51,6 +51,12 @@ parser.add_argument(
     type=int,
     default=50,
 )
+parser.add_argument(
+    "-t",
+    "--threshold_num_elements",
+    type=int,
+    default=2000,
+)
 args = parser.parse_args()
 
 with wandb.init(entity=args.entity, project=args.project, job_type="upload_data") as run:
@@ -58,6 +64,21 @@ with wandb.init(entity=args.entity, project=args.project, job_type="upload_data"
                                     type="dataset",
                                     metadata={"version":args.dataset_version},
                                     description="This dataset is based on version {}".format(args.dataset_version))
+
+    # load tasks
+    with open(os.path.join(args.file_path, "evaluation.txt"), 'r') as f:
+        task_ids = [line.strip() for line in f.readlines()]
+
+    # create inference inputs
+    num_elements = {}
+    for task_id in task_ids:
+        with open(os.path.join(args.file_path, "evaluation", f'{task_id}.json'), 'r') as f:
+            task = json.load(f)
+        num_element = 0
+        for train_example in task['train']:
+            num_element += len(sum(train_example['input'], []) + sum(train_example['output'], []))
+        num_elements[task_id] = num_element
+    target_task_ids = [task_id for task_id, num_element in num_elements.items() if num_element <= args.threshold_num_elements]
 
     if args.sampling_reference_run is not None:
         artifacts = wandb.Api().run(args.sampling_reference_run).logged_artifacts()
@@ -71,6 +92,8 @@ with wandb.init(entity=args.entity, project=args.project, job_type="upload_data"
         with open(artifact_filepath) as f:
             df = Table.from_json(json.load(f), source_artifact=artifact)
         df = df.get_dataframe()
+        # few-shotのexampleのマス数が多すぎて古いモデルで処理できないサンプルを除外
+        df = df[df.task_id.isin(target_task_ids)]
         # 全体のスコアを集計
         score_df = df.groupby(['task_id', 'test_example_id']).agg({'correct': 'max'}) # num_attemptsの中で最大値を取る
         score_df = score_df.groupby('task_id').agg({'correct': 'mean'}) # task id単位で平均
