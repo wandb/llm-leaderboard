@@ -14,10 +14,25 @@ from config_singleton import WandbConfigSingleton
 from .evaluate_utils import LLMAsyncProcessor
 
 
+# ARC-AGI-2では0-9の値が使用されるため、10色 + 追加の色を用意
+# TABLEAU_COLORSは10色なので、追加の色を定義
+ADDITIONAL_COLORS = [
+    [255, 255, 255],  # 白
+    [128, 128, 128],  # グレー
+    [192, 192, 192],  # ライトグレー
+    [64, 64, 64],     # ダークグレー
+    [255, 192, 203],  # ピンク
+    [255, 165, 0],    # オレンジ
+    [128, 0, 128],    # 紫
+    [0, 255, 255],    # シアン
+    [255, 0, 255],    # マゼンタ
+    [128, 128, 0],    # オリーブ
+]
+
 COLORMAP = np.array([
     [int(rgb[1:3], 16), int(rgb[3:5], 16), int(rgb[5:7], 16)] # '#ffffff' -> [255, 255, 255]
     for rgb in TABLEAU_COLORS.values()
-] + [[255, 255, 255]], dtype=np.uint8)
+] + ADDITIONAL_COLORS, dtype=np.uint8)
 
 
 PROMPT_TEMPLATE = """\
@@ -211,7 +226,9 @@ def tile_to_img(expected: List[List[int]], output: Optional[List[List[int]]]) ->
                 "box_caption": caption,
             })
 
-    pil_image = Image.fromarray(COLORMAP[concat_map])
+    # カラーマップの範囲外の値をクリップ
+    concat_map_clipped = np.clip(concat_map, 0, len(COLORMAP) - 1)
+    pil_image = Image.fromarray(COLORMAP[concat_map_clipped])
     return wandb.Image(pil_image, boxes=bboxes)
 
 
