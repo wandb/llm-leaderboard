@@ -5,20 +5,20 @@ wandb:
 
 github_version: v3.0.0 #for recording
 
-testmode: false
+testmode: true
 inference_interval: 0 # seconds
 
 run:
-  jaster: false
-  jmmlu_robustness: false # if this is set as true, jaster should set as true
-  mtbench: false
-  jbbq: false
-  toxicity: false
-  jtruthfulqa: false
-  hle: false
-  swebench: false
-  bfcl: false
-  hallulens: false
+  jaster: true
+  jmmlu_robustness: true # if this is set as true, jaster should set as true
+  mtbench: true
+  jbbq: true
+  toxicity: true
+  jtruthfulqa: true
+  hle: true
+  swebench: true
+  bfcl: true
+  hallulens: true
   arc_agi_2: true
   m_ifeval: true
   aggregate: true
@@ -163,7 +163,7 @@ hle:
   max_samples: 10
 
 arc_agi_2:
-  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval_50:production"
+  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval:production"
   max_output_tokens: 4096
   num_attempts: 2
 

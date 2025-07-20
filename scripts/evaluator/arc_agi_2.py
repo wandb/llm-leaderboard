@@ -15,15 +15,10 @@ from .evaluate_utils import LLMAsyncProcessor
 
 
 # ARC-AGI-2では0-9の値が使用される
-# TABLEAU_COLORSの最初の10色を使用し、-1（パディング）用の白と無効値用の赤を追加
 COLORMAP = np.array([
-    [255, 255, 255],  # インデックス0: パディング用の白（値-1がマップされる）
-] + [
     [int(rgb[1:3], 16), int(rgb[3:5], 16), int(rgb[5:7], 16)]
-    for rgb in list(TABLEAU_COLORS.values())[:10]  # インデックス1-10: 値0-9用の10色
-] + [
-    [255, 0, 0],  # インデックス11: エラー値用の赤（値10以上がマップされる）
-], dtype=np.uint8)
+    for rgb in TABLEAU_COLORS.values()
+] + [[255, 255, 255], [255, 0, 0]], dtype=np.uint8)  # 白色 + 赤色（エラー用）を追加
 
 
 PROMPT_TEMPLATE = """\
@@ -217,13 +212,9 @@ def tile_to_img(expected: List[List[int]], output: Optional[List[List[int]]]) ->
                 "box_caption": caption,
             })
 
-    # 無効な値（10以上）は別の色（エラー色）にマップ
-    # -1はパディング、0-9は正常な色、10以上はエラー
-    concat_map_display = concat_map.copy()
-    concat_map_display[concat_map > 9] = 10  # 無効な値はすべて10（エラー色）にマップ
-    concat_map_display[concat_map < -1] = 10  # 負の値（-1以外）もエラー
-    concat_map_display = np.clip(concat_map_display, 0, len(COLORMAP) - 1)
-    pil_image = Image.fromarray(COLORMAP[concat_map_display])
+    # 無効な値（10以上）は赤色で表示
+    concat_map_safe = np.clip(concat_map, 0, len(COLORMAP) - 1)
+    pil_image = Image.fromarray(COLORMAP[concat_map_safe])
     return wandb.Image(pil_image, boxes=bboxes)
 
 
