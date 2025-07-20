@@ -14,25 +14,16 @@ from config_singleton import WandbConfigSingleton
 from .evaluate_utils import LLMAsyncProcessor
 
 
-# ARC-AGI-2では0-9の値が使用されるため、10色 + 追加の色を用意
-# TABLEAU_COLORSは10色なので、追加の色を定義
-ADDITIONAL_COLORS = [
-    [255, 255, 255],  # 白
-    [128, 128, 128],  # グレー
-    [192, 192, 192],  # ライトグレー
-    [64, 64, 64],     # ダークグレー
-    [255, 192, 203],  # ピンク
-    [255, 165, 0],    # オレンジ
-    [128, 0, 128],    # 紫
-    [0, 255, 255],    # シアン
-    [255, 0, 255],    # マゼンタ
-    [128, 128, 0],    # オリーブ
-]
-
+# ARC-AGI-2では0-9の値が使用される
+# TABLEAU_COLORSの最初の10色を使用し、-1（パディング）用の白と無効値用の赤を追加
 COLORMAP = np.array([
-    [int(rgb[1:3], 16), int(rgb[3:5], 16), int(rgb[5:7], 16)] # '#ffffff' -> [255, 255, 255]
-    for rgb in TABLEAU_COLORS.values()
-] + ADDITIONAL_COLORS, dtype=np.uint8)
+    [255, 255, 255],  # インデックス0: パディング用の白（値-1がマップされる）
+] + [
+    [int(rgb[1:3], 16), int(rgb[3:5], 16), int(rgb[5:7], 16)]
+    for rgb in list(TABLEAU_COLORS.values())[:10]  # インデックス1-10: 値0-9用の10色
+] + [
+    [255, 0, 0],  # インデックス11: エラー値用の赤（値10以上がマップされる）
+], dtype=np.uint8)
 
 
 PROMPT_TEMPLATE = """\
@@ -226,9 +217,13 @@ def tile_to_img(expected: List[List[int]], output: Optional[List[List[int]]]) ->
                 "box_caption": caption,
             })
 
-    # カラーマップの範囲外の値をクリップ
-    concat_map_clipped = np.clip(concat_map, 0, len(COLORMAP) - 1)
-    pil_image = Image.fromarray(COLORMAP[concat_map_clipped])
+    # 無効な値（10以上）は別の色（エラー色）にマップ
+    # -1はパディング、0-9は正常な色、10以上はエラー
+    concat_map_display = concat_map.copy()
+    concat_map_display[concat_map > 9] = 10  # 無効な値はすべて10（エラー色）にマップ
+    concat_map_display[concat_map < -1] = 10  # 負の値（-1以外）もエラー
+    concat_map_display = np.clip(concat_map_display, 0, len(COLORMAP) - 1)
+    pil_image = Image.fromarray(COLORMAP[concat_map_display])
     return wandb.Image(pil_image, boxes=bboxes)
 
 
@@ -288,8 +283,12 @@ def evaluate():
         if y_pred is not None:
             expected_arr = np.array(task['output'], np.int8)
             try:
-                y_pred_arr = np.array(y_pred, np.int8) 
-                correct = expected_arr.shape == y_pred_arr.shape and np.all(y_pred_arr == expected_arr) # 完全一致の場合のみ正解
+                y_pred_arr = np.array(y_pred, np.int8)
+                # ARC-AGI-2の有効な値は0-9のみ
+                if np.any(y_pred_arr < 0) or np.any(y_pred_arr > 9):
+                    correct = False
+                else:
+                    correct = expected_arr.shape == y_pred_arr.shape and np.all(y_pred_arr == expected_arr) # 完全一致の場合のみ正解
             except ValueError:
                 correct = False
         else:
