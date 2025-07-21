@@ -2,14 +2,14 @@ import os
 import asyncio
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 import json
 import warnings
 import logging
 from config_singleton import WandbConfigSingleton
 from omegaconf import OmegaConf, DictConfig
 import openai
-from openai.types.responses import Response as OpenAIResponse
+from openai.types.responses import Response as OpenAIResponse, ParsedResponse as OpenAIParsedResponse
 from openai.types.chat import ChatCompletion as OpenAIChatCompletion
 from mistralai import Mistral
 import google.generativeai as genai
@@ -20,6 +20,7 @@ import boto3
 from botocore.config import Config
 from openai import AzureOpenAI
 import httpx
+from pydantic import BaseModel
 
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 class LLMResponse:
     content: str
     reasoning_content: str = ""
+    parsed_output: Optional[BaseModel] = None
 
 
 def filter_params(params, allowed_params):
@@ -243,21 +245,22 @@ class OpenAIResponsesClient(BaseLLMClient):
     """
     OpenAIのResponses APIを使用するクライアント(Reasoning対応)
     """
-    def __init__(self, api_key=None, base_url=None, model=None, **kwargs):
+    def __init__(self, api_key=None, base_url=None, model=None, structured=False, **kwargs):
         self.async_client = openai.AsyncOpenAI(
             api_key=api_key,
             base_url=base_url
         )
         self.model = model
         self.kwargs = kwargs
+        self.structured = structured
         
         self.allowed_params = {
             'instructions', 'max_output_tokens', 'max_tool_calls', 'metadata',
             'parallel_tool_calls', 'previous_response_id', 'reasoning', 
-            'service_tier', 'store', 'stream', 'temperature', 'text',
+            'service_tier', 'store', 'stream', 'temperature', 'text', 'text_format',
             'tool_choice', 'tools', 'top_logprobs', 'top_p', 'truncation', 'user',
         }
-        
+
         self.param_mapping = {'max_tokens': 'max_output_tokens', 'top_k': 'top_logprobs'}
 
     async def ainvoke(self, messages, max_tokens=None, **kwargs):
@@ -275,14 +278,41 @@ class OpenAIResponsesClient(BaseLLMClient):
         if max_tokens:
             params["max_output_tokens"] = max_tokens
         
-        response: OpenAIResponse = await self.async_client.responses.create(**params)
+        if 'text_format' in filtered_params:
+            response: OpenAIParsedResponse = await self.async_client.responses.parse(**params)
+            parsed_output = response.output_parsed
+        else:
+            response: OpenAIResponse = await self.async_client.responses.create(**params)
+            parsed_output = None
+
         content, reasoning_content = "", ""
         for output in response.output:
             if output.type == "message":
                 content = output.content[0].text
             elif output.type == "reasoning" and len(output.summary) > 0: # reasoning contentは長さ0の場合がある
                 reasoning_content = output.summary[0].text
-        return LLMResponse(content=content, reasoning_content=reasoning_content)
+        return LLMResponse(content=content, reasoning_content=reasoning_content, parsed_output=parsed_output)
+
+
+class AzureOpenAIResponsesClient(OpenAIResponsesClient):
+    def __init__(self, api_key, azure_endpoint, azure_deployment, api_version, structured=False, **kwargs):
+        self.async_client = openai.AsyncAzureOpenAI(
+            api_key=api_key,
+            azure_endpoint=azure_endpoint,
+            api_version=api_version
+        )
+        self.model = azure_deployment
+        self.kwargs = kwargs
+        self.structured = structured
+
+        self.allowed_params = {
+            'instructions', 'max_output_tokens', 'max_tool_calls', 'metadata',
+            'parallel_tool_calls', 'previous_response_id', 'reasoning', 
+            'service_tier', 'store', 'stream', 'temperature', 'text',
+            'tool_choice', 'tools', 'top_logprobs', 'top_p', 'truncation', 'user',
+        }
+
+        self.param_mapping = {'max_tokens': 'max_output_tokens', 'top_k': 'top_logprobs'}
 
 
 class MistralClient(BaseLLMClient):
@@ -378,11 +408,16 @@ class GoogleClient(BaseLLMClient):
             generation_config["max_output_tokens"] = max_tokens
         
         # Google APIを非同期で実行
-        response = await asyncio.to_thread(
-            chat.send_message, 
-            last_user_message, 
-            generation_config=generation_config
-        )
+        for i in range(10):
+            response = await asyncio.to_thread(
+                chat.send_message,
+                last_user_message,
+                generation_config=generation_config
+            )
+            # Googleの場合は空のレスポンスに対してリトライ処理
+            if response.text.strip():
+                break
+            print(f"Retrying request due to empty content. Retry attempt {i+1} of 10.")
         return LLMResponse(content=response.text)
 
 
