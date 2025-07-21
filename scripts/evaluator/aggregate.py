@@ -553,7 +553,18 @@ def evaluate():
     # 新しいベンチマークのデータ
     arc_agi_2_result = load_benchmark_results(run, 'arc_agi_2', "arc_agi_2_leaderboard_table", additional_flags)
     bfcl_result = load_benchmark_results(run, 'bfcl', "bfcl_leaderboard_table", additional_flags)
-    hle_result = load_benchmark_results(run, 'hle', "hle_leaderboard_table", additional_flags)
+    # HLEは dev/test で分かれているため、優先順位に従って読み込む
+    hle_result = None
+    if additional_flags.get('hle', False):
+        try:
+            # testを優先、なければdevを読む
+            hle_result = read_wandb_table(table_name="hle_test_leaderboard_table", run=run)
+        except:
+            try:
+                hle_result = read_wandb_table(table_name="hle_dev_leaderboard_table", run=run)
+            except:
+                print("hle results not found, skipping hle aggregation")
+                additional_flags['hle'] = False
     jhumaneval_result = load_benchmark_results(run, 'jhumaneval', "jhumaneval_leaderboard_table", additional_flags)
     hallulens_result = load_benchmark_results(run, 'hallulens', "hallulens_leaderboard_table", additional_flags)
 

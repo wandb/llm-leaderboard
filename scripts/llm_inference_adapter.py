@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional
 import json
+import warnings
+import logging
 from config_singleton import WandbConfigSingleton
 from omegaconf import OmegaConf, DictConfig
 import openai
@@ -17,6 +19,10 @@ from botocore.exceptions import ClientError
 import boto3
 from botocore.config import Config
 from openai import AzureOpenAI
+import httpx
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -178,13 +184,25 @@ class ChatBedrock(BaseLLMClient):
 
 class OpenAIClient:
     def __init__(self, api_key=None, base_url=None, model=None, **kwargs):
+        # タイムアウト設定を改善
+        timeout_config = httpx.Timeout(
+            connect=30.0,  # 接続タイムアウトを30秒に設定
+            read=300.0,    # 読み取りタイムアウトを5分に設定
+            write=300.0,   # 書き込みタイムアウトを5分に設定
+            pool=30.0      # プールタイムアウトを30秒に設定
+        )
+        
         self.client = openai.OpenAI(
             api_key=api_key,
-            base_url=base_url
+            base_url=base_url,
+            timeout=timeout_config,
+            max_retries=3  # リトライ回数を3回に設定
         )
         self.async_client = openai.AsyncOpenAI(
             api_key=api_key,
-            base_url=base_url
+            base_url=base_url,
+            timeout=timeout_config,
+            max_retries=3  # リトライ回数を3回に設定
         )
         self.model = model
         self.kwargs = kwargs
@@ -462,7 +480,38 @@ class AzureOpenAIClient(BaseLLMClient):
 
 class CohereClient(BaseLLMClient):
     def __init__(self, api_key, model, **kwargs):
-        self.client = cohere.Client(api_key)
+        # タイムアウト設定
+        import httpx
+        timeout_config = httpx.Timeout(
+            connect=30.0,   # 接続タイムアウト30秒
+            read=300.0,     # 読み取りタイムアウト5分
+            write=300.0,    # 書き込みタイムアウト5分
+            pool=30.0       # プールタイムアウト30秒
+        )
+        
+        # モデル名に基づいてクライアントバージョンを選択
+        # command-a-* や新しいモデルはv2を使用
+        self.use_v2 = "command-a" in model.lower() or "2025" in model
+        
+        try:
+            if self.use_v2:
+                print(f"Using Cohere v2 client for model: {model}")
+                self.client = cohere.ClientV2(
+                    api_key=api_key,
+                    timeout=timeout_config,
+                    max_retries=3
+                )
+            else:
+                print(f"Using Cohere v1 client for model: {model}")
+                self.client = cohere.Client(
+                    api_key=api_key,
+                    timeout=timeout_config,
+                    max_retries=3
+                )
+        except Exception as e:
+            print(f"Failed to initialize Cohere client: {e}")
+            raise
+            
         self.model = model
         self.kwargs = kwargs
         
@@ -478,7 +527,56 @@ class CohereClient(BaseLLMClient):
         }
 
     async def ainvoke(self, messages, max_tokens=None, **kwargs):
-        """非同期版のinvoke"""
+        """非同期版のinvoke - v1/v2両対応"""
+        if self.use_v2:
+            return await self._ainvoke_v2(messages, max_tokens, **kwargs)
+        else:
+            return await self._ainvoke_v1(messages, max_tokens, **kwargs)
+    
+    async def _ainvoke_v2(self, messages, max_tokens=None, **kwargs):
+        """v2 API用の非同期実装"""
+        # v2 API用のメッセージ形式に変換
+        v2_messages = []
+        system_message = None
+        
+        for msg in messages:
+            if msg["role"] == "system":
+                system_message = msg["content"]
+            elif msg["role"] == "user":
+                v2_messages.append({"role": "user", "content": msg["content"]})
+            elif msg["role"] == "assistant":
+                v2_messages.append({"role": "assistant", "content": msg["content"]})
+        
+        all_kwargs = {**self.kwargs, **kwargs}
+        mapped_params = map_common_params(all_kwargs, self.param_mapping)
+        filtered_params = filter_params(mapped_params, self.allowed_params)
+        
+        params = {
+            "model": self.model,
+            "messages": v2_messages,
+            **filtered_params
+        }
+        
+        if system_message:
+            params["system"] = system_message
+            
+        if max_tokens:
+            params["max_tokens"] = max_tokens
+        
+        try:
+            # Cohere v2 APIを非同期で実行
+            response = await asyncio.to_thread(self.client.chat, **params)
+            # v2 APIのレスポンス形式に対応
+            content = response.message.content[0].text if response.message.content else ""
+            return LLMResponse(content=content)
+        except Exception as e:
+            print(f"Cohere v2 API error: {type(e).__name__}: {e}")
+            if "timeout" in str(e).lower():
+                print("Connection timeout - check network connectivity and API status")
+            raise
+    
+    async def _ainvoke_v1(self, messages, max_tokens=None, **kwargs):
+        """v1 API用の非同期実装（既存のコード）"""
         chat_history = []
         message = ""
         preamble = None
@@ -511,9 +609,15 @@ class CohereClient(BaseLLMClient):
         if max_tokens:
             params["max_tokens"] = max_tokens
         
-        # Cohere APIを非同期で実行
-        response = await asyncio.to_thread(self.client.chat, **params)
-        return LLMResponse(content=response.text)
+        try:
+            # Cohere v1 APIを非同期で実行
+            response = await asyncio.to_thread(self.client.chat, **params)
+            return LLMResponse(content=response.text)
+        except Exception as e:
+            print(f"Cohere v1 API error: {type(e).__name__}: {e}")
+            if "timeout" in str(e).lower():
+                print("Connection timeout - check network connectivity and API status")
+            raise
 
 
 def get_llm_inference_engine() -> BaseLLMClient:
@@ -521,8 +625,15 @@ def get_llm_inference_engine() -> BaseLLMClient:
     cfg = instance.config
     api_type = cfg.api
 
-    if api_type == "vllm":
-        # vLLMサーバーを起動
+    # vllm-localのみ非推奨警告を表示
+    if api_type == "vllm-local":
+        warnings.warn(
+            "API type 'vllm-local' is deprecated and will be removed in a future version. "
+            "Please use 'vllm' (recommended) or 'vllm-docker' for Docker-based vLLM.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        # 後方互換性のため、既存の処理を継続（コンテナ内でvLLM起動）
         from vllm_server import start_vllm_server
         start_vllm_server()
 
@@ -541,21 +652,47 @@ def get_llm_inference_engine() -> BaseLLMClient:
             model_name=model_name,
             **cfg.generator,
         )
+        return llm
 
-    elif api_type == "vllm-external":
-        # vLLMサーバーは起動済みのものを用いるので、ここでは起動しない
-        #from vllm_server import start_vllm_server
-        #start_vllm_server()
-
-        base_url = cfg.get("base_url", "http://localhost:8000/v1") #"http://localhost:8000/v1"
+    elif api_type in ["vllm", "vllm-docker"]:
+        # 推奨: DockerコンテナのvLLMサービスに接続
+        # "vllm"と"vllm-docker"は同じ動作
+        # llm-leaderboardコンテナ内から実行する場合は、コンテナ名を使用
+        base_url = cfg.get("base_url", "http://llm-stack-vllm-1:8000/v1")
         model_name = cfg.model.pretrained_model_name_or_path
 
         llm = OpenAIClient(
             api_key=os.environ.get("VLLM_API_KEY", "EMPTY"),
             base_url=base_url,
-            model_name=model_name,
+            model=model_name,
             **cfg.generator,
         )
+        return llm
+
+    elif api_type == "vllm-external":
+        warnings.warn(
+            "API type 'vllm-external' is deprecated. "
+            "Please use 'openai-compatible' for external OpenAI-compatible APIs.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        # 後方互換性のため、openai-compatibleと同じ処理
+        api_type = "openai-compatible"
+        # fall through to openai-compatible handling
+
+    if api_type == "openai-compatible":
+        # 外部のOpenAI互換APIに接続
+        base_url = cfg.get("base_url", "http://localhost:8000/v1")
+        model_name = cfg.model.pretrained_model_name_or_path
+
+        llm = OpenAIClient(
+            api_key=os.environ.get("OPENAI_COMPATIBLE_API_KEY", 
+                                  os.environ.get("VLLM_API_KEY", "EMPTY")),
+            base_url=base_url,
+            model=model_name,  # model_name -> model に修正
+            **cfg.generator,
+        )
+        return llm
 
     elif api_type == "openai_responses":
         llm = OpenAIResponsesClient(

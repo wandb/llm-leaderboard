@@ -14,10 +14,11 @@ from config_singleton import WandbConfigSingleton
 from .evaluate_utils import LLMAsyncProcessor
 
 
+# ARC-AGI-2では0-9の値が使用される
 COLORMAP = np.array([
-    [int(rgb[1:3], 16), int(rgb[3:5], 16), int(rgb[5:7], 16)] # '#ffffff' -> [255, 255, 255]
+    [int(rgb[1:3], 16), int(rgb[3:5], 16), int(rgb[5:7], 16)]
     for rgb in TABLEAU_COLORS.values()
-] + [[255, 255, 255]], dtype=np.uint8)
+] + [[255, 255, 255], [255, 0, 0]], dtype=np.uint8)  # 白色 + 赤色（エラー用）を追加
 
 
 PROMPT_TEMPLATE = """\
@@ -37,7 +38,7 @@ PROMPT_TEMPLATE = """\
 
 
 def pretty_print_json(tile: List[List[int]]) -> str:
-    return json.dumps(tile).replace("[[", "[\n  [").replace("]]", "]\n]").replace("], [", "],\n  [")
+    return json.dumps(tile).replace("[[", "[\n  [").replace("]]", "]\n]").replace("], [", "],\n  [").replace(", ", ",")
 
 
 def pretty_print_tile( tile: List[List[int]]) -> str:
@@ -211,7 +212,9 @@ def tile_to_img(expected: List[List[int]], output: Optional[List[List[int]]]) ->
                 "box_caption": caption,
             })
 
-    pil_image = Image.fromarray(COLORMAP[concat_map])
+    # 無効な値（10以上）は赤色で表示
+    concat_map_safe = np.clip(concat_map, 0, len(COLORMAP) - 1)
+    pil_image = Image.fromarray(COLORMAP[concat_map_safe])
     return wandb.Image(pil_image, boxes=bboxes)
 
 
@@ -271,8 +274,12 @@ def evaluate():
         if y_pred is not None:
             expected_arr = np.array(task['output'], np.int8)
             try:
-                y_pred_arr = np.array(y_pred, np.int8) 
-                correct = expected_arr.shape == y_pred_arr.shape and np.all(y_pred_arr == expected_arr) # 完全一致の場合のみ正解
+                y_pred_arr = np.array(y_pred, np.int8)
+                # ARC-AGI-2の有効な値は0-9のみ
+                if np.any(y_pred_arr < 0) or np.any(y_pred_arr > 9):
+                    correct = False
+                else:
+                    correct = expected_arr.shape == y_pred_arr.shape and np.all(y_pred_arr == expected_arr) # 完全一致の場合のみ正解
             except ValueError:
                 correct = False
         else:
