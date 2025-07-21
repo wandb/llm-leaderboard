@@ -299,12 +299,17 @@ Please email us your comments, criticisms, and questions. More information about
 - 公式の[Contributing Guide](./CONTRIBUTING.md)をご確認ください。以下、日本語でわかりやすく解説 & Nejumi Leaderboardに特化した対応について解説をします。
 
 #### OSSモデルの場合
+モデルの追加が大変なため、Nejumi Leaderboardではoss_handlerを作成しました。モデルごとの対応が難しい場合は、こちらをまずはご利用ください。
+
 1. `bfcl/model_handler/local_inference/base_oss_handler.py`を確認しつつ、新しいモデルの新しいhandler classをllm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/bfcl/model_handler/local_inferenceに作成してください。
   - handlerの作成については、こちらを参考にしてください。
 2. その後`bfcl/constants/model_config.py`に、新しいモデルの情報を追加します。
 3. modelごとのconfig内のbfcl_model_nameに`bfcl/constants/model_config.py`に追加したモデル名を記載してください
 
+
 #### APIの場合
+モデルの追加が大変なため、Nejumi LeaderboardではOpenAI-FCやclaude-FCなどのAPIごとに共通して使えるhandlerを作成しました。こちらを利用することで、model_configへの追加などが不要になります。
+
 1. `bfcl/model_handler/base_handler.py`を確認しつつ、新しいモデルの新しいhandler classをllm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/bfcl/model_handler/api_inferenceに作成して下さい。
 2. その後`bfcl/constants/model_config.py`に、新しいモデルの情報を追加します。
 3. modelごとのconfig内のbfcl_model_nameに`bfcl/constants/model_config.py`に追加したモデル名を記載してください

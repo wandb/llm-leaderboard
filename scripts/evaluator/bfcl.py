@@ -26,7 +26,8 @@ def get_default_config() -> Dict[str, Any]:
         "model_name": None,  # モデル名
         "test_category": "all",  # テストするカテゴリのリスト
         "temperature": 0.001,  # 生成時の温度パラメータ
-        "num_gpus": 1,  # 使用するGPUの数
+        "num_gpus": None,  # 使用するGPUの数 (vllmを使うことになるので、Nejumi Leaderboardでは、これは利用しない。)
+        "batch_size": 256, # 使用するGPUの数 (Nejumi Leaderboardでは、これは利用しない。)
         "num_threads": 1,  # 使用するスレッド数
         "gpu_memory_utilization": 0.9,  # GPU メモリ使用率
         "backend": "vllm",  # 使用するバックエンド

@@ -32,7 +32,7 @@ class OSSHandler(BaseHandler, EnforceOverrides):
         self.model_path_or_id = None
 
         # Read from env vars with fallbacks
-        self.vllm_host = os.getenv("VLLM_ENDPOINT", "localhost")
+        self.vllm_host = os.getenv("VLLM_ENDPOINT", "vllm")
         self.vllm_port = os.getenv("VLLM_PORT", VLLM_PORT)
 
         self.base_url = f"http://{self.vllm_host}:{self.vllm_port}/v1"

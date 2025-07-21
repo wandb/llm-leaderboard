@@ -18,6 +18,7 @@ from ..model_handler.api_inference.nova import NovaHandler
 from ..model_handler.api_inference.novita import NovitaHandler
 from ..model_handler.api_inference.nvidia import NvidiaHandler
 from ..model_handler.api_inference.openai import OpenAIHandler
+from ..model_handler.api_inference.upstage import UpstageHandler
 from ..model_handler.api_inference.writer import WriterHandler
 from ..model_handler.api_inference.yi import YiHandler
 from ..model_handler.local_inference.bielik import BielikHandler
@@ -365,6 +366,18 @@ api_inference_model_map = {
         is_fc_model=True,
         underscore_to_dot=True,
     ),
+    "OpenAI-FC": ModelConfig(
+        model_name=None,
+        display_name="OpenAI",
+        url=None,
+        org="OpenAI",
+        license="Proprietary",
+        model_handler=OpenAIHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
     "claude-3-opus-20240229": ModelConfig(
         model_name="claude-3-opus-20240229",
         display_name="Claude-3-Opus-20240229 (Prompt)",
@@ -509,6 +522,18 @@ api_inference_model_map = {
         is_fc_model=True,
         underscore_to_dot=True,
     ),
+    "claude-FC": ModelConfig(
+        model_name=None,
+        display_name="claude",
+        url=None,
+        org="claude",
+        license="Proprietary",
+        model_handler=ClaudeHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
     "nova-pro-v1.0": ModelConfig(
         model_name="nova-pro-v1.0",
         display_name="Amazon-Nova-Pro-v1:0 (FC)",
@@ -614,6 +639,18 @@ api_inference_model_map = {
         model_handler=MistralHandler,
         input_price=1,
         output_price=3,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
+    "mistral-FC": ModelConfig(
+        model_name=None,
+        display_name="Mistral",
+        url="https://docs.mistral.ai/guides/model-selection/",
+        org="Mistral AI",
+        license="Proprietary",
+        model_handler=MistralHandler,
+        input_price=None,
+        output_price=None,
         is_fc_model=True,
         underscore_to_dot=True,
     ),
@@ -725,6 +762,18 @@ api_inference_model_map = {
         is_fc_model=False,
         underscore_to_dot=False,
     ),
+    "gemini-FC": ModelConfig(
+        model_name=None,
+        display_name="Gemini",
+        url="https://deepmind.google/technologies/gemini/flash-thinking/",
+        org="Google",
+        license="Proprietary",
+        model_handler=GeminiHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
     "meetkai/functionary-small-v3.1-FC": ModelConfig(
         model_name="meetkai/functionary-small-v3.1-FC",
         display_name="Functionary-Small-v3.1 (FC)",
@@ -794,6 +843,18 @@ api_inference_model_map = {
         model_handler=CohereHandler,
         input_price=2.5,
         output_price=10,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
+    "command-a-r-FC": ModelConfig(
+        model_name=None,
+        display_name="Command a-r (FC)",
+        url="None",
+        org="Cohere",
+        license="cc-by-nc-4.0",
+        model_handler=CohereHandler,
+        input_price=None,
+        output_price=None,
         is_fc_model=True,
         underscore_to_dot=True,
     ),
@@ -904,6 +965,18 @@ api_inference_model_map = {
         output_price=None,
         is_fc_model=False,
                 underscore_to_dot=False,
+    ),
+    "upstage-FC": ModelConfig(
+        model_name=None,
+        display_name="Upstage",
+        url="https://upstage.ai",
+        org="Upstage",
+        license="Proprietary",
+        model_handler=UpstageHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=True,
+        underscore_to_dot=True,
     ),
 }
 

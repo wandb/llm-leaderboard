@@ -187,7 +187,10 @@ Below, you will find a detailed description of the variables utilized in the `ba
     - `first_n`: Number of generated responses to use for comparison. Leave as null for default behavior.
 
 - **bfcl:** Settings for the BFCL dataset.
+    - `num_threads`: Number of parallel threads to use
+    - `temperature`: Temperature
     - `artifacts_path`: URL of the WandB Artifact for the BFCL dataset.
+    - For details, please check scripts/evaluator/evaluate_utils/bfcl_pkg/README.md. Added supplemental explanation at the end in Japanese
 
 - **hallulens:** Settings for the HalluLens dataset.
     - `artifacts_path`: URL of the WandB Artifact for the HalluLens dataset.
@@ -218,6 +221,7 @@ This framework supports evaluating models using APIs such as OpenAI, Anthropic, 
     - `size_category`: Specify "api" to indicate using an API model.
     - `size`: Model size (leave as null for API models).
     - `release_date`: Model release date. (MM/DD/YYYY)
+    - `bfcl_model_name`: Please select from scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md. To simplify model addition, Nejumi Leaderboard provides common handlers for each API type, such as OpenAI-FC and claude-FC. By using these handlers, you do not need to add entries to model_config for each new model.
 
 #### Other Model Configurations
 
@@ -231,7 +235,7 @@ This framework also supports evaluating models using VLLM. You need to create a 
 - **model:** Information about the model.
     - `artifacts_path`: When loading a model from wandb artifacts, it is necessary to include a description. If not, there is no need to write it. Example notation: wandb-japan/llm-leaderboard/llm-jp-13b-instruct-lora-jaster-v1.0:v0   
     - `pretrained_model_name_or_path`: Name of the VLLM model.
-    - `bfcl_model_name`: Model name for BFCL evaluation (only if different from `pretrained_model_name_or_path`). For example, some BFCL models have "-FC" suffix.
+    - `bfcl_model_name`: Please select from scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md. Since adding new models can be complex, Nejumi Leaderboard provides an `oss_handler` for easier integration. If it is difficult to create a dedicated handler for each model, please use the `oss_handler` as a default option.
     - `chat_template`: Path to the chat template file (if needed).
     - `size_category`: Specify model size category. In Nejumi Leaderboard, the category is defined as "10B<", "10B<= <30B", "<=30B" and "api".
     - `size`: Model size (parameter).

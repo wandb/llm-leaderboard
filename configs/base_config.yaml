@@ -137,10 +137,7 @@ mtbench:
 
 bfcl:
   temperature: 0.01
-  batch_size: 256
-  test_category: 'all'
   num_threads: 1
-  samples_per_category: 10
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:production'
 
 hallulens:

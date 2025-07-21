@@ -76,7 +76,15 @@
 処理: タグ内容抽出 -> "no_function"チェック -> JSON解析
 ```
 
-### パターン6: 複雑な思考タグパターン (MiniCPM系)
+### パターン6: Phiツール呼び出しタグパターン (Phi-FC系)
+```
+入力例: <|tool_call|>[{"name": "func", "arguments": {"arg": "value"}}]<|/tool_call|>
+説明: Phi独自のツール呼び出しタグ + 配列またはオブジェクト形式
+検出: <|tool_call|>...(<|/tool_call|>|EOF) パターンを正規表現で抽出
+処理: タグ内容を抽出 -> 配列形式に統一 -> JSON解析
+```
+
+### パターン7: 複雑な思考タグパターン (MiniCPM系)
 ```
 入力例:
 <|thought_start|>
@@ -93,7 +101,7 @@ calculate(x=5, y=10)
 処理: fc2dict()関数で思考過程分離 -> Python AST解析で関数抽出
 ```
 
-### パターン7: 改行区切りパターン (GLM系)
+### パターン8: 改行区切りパターン (GLM系)
 ```
 入力例:
 func_name
@@ -103,7 +111,7 @@ func_name
 処理: 1行目を関数名として取得 -> 2行目をJSON解析
 ```
 
-### パターン8: 単純なJSONオブジェクト
+### パターン9: 単純なJSONオブジェクト
 ```
 入力例: {"name": "func", "arguments": {"arg": "value"}}
 説明: 配列ではない単一のJSONオブジェクト
@@ -111,11 +119,11 @@ func_name
 処理: 直接JSON解析 -> name/argumentsキーを抽出
 ```
 
-### パターン9: デフォルトのAST解析 (最後の手段)
+### パターン10: デフォルトのAST解析 (最後の手段)
 ```
 説明: 上記パターンがすべて失敗した場合のフォールバック
 処理: default_decode_ast_prompting()を使用してAST解析を試行
-失敗時: 元のテキストをそのまま返す
+失敗時: 空のリストを返す
 ```
 
 ## E. モデル固有の実行結果処理
@@ -291,6 +299,25 @@ class UnifiedOSSHandler(OSSHandler):
                 f.write(f"{'='*80}\n")
         except Exception as e:
             print(f"[UnifiedOSSHandler] 生の出力ログ記録中にエラー: {e}")
+    
+    def _log_decode_result(self, pattern_name: str, result: any, step: str = "decode_ast"):
+        """デコード結果をログに記録"""
+        if not self.raw_output_file:
+            return
+            
+        try:
+            with self.raw_output_file.open("a", encoding="utf-8") as f:
+                f.write(f"Applied Pattern: {pattern_name}\n")
+                f.write(f"Decoded Result: {result}\n")
+                f.write(f"Result Type: {type(result)}\n")
+                if isinstance(result, list):
+                    f.write(f"Result Length: {len(result)}\n")
+                    for i, item in enumerate(result):
+                        f.write(f"  Item {i}: {item} (type: {type(item)})\n")
+                f.write(f"Step: {step}\n")
+                f.write(f"-" * 40 + "\n")
+        except Exception as e:
+            print(f"[UnifiedOSSHandler] デコード結果ログ記録中にエラー: {e}")
 
     def _detect_model_characteristics_from_chat_template(self):
         """Chat templateから具体的なトークン・タグベースで特徴を自動検出（model_nameは使用しない）"""
@@ -302,18 +329,21 @@ class UnifiedOSSHandler(OSSHandler):
         self.has_function_call_tags = False    # <function_call>タグの有無
         self.has_python_tags = False           # <|python_tag|>タグの有無
         self.has_tool_xml_tags = False         # <tool_call>XMLタグの有無
+        self.has_phi_tool_tags = False         # <|tool_call|>Phiタグの有無
         self.has_coder_tokens = False          # コーダー関連のトークンの有無
         self.has_ipython_role = False          # ipythonロールの有無
         self.has_model_role = False            # modelロール（Gemma用）の有無
         self.has_fc_tokens = False             # FC（Function Calling）関連トークンの有無
         self.supports_reasoning = False        # 推論サポートの有無
+        self.has_markdown_code_blocks = False  # markdownコードブロックの有無
         
         # Chat templateから特徴を検出（model_nameは一切使用しない）
         if self.chat_template:
             chat_template_lower = self.chat_template.lower()
             
             # 思考タグの検出（推論機能）
-            if "<think>" in chat_template_lower and "</think>" in chat_template_lower:
+            if ("<think>" in chat_template_lower and "</think>" in chat_template_lower) or \
+               ("</think>" in chat_template_lower):
                 self.has_thinking_tags = True
                 self.supports_reasoning = True
             
@@ -341,9 +371,13 @@ class UnifiedOSSHandler(OSSHandler):
             if "<|python_tag|>" in chat_template_lower:
                 self.has_python_tags = True
             
-            # XMLツールタグの検出（Hermes系で使用）
+            # XMLツールタグの検出（Hermes系・Qwen系で使用）
             if "<tool_call>" in chat_template_lower and "</tool_call>" in chat_template_lower:
                 self.has_tool_xml_tags = True
+            
+            # Phiツールタグの検出（Phi系で使用）
+            if "<|tool_call|>" in chat_template_lower:
+                self.has_phi_tool_tags = True
             
             # コーダー関連トークンの検出
             if any(keyword in chat_template_lower for keyword in [
@@ -366,6 +400,12 @@ class UnifiedOSSHandler(OSSHandler):
                 "function calling", "fc", "-fc"
             ]):
                 self.has_fc_tokens = True
+            
+            # マークダウンコードブロックの検出（DeepSeek系・Phi系で使用）
+            if any(keyword in chat_template_lower for keyword in [
+                "```json", "```python", "markdown", "code block"
+            ]):
+                self.has_markdown_code_blocks = True
         
         # Chat templateが取得できない場合の処理
         if not self.chat_template:
@@ -388,8 +428,12 @@ class UnifiedOSSHandler(OSSHandler):
             detected_features.append("Python Tags (<|python_tag|>)")
         if self.has_tool_xml_tags:
             detected_features.append("Tool XML Tags (<tool_call>)")
+        if self.has_phi_tool_tags:
+            detected_features.append("Phi Tool Tags (<|tool_call|>)")
         if self.has_coder_tokens:
             detected_features.append("Coder Tokens")
+        if self.has_markdown_code_blocks:
+            detected_features.append("Markdown Code Blocks")
         if self.has_ipython_role:
             detected_features.append("IPython Role")
         if self.has_model_role:
@@ -416,10 +460,12 @@ class UnifiedOSSHandler(OSSHandler):
         self.is_phi_family = False  # Phiは特定のトークンパターンがないため
         self.is_phi_mini = False
         self.is_granite_family = self.has_function_call_tags
-        self.is_hermes_family = self.has_tool_xml_tags
+        self.is_hermes_family = self.has_tool_xml_tags and not self.has_im_tags  # HermesはXMLタグだがim_tagsなし
         self.is_hammer_family = False  # Hammerは標準JSONなので特定のタグなし
         self.is_minicpm_family = self.has_tool_call_tags
         self.is_glm_family = False  # GLMは特定のトークンパターンがないため
+        self.is_qwen_fc_family = self.has_tool_xml_tags and self.has_im_tags  # Qwen-FCはXMLタグ+im_tags
+        self.is_phi_fc_family = self.has_phi_tool_tags  # Phi-FCは<|tool_call|>タグ
         
         # FCモデルの判定もトークンベースで実行
         self.is_fc_model = self.has_fc_tokens
@@ -445,10 +491,21 @@ class UnifiedOSSHandler(OSSHandler):
                 if isinstance(parsed, list):
                     decoded_output = []
                     for item in parsed:
-                        if isinstance(item, dict) and "name" in item and "arguments" in item:
-                            decoded_output.append({item["name"]: item["arguments"]})
-                        else:
-                            decoded_output.append(item)
+                        if isinstance(item, dict) and "name" in item:
+                            # "arguments"キーまたは"parameters"キーを確認
+                            params = item.get("arguments") or item.get("parameters", {})
+                            # paramsが辞書でない場合は空の辞書にする
+                            if not isinstance(params, dict):
+                                params = {}
+                            decoded_output.append({item["name"]: params})
+                        elif isinstance(item, dict) and len(item) == 1:
+                            # 既に{func_name: params}形式の場合
+                            func_name = list(item.keys())[0]
+                            params = item[func_name]
+                            if not isinstance(params, dict):
+                                params = {}
+                            decoded_output.append({func_name: params})
+                    self._log_decode_result("標準JSON配列", decoded_output)
                     return decoded_output
         except json.JSONDecodeError:
             pass
@@ -469,13 +526,24 @@ class UnifiedOSSHandler(OSSHandler):
                     if isinstance(parsed, list):
                         decoded_output = []
                         for item in parsed:
-                            if isinstance(item, dict) and "name" in item and "arguments" in item:
-                                decoded_output.append({item["name"]: item["arguments"]})
-                            else:
-                                decoded_output.append(item)
+                            if isinstance(item, dict) and "name" in item:
+                                params = item.get("arguments") or item.get("parameters", {})
+                                if not isinstance(params, dict):
+                                    params = {}
+                                decoded_output.append({item["name"]: params})
+                            elif isinstance(item, dict) and len(item) == 1:
+                                func_name = list(item.keys())[0]
+                                params = item[func_name]
+                                if not isinstance(params, dict):
+                                    params = {}
+                                decoded_output.append({func_name: params})
+                        self._log_decode_result("Markdownコードブロック内JSON", decoded_output)
                         return decoded_output
-                    elif isinstance(parsed, dict) and "name" in parsed and "arguments" in parsed:
-                        return [{parsed["name"]: parsed["arguments"]}]
+                    elif isinstance(parsed, dict) and "name" in parsed:
+                        params = parsed.get("arguments") or parsed.get("parameters", {})
+                        if not isinstance(params, dict):
+                            params = {}
+                        return [{parsed["name"]: params}]
                 except json.JSONDecodeError:
                     pass
         
@@ -488,10 +556,11 @@ class UnifiedOSSHandler(OSSHandler):
                 try:
                     match = match.replace("'", '"').strip()
                     tool_result = json.loads(match)
-                    if isinstance(tool_result, dict) and "name" in tool_result and "arguments" in tool_result:
-                        func_call.append({tool_result["name"]: tool_result["arguments"]})
-                    else:
-                        func_call.append(tool_result)
+                    if isinstance(tool_result, dict) and "name" in tool_result:
+                        params = tool_result.get("arguments") or tool_result.get("parameters", {})
+                        if not isinstance(params, dict):
+                            params = {}
+                        func_call.append({tool_result["name"]: params})
                 except json.JSONDecodeError:
                     continue
             if func_call:
@@ -509,12 +578,27 @@ class UnifiedOSSHandler(OSSHandler):
                     if call:
                         try:
                             parsed = json.loads(call)
-                            if isinstance(parsed, dict) and "name" in parsed and "arguments" in parsed:
-                                decoded_output.append({parsed["name"]: parsed["arguments"]})
+                            if isinstance(parsed, dict) and "name" in parsed:
+                                # "arguments"キーまたは"parameters"キーを確認
+                                params = parsed.get("arguments") or parsed.get("parameters", {})
+                                if not isinstance(params, dict):
+                                    params = {}
+                                decoded_output.append({parsed["name"]: params})
                         except json.JSONDecodeError:
                             continue
                 if decoded_output:
                     return decoded_output
+            else:
+                # セミコロンがない場合でも単一の関数呼び出しをチェック
+                try:
+                    parsed = json.loads(cleaned)
+                    if isinstance(parsed, dict) and "name" in parsed:
+                        params = parsed.get("arguments") or parsed.get("parameters", {})
+                        if not isinstance(params, dict):
+                            params = {}
+                        return [{parsed["name"]: params}]
+                except json.JSONDecodeError:
+                    pass
         
         # パターン5: 関数呼び出しタグパターン (Granite系)
         # <function_call> {...}
@@ -533,6 +617,8 @@ class UnifiedOSSHandler(OSSHandler):
                             decoded_outputs.append("No function is called")
                             continue
                         
+                        if not isinstance(args, dict):
+                            args = {}
                         decoded_outputs.append({func_name: args})
                 except json.JSONDecodeError:
                     decoded_outputs.append(match)
@@ -540,39 +626,96 @@ class UnifiedOSSHandler(OSSHandler):
             if decoded_outputs:
                 return decoded_outputs
         
-        # パターン6: 複雑な思考タグパターン (MiniCPM系)
+        # パターン6: Phiツール呼び出しタグパターン (Phi-FC系)
+        # <|tool_call|>[{"name": "func", "arguments": {...}}]<|/tool_call|>
+        phi_tool_matches = re.findall(r'<\|tool_call\|>(.*?)(?:<\|/tool_call\|>|$)', result, re.DOTALL)
+        if phi_tool_matches:
+            decoded_outputs = []
+            for match in phi_tool_matches:
+                match = match.strip()
+                # Phiは配列でない場合があるため、配列に変換
+                if not match.startswith("[") and not match.endswith("]"):
+                    match = "[" + match + "]"
+                
+                try:
+                    parsed = json.loads(match)
+                    if isinstance(parsed, list):
+                        for item in parsed:
+                            if isinstance(item, str):
+                                item = json.loads(item)
+                            if isinstance(item, dict) and "name" in item:
+                                params = item.get("arguments") or item.get("parameters", {})
+                                if not isinstance(params, dict):
+                                    params = {}
+                                decoded_outputs.append({item["name"]: params})
+                except json.JSONDecodeError:
+                    continue
+            
+            if decoded_outputs:
+                return decoded_outputs
+        
+        # パターン7: 複雑な思考タグパターン (MiniCPM系)
         if "<|tool_call_start|>" in result and "<|tool_call_end|>" in result:
             msg = fc2dict(result)
             if "tool_calls" in msg and msg["tool_calls"] and len(msg["tool_calls"]) > 0:
-                return [{tool_call["name"]: tool_call["arguments"]} for tool_call in msg["tool_calls"]]
+                decoded_output = []
+                for tool_call in msg["tool_calls"]:
+                    if isinstance(tool_call, dict) and "name" in tool_call:
+                        params = tool_call.get("arguments", {})
+                        if not isinstance(params, dict):
+                            params = {}
+                        decoded_output.append({tool_call["name"]: params})
+                return decoded_output
             else:
-                return [msg["content"]] if msg.get("content") else []
+                return []
         
-        # パターン7: 改行区切りパターン (GLM系)
+        # パターン8: 改行区切りパターン (GLM系)
         lines = result.split("\n")
         if len(lines) >= 2:
             try:
                 func_name = lines[0].strip()
                 args_json = lines[1].strip()
                 args = json.loads(args_json)
+                if not isinstance(args, dict):
+                    args = {}
                 return [{func_name: args}]
             except (json.JSONDecodeError, IndexError):
                 pass
         
-        # パターン8: 単純なJSONオブジェクト
+        # パターン9: 単純なJSONオブジェクト
         try:
             parsed = json.loads(result)
-            if isinstance(parsed, dict) and "name" in parsed and "arguments" in parsed:
-                return [{parsed["name"]: parsed["arguments"]}]
+            if isinstance(parsed, dict) and "name" in parsed:
+                params = parsed.get("arguments") or parsed.get("parameters", {})
+                if not isinstance(params, dict):
+                    params = {}
+                return [{parsed["name"]: params}]
         except json.JSONDecodeError:
             pass
         
-        # パターン9: デフォルトのAST解析 (最後の手段)
+        # パターン10: デフォルトのAST解析 (最後の手段)
         try:
-            return default_decode_ast_prompting(result, language)
+            default_result = default_decode_ast_prompting(result, language)
+            # デフォルト結果が正しい形式かチェックして修正
+            if isinstance(default_result, list):
+                corrected_result = []
+                for item in default_result:
+                    if isinstance(item, dict) and len(item) == 1:
+                        func_name = list(item.keys())[0]
+                        params = item[func_name]
+                        if not isinstance(params, dict):
+                            params = {}
+                        corrected_result.append({func_name: params})
+                    elif isinstance(item, dict) and "name" in item:
+                        params = item.get("arguments") or item.get("parameters", {})
+                        if not isinstance(params, dict):
+                            params = {}
+                        corrected_result.append({item["name"]: params})
+                return corrected_result
+            return []
         except Exception:
-            # 全て失敗した場合は元のテキストを返す
-            return [result] if result else []
+            # 全て失敗した場合は空のリストを返す
+            return []
 
     @override
     def decode_execute(self, result):
@@ -583,7 +726,7 @@ class UnifiedOSSHandler(OSSHandler):
         self._log_raw_output(result, step="decode_execute")
         
         if not result or not isinstance(result, str):
-            return result
+            return []
             
         result = result.strip()
         
@@ -615,7 +758,70 @@ class UnifiedOSSHandler(OSSHandler):
                         continue
                 return execution_list
             else:
-                return msg.get("content", result)
+                # MiniCPMでもツール呼び出しがない場合は空のリストを返す
+                return []
+        
+        # パターン4（実行用）: 特殊タグパターン (Llama 3.1系)
+        # <|python_tag|>...;...
+        if "<|python_tag|>" in result:
+            cleaned = result.replace("<|python_tag|>", "").strip()
+            if ";" in cleaned:
+                calls = cleaned.split(";")
+                execution_list = []
+                for call in calls:
+                    call = call.strip()
+                    if call:
+                        try:
+                            parsed = json.loads(call)
+                            if isinstance(parsed, dict) and "name" in parsed:
+                                # "arguments"キーまたは"parameters"キーを確認
+                                params = parsed.get("arguments") or parsed.get("parameters", {})
+                                func_name = parsed["name"]
+                                args_str = ", ".join([f"{k}={repr(v)}" for k, v in params.items()])
+                                execution_list.append(f"{func_name}({args_str})")
+                        except json.JSONDecodeError:
+                            continue
+                if execution_list:
+                    return execution_list
+            else:
+                # セミコロンがない場合でも単一の関数呼び出しをチェック
+                try:
+                    parsed = json.loads(cleaned)
+                    if isinstance(parsed, dict) and "name" in parsed:
+                        params = parsed.get("arguments") or parsed.get("parameters", {})
+                        func_name = parsed["name"]
+                        args_str = ", ".join([f"{k}={repr(v)}" for k, v in params.items()])
+                        return [f"{func_name}({args_str})"]
+                except json.JSONDecodeError:
+                    pass
+        
+        # パターン5（実行用）: Phiツール呼び出しタグパターン (Phi-FC系)
+        # <|tool_call|>[{"name": "func", "arguments": {...}}]<|/tool_call|>
+        phi_tool_matches = re.findall(r'<\|tool_call\|>(.*?)(?:<\|/tool_call\|>|$)', result, re.DOTALL)
+        if phi_tool_matches:
+            execution_list = []
+            for match in phi_tool_matches:
+                match = match.strip()
+                # Phiは配列でない場合があるため、配列に変換
+                if not match.startswith("[") and not match.endswith("]"):
+                    match = "[" + match + "]"
+                
+                try:
+                    parsed = json.loads(match)
+                    if isinstance(parsed, list):
+                        for item in parsed:
+                            if isinstance(item, str):
+                                item = json.loads(item)
+                            if isinstance(item, dict) and "name" in item:
+                                func_name = item["name"]
+                                params = item.get("arguments", {})
+                                args_str = ", ".join([f"{k}={repr(v)}" for k, v in params.items()])
+                                execution_list.append(f"{func_name}({args_str})")
+                except json.JSONDecodeError:
+                    continue
+            
+            if execution_list:
+                return execution_list
         
         # GLM形式の処理
         lines = result.split("\n")
@@ -631,7 +837,8 @@ class UnifiedOSSHandler(OSSHandler):
         try:
             return default_decode_execute_prompting(result)
         except Exception:
-            return result
+            # デコードに失敗した場合は空のリストを返す（文字列ではなく）
+            return []
 
     @override
     def _pre_query_processing_prompting(self, test_entry: dict) -> dict:
@@ -825,6 +1032,55 @@ class UnifiedOSSHandler(OSSHandler):
                 "output_token": api_response.usage.completion_tokens,
             }
         
+        # Qwen-FC: ツール呼び出し＋推論内容抽出（FCモデルでも推論対応）
+        if self.is_qwen_fc_family:
+            extracted_tool_calls = self._extract_qwen_tool_calls(model_response)
+            reasoning_content = ""
+            cleaned_response = model_response
+            
+            if "</think>" in model_response:
+                parts = model_response.split("</think>")
+                reasoning_content = parts[0].rstrip("\n").split("<think>")[-1].lstrip("\n")
+                cleaned_response = parts[-1].lstrip("\n")
+            
+            if len(extracted_tool_calls) > 0:
+                model_responses_message_for_chat_history = {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": extracted_tool_calls,
+                }
+            else:
+                model_responses_message_for_chat_history = {
+                    "role": "assistant",
+                    "content": cleaned_response,
+                }
+            
+            return {
+                "model_responses": cleaned_response,
+                "reasoning_content": reasoning_content,
+                "model_responses_message_for_chat_history": model_responses_message_for_chat_history,
+                "input_token": api_response.usage.prompt_tokens,
+                "output_token": api_response.usage.completion_tokens,
+            }
+        
+        # Phi-FC: ツール呼び出し抽出
+        if self.is_phi_fc_family:
+            extracted_tool_calls = self._extract_phi_tool_calls(model_response)
+            
+            if self._is_tool_call_response_format(extracted_tool_calls) and len(extracted_tool_calls) > 0:
+                model_responses = [
+                    {item["name"]: item["arguments"]} for item in extracted_tool_calls
+                ]
+            else:
+                model_responses = model_response
+            
+            return {
+                "model_responses": model_responses,
+                "model_responses_message_for_chat_history": model_response,
+                "input_token": api_response.usage.prompt_tokens,
+                "output_token": api_response.usage.completion_tokens,
+            }
+        
         # 標準処理
         return {
             "model_responses": model_response,
@@ -845,10 +1101,18 @@ class UnifiedOSSHandler(OSSHandler):
             return inference_data
         
         # Qwen-FC: 特殊なメッセージ追加
-        if self.is_qwen_family and self.is_fc_model:
+        if self.is_qwen_fc_family:
             inference_data["message"].append(
                 model_response_data["model_responses_message_for_chat_history"],
             )
+            return inference_data
+        
+        # Phi-FC: 特殊なメッセージ追加
+        if self.is_phi_fc_family:
+            inference_data["message"].append({
+                "role": "assistant",
+                "content": model_response_data["model_responses_message_for_chat_history"],
+            })
             return inference_data
         
         # 推論対応モデル: 元のレスポンス全体を保持
@@ -976,6 +1240,41 @@ class UnifiedOSSHandler(OSSHandler):
             except:
                 pass
             result.append(match)
+        return result
+
+    def _extract_phi_tool_calls(self, input_string: str) -> List[Dict]:
+        """
+        Phi-FC形式のツール呼び出し抽出
+        入力例: "<|tool_call|>[{\"name\": \"function_name\", \"arguments\": {...}}]<|/tool_call|>"
+        """
+        # 通常パターン
+        pattern = r"<\|tool_call\|>(.*?)<\|/tool_call\|>"
+        matches = re.findall(pattern, input_string, re.DOTALL)
+        
+        # 終了タグが欠けている場合
+        if not matches:
+            pattern = r"<\|tool_call\|>(.*?)(?:<\|/tool_call\|>)?$"
+            matches = re.findall(pattern, input_string, re.DOTALL)
+        
+        result = []
+        for match in matches:
+            match = match.strip()
+            # 並列ツール呼び出しの場合、リスト形式でない場合がある
+            if not match.startswith("[") and not match.endswith("]"):
+                match = "[" + match + "]"
+            
+            try:
+                parsed = json.loads(match)
+                if isinstance(parsed, list):
+                    for item in parsed:
+                        if isinstance(item, str):
+                            item = json.loads(item)
+                        result.append(item)
+                else:
+                    result.append(parsed)
+            except json.JSONDecodeError:
+                continue
+        
         return result
 
     @staticmethod
