@@ -86,8 +86,10 @@ jbbq:
 toxicity:
   artifact_path: 'llm-leaderboard/nejumi-leaderboard4-private/toxicity_dataset_full:production'
   judge_prompts_path: 'llm-leaderboard/nejumi-leaderboard4-private/toxicity_judge_prompts:production'
-  max_workers: 5
-  judge_model: 'gpt-4o-2024-05-13'
+  judge:
+    model: 'gpt-4.1-2025-04-14'
+    parallel: 32
+    params: {} # Currently using OpenAI's default
 
 jtruthfulqa:
   artifact_path: 'llm-leaderboard/nejumi-leaderboard4/jtruthfulqa_dataset:production'  # JTruthfulQAデータセットのアーティファクトパス
@@ -134,6 +136,12 @@ mtbench:
   baseline_model: null 
   parallel: 80
   first_n: null
+  judge:
+    model: 'gpt-4.1-2025-04-14'
+    parallel: 32
+    params:
+      max_tokens: 2048
+      temperature: 0.0
 
 bfcl:
   temperature: 0.001
@@ -148,19 +156,24 @@ bfcl:
 
 hallulens:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/hallulens:production'
-  judge_model: 'gpt-4o'
   generator_config:
     max_tokens: 256
     temperature: 0.0
     top_p: 1.0
-  
+  judge:
+    model: 'gpt-4.1-2025-04-14'
+    parallel: 32
+    params: {} # Currently using OpenAI's default
+
 hle:
   artifact_path: 'llm-leaderboard/nejumi-leaderboard4/hle-ja:production'
   dataset_name: 'hle-ja.jsonl'
   max_completion_tokens: 4096
-  max_workers: 32
-  judge_model: "o3-mini-2025-01-31"
   max_samples: 10
+  judge:
+    model: "o3-mini-2025-01-31"
+    parallel: 32
+    params: {} # Currently using OpenAI's default
 
 arc_agi_2:
   artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval_50:production"

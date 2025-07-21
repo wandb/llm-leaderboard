@@ -10,3 +10,6 @@ model:
   size_category: <10B
   size: 6829969408
   release_date: 4/26/2024
+
+generator:
+  stop: ["</s>"]

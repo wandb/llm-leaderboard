@@ -7,7 +7,7 @@ import pandas as pd
 from pydantic import BaseModel
 
 from config_singleton import WandbConfigSingleton
-from .evaluate_utils import LLMAsyncProcessor
+from .evaluate_utils import LLMAsyncProcessor, get_openai_judge_client
 
 Samples: TypeAlias = list[dict[str, Any]]
 
@@ -74,6 +74,7 @@ def evaluate():
         }
 
         _samples = []
+        judge_prompts = []
 
         for key, dataset_path in dataset_paths.items():
             full_path = Path(artifact_dir) / dataset_path
@@ -118,8 +119,9 @@ def evaluate():
             results = llm_ap.get_results()
 
             # === judge === #
-            judge_client = OpenAI()
-            judge_model = cfg[task_name].judge_model
+            judge_model = cfg[task_name].judge.get("model", "gpt-4.1-2025-04-14")
+            judge_params = cfg[task_name].judge.get("params", {})
+            judge_parallel = cfg[task_name].judge.get("parallel", 32)
 
             for sample, result in zip(samples, results):
                 sample.update({"answer": result.content})
@@ -129,17 +131,19 @@ def evaluate():
                     PLACE=" in " + sample["place"] if sample["place"] else "",
                     generation=sample["answer"],
                 )
-                response = judge_client.responses.parse(
-                    model=judge_model,
-                    input=[
-                        {
-                            "role": "user",
-                            "content": judge_prompt,
-                        },
-                    ],
-                    text_format=JudgeOutput,
-                )
-                parsed_output = response.output_parsed
+                judge_prompts.append(([{"role": "user", "content": judge_prompt}], {}))
+
+            judge_llm = get_openai_judge_client(judge_model, text_format=JudgeOutput, **judge_params)
+            judge_llm_ap = LLMAsyncProcessor(
+                llm=judge_llm,
+                inputs=judge_prompts,
+                batch_size=judge_parallel,
+                inference_interval=0.,
+            )
+            judge_results = judge_llm_ap.get_results()
+
+            for sample, judge_result in zip(samples, judge_results):
+                parsed_output = judge_result.parsed_output
                 if parsed_output is None:
                     raise ValueError(
                         "Parsed response is None, check the judge model response."

@@ -14,33 +14,8 @@ from openai import AsyncOpenAI, OpenAI, AzureOpenAI
 import os
 
 from config_singleton import WandbConfigSingleton
-from .evaluate_utils import LLMAsyncProcessor
+from .evaluate_utils import LLMAsyncProcessor, get_openai_judge_client
 
-# OpenAI client setup
-def get_openai_client(async_client=True):
-    """Get OpenAI client based on environment configuration"""
-    api_type = os.environ.get('OPENAI_API_TYPE', 'openai')
-    
-    if api_type == "azure":
-        if async_client:
-            return AsyncOpenAI(
-                azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-                api_key=os.environ["AZURE_OPENAI_API_KEY"],
-                api_version="2023-07-01-preview",
-                timeout=600.0,
-                max_retries=1
-            )
-        else:
-            return AzureOpenAI(
-                azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-                api_key=os.environ["AZURE_OPENAI_API_KEY"],
-                api_version="2023-07-01-preview"
-            )
-    else:
-        if async_client:
-            return AsyncOpenAI(timeout=600.0, max_retries=1)
-        else:
-            return OpenAI()
 
 SYSTEM_PROMPT = """回答は以下の形式で行ってください：
 説明: {選択した答えに対する説明}
@@ -102,52 +77,6 @@ def format_message_for_llm_processor(question: Dict[str, Any], model_name: str) 
         combined_content = f"{SYSTEM_PROMPT}\n\n{question_text}"
     
     return [{"role": "user", "content": combined_content}]
-
-async def extract_answer(question: str, correct_answer: str, response: str, judge_model: str) -> Optional[Dict[str, Any]]:
-    """Extract and judge answer using OpenAI API"""
-    client = get_openai_client(async_client=True)
-    prompt = JUDGE_PROMPT.format(question=question, correct_answer=correct_answer, response=response)
-    
-    # Handle Azure model naming
-    if judge_model.startswith("azure-"):
-        judge_model = judge_model[6:]
-    
-    try:
-        response_obj = await client.beta.chat.completions.parse(
-            model=judge_model,
-            max_completion_tokens=4096,
-            messages=[{"role": "user", "content": prompt}],
-            response_format=ExtractedAnswer,
-        )
-        content = response_obj.choices[0].message.parsed
-        return {
-            "correct_answer": correct_answer,
-            "model_answer": content.extracted_final_answer,
-            "reasoning": content.reasoning,
-            "correct": content.correct,
-            "confidence": content.confidence
-        }
-    except Exception as e:
-        print(f"Error in judge evaluation: {e}")
-        return None
-
-async def judge_response(question: Dict[str, Any], prediction: Dict[str, Any], judge_model: str) -> Optional[Dict[str, Any]]:
-    """Judge a single response"""
-    if "judge_response" in prediction:  # already judged
-        return question["id"], prediction
-    
-    question_text = question["question"]
-    correct_answer = question["answer"]
-    response = prediction["response"]
-    
-    judge_result = await extract_answer(question_text, correct_answer, response, judge_model)
-    
-    if judge_result is not None:
-        prediction_copy = copy.deepcopy(prediction)
-        prediction_copy["judge_response"] = judge_result
-        return question["id"], prediction_copy
-    else:
-        return None, None
 
 def calib_err(confidence: np.ndarray, correct: np.ndarray, p: str = '2', beta: int = 100) -> float:
     """Calculate calibration error"""
@@ -232,28 +161,56 @@ def calculate_metrics(predictions: Dict[str, Dict[str, Any]], total_questions: i
         "answered_questions": len(correct)
     }
 
-async def evaluate_batch(questions: List[Dict[str, Any]], predictions: Dict[str, Dict[str, Any]], judge_model: str, max_workers: int = 10) -> Dict[str, Dict[str, Any]]:
+def evaluate_batch(
+    questions: List[Dict[str, Any]],
+    predictions: Dict[str, Dict[str, Any]],
+    judge_model: str,
+    judge_parallel: int = 32,
+    judge_params: Dict[str, Any] = {},
+) -> Dict[str, Dict[str, Any]]:
     """Evaluate a batch of questions with judge"""
-    semaphore = asyncio.Semaphore(max_workers)
-    
-    async def bound_judge(question):
-        async with semaphore:
-            return await judge_response(question, predictions[question["id"]], judge_model)
-    
+    client = get_openai_judge_client(judge_model, text_format=ExtractedAnswer, **judge_params)
+
     # Only judge questions that have predictions but no judge response
-    questions_to_judge = [q for q in questions if q["id"] in predictions]
-    
-    tasks = [bound_judge(q) for q in questions_to_judge]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
+    questions_have_predictions = [q for q in questions if q["id"] in predictions]
+
+    questions_to_judge = []
+    judge_inputs = []
     judged_predictions = {}
-    for result in results:
-        if isinstance(result, Exception):
-            print(f"Error in batch evaluation: {result}")
+
+    for q in questions_have_predictions:
+        prediction = predictions[q["id"]]
+        if "judge_response" in prediction:  # already judged
+            judged_predictions[q["id"]] = prediction
             continue
-        unique_id, prediction = result
-        if unique_id is not None:
-            judged_predictions[unique_id] = prediction
+        else:
+            questions_to_judge.append(q)
+
+        prompt = JUDGE_PROMPT.format(
+            question=q["question"],
+            correct_answer=q["answer"],
+            response=predictions[q["id"]]["response"],
+        )
+        judge_inputs.append(([{"role": "user", "content": prompt}], {}))
+
+    llm_ap = LLMAsyncProcessor(
+        llm=client,
+        inputs=judge_inputs,
+        batch_size=judge_parallel,
+        inference_interval=0.,
+    )
+    results = llm_ap.get_results()
+
+    for q, result in zip(questions_to_judge, results):
+        prediction = copy.deepcopy(predictions[q["id"]])
+        prediction["judge_response"] = {
+            "correct_answer": q["answer"],
+            "model_answer": result.parsed_output.extracted_final_answer,
+            "reasoning": result.parsed_output.reasoning,
+            "correct": result.parsed_output.correct,
+            "confidence": result.parsed_output.confidence,
+        }
+        judged_predictions[q["id"]] = prediction
     
     return judged_predictions
 
@@ -267,8 +224,9 @@ def evaluate():
     
     # Configuration parameters
     max_completion_tokens = cfg.hle.get("max_completion_tokens", 8192)
-    max_workers = cfg.hle.get("max_workers", 10)
-    judge_model = cfg.hle.get("judge_model", "o3-mini-2025-01-31")
+    judge_model = cfg.hle.judge.get("model", "o3-mini-2025-01-31")
+    judge_parallel = cfg.hle.judge.get("parallel", 32)
+    judge_params = cfg.hle.judge.get("params", {})
     max_samples = cfg.hle.get("max_samples", None)
 
     try:
@@ -347,9 +305,7 @@ def evaluate():
         
         print("Judging responses...")
         try:
-            judged_predictions = asyncio.run(
-                evaluate_batch(questions, predictions, judge_model, max_workers)
-            )
+            judged_predictions = evaluate_batch(questions, predictions, judge_model, judge_parallel, judge_params)
             print(f"Judged {len(judged_predictions)} responses for {subset}")
             
         except Exception as e:

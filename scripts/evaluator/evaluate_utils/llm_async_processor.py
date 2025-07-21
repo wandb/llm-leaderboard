@@ -1,7 +1,7 @@
 import asyncio
 import functools
 import traceback
-from typing import Any, TypeAlias, List, Tuple
+from typing import Any, TypeAlias, List, Tuple, Optional
 
 import backoff
 from tqdm import tqdm
@@ -34,15 +34,19 @@ class LLMAsyncProcessor:
     LLMAsyncProcessorクラスは、指定されたLLM（大規模言語モデル）を使用して非同期にメッセージを処理するためのユーティリティクラスです。
     """
 
-    def __init__(self, llm: object, inputs: Inputs):
+    def __init__(
+        self,
+        llm: object,
+        inputs: Inputs,
+        batch_size: Optional[int] = None,
+        inference_interval: Optional[float] = None,
+    ):
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config
         self.llm = llm
         self.inputs = inputs
-        self.api_type = cfg.api
-        self.model_name = cfg.model.pretrained_model_name_or_path
-        self.batch_size = cfg.get("batch_size", 256)
-        self.inference_interval = cfg.inference_interval
+        self.batch_size = batch_size or cfg.get("batch_size", 256)
+        self.inference_interval = inference_interval or cfg.inference_interval
 
     @error_handler
     @backoff.on_exception(
@@ -55,24 +59,7 @@ class LLMAsyncProcessor:
     async def _ainvoke(self, messages: Messages, **kwargs) -> Any:
         """非同期でLLMを呼び出す統一メソッド"""
         await asyncio.sleep(self.inference_interval)
-        
-        # 特別な処理が必要なケースのみ分岐
-        if self.api_type == "google":
-            # Googleの場合は空のレスポンスに対してリトライ処理
-            for i in range(10):
-                response = await self.llm.ainvoke(messages, **kwargs)
-                if response.content.strip():
-                    return response
-                print(f"Retrying request due to empty content. Retry attempt {i+1} of 10.")
-            return response
-        
-        elif self.api_type in ["vllm", "vllm-external"] and self.model_name == "tokyotech-llm/Swallow-7b-instruct-v0.1":
-            # 特定のvLLMモデルの場合のみstopパラメータを追加
-            return await self.llm.ainvoke(messages, stop=["</s>"], **kwargs)
-        
-        else:
-            # その他すべてのプロバイダ（デフォルト）
-            return await self.llm.ainvoke(messages, **kwargs)
+        return await self.llm.ainvoke(messages, **kwargs)
 
     async def _process_batch(self, batch: Inputs) -> List[Any]:
         """バッチ処理で複数のタスクを並行実行"""
@@ -171,7 +158,5 @@ class LLMAsyncProcessor:
             "total_inputs": len(self.inputs),
             "batch_size": self.batch_size,
             "inference_interval": self.inference_interval,
-            "api_type": self.api_type,
-            "model_name": self.model_name,
             "estimated_batches": (len(self.inputs) + self.batch_size - 1) // self.batch_size
         }

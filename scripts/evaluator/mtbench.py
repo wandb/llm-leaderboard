@@ -5,18 +5,15 @@ import os
 import asyncio
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 import wandb
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Literal
 import shortuuid
 import time
-import openai
-from tenacity import retry, stop_after_attempt, wait_exponential
+from pydantic import BaseModel
 
 from config_singleton import WandbConfigSingleton
-from .evaluate_utils.llm_async_processor import LLMAsyncProcessor
-from llm_inference_adapter import get_llm_inference_engine
+from .evaluate_utils import LLMAsyncProcessor, get_openai_judge_client
 
 # カテゴリが参照回答を必要とするかどうかのリスト
 NEED_REF_CATS = ["math", "reasoning", "coding", "arena-hard-200"]
@@ -61,6 +58,10 @@ class MatchSingle:
     judge: Judge
     ref_answer: Optional[Answer] = None
     multi_turn: bool = False
+
+class JudgeSingle(BaseModel):
+    explanation: str
+    rating: Literal["[[0]]", "[[1]]", "[[2]]", "[[3]]", "[[4]]", "[[5]]", "[[6]]", "[[7]]", "[[8]]", "[[9]]", "[[10]]"]
 
 def load_questions(question_file: str, begin: Optional[int] = None, end: Optional[int] = None) -> List[Question]:
     """質問をファイルから読み込む"""
@@ -281,109 +282,6 @@ async def generate_model_answers(questions: List[Question], output_file: str):
     print("Model answer generation finished.")
     return
 
-async def run_judge_single_async(question: Question, answer: Answer, judge: Judge, ref_answer: Optional[Answer], multi_turn: bool = False) -> Tuple[float, str, str]:
-    """回答を評価する（非同期）"""
-    instance = WandbConfigSingleton.get_instance()
-    llm = instance.llm
-    judge_max_tokens = 2048
-    judge_temperature = 0.0
-    kwargs = {}
-    if ref_answer is not None:
-        kwargs["ref_answer_1"] = ref_answer.choices[0]["turns"][0]
-        if multi_turn:
-            kwargs["ref_answer_2"] = ref_answer.choices[0]["turns"][1]
-    if multi_turn:
-        user_prompt = judge.prompt_template["prompt_template"].format(
-            question_1=question.turns[0],
-            question_2=question.turns[1],
-            answer_1=answer.choices[0]["turns"][0],
-            answer_2=answer.choices[0]["turns"][1],
-            **kwargs,
-        )
-    else:
-        user_prompt = judge.prompt_template["prompt_template"].format(
-            question=question.turns[0],
-            answer=answer.choices[0]["turns"][0],
-            **kwargs,
-        )
-    system_prompt = judge.prompt_template["system_prompt"]
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt}
-    ]
-    response = await asyncio.to_thread(
-        llm.invoke,
-        messages,
-        max_tokens=judge_max_tokens,
-        temperature=judge_temperature,
-        n=1,
-        stop=None,
-        presence_penalty=0.0,
-        frequency_penalty=0.0,
-    )
-    judgment = response.content if hasattr(response, 'content') else str(response)
-    # スコア抽出
-    import re
-    rating = -1
-    if judge.prompt_template["output_format"] in ["[[rating]]", "[[評価]]", "[[평가]]"]:
-        one_score_pattern = re.compile(r"\[\[(\d+\.?\d*)\]\]")
-        one_score_pattern_backup = re.compile(r"\[(\d+\.?\d*)\]")
-        score_match = re.search(one_score_pattern, judgment)
-        if not score_match:
-            score_match = re.search(one_score_pattern_backup, judgment)
-        if score_match and score_match.groups():
-            try:
-                rating = float(score_match.groups()[0])
-            except ValueError:
-                print(f"Warning: Could not convert score '{score_match.groups()[0]}' to float for question {question.question_id}")
-                rating = -1
-        else:
-            print(f"[WARN] Judgment output did not match expected pattern: {judgment}")
-            rating = -1
-    return rating, user_prompt, judgment
-
-async def play_a_match_single_async(match: MatchSingle, output_file: str) -> Dict[str, Any]:
-    """単一モデルの評価を実行（非同期）"""
-    question, model, answer, judge, ref_answer, multi_turn = (
-        match.question,
-        match.model,
-        match.answer,
-        match.judge,
-        match.ref_answer,
-        match.multi_turn,
-    )
-    
-    if judge.prompt_template["type"] == "single":
-        score, user_prompt, judgment = await run_judge_single_async(
-            question, answer, judge, ref_answer, multi_turn=multi_turn
-        )
-        
-        question_id = question.question_id
-        turn = 1 if not multi_turn else 2
-        result = {
-            "question_id": question_id,
-            "model": model,
-            "judge": (judge.model_name, judge.prompt_template["name"]),
-            "user_prompt": user_prompt,
-            "judgment": judgment,
-            "score": score,
-            "turn": turn,
-            "tstamp": datetime.datetime.now().timestamp(),
-        }
-    else:
-        raise ValueError(f"無効なジャッジタイプ: {judge.prompt_template['type']}")
-    
-    if output_file:
-        output_file_path = os.path.join(
-            output_file.replace(".jsonl", ""),
-            f"{model}__{turn}turn.jsonl"
-        )
-        os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
-        with open(output_file_path, "a") as f:
-            f.write(json.dumps(result, ensure_ascii=False) + "\n")
-    
-    return result
-
 def task_to_sub_category(category):
     """カテゴリをサブカテゴリにマッピング"""
     sub_category_map = {
@@ -479,10 +377,10 @@ async def async_evaluate():
     judge_prompts = load_judge_prompts(artifact_dir + "/judge_prompts.jsonl")
 
     models = [cfg.mtbench.model_id]
- 
+
     # ジャッジを作成
-    judges = make_judge_single(cfg.mtbench.judge_model, judge_prompts)
-    output_file = f"data/{cfg.mtbench.bench_name}/model_judgment/{cfg.mtbench.judge_model}_single"
+    judges = make_judge_single(cfg.mtbench.judge.model, judge_prompts)
+    output_file = f"data/{cfg.mtbench.bench_name}/model_judgment/{cfg.mtbench.judge.model}_single"
 
     # データチェック
     check_data(questions, model_answers, ref_answers, models, judges)
@@ -529,7 +427,7 @@ async def async_evaluate():
     match_stat = {
         "bench_name": cfg.mtbench.bench_name,
         "mode": "single",
-        "judge": cfg.mtbench.judge_model,
+        "judge": cfg.mtbench.judge.model,
         "baseline": None,
         "model_list": models,
         "total_num_questions": len(questions),
@@ -541,26 +439,10 @@ async def async_evaluate():
     print(json.dumps(match_stat, indent=4))
     
     # ジャッジ用のパラメータ
-    judge_max_tokens = 2048
-    judge_temperature = 0.0
-    judge_model_name = cfg.mtbench.judge_model
-    judge_parallel = getattr(cfg.mtbench, 'parallel', 80)
-    judge_api_key = os.environ.get("OPENAI_API_KEY")
-
-    client = openai.OpenAI(api_key=judge_api_key)
-
-    @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=2, min=1, max=10))
-    async def openai_judge_async(messages, max_tokens, temperature, model):
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(
-            None,
-            lambda: client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            ).choices[0].message.content
-        )
+    judge_model_name = cfg.mtbench.judge.model
+    judge_parallel = cfg.mtbench.judge.parallel
+    judge_params = cfg.mtbench.judge.params
+    client = get_openai_judge_client(judge_model_name, text_format=JudgeSingle, **judge_params)
 
     # LLMAsyncProcessor に渡す inputs を作成
     inputs_for_judge_processor = []
@@ -597,67 +479,41 @@ async def async_evaluate():
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ]
-        inputs_for_judge_processor.append((messages, judge_max_tokens, judge_temperature, judge_model_name, match, user_prompt))
+        inputs_for_judge_processor.append((messages, {}))
 
     print(f"Processing judge results (OpenAI API parallel, batch={judge_parallel})...")
+    llm_ap = LLMAsyncProcessor(
+        llm=client,
+        inputs=inputs_for_judge_processor,
+        batch_size=judge_parallel,
+        inference_interval=0.,
+    )
+    judge_results = await llm_ap.get_results_async()
+
     results = []
-    sem = asyncio.Semaphore(judge_parallel)
-
-    async def judge_task(args):
-        messages, max_tokens, temperature, model, match, user_prompt = args
-        async with sem:
-            try:
-                judgment = await openai_judge_async(messages, max_tokens, temperature, model)
-            except Exception as e:
-                print(f"OpenAI judge error: {e}")
-                judgment = "$ERROR$"
-            # スコア抽出
-            import re
-            rating = -1
-            if match.judge.prompt_template["output_format"] in ["[[rating]]", "[[評価]]", "[[평가]]"]:
-                one_score_pattern = re.compile(r"\[\[(\d+\.?\d*)\]\]")
-                one_score_pattern_backup = re.compile(r"\[(\d+\.?\d*)\]")
-                score_match = re.search(one_score_pattern, judgment)
-                if not score_match:
-                    score_match = re.search(one_score_pattern_backup, judgment)
-                if score_match and score_match.groups():
-                    try:
-                        rating = float(score_match.groups()[0])
-                    except ValueError:
-                        print(f"Warning: Could not convert score '{score_match.groups()[0]}' to float for question {match.question.question_id}")
-                        rating = -1
-                else:
-                    print(f"[WARN] Judgment output did not match expected pattern: {judgment}")
-                    rating = -1
-            question_id = match.question.question_id
-            turn = 1 if not match.multi_turn else 2
-            result = {
-                "question_id": question_id,
-                "model": match.model,
-                "judge": (match.judge.model_name, match.judge.prompt_template["name"]),
-                "user_prompt": user_prompt,
-                "judgment": judgment,
-                "score": rating,
-                "turn": turn,
-                "tstamp": datetime.datetime.now().timestamp(),
-            }
-            # ファイル出力
-            if output_file:
-                output_file_path = os.path.join(
-                    output_file.replace(".jsonl", ""),
-                    f"{match.model}__{turn}turn.jsonl"
-                )
-                os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
-                with open(output_file_path, "a") as f:
-                    f.write(json.dumps(result, ensure_ascii=False) + "\n")
-            return result
-
-    # 並列バッチで実行
-    tasks = [judge_task(args) for args in inputs_for_judge_processor]
-    for i in range(0, len(tasks), judge_parallel):
-        batch = tasks[i:i+judge_parallel]
-        batch_results = await asyncio.gather(*batch)
-        results.extend(batch_results)
+    for match, judge_result in zip(matches, judge_results):
+        question_id = match.question.question_id
+        turn = 1 if not match.multi_turn else 2
+        result = {
+            "question_id": question_id,
+            "model": match.model,
+            "judge": (match.judge.model_name, match.judge.prompt_template["name"]),
+            "user_prompt": user_prompt,
+            "judgment": judge_result.parsed_output.explanation,
+            "score": int(judge_result.parsed_output.rating.replace("[[", "").replace("]]", "")),
+            "turn": turn,
+            "tstamp": datetime.datetime.now().timestamp(),
+        }
+        # ファイル出力
+        if output_file:
+            output_file_path = os.path.join(
+                output_file.replace(".jsonl", ""),
+                f"{match.model}__{turn}turn.jsonl"
+            )
+            os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
+            with open(output_file_path, "a") as f:
+                f.write(json.dumps(result, ensure_ascii=False) + "\n")
+        results.append(result)
 
     print("6. 結果を集計中...")
     # 3. 結果を集計してwandb.Tableとしてログに記録
