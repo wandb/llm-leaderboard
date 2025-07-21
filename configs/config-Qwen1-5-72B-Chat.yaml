@@ -6,7 +6,7 @@ batch_size: 256
 model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: Qwen/Qwen1.5-72B-Chat #if you use openai api, put the name of model
-  bfcl_model_name: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  bfcl_model_id: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
   chat_template: Qwen/Qwen1.5-72B-Chat
   size_category: 30B≤
   size: 72287920128

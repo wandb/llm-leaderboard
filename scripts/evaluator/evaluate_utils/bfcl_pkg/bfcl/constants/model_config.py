@@ -18,6 +18,7 @@ from ..model_handler.api_inference.nova import NovaHandler
 from ..model_handler.api_inference.novita import NovitaHandler
 from ..model_handler.api_inference.nvidia import NvidiaHandler
 from ..model_handler.api_inference.openai import OpenAIHandler
+from ..model_handler.api_inference.upstage import UpstageHandler
 from ..model_handler.api_inference.writer import WriterHandler
 from ..model_handler.api_inference.yi import YiHandler
 from ..model_handler.local_inference.bielik import BielikHandler
@@ -87,6 +88,7 @@ from ..model_handler.local_inference.salesforce_llama import SalesforceLlamaHand
 from ..model_handler.local_inference.salesforce_qwen import SalesforceQwenHandler
 from ..model_handler.local_inference.think_agent import ThinkAgentHandler
 from ..model_handler.api_inference.qwq import QwenAPIHandler
+from ..model_handler.local_inference.unified_oss_handler import UnifiedOSSHandler
 
 # -----------------------------------------------------------------------------
 # A mapping of model identifiers to their respective model configurations.
@@ -364,6 +366,18 @@ api_inference_model_map = {
         is_fc_model=True,
         underscore_to_dot=True,
     ),
+    "OpenAI-FC": ModelConfig(
+        model_name=None,
+        display_name="OpenAI",
+        url=None,
+        org="OpenAI",
+        license="Proprietary",
+        model_handler=OpenAIHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
     "claude-3-opus-20240229": ModelConfig(
         model_name="claude-3-opus-20240229",
         display_name="Claude-3-Opus-20240229 (Prompt)",
@@ -457,6 +471,66 @@ api_inference_model_map = {
         model_handler=ClaudeHandler,
         input_price=1,
         output_price=5,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
+    "claude-sonnet-4-20250514": ModelConfig(
+        model_name="claude-sonnet-4-20250514",
+        display_name="Claude-Sonnet-4-20250514 (Prompt)",
+        url="https://docs.anthropic.com/en/docs/about-claude/models/overview",
+        org="Anthropic",
+        license="Proprietary",
+        model_handler=ClaudeHandler,
+        input_price=3,
+        output_price=15,
+        is_fc_model=False,
+        underscore_to_dot=False,
+    ),
+    "claude-sonnet-4-20250514-FC": ModelConfig(
+        model_name="claude-sonnet-4-20250514-FC",
+        display_name="Claude-Sonnet-4-20250514 (FC)",
+        url="https://docs.anthropic.com/en/docs/about-claude/models/overview",
+        org="Anthropic",
+        license="Proprietary",
+        model_handler=ClaudeHandler,
+        input_price=3,
+        output_price=15,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
+    "claude-opus-4-20250514": ModelConfig(
+        model_name="claude-opus-4-20250514",
+        display_name="Claude-Opus-4-20250514 (Prompt)",
+        url="https://docs.anthropic.com/en/docs/about-claude/models/overview",
+        org="Anthropic",
+        license="Proprietary",
+        model_handler=ClaudeHandler,
+        input_price=15,
+        output_price=75,
+        is_fc_model=False,
+        underscore_to_dot=False,
+    ),
+    "claude-opus-4-20250514-FC": ModelConfig(
+        model_name="claude-opus-4-20250514-FC",
+        display_name="Claude-Opus-4-20250514 (FC)",
+        url="https://docs.anthropic.com/en/docs/about-claude/models/overview",
+        org="Anthropic",
+        license="Proprietary",
+        model_handler=ClaudeHandler,
+        input_price=15,
+        output_price=75,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
+    "claude-FC": ModelConfig(
+        model_name=None,
+        display_name="claude",
+        url=None,
+        org="claude",
+        license="Proprietary",
+        model_handler=ClaudeHandler,
+        input_price=None,
+        output_price=None,
         is_fc_model=True,
         underscore_to_dot=True,
     ),
@@ -568,6 +642,18 @@ api_inference_model_map = {
         is_fc_model=True,
         underscore_to_dot=True,
     ),
+    "mistral-FC": ModelConfig(
+        model_name=None,
+        display_name="Mistral",
+        url="https://docs.mistral.ai/guides/model-selection/",
+        org="Mistral AI",
+        license="Proprietary",
+        model_handler=MistralHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
     "firefunction-v2-FC": ModelConfig(
         model_name="firefunction-v2-FC",
         display_name="FireFunction-v2 (FC)",
@@ -676,6 +762,18 @@ api_inference_model_map = {
         is_fc_model=False,
         underscore_to_dot=False,
     ),
+    "gemini-FC": ModelConfig(
+        model_name=None,
+        display_name="Gemini",
+        url="https://deepmind.google/technologies/gemini/flash-thinking/",
+        org="Google",
+        license="Proprietary",
+        model_handler=GeminiHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
     "meetkai/functionary-small-v3.1-FC": ModelConfig(
         model_name="meetkai/functionary-small-v3.1-FC",
         display_name="Functionary-Small-v3.1 (FC)",
@@ -745,6 +843,18 @@ api_inference_model_map = {
         model_handler=CohereHandler,
         input_price=2.5,
         output_price=10,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
+    "command-a-r-FC": ModelConfig(
+        model_name=None,
+        display_name="Command a-r (FC)",
+        url="None",
+        org="Cohere",
+        license="cc-by-nc-4.0",
+        model_handler=CohereHandler,
+        input_price=None,
+        output_price=None,
         is_fc_model=True,
         underscore_to_dot=True,
     ),
@@ -854,10 +964,21 @@ api_inference_model_map = {
         input_price=None,
         output_price=None,
         is_fc_model=False,
-        underscore_to_dot=False,
+                underscore_to_dot=False,
+    ),
+    "upstage-FC": ModelConfig(
+        model_name=None,
+        display_name="Upstage",
+        url="https://upstage.ai",
+        org="Upstage",
+        license="Proprietary",
+        model_handler=UpstageHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=True,
+        underscore_to_dot=True,
     ),
 }
-
 
 # Inference through local hosting
 local_inference_model_map = {
@@ -1612,6 +1733,19 @@ local_inference_model_map = {
         org="ThinkAgents",
         license="apache-2.0",
         model_handler=ThinkAgentHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=False,
+        underscore_to_dot=False,
+    ),
+    # Nejumi Leaderboard: 統合OSSハンドラー - 新しいOSSモデルを簡単に追加するため
+    "oss_handler": ModelConfig(
+        model_name=None, # will be set later
+        display_name="Generic OSS Model (Auto-Detect)",
+        url="https://github.com/your-repo/nejumi-leaderboard",
+        org="Nejumi Leaderboard",
+        license="Various",
+        model_handler=UnifiedOSSHandler,
         input_price=None,
         output_price=None,
         is_fc_model=False,

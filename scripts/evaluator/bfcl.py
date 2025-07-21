@@ -26,19 +26,20 @@ def get_default_config() -> Dict[str, Any]:
         "model_name": None,  # モデル名
         "test_category": "all",  # テストするカテゴリのリスト
         "temperature": 0.001,  # 生成時の温度パラメータ
-        "num_gpus": 1,  # 使用するGPUの数
+        "num_gpus": None,  # 使用するGPUの数 (vllmを使うことになるので、Nejumi Leaderboardでは、これは利用しない。)
+        "batch_size": 256, # 使用するGPUの数 (Nejumi Leaderboardでは、これは利用しない。)
         "num_threads": 1,  # 使用するスレッド数
         "gpu_memory_utilization": 0.9,  # GPU メモリ使用率
         "backend": "vllm",  # 使用するバックエンド
         "skip_server_setup": True,  # サーバーセットアップをスキップするかどうか（既存のvLLMサービスを使用）
         "local_model_path": None,  # ローカルモデルのパス（動的に設定される）
-        "allow_overwrite": False,  # 既存の結果を上書きするかどうか
+        "allow_overwrite": True,  # 既存の結果を上書きするかどうか
         "include_input_log": False,  # 推論ログに入力ログを含めるかどうか
         "exclude_state_log": False,  # 推論ログから状態ログを除外するかどうか
         "result_dir": RESULT_PATH,
         "score_dir": SCORE_PATH,
         "run_ids": False,  # テストエントリーIDを実行するかどうか
-        "samples_per_category": None,  # 各カテゴリから取得するサンプル数
+        "samples_per_category": 20,  # 各カテゴリから取得するサンプル数
         "artifacts_path": None,  # WandB Artifactのパス
     }
 
@@ -68,12 +69,9 @@ def evaluate():
     bfcl_cfg = merge_config(default_config, user_config)
     
     # BFCL対応モデル名がある場合はそれを使用、なければ従来の方法を使用
-    if hasattr(cfg.model, 'bfcl_model_name') and cfg.model.bfcl_model_name:
-        bfcl_cfg['model_name'] = cfg.model.bfcl_model_name
-    else:
-        bfcl_cfg['model_name'] = cfg.model.pretrained_model_name_or_path
+    bfcl_cfg['bfcl_model_id'] = cfg.model.bfcl_model_id
+    bfcl_cfg['model_name'] = cfg.model.pretrained_model_name_or_path
 
-    bfcl_cfg['backend'] = cfg.api
 
     # testmodeの場合はサンプル数を1に設定
     if cfg.testmode:
@@ -83,17 +81,14 @@ def evaluate():
     result_path = bfcl_cfg['result_dir']
     os.makedirs(result_path, exist_ok=True)
 
-    # 必須パラメータのチェック
-    if not bfcl_cfg['model_name']:
-        raise ValueError("model_name must be specified in the configuration")
-    
     # download artifacts
     artifact = run.use_artifact(bfcl_cfg['artifacts_path'])
     artifact_dir = artifact.download()
     
     # generate arguments
     gen_args = SimpleNamespace(
-        model=bfcl_cfg['model_name'],
+        model_id=bfcl_cfg['bfcl_model_id'],
+        model_name=bfcl_cfg['model_name'],
         test_category=bfcl_cfg['test_category'],
         temperature=bfcl_cfg['temperature'],
         include_input_log=bfcl_cfg['include_input_log'],
@@ -115,7 +110,8 @@ def evaluate():
 
     # Evaluation
     _, _, _, overall_df = evaluation_main(
-        model=[bfcl_cfg['model_name']],
+        model_id=bfcl_cfg['bfcl_model_id'],
+        model_names=[bfcl_cfg['model_name'].replace("/", "_")],
         test_categories=bfcl_cfg['test_category'],
         result_dir=bfcl_cfg['result_dir'],
         score_dir=bfcl_cfg['score_dir'],

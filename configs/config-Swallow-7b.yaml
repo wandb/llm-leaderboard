@@ -6,7 +6,7 @@ batch_size: 256
 model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: tokyotech-llm/Swallow-7b-instruct-v0.1
-  bfcl_model_name: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  bfcl_model_id: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
   chat_template: tokyotech-llm/Swallow-7b-instruct-v0.1
   size_category: <10B
   size: 7000000000

@@ -7,7 +7,7 @@ model:
   use_wandb_artifacts: false
   max_model_len: 3500
   pretrained_model_name_or_path: karakuri-ai/karakuri-lm-8x7b-chat-v0.1 #if you use openai api, put the name of model
-  bfcl_model_name: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  bfcl_model_id: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
   chat_template: karakuri-ai/karakuri-lm-8x7b-chat-v0.1
   size_category: 30B≤
   size: 46702792704

@@ -1,11 +1,11 @@
 wandb:
-  run_name: "example-vllm-docker-swallow-7b"
+  run_name: "meta-llama/Llama-3.2-1B-Instruct"
 
 api: "vllm-docker"
 base_url: "http://vllm:8000/v1"  # Dockerネットワーク内のサービス名
 
 model:
-  pretrained_model_name_or_path: "tokyotech-llm/Swallow-7b-instruct-v0.1"
+  pretrained_model_name_or_path: "meta-llama/Llama-3.2-1B-Instruct"
   dtype: 'float16'
   max_model_len: 3000
   trust_remote_code: true

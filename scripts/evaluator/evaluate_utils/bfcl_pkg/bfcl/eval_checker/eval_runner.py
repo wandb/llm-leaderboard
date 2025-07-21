@@ -21,14 +21,14 @@ from dotenv import load_dotenv
 from tqdm import tqdm
 
 
-def get_handler(model_name):
-    return MODEL_CONFIG_MAPPING[model_name].model_handler(
+def get_handler(model_id, model_name):
+    return MODEL_CONFIG_MAPPING[model_id].model_handler(
         model_name, temperature=0
     )  # Temperature doesn't matter for evaluation
 
 
 def multi_turn_runner(
-    handler, model_result, prompt, possible_answer, model_name, test_category, score_dir
+    handler, model_result, prompt, possible_answer, model_id, model_name, test_category, score_dir
 ):
     assert (
         len(model_result) == len(prompt) == len(possible_answer)
@@ -67,6 +67,7 @@ def multi_turn_runner(
                     "status": "failed",
                 }
             )
+            continue  # Skip further checks for this entry to prevent duplicate results
         # Check if force-terminated during inference phase.
         # This happens when the model has retried too many times and still haven't figured out the answer.
         # When force-terminated, no further evaluation is needed. This whole entry will be failed.
@@ -285,6 +286,7 @@ def ast_file_runner(
     possible_answer,
     language,
     test_category,
+    model_id,
     model_name,
     score_dir,
 ):
@@ -352,6 +354,7 @@ def ast_file_runner(
             possible_answer_item,
             language,
             test_category,
+            model_id,
             model_name,
         )
 
@@ -400,7 +403,7 @@ def ast_file_runner(
 
 
 #### Main runner function ####
-def runner(model_names, test_categories, result_dir, score_dir, samples_per_category=None,artifacts_path=None):
+def runner(model_id, model_names, test_categories, result_dir, score_dir, samples_per_category=None,artifacts_path=None):
 
     # State udpated by each eval subtask.
     state = dict(
@@ -433,7 +436,7 @@ def runner(model_names, test_categories, result_dir, score_dir, samples_per_cate
             if test_category not in test_categories:
                 continue
 
-            handler = get_handler(model_name_escaped)
+            handler = get_handler(model_id, model_name_escaped)
 
             # We don't evaluate the following categories in the current iteration of the benchmark
             if is_chatable(test_category) or is_sql(test_category) or is_executable(test_category):
@@ -448,6 +451,7 @@ def runner(model_names, test_categories, result_dir, score_dir, samples_per_cate
                 result_dir,
                 score_dir,
                 model_result,
+                model_id,
                 model_name,
                 handler,
                 state,
@@ -471,6 +475,7 @@ def evaluate_task(
     result_dir,
     score_dir,
     model_result,
+    model_id,
     model_name,
     handler,
     state,
@@ -515,6 +520,7 @@ def evaluate_task(
                 model_result,
                 prompt,
                 possible_answer,
+                model_id,
                 model_name,
                 test_category,
                 score_dir,
@@ -529,6 +535,7 @@ def evaluate_task(
                 possible_answer,
                 language,
                 test_category,
+                model_id,
                 model_name,
                 score_dir,
             )
@@ -546,7 +553,7 @@ def evaluate_task(
     return state
 
 
-def main(model, test_categories, result_dir, score_dir, samples_per_category=None,artifacts_path=None):
+def main(model_id, model_names, test_categories, result_dir, score_dir, samples_per_category=None,artifacts_path=None):
     if result_dir is None:
         result_dir = RESULT_PATH
     else:
@@ -562,17 +569,17 @@ def main(model, test_categories, result_dir, score_dir, samples_per_category=Non
 
     _, all_test_categories = parse_test_category_argument(test_categories)
 
-    model_names = None
-    if model:
-        model_names = []
-        for model_name in model:
-            # Runner takes in the model name that contains "_", instead of "/", for the sake of file path issues.
-            # This is differnet than the model name format that the generation script "openfunctions_evaluation.py" takes in (where the name contains "/").
-            # We patch it here to avoid confusing the user.
-            model_names.append(model_name.replace("/", "_"))
+    #model_names = None
+    #if model:
+    #    model_names = []
+    #    for model_name in model:
+    #        # Runner takes in the model name that contains "_", instead of "/", for the sake of file path issues.
+    #        # This is differnet than the model name format that the generation script "openfunctions_evaluation.py" takes in (where the name contains "/").
+    #        # We patch it here to avoid confusing the user.
+    #        model_names.append(model_name.replace("/", "_"))
 
     # Driver function to run the evaluation for all categories involved.
-    non_live_df, live_df, multi_turn_df, overall_df = runner(model_names, all_test_categories, result_dir, score_dir, samples_per_category, artifacts_path)
+    non_live_df, live_df, multi_turn_df, overall_df = runner(model_id, model_names, all_test_categories, result_dir, score_dir, samples_per_category, artifacts_path)
 
     print(
         f"🏁 Evaluation completed. See {score_dir / 'data_overall.csv'} for overall evaluation results on BFCL V3."
@@ -589,7 +596,10 @@ if __name__ == "__main__":
 
     # Add arguments for two lists of strings
     parser.add_argument(
-        "--model", nargs="+", type=str, help="A list of model names to evaluate"
+        "--model_names", nargs="+", type=str, help="A list of model names to evaluate"
+    )
+    parser.add_argument(
+        "--model_id", nargs="+", type=str, help="model id for model handler"
     )
     parser.add_argument(
         "--test-category",
@@ -615,7 +625,8 @@ if __name__ == "__main__":
 
     load_dotenv(dotenv_path=DOTENV_PATH, verbose=True, override=True)  # Load the .env file
     main(
-        args.model,
+        args.model_id,
+        args.model_names,
         args.test_category,
         args.result_dir,
         args.score_dir,

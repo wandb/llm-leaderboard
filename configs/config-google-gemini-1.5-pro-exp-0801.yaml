@@ -6,7 +6,7 @@ inference_interval: 1
 model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: gemini-1.5-pro-exp-0801 #if you use openai api, put the name of model
-  bfcl_model_name: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  bfcl_model_id: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
   size_category: api
   size: null
   release_date: 8/1/2024

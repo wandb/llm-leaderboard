@@ -126,3 +126,4 @@ fastchat/llm_judge/data/japanese_mt_bench
 #BFCL outputs
 BFCL*.json
 scripts/evaluator/evaluate_utils/bfcl_pkg/score/
+scripts/evaluator/evaluate_utils/bfcl_pkg/result/

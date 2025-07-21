@@ -18,7 +18,7 @@ from ..utils import (
 from openai import OpenAI
 from overrides import EnforceOverrides, final, override
 from tqdm import tqdm
-
+from config_singleton import WandbConfigSingleton
 
 class OSSHandler(BaseHandler, EnforceOverrides):
     def __init__(self, model_name, temperature, dtype="bfloat16") -> None:
@@ -29,14 +29,20 @@ class OSSHandler(BaseHandler, EnforceOverrides):
 
         # Will be overridden in batch_inference method
         # Used to indicate where the tokenizer and config should be loaded from
-        self.model_path_or_id = None
+        instance = WandbConfigSingleton.get_instance()
+        cfg = instance.config
+        self.model_path_or_id = cfg.model.pretrained_model_name_or_path
 
         # Read from env vars with fallbacks
-        self.vllm_host = os.getenv("VLLM_ENDPOINT", "localhost")
-        self.vllm_port = os.getenv("VLLM_PORT", VLLM_PORT)
-
-        self.base_url = f"http://{self.vllm_host}:{self.vllm_port}/v1"
-        self.client = OpenAI(base_url=self.base_url, api_key="EMPTY")
+        if cfg.api == "vllm":
+            self.base_url = "http://vllm:8000/v1"
+            self.client = OpenAI(base_url=self.base_url, api_key="EMPTY")
+        elif cfg.api == "openai-compatible":
+            self.base_url = cfg.base_url
+            self.client = OpenAI(base_url=self.base_url, api_key=os.getenv("OPENAI_COMPATIBLE_API_KEY"))
+        else:
+            raise ValueError(f"Please confirm compatible api in base_oss_handler.py for BFCL")
+        
 
     @override
     def inference(self, test_entry: dict, include_input_log: bool, exclude_state_log: bool):

@@ -2,10 +2,11 @@ wandb:
   run_name: meta-llama/Llama-3.2-1B-Instruct
 api: vllm
 batch_size: 32
+num_gpus: 1
 model:
   use_wandb_artifacts: false
-  pretrained_model_name_or_path: meta-llama/Llama-3.2-1B-Instruct
-  bfcl_model_name: meta-llama/Llama-3.2-1B-Instruct-FC  # BFCL対応
+  pretrained_model_name_or_path: meta-llama/Llama-3.2-1B-Instruct #if you use openai api, put the name of model
+  bfcl_model_id: oss_handler # "meta-llama/Llama-3.2-1B-Instruct-FC" #if you use openai api, put the name of model
   chat_template: meta-llama/Llama-3.2-1B-Instruct
   size_category: <10B
   size: 1235814400

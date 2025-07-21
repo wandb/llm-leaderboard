@@ -11,7 +11,7 @@ model:
   use_wandb_artifacts: false
   max_model_len: 16384 # update 
   pretrained_model_name_or_path: "microsoft/phi-4" #if you use openai api, put the name of model
-  bfcl_model_name: "microsoft/phi-4"
+  bfcl_model_id: "microsoft/phi-4"
   chat_template: "microsoft/phi-4"
   size_category: "10B≤ <30B"
   size: 14659507200

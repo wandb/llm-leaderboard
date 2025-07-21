@@ -1,0 +1,12 @@
+wandb:
+  run_name: claude-opus-4-20250514
+api: anthropic
+batch_size: 1
+inference_interval: 5
+model:
+  pretrained_model_name_or_path: claude-opus-4-20250514 #if you use openai api, put the name of model
+  bfcl_model_id: claude-opus-4-20250514-FC # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  size_category: api
+  size: null
+  release_date: 5/14/2025
+  enable_thinking: false  # Set to true to enable thinking mode (extended thinking)

@@ -56,8 +56,8 @@ def get_args():
 
     return args
 
-def build_handler(model_name, temperature):
-    handler = MODEL_CONFIG_MAPPING[model_name].model_handler(model_name, temperature)
+def build_handler(model_id, model_name, temperature):
+    handler = MODEL_CONFIG_MAPPING[model_id].model_handler(model_name, temperature)
     return handler
 
 def get_involved_test_entries(test_category_args, run_ids, samples_per_category=None,artifacts_path=None):
@@ -217,9 +217,10 @@ def multi_threaded_inference(handler, test_case, include_input_log, exclude_stat
     return result_to_write
 
 
-def generate_results(args, model_name, test_cases_total):
-    update_mode = args.allow_overwrite
-    handler = build_handler(model_name, args.temperature)
+def generate_results(args, model_id, model_name, test_cases_total):
+    # Always use update_mode=True to prevent duplicate entries for the same test case
+    update_mode = True
+    handler = build_handler(model_id, model_name, args.temperature)
 
     if handler.model_style == ModelStyle.OSSMODEL:
         # batch_inference will handle the writing of results
@@ -240,7 +241,7 @@ def generate_results(args, model_name, test_cases_total):
         futures = []
         with ThreadPoolExecutor(max_workers=args.num_threads) as executor:
             with tqdm(
-                total=len(test_cases_total), desc=f"Generating results for {model_name}"
+                total=len(test_cases_total), desc=f"Generating results for {model_id}"
             ) as pbar:
 
                 for test_case in test_cases_total:
@@ -257,8 +258,8 @@ def generate_results(args, model_name, test_cases_total):
                     # This will wait for the task to complete, so that we are always writing in order
                     result = future.result()
                     handler.write(
-                        result, result_dir=args.result_dir, update_mode=args.run_ids
-                    )  # Only when we run specific test ids, we will need update_mode=True to keep entries in the same order
+                        result, result_dir=args.result_dir, update_mode=True
+                    )  # Always use update_mode=True to prevent duplicate entries for the same test case
                     pbar.update()
 
 
@@ -273,13 +274,13 @@ def main(args):
         all_test_entries_involved,
     ) = get_involved_test_entries(args.test_category, args.run_ids, args.samples_per_category,args.artifacts_path)
 
-    if args.model not in MODEL_CONFIG_MAPPING:
+    if args.model_id not in MODEL_CONFIG_MAPPING:
         raise ValueError(
-                    f"Unknown model_name '{args.model}'.\n"
+                    f"Unknown model_name '{args.model_id}'.\n"
                     "• For officially supported models, please refer to `SUPPORTED_MODELS.md`.\n"
                     "• For running new models, please refer to `README.md` and `CONTRIBUTING.md`."
                 )
-    print(f"Generating results for {args.model}")
+    print(f"Generating results for {args.model_id}")
     if args.run_ids:
         print("Running specific test cases. Ignoring `--test-category` argument.")
     else:
@@ -292,7 +293,7 @@ def main(args):
 
     test_cases_total = collect_test_cases(
         args,
-        args.model,
+        args.model_id,
         all_test_categories,
         all_test_file_paths,
         all_test_entries_involved,
@@ -303,6 +304,6 @@ def main(args):
             f"All selected test cases have been previously generated for {args.model}. No new test cases to generate."
         )
     else:
-        generate_results(args, args.model, test_cases_total)
+        generate_results(args, args.model_id, args.model_name, test_cases_total)
     
     return test_cases_total
