@@ -4,14 +4,9 @@ api: vllm
 batch_size: 32
 model:
   use_wandb_artifacts: false
-<<<<<<< HEAD
   pretrained_model_name_or_path: meta-llama/Llama-3.2-1B-Instruct #if you use openai api, put the name of model
   bfcl_model_id: "oss_handler" # 統合OSSハンドラーを使用（新しいOSSモデルの簡単追加のため）
   # 従来の個別ハンドラーを使用する場合: "meta-llama/Llama-3.2-1B-Instruct-FC"
-=======
-  pretrained_model_name_or_path: meta-llama/Llama-3.2-1B-Instruct
-  bfcl_model_name: meta-llama/Llama-3.2-1B-Instruct-FC  # BFCL対応
->>>>>>> origin/nejumi4-dev
   chat_template: meta-llama/Llama-3.2-1B-Instruct
   size_category: <10B
   size: 1235814400
