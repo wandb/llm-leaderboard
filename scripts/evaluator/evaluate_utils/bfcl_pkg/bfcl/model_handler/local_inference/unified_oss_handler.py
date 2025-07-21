@@ -135,6 +135,7 @@ model_config.pyで新しいモデルに対して model_handler=UnifiedOSSHandler
 import ast
 import json
 import re
+import requests
 from typing import Dict, List, Any, Union, Optional
 from pathlib import Path
 import os
@@ -151,13 +152,8 @@ from ..utils import (
 )
 from overrides import override
 from ...constants.eval_config import RESULT_PATH
+from config_singleton import WandbConfigSingleton
 
-# Config singletonから設定を取得するためのインポート
-try:
-    from config_singleton import WandbConfigSingleton
-except ImportError:
-    # テスト環境などでconfig_singletonが利用できない場合のフォールバック
-    WandbConfigSingleton = None
 
 
 def fc2dict(sequence: str, 
@@ -239,36 +235,23 @@ class UnifiedOSSHandler(OSSHandler):
         self._setup_raw_output_logging()
     
     def _load_config_from_chat_template(self):
-        """Chat templateと設定をconfig_singletonから取得"""
-        self.chat_template = None
-        self.model_local_path = None
+        """Chat templateをconfig_singletonから取得"""
         
-        if WandbConfigSingleton is None:
-            return
-            
-        try:
-            instance = WandbConfigSingleton.get_instance()
-            cfg = instance.config
-            
-            # モデルのローカルパスを取得
-            self.model_local_path = cfg.model.get("local_path", None)
-            
-            # Chat templateを取得
-            model_id = cfg.model.pretrained_model_name_or_path
-            chat_template_name = cfg.model.get("chat_template")
-            
-            if chat_template_name:
-                # ローカルのchat templateファイルから取得
-                local_chat_template_path = Path(f"chat_templates/{chat_template_name}.jinja")
-                if local_chat_template_path.exists():
-                    with local_chat_template_path.open(encoding="utf-8") as f:
-                        self.chat_template = f.read()
-                        print(f"[UnifiedOSSHandler] Chat templateをローカルファイルから読み込み: {local_chat_template_path}")
-                else:
-                    print(f"[UnifiedOSSHandler] Chat templateファイルが見つかりません: {local_chat_template_path}")
-                    
-        except Exception as e:
-            print(f"[UnifiedOSSHandler] Config singleton取得中にエラー: {e}")
+        instance = WandbConfigSingleton.get_instance()
+        cfg = instance.config
+        
+        # プロジェクトルートからの絶対パスを構築
+        current_file = Path(__file__).resolve()
+        project_root = current_file.parents[7]  # 7階層上がプロジェクトルート
+        local_chat_template_path = project_root / f"chat_templates/{cfg.model.get('chat_template')}.jinja"
+        if local_chat_template_path.exists():
+            with local_chat_template_path.open(encoding="utf-8") as f:
+                chat_template = f.read()
+                self.chat_template = chat_template
+        else:
+            print(f"[UnifiedOSSHandler] Chat templateファイルが見つかりません: {local_chat_template_path}")
+            self.chat_template = None
+   
     
     def _setup_raw_output_logging(self):
         """生の出力を保存するためのセットアップ"""
@@ -442,7 +425,7 @@ class UnifiedOSSHandler(OSSHandler):
         self.is_fc_model = self.has_fc_tokens
 
     @override
-    def decode_ast(self, result: str, language="Python") -> List[Dict[str, Any]]:
+    def decode_ast(self, result, language="Python"):
         """
         出力パターンを自動検出してデコード
         """
@@ -592,7 +575,7 @@ class UnifiedOSSHandler(OSSHandler):
             return [result] if result else []
 
     @override
-    def decode_execute(self, result: str) -> Union[str, List]:
+    def decode_execute(self, result):
         """
         実行結果のデコード - decode_astと同じパターンを適用
         """
@@ -732,7 +715,17 @@ class UnifiedOSSHandler(OSSHandler):
         """
         APIレスポンス解析 - 推論内容やツール呼び出しを抽出
         """
-        model_response = api_response.choices[0].text
+        # vLLMの新旧APIレスポンス形式に対応
+        try:
+            # 新しい形式: api_response.choices[0].message.content
+            model_response = api_response.choices[0].message.content
+        except AttributeError:
+            try:
+                # 古い形式: api_response.choices[0].text
+                model_response = api_response.choices[0].text
+            except AttributeError:
+                # フォールバック: 文字列として取得
+                model_response = str(api_response.choices[0])
         
         # 生の出力をログに記録
         self._log_raw_output(model_response, step="parse_query_response")
@@ -874,7 +867,9 @@ class UnifiedOSSHandler(OSSHandler):
         return inference_data
 
     @override  
-    def _add_execution_results_prompting(self, inference_data: dict, execution_results: List[str], model_response_data: dict):
+    def _add_execution_results_prompting(
+        self, inference_data: dict, execution_results: list[str], model_response_data: dict
+    ) -> dict:
         """
         実行結果の追加 - モデル固有のロール使用
         """

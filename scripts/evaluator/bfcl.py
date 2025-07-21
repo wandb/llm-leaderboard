@@ -109,7 +109,8 @@ def evaluate():
 
     # Evaluation
     _, _, _, overall_df = evaluation_main(
-        model=[bfcl_cfg['model_name']],
+        model_id=bfcl_cfg['bfcl_model_id'],
+        model_names=[bfcl_cfg['model_name'].replace("/", "_")],
         test_categories=bfcl_cfg['test_category'],
         result_dir=bfcl_cfg['result_dir'],
         score_dir=bfcl_cfg['score_dir'],

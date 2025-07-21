@@ -57,9 +57,7 @@ def get_args():
     return args
 
 def build_handler(model_id, model_name, temperature):
-    handler = MODEL_CONFIG_MAPPING[model_id].model_handler(model_id, model_name, temperature)
-    if handler.model_name is None:
-        handler.model_name = model_name
+    handler = MODEL_CONFIG_MAPPING[model_id].model_handler(model_name, temperature)
     return handler
 
 def get_involved_test_entries(test_category_args, run_ids, samples_per_category=None,artifacts_path=None):

@@ -103,9 +103,9 @@ def record_cost_latency(leaderboard_table, model_name, model_output_data):
     leaderboard_table[model_name]["latency"]["data"].extend(latency)
 
 
-def get_cost_latency_info(model_name, cost_data, latency_data):
+def get_cost_latency_info(model_id, cost_data, latency_data):
     cost, mean_latency, std_latency, percentile_95_latency = "N/A", "N/A", "N/A", "N/A"
-    model_config = MODEL_CONFIG_MAPPING[model_name]
+    model_config = MODEL_CONFIG_MAPPING[model_id]
 
     if model_config.input_price is None or model_config.output_price is None:
         # Open source models should not have a cost or latency
@@ -211,14 +211,16 @@ def generate_leaderboard_csv(
     data_multi_turn = []
     data_combined = []
     for model_name, value in leaderboard_table.items():
-        model_name_escaped = model_name.replace("_", "/")
-        model_config = MODEL_CONFIG_MAPPING[model_name_escaped]
 
-        cost_data = value.get("cost", {"input_data": [], "output_data": []})
-        latency_data = value.get("latency", {"data": []})
-        cost, latency_mean, latency_std, percentile_95_latency = get_cost_latency_info(
-            model_name_escaped, cost_data, latency_data
-        )
+        # Nejumi Leaderboardでは、共通のhandlerを使用するので、cost情報などの取得はしない
+        model_name = model_name.replace("_", "/")
+        #model_config = MODEL_CONFIG_MAPPING[model_name_escaped]
+
+        #cost_data = value.get("cost", {"input_data": [], "output_data": []})
+        #latency_data = value.get("latency", {"data": []})
+        #cost, latency_mean, latency_std, percentile_95_latency = get_cost_latency_info(
+        #    model_name_escaped, cost_data, latency_data
+        #)
 
         # Non-Live Score
         python_simple_ast_non_live = get_category_score(value, "simple",artifacts_path)
@@ -262,7 +264,7 @@ def generate_leaderboard_csv(
         data_non_live.append(
             [
                 "N/A",
-                model_config.display_name,
+                model_name,
                 overall_accuracy_non_live["display_accuracy"],
                 summary_ast_non_live["display_accuracy"],
                 simple_ast_non_live["display_accuracy"],
@@ -307,7 +309,7 @@ def generate_leaderboard_csv(
         data_live.append(
             [
                 "N/A",
-                model_config.display_name,
+                model_name,
                 overall_accuracy_live["display_accuracy"],
                 summary_ast_live["display_accuracy"],
                 python_simple_ast_live["display_accuracy"],
@@ -337,7 +339,7 @@ def generate_leaderboard_csv(
         data_multi_turn.append(
             [
                 "N/A",
-                model_config.display_name,
+                model_name,
                 overall_accuracy_multi_turn["display_accuracy"],
                 multi_turn_base["display_accuracy"],
                 multi_turn_miss_func["display_accuracy"],
@@ -368,12 +370,12 @@ def generate_leaderboard_csv(
             [
                 "N/A",
                 total_overall_accuracy["display_accuracy"],
-                model_config.display_name,
-                model_config.url,
-                cost,
-                latency_mean,
-                latency_std,
-                percentile_95_latency,
+                model_name,
+                #model_config.url,
+                #cost,
+                #latency_mean,
+                #latency_std,
+                #percentile_95_latency,
                 overall_accuracy_non_live["display_accuracy"],
                 summary_ast_non_live["display_accuracy"],
                 simple_ast_non_live["display_accuracy"],
@@ -392,8 +394,8 @@ def generate_leaderboard_csv(
                 multi_turn_long_context["display_accuracy"],
                 total_relevance["display_accuracy"],
                 total_irrelevance["display_accuracy"],
-                model_config.org,
-                model_config.license,
+                #model_config.org,
+                #model_config.license,
             ]
         )
 

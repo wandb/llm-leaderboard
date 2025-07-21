@@ -28,16 +28,16 @@ NESTED_CONVERSION_TYPE_LIST = ["Array", "ArrayList", "array"]
 
 #### Main function ####
 def ast_checker(
-    func_description, model_output, possible_answer, language, test_category, model_name
+    func_description, model_output, possible_answer, language, test_category, model_id, model_name
 ):
     if "parallel" in test_category:
         return parallel_function_checker_no_order(
-            func_description, model_output, possible_answer, language, model_name
+            func_description, model_output, possible_answer, language, model_id, model_name
         )
         
     elif "multiple" in test_category:
         return multiple_function_checker(
-            func_description, model_output, possible_answer, language, model_name
+            func_description, model_output, possible_answer, language, model_id, model_name
         )
         
     else:
@@ -49,7 +49,7 @@ def ast_checker(
             }
 
         return simple_function_checker(
-            func_description[0], model_output[0], possible_answer[0], language, model_name
+            func_description[0], model_output[0], possible_answer[0], language, model_id, model_name
         )
 
 
@@ -72,10 +72,10 @@ def get_possible_answer_type(possible_answer: list):
     return None
 
 
-def convert_func_name(function_name, model_name: str):
-    model_name_escaped = model_name.replace("_", "/")
+def convert_func_name(function_name, model_id: str):
+    #model_name_escaped = model_name.replace("_", "/")
     if "." in function_name:
-        if MODEL_CONFIG_MAPPING[model_name_escaped].underscore_to_dot:
+        if MODEL_CONFIG_MAPPING[model_id].underscore_to_dot:
             # OAI does not support "." in the function name so we replace it with "_". ^[a-zA-Z0-9_-]{1,64}$ is the regex for the name.
             # This happens for OpenAI, Mistral, and Google models
             return re.sub(r"\.", "_", function_name)
@@ -325,6 +325,7 @@ def simple_function_checker(
     model_output: dict,
     possible_answer: dict,
     language: str,
+    model_id: str,
     model_name: str,
 ):
     possible_answer = list(possible_answer.values())[0]
@@ -340,7 +341,7 @@ def simple_function_checker(
         "error_type": "simple_function_checker:unclear",
     }
 
-    func_name = convert_func_name(func_name, model_name)
+    func_name = convert_func_name(func_name, model_id)
 
     # Check if function name matches
     if func_name not in model_output:
@@ -509,7 +510,7 @@ def parallel_function_checker_enforce_order(
     model_output: list,
     possible_answers: dict,
     language: str,
-    model_name: str,
+    model_id: str,
 ):
     if len(model_output) != len(possible_answers):
         return {
@@ -532,7 +533,7 @@ def parallel_function_checker_enforce_order(
             model_output[i],
             possible_answers_list[i],
             language,
-            model_name,
+            model_id,
         )
         if not result["valid"]:
             return result
@@ -545,6 +546,7 @@ def parallel_function_checker_no_order(
     model_output: list,
     possible_answers: list,
     language: str,
+    model_id: str,
     model_name: str,
 ):
     if len(model_output) != len(possible_answers):
@@ -575,6 +577,7 @@ def parallel_function_checker_no_order(
                 model_output[index],
                 possible_answers[i],
                 language,
+                model_id,
                 model_name,
             )
 
@@ -615,6 +618,7 @@ def multiple_function_checker(
     model_output: list,
     possible_answers: list,
     language: str,
+    model_id: str,
     model_name: str,
 ):
     if len(model_output) != len(possible_answers):
@@ -632,5 +636,6 @@ def multiple_function_checker(
         model_output[0],
         possible_answers[0],
         language,
+        model_id,
         model_name,
     )

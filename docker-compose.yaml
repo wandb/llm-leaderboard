@@ -66,6 +66,7 @@ services:
     volumes:
       - ~/.cache/huggingface:/root/.cache/huggingface
       - ./configs:/workspace/configs:ro
+      - ./chat_templates:/workspace/chat_templates:ro
       - ${LOCAL_MODEL_PATH:-/tmp/empty}:/workspace/models:ro
       
       # Docker socket mount for SWE-bench evaluation
