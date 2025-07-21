@@ -45,6 +45,8 @@ Our evaluation framework incorporates a diverse set of metrics to provide a holi
 export WANDB_API_KEY=<your WANDB_API_KEY>
 export OPENAI_API_KEY=<your OPENAI_API_KEY>
 export LANG=ja_JP.UTF-8
+# if you use OpenRouter as OpenAI compatible api inference,
+export OPENAI_COMPATIBLE_API_KEY=<your Open Router AI> 
 # If using Azure OpenAI instead of standard OpenAI
 export AZURE_OPENAI_ENDPOINT=<your AZURE_OPENAI_ENDPOINT>
 export AZURE_OPENAI_API_KEY=<your AZURE_OPENAI_API_KEY>
@@ -58,6 +60,7 @@ export AWS_ACCESS_KEY_ID=<your AWS_ACCESS_KEY_ID>
 export AWS_SECRET_ACCESS_KEY=<your AWS_SECRET_ACCESS_KEY>
 export AWS_DEFAULT_REGION=<your AWS_DEFAULT_REGION>
 export UPSTAGE_API_KEY=<your UPSTAGE_API_KEY>
+export HUGGINGFACE_HUB_TOKEN=<your HUGGINGFACE_HUB_TOKEN>
 # if needed, please login in huggingface
 huggingface-cli login
 ```

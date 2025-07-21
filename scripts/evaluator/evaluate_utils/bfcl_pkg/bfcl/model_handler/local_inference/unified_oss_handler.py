@@ -161,7 +161,7 @@ from ..utils import (
 from overrides import override
 from ...constants.eval_config import RESULT_PATH
 from config_singleton import WandbConfigSingleton
-
+from transformers import AutoTokenizer
 
 
 def fc2dict(sequence: str, 
@@ -247,19 +247,13 @@ class UnifiedOSSHandler(OSSHandler):
         
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config
-        
-        # プロジェクトルートからの絶対パスを構築
-        current_file = Path(__file__).resolve()
-        project_root = current_file.parents[7]  # 7階層上がプロジェクトルート
-        local_chat_template_path = project_root / f"chat_templates/{cfg.model.get('chat_template')}.jinja"
-        if local_chat_template_path.exists():
-            with local_chat_template_path.open(encoding="utf-8") as f:
-                chat_template = f.read()
-                self.chat_template = chat_template
+        tokenizer = AutoTokenizer.from_pretrained(cfg.model.pretrained_model_name_or_path)
+        chat_template = getattr(tokenizer, "chat_template", None)
+        if chat_template:
+            self.chat_template= chat_template
+            print(f"Found chat_template")
         else:
-            print(f"[UnifiedOSSHandler] Chat templateファイルが見つかりません: {local_chat_template_path}")
-            self.chat_template = None
-   
+            self.chat_template=""
     
     def _setup_raw_output_logging(self):
         """生の出力を保存するためのセットアップ"""
