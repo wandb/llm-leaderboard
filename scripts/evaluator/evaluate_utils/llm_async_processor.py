@@ -6,6 +6,7 @@ from typing import Any, TypeAlias, List, Tuple, Optional
 import backoff
 from tqdm import tqdm
 import openai
+import pydantic_core
 
 from config_singleton import WandbConfigSingleton
 
@@ -51,7 +52,7 @@ class LLMAsyncProcessor:
     @error_handler
     @backoff.on_exception(
         backoff.expo, 
-        (openai.APIConnectionError, openai.APITimeoutError, openai.RateLimitError, openai.APIError),
+        (openai.APIConnectionError, openai.APITimeoutError, openai.RateLimitError, openai.APIError, pydantic_core.ValidationError),
         max_tries=MAX_TRIES,
         max_time=1800,  # 最大30分でタイムアウト
         jitter=backoff.full_jitter
@@ -59,7 +60,13 @@ class LLMAsyncProcessor:
     async def _ainvoke(self, messages: Messages, **kwargs) -> Any:
         """非同期でLLMを呼び出す統一メソッド"""
         await asyncio.sleep(self.inference_interval)
-        return await self.llm.ainvoke(messages, **kwargs)
+        try:
+            return await self.llm.ainvoke(messages, **kwargs)
+        except pydantic_core.ValidationError as e:
+            # JSONパースエラーの場合は、エラー内容をログに出力してから再スロー
+            print(f"JSON parsing error occurred: {str(e)}")
+            print(f"Retrying due to JSON validation error...")
+            raise  # backoffデコレータがリトライを処理
 
     async def _process_batch(self, batch: Inputs) -> List[Any]:
         """バッチ処理で複数のタスクを並行実行"""
