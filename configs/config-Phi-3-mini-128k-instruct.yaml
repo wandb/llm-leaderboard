@@ -6,7 +6,7 @@ model:
   use_wandb_artifacts: false
   max_model_len: 3500
   pretrained_model_name_or_path: microsoft/Phi-3-mini-128k-instruct #if you use openai api, put the name of model
-  bfcl_model_name: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  bfcl_model_id: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
   chat_template: microsoft/Phi-3-mini-128k-instruct
   size_category: <10B
   size: 3821079552

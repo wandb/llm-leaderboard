@@ -10,7 +10,7 @@ model:
   use_wandb_artifacts: false
   artifacts_path: ''
   pretrained_model_name_or_path: gpt-4-1106-preview #if you use openai api, put the name of model
-  bfcl_model_name: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  bfcl_model_id: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
   dtype: float16
   max_model_len: 4096
   trust_remote_code: true

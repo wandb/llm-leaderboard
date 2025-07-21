@@ -5,7 +5,7 @@ batch_size: 1
 inference_interval: 2
 model:
   pretrained_model_name_or_path: meta.llama3-1-405b-instruct-v1:0 #if you use openai api, put the name of model
-  bfcl_model_name: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  bfcl_model_id: "" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
   size_category: api
   size: null
   release_date: 7/24/2024

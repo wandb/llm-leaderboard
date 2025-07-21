@@ -10,7 +10,7 @@ base_url: "https://api.deepseek.com/v1"
 
 model:
   pretrained_model_name_or_path: "deepseek-chat" #if you use openai api, put the name of model
-  bfcl_model_name: "DeepSeek-V3-FC"
+  bfcl_model_id: "DeepSeek-V3-FC"
   size_category: "api"
   size: null
   release_date: "3/24/2025"
