@@ -20,6 +20,7 @@ from evaluator.evaluate_utils.bfcl_pkg.bfcl.constants.eval_config import RESULT_
 from evaluator.evaluate_utils.bfcl_pkg.bfcl.utils import extract_test_category, load_file
 from evaluator.evaluate_utils.bfcl_pkg.bfcl.constants.eval_config import PROMPT_PATH, POSSIBLE_ANSWER_PATH
 
+
 def get_default_config() -> Dict[str, Any]:
     """BFCLのデフォルト設定を返す"""
     return {
@@ -75,7 +76,7 @@ def evaluate():
 
     # testmodeの場合はサンプル数を1に設定
     if cfg.testmode:
-        bfcl_cfg['samples_per_category'] = 1
+        bfcl_cfg['samples_per_category'] = 20
     
     # 結果保存用のディレクトリを作成
     result_path = bfcl_cfg['result_dir']
@@ -207,6 +208,22 @@ def evaluate():
                     output_raw = entry.get('model_result_raw', entry.get('model_result', ''))
                     possible_answer_raw = entry.get('possible_answer', '')
                     
+                    # Helper function to get max value from potentially nested arrays
+                    def get_max_token_count(token_data):
+                        if isinstance(token_data, (list, tuple)):
+                            # Flatten nested arrays and get maximum
+                            flat_list = []
+                            for item in token_data:
+                                if isinstance(item, (list, tuple)):
+                                    flat_list.extend(item)
+                                else:
+                                    flat_list.append(item)
+                            return max(flat_list) if flat_list else 0
+                        elif isinstance(token_data, (int, float)):
+                            return token_data
+                        else:
+                            return 0
+                    
                     result_entry = {
                         'id': entry_id,
                         'category': test_category,
@@ -214,7 +231,9 @@ def evaluate():
                         'output': str(output_raw),  # Check both model_result_raw and model_result
                         'accuracy': entry.get('success', 0),  # Use success field (1=success, 0=failure)
                         'possible_answer': str(possible_answer_raw),
-                    }
+                        'input_token_count': get_max_token_count(entry.get('input_token_count', 0)),
+                        'output_token_count': get_max_token_count(entry.get('output_token_count', 0)),
+                    }   
                     
                     # Add error information only if it exists
                     if entry.get('error') is not None:
