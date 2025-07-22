@@ -64,6 +64,8 @@ def multi_turn_runner(
                     "prompt": test_entry,
                     "model_result": multi_turn_model_result_list,
                     "possible_answer": multi_turn_ground_truth_list,
+                    "input_token_count": model_result[i].get("input_token_count", 0),
+                    "output_token_count": model_result[i].get("output_token_count", 0),
                     "status": "failed",
                 }
             )
@@ -88,6 +90,8 @@ def multi_turn_runner(
                     "prompt": test_entry,
                     "model_result": multi_turn_model_result_list,
                     "possible_answer": multi_turn_ground_truth_list,
+                    "input_token_count": model_result[i].get("input_token_count", 0),
+                    "output_token_count": model_result[i].get("output_token_count", 0),
                     "status": "failed",
                 }
             )
@@ -145,6 +149,8 @@ def multi_turn_runner(
         temp["model_result_decoded"] = multi_turn_model_result_list_decoded
         temp["possible_answer"] = multi_turn_ground_truth_list
         temp["inference_log"] = model_result[i].get("inference_log", "")
+        temp["input_token_count"] = model_result[i].get("input_token_count", 0)
+        temp["output_token_count"] = model_result[i].get("output_token_count", 0)
         
         if not accuracy_checker_result["valid"]:
             # For failed cases, add error information
@@ -230,6 +236,8 @@ def relevance_file_runner(
         temp["prompt"] = prompt[i]
         temp["model_result"] = model_result_item
         temp["decoded_result"] = decoded_result
+        temp["input_token_count"] = model_result[i].get("input_token_count", 0)
+        temp["output_token_count"] = model_result[i].get("output_token_count", 0)
         
         if success:
             correct_count += 1
@@ -320,6 +328,8 @@ def ast_file_runner(
         temp["prompt"] = prompt[i]
         temp["model_result_raw"] = model_result_item_raw
         temp["possible_answer"] = possible_answer_item
+        temp["input_token_count"] = model_result[i].get("input_token_count", 0)
+        temp["output_token_count"] = model_result[i].get("output_token_count", 0)
         
         if decode_error:
             # AST decode failed
