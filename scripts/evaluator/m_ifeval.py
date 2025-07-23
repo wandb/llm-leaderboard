@@ -35,21 +35,30 @@ def evaluate_m_ifeval(input_data, output_data):
     inputs = read_prompt_list(input_data)
     prompt_to_response = read_prompt_to_response_dict(output_data)
     
-    for eval_type, eval_func in [("strict", test_instruction_following_strict)]:
-        print(f"\n=== {eval_type.upper()} 評価開始 ===")
-        outputs = []
-        for inp in tqdm(inputs, desc=f"{eval_type} 評価実行"):
-            outputs.append(eval_func(inp, prompt_to_response))
-        
-        # メトリクス計算 (W&B ログ用)
-        instruction_total = sum(len(o.instruction_id_list) for o in outputs)
-        instruction_correct = sum(sum(o.follow_instruction_list) for o in outputs)
-        run.log({
-            "m_ifeval_leaderboard_table": wandb.Table(
-                columns=["model_name", "m_ifeval_score"],
-                data=[[model_name_safe, instruction_correct / instruction_total]]
-            )
-        })
+    print(f"\n=== STRICT 評価開始 ===")
+    outputs = []
+    for inp in tqdm(inputs, desc=f"strict 評価実行"):
+        outputs.append(test_instruction_following_strict(inp, prompt_to_response))
+    
+    # メトリクス計算 (W&B ログ用)
+    instruction_total = sum(len(o.instruction_id_list) for o in outputs)
+    instruction_correct = sum(sum(o.follow_instruction_list) for o in outputs)
+    run.log({
+        "m_ifeval_leaderboard_table": wandb.Table(
+            columns=["model_name", "m_ifeval_score"],
+            data=[[model_name_safe, instruction_correct / instruction_total]]
+        )
+    })
+    scores = [o.score for o in outputs]
+
+    # log output_data as wandb table
+    table_data = [[model_name_safe, data['key'], data['prompt'], data['response'], str(data['instruction_id_list']), str(data['kwargs']), score] for data, score in zip(output_data, scores)]
+    run.log({
+        "m_ifeval_output_table": wandb.Table(
+            columns=["model_name", "key", "prompt", "response", "instruction_id_list", "kwargs", "score"],
+            data=table_data
+        )
+    })
     
     return instruction_correct / instruction_total
 
@@ -60,8 +69,6 @@ def evaluate():
     run = instance.run
     cfg = instance.config
     llm = instance.llm
-
-    model_name_safe = cfg.model.pretrained_model_name_or_path.replace('/', '__')
 
     # M-IFEvalデータセットパス設定
 
@@ -108,6 +115,7 @@ def evaluate():
             "kwargs": data['kwargs'],
             "inputs": inputs,
             "response": None,  # 後で埋められる予定
+            "score": None,  # 後で埋められる予定
         })
 
     # 全ての入力を準備
@@ -147,15 +155,5 @@ def evaluate():
             "instruction_id_list": er["instruction_id_list"],
             "kwargs": er["kwargs"]
         })
-
-    table_data = [[model_name_safe, data['key'], data['prompt'], data['response'], str(data['instruction_id_list']), str(data['kwargs'])] for data in output_data]
-
-    # log output_data as wandb table
-    run.log({
-        "m_ifeval_output_table": wandb.Table(
-            columns=["model_name", "key", "prompt", "response", "instruction_id_list", "kwargs"],
-            data=table_data
-        )
-    })
 
     return evaluate_m_ifeval(input_data, output_data)
