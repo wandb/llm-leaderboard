@@ -1191,6 +1191,39 @@ grpc = [
 ]
 
 [[package]]
+name = "gql"
+version = "3.5.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "backoff" },
+    { name = "graphql-core" },
+    { name = "yarl" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/34/ed/44ffd30b06b3afc8274ee2f38c3c1b61fe4740bf03d92083e43d2c17ac77/gql-3.5.3.tar.gz", hash = "sha256:393b8c049d58e0d2f5461b9d738a2b5f904186a40395500b4a84dd092d56e42b", size = 180504, upload-time = "2025-05-20T12:34:08.954Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cb/50/2f4e99b216821ac921dbebf91c644ba95818f5d07857acadee17220221f3/gql-3.5.3-py2.py3-none-any.whl", hash = "sha256:e1fcbde2893fcafdd28114ece87ff47f1cc339a31db271fc4e1d528f5a1d4fbc", size = 74348, upload-time = "2025-05-20T12:34:07.687Z" },
+]
+
+[package.optional-dependencies]
+aiohttp = [
+    { name = "aiohttp" },
+]
+requests = [
+    { name = "requests" },
+    { name = "requests-toolbelt" },
+]
+
+[[package]]
+name = "graphql-core"
+version = "3.2.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c4/16/7574029da84834349b60ed71614d66ca3afe46e9bf9c7b9562102acb7d4f/graphql_core-3.2.6.tar.gz", hash = "sha256:c08eec22f9e40f0bd61d805907e3b3b1b9a320bc606e23dc145eebca07c8fbab", size = 505353, upload-time = "2025-01-26T16:36:27.374Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ae/4f/7297663840621022bc73c22d7d9d80dbc78b4db6297f764b545cd5dd462d/graphql_core-3.2.6-py3-none-any.whl", hash = "sha256:78b016718c161a6fb20a7d97bbf107f331cd1afe53e45566c59f776ed7f0b45f", size = 203416, upload-time = "2025-01-26T16:36:24.868Z" },
+]
+
+[[package]]
 name = "greenlet"
 version = "3.2.3"
 source = { registry = "https://pypi.org/simple" }
@@ -2163,6 +2196,7 @@ dependencies = [
     { name = "unbabel-comet" },
     { name = "vllm" },
     { name = "wandb" },
+    { name = "weave" },
     { name = "writer-sdk" },
 ]
 
@@ -2224,6 +2258,7 @@ requires-dist = [
     { name = "unbabel-comet", specifier = ">=2.2.6" },
     { name = "vllm", specifier = ">=0.9.1" },
     { name = "wandb", specifier = ">=0.20.1" },
+    { name = "weave", specifier = "==0.51.56" },
     { name = "writer-sdk", specifier = ">=2.1.0" },
 ]
 
@@ -4403,6 +4438,29 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a7/1a/9c522dd61b52939c217925d3e55c95f9348b73a66a956f52608e1e59a2c0/weasel-0.4.1.tar.gz", hash = "sha256:aabc210f072e13f6744e5c3a28037f93702433405cd35673f7c6279147085aa9", size = 38417, upload-time = "2024-05-15T08:52:54.765Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/87/abd57374044e1f627f0a905ac33c1a7daab35a3a815abfea4e1bafd3fdb1/weasel-0.4.1-py3-none-any.whl", hash = "sha256:24140a090ea1ac512a2b2f479cc64192fd1d527a7f3627671268d08ed5ac418c", size = 50270, upload-time = "2024-05-15T08:52:52.977Z" },
+]
+
+[[package]]
+name = "weave"
+version = "0.51.56"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "diskcache" },
+    { name = "eval-type-backport" },
+    { name = "gql", extra = ["aiohttp", "requests"] },
+    { name = "jsonschema" },
+    { name = "nest-asyncio" },
+    { name = "packaging" },
+    { name = "pydantic" },
+    { name = "rich" },
+    { name = "sentry-sdk" },
+    { name = "tenacity" },
+    { name = "wandb" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d8/74/dfc278848cb6f9c584bcf5ec0f1fea871569608d7f0f7ce5b4aba3aa863a/weave-0.51.56.tar.gz", hash = "sha256:63096587ee3800b8a21ebccecf571b895af7c1252c4eb1c5d11b56ce3c506cd7", size = 458868, upload-time = "2025-07-10T22:17:27.928Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e3/c7/7c0d5fd3f8e5d168cef4d3d4319f17b8d8708932d422f8cc036d53c38520/weave-0.51.56-py3-none-any.whl", hash = "sha256:1f2531e1a8263902e04b559810346c818da9946ab9eaafc0c11712187df22496", size = 584972, upload-time = "2025-07-10T22:17:25.747Z" },
 ]
 
 [[package]]

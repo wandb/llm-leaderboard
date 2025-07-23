@@ -60,6 +60,7 @@ dependencies = [
     "unbabel-comet>=2.2.6",
     "vllm>=0.9.1",
     "wandb>=0.20.1",
+    "weave==0.51.56",
     "writer-sdk>=2.1.0",
     "matplotlib>=3.10.3",
 ]
