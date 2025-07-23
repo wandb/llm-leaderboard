@@ -140,6 +140,19 @@ if run:
     instance = WandbConfigSingleton.get_instance()
     instance.llm = llm
 
+# SWE-Bench Verified evaluation
+if cfg.run.swebench:
+    evaluation_method = cfg.swebench.get("evaluation_method", "official")
+    if evaluation_method == "official":
+        from evaluator import swebench_official
+        if cfg.swebench.background_eval:
+            # 評価プロセスの実行時間が長いため、他のベンチと並行でバックグラウンド実行する
+            swebench_postprocess = swebench_official.evaluate()
+        else:
+            swebench_official.evaluate()
+    else:
+        swebench.evaluate()
+
 # mt-bench evaluation
 if cfg.run.mtbench:
     mtbench.evaluate()
@@ -160,14 +173,6 @@ if cfg.run.jtruthfulqa:
 if cfg.run.hle:
     hle.evaluate()
 
-# SWE-Bench Verified evaluation
-if cfg.run.swebench:
-    evaluation_method = cfg.swebench.get("evaluation_method", "official")
-    if evaluation_method == "official":
-        from evaluator import swebench_official
-        swebench_official.evaluate()
-    else:
-        swebench.evaluate()
 # BFCL
 if cfg.run.bfcl:
     bfcl.evaluate()
@@ -216,7 +221,11 @@ if cfg.run.jaster:
             start_vllm_container_if_needed(model_name=cfg.model.pretrained_model_name_or_path)
             # llmインスタンスは同じものを使い続ける
             pass
-    
+
+if cfg.run.swebench and cfg.swebench.background_eval:
+    # SWE-Benchをバックグラウンド実行した場合は評価結果の集計を実施
+    swebench_postprocess()
+
 # Aggregation
 if cfg.run.aggregate:
     aggregate.evaluate()

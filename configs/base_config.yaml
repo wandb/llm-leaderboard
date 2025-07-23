@@ -106,6 +106,7 @@ swebench:
   max_tokens: 2048  # SWE-Benchのパッチ生成に必要なトークン数
   max_workers: 8  # 並列実行ワーカー数
   evaluation_method: 'official'  # 'official' or 'docker' - 公式パッケージまたは独自Docker実装
+  background_eval: true # trueの場合は他のベンチマーク実行中にバックグラウンドで評価を行う
 
 mtbench:
   generator_config:

@@ -1,3 +1,4 @@
+
 import json
 import logging
 import tempfile
@@ -7,6 +8,8 @@ import re
 from pathlib import Path
 from typing import Dict, List
 import traceback
+from functools import partial
+import multiprocessing as mp
 import pandas as pd
 import wandb
 from tqdm import tqdm
@@ -522,8 +525,56 @@ def evaluate():
         max_workers = cfg.swebench.get("max_workers", 4)
         # サンプリングしたIDを取得
         instance_ids = [sample["instance_id"] for sample in samples]
-        results = run_swebench_evaluation(predictions_file, max_workers, instance_ids, samples)
-        
+
+        if cfg.swebench.background_eval:
+            result_queue = mp.Queue(1)
+            eval_process = mp.get_context("fork").Process(
+                target=run_evaluation_proc,
+                args=(predictions_file, max_workers, instance_ids, samples, result_queue)
+            )
+            eval_process.start()
+            print("SWE-Bench evaluation started in background process. Metrics will be calculated later.")
+            # 後で実行できるmetrics集計関数を返す
+            return partial(calculate_metrics, samples, result_queue, temp_dir)
+        else:
+            results = run_swebench_evaluation(predictions_file, max_workers, instance_ids, samples)
+            return calculate_metrics(samples, results, temp_dir)
+    except Exception as e:
+        logger.error(f"Evaluation failed: {e}")
+        logger.error(traceback.format_exc()) # エラー発生時にトレースバックを出力
+        # raise # デバッグ中は再raiseしない方がファイル確認しやすい場合もある
+
+def run_evaluation_proc(predictions_file, max_workers, instance_ids, samples, result_queue):
+    """SWE-Bench評価実行（バックグラウンド実行用）のラッパー関数"""
+    import io
+    from contextlib import redirect_stdout, redirect_stderr
+    # バックグラウンド実行時に他のベンチとログが混ざらないように標準出力をバッファリング
+    with io.StringIO() as buf, redirect_stdout(buf), redirect_stderr(buf):
+        try:
+            result = run_swebench_evaluation(predictions_file, max_workers, instance_ids, samples)
+            result_queue.put((result, buf.getvalue()))
+        except Exception as e:
+            # 例外はメインプロセス側でraiseする
+            result_queue.put((e, buf.getvalue()))
+
+def calculate_metrics(samples, results_or_queue, temp_dir):
+    """SWE-Bench評価結果の集計"""
+    instance = WandbConfigSingleton.get_instance()
+    run = instance.run
+    cfg = instance.config
+    model_name = cfg.model.pretrained_model_name_or_path
+
+    if cfg.swebench.background_eval:
+        print("Waiting for SWE-Bench evaluation result...")
+        # キューから結果とログを取得しログを表示
+        results, log = results_or_queue.get(timeout=1800)
+        print(log)
+        if isinstance(results, Exception):
+            raise results
+    else:
+        results = results_or_queue
+
+    try:
         print(f"=== SWE-Bench Results ===")
         print(f"Total samples: {len(samples)}")
         print(f"Results type: {type(results)}")
@@ -559,6 +610,7 @@ def evaluate():
         try:
             # 予測 JSONL を読み込み
             predictions_map = {}
+            predictions_file = temp_dir / "predictions.jsonl"
             with open(predictions_file, "r", encoding="utf-8") as pf:
                 for line in pf:
                     obj = json.loads(line)
