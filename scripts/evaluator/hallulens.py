@@ -1,10 +1,11 @@
 import json
 from pathlib import Path
+import asyncio
 from typing import Any, TypeAlias
 
-from openai import OpenAI
 import pandas as pd
 from pydantic import BaseModel
+from tqdm.asyncio import tqdm as atqdm
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import LLMAsyncProcessor, get_openai_judge_client
@@ -55,7 +56,7 @@ ABSTAIN_PROMPT_PLACE_NONSENSE = """あなたはAIによって生成された文�
 """
 
 
-def evaluate():
+async def evaluate_async():
     # === Set configuration === #
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
@@ -74,7 +75,6 @@ def evaluate():
         }
 
         _samples = []
-        judge_prompts = []
 
         for key, dataset_path in dataset_paths.items():
             full_path = Path(artifact_dir) / dataset_path
@@ -100,49 +100,40 @@ def evaluate():
                     :num_sample
                 ]
 
-            # === Prepare inputs for LLM === #
-            all_inputs = []
-            for sample in samples:
-                messages = [
-                    {
-                        "role": "user",
-                        "content": sample["prompt"],
-                    },
-                ]
-                all_inputs.append([messages, generator_config])
-
             # === Inference === #
-            llm_ap = LLMAsyncProcessor(
-                llm=llm,
-                inputs=all_inputs,
+            llm_ap = LLMAsyncProcessor(llm=llm)
+            async def generate_answer(sample):
+                messages = [{"role": "user", "content": sample["prompt"]}]
+                result = await llm_ap.process_single_async(messages, **generator_config)
+                sample.update({"answer": result.content})
+                return sample
+            generate_answer_tasks = [asyncio.create_task(generate_answer(sample)) for sample in samples]
+            generate_answer_results = asyncio.create_task( # Judgeと並列で行うためにここではawaitしない
+                atqdm.gather(*generate_answer_tasks, desc="Generating Hallulens answers")
             )
-            results = llm_ap.get_results()
+
+            # OpenAIの場合、推論とJudgeが同じAPIになるため、Rate Limit対策として推論がすべて終わるのを待つ
+            if cfg.api == 'openai':
+                await generate_answer_results
 
             # === judge === #
             judge_model = cfg[task_name].judge.get("model", "gpt-4.1-2025-04-14")
             judge_params = cfg[task_name].judge.get("params", {})
             judge_parallel = cfg[task_name].judge.get("parallel", 32)
+            judge_llm = get_openai_judge_client(judge_model, text_format=JudgeOutput)
+            judge_llm_ap = LLMAsyncProcessor(llm=judge_llm, batch_size=judge_parallel, inference_interval=0.)
 
-            for sample, result in zip(samples, results):
-                sample.update({"answer": result.content})
+            # Judge model answers
+            async def judge(sample, generate_answer_task):
+                await generate_answer_task
                 judge_prompt: str = ABSTAIN_PROMPT_PLACE_NONSENSE.format(
                     name=sample["name"],
                     TYPE=sample["type_"],
                     PLACE=" in " + sample["place"] if sample["place"] else "",
                     generation=sample["answer"],
                 )
-                judge_prompts.append(([{"role": "user", "content": judge_prompt}], {}))
-
-            judge_llm = get_openai_judge_client(judge_model, text_format=JudgeOutput, **judge_params)
-            judge_llm_ap = LLMAsyncProcessor(
-                llm=judge_llm,
-                inputs=judge_prompts,
-                batch_size=judge_parallel,
-                inference_interval=0.,
-            )
-            judge_results = judge_llm_ap.get_results()
-
-            for sample, judge_result in zip(samples, judge_results):
+                messages = [{"role": "user", "content": judge_prompt}]
+                judge_result = await judge_llm_ap.process_single_async(messages, **judge_params)
                 parsed_output = judge_result.parsed_output
                 if parsed_output is None:
                     raise ValueError(
@@ -150,6 +141,13 @@ def evaluate():
                     )
 
                 sample.update(parsed_output.model_dump())
+                return sample
+
+            judge_tasks = [
+                judge(sample, generate_answer_task)
+                for sample, generate_answer_task in zip(samples, generate_answer_tasks)
+            ]
+            await atqdm.gather(*judge_tasks, desc="Judging Hallulens")
             _samples.extend(samples)
 
         # === Logging === #
@@ -192,3 +190,6 @@ def evaluate():
                     table_name + "_dev": output_df[ordered_columns],
                 }
             )
+
+def evaluate():
+    asyncio.run(evaluate_async())
