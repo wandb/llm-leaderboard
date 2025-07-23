@@ -1,8 +1,10 @@
 import json
-from typing import Any, Dict, List, Optional
+import asyncio
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 import wandb
+from tqdm.asyncio import tqdm as atqdm
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import LLMAsyncProcessor, get_openai_judge_client
 import numpy as np
@@ -87,12 +89,11 @@ def translate_keys(data, key_translation=key_translation):
     return {key_translation[k]: v for k, v in data.items()}
 
 
-def get_scores(
+def generate_judge_tasks(
     questions: List[Dict[str, Any]],
+    generate_answer_tasks: List[Dict[str, Any]],
     judge_prompts: List[Dict[str, str]],
-    judge_model: str,
-    judge_parallel: int,
-    judge_params: Dict[str, Any],
+    llm_ap: LLMAsyncProcessor
 ):
     categories = {'禁止行為': 0, '社会規範': 1, '公平性': 2, '違反カテゴリ': 3}
     prompt_template = """### ユーザーの発言: 
@@ -100,39 +101,30 @@ def get_scores(
 ### 評価対象モデルの返答: 
 {answer}"""
 
-    judge_inputs = []
-    for q in questions:
+    async def do_judge(q, generate_answer_task):
+        await generate_answer_task
         category_id = categories.get(q['category_1'], -1)
         if category_id == -1:
-            print(f"Unknown category: {q['category_1']}")
-            continue
+            raise ValueError(f"Unknown category: {q['category_1']}")
         judge_prompt = judge_prompts[category_id]['system_prompt']
         user_prompt = prompt_template.format(user_prompt=q["user_prompt"], answer=q["answer"])
-        judge_inputs.append((
-            [
-                {"role": "system", "content": judge_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            {'text_format': JUDGE_STRUCTURE[q['category_1']]},
-        ))
-
-    client = get_openai_judge_client(judge_model, **judge_params)
-    llm_ap = LLMAsyncProcessor(
-        llm=client,
-        inputs=judge_inputs,
-        batch_size=judge_parallel,
-        inference_interval=0.,
-    )
-    results = llm_ap.get_results()
-    for q, result in zip(questions, results):
+        judge_messages = [
+            {"role": "system", "content": judge_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+        judge_format = JUDGE_STRUCTURE[q['category_1']]
+        result = await llm_ap.process_single_async(judge_messages, text_format=judge_format)
         result_dict = result.parsed_output.model_dump()
         result_dict = convert_bool_to_int(result_dict)
         result_dict = translate_keys(result_dict)
         q.update(result_dict)
-    return questions
 
+    return [
+        do_judge(q, generate_answer_task) 
+        for q, generate_answer_task in zip(questions, generate_answer_tasks)
+    ]
 
-def evaluate():
+async def evaluate_async():
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
@@ -150,23 +142,33 @@ def evaluate():
         questions = questions[:12]
 
     # Create model answers
-    generator_config = {"max_tokens": 1024}
-    inputs = [
-        ([{"role": "user", "content": q["user_prompt"]}], generator_config)
-        for q in questions
-    ]
-    llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
-    results = llm_ap.get_results()
-    answers = [r.content for r in results]
-    for q, a in zip(questions, answers):
-        q.update({"answer": a})
+    generator_config = cfg.toxicity.generator_config
+    llm_ap = LLMAsyncProcessor(llm=llm)
+    async def generate_answer(q):
+        messages = [{"role": "user", "content": q["user_prompt"]}]
+        result = await llm_ap.process_single_async(messages, **generator_config)
+        q.update({"answer": result.content})
+        return q
+
+    generate_answer_tasks = [asyncio.create_task(generate_answer(q)) for q in questions]
+    generate_answer_results = asyncio.create_task( # Judgeと並列で行うためにここではawaitしない
+        atqdm.gather(*generate_answer_tasks, desc="Generating Toxicity answers"))
+
+    # OpenAIの場合、推論とJudgeが同じAPIになるため、Rate Limit対策として推論がすべて終わるのを待つ
+    if cfg.api == 'openai':
+        await generate_answer_results
 
     # Load Judge Prompts
     judge_path = cfg.toxicity.get("judge_prompts_path")
     judge_dir = run.use_artifact(judge_path, type='dataset').download()
     judge_prompts = load_questions(judge_dir + "/toxicity_judge_prompts.jsonl", None, None)
-    # Evaluate models response to toxic inputs
-    questions = get_scores(questions, judge_prompts, judge_model, judge_parallel, judge_params)
+
+    # Judge model answers
+    judge_client = get_openai_judge_client(judge_model, **judge_params)
+    judge_llm_ap = LLMAsyncProcessor(llm=judge_client, batch_size=judge_parallel, inference_interval=0.)
+    judge_tasks = generate_judge_tasks(questions, generate_answer_tasks, judge_prompts, judge_llm_ap)
+
+    await atqdm.gather(*judge_tasks, desc="Judging Toxicity")
 
     # Convert json to pd.DataFrame/wandb.Table and logging
     # output table
@@ -190,3 +192,6 @@ def evaluate():
         "toxicity_leaderboard_table":toxicity_leaderboard_table,
         "toxicity_radar_table":toxicity_radar,
     })
+
+def evaluate():
+    asyncio.run(evaluate_async())

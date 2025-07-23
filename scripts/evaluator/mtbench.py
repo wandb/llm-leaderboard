@@ -6,11 +6,12 @@ import asyncio
 import numpy as np
 import pandas as pd
 import wandb
-from dataclasses import dataclass
-from typing import List, Dict, Any, Optional, Tuple, Literal
+from dataclasses import dataclass, field
+from typing import List, Dict, Any, Optional, Tuple, Literal, Awaitable
 import shortuuid
 import time
 from pydantic import BaseModel
+from tqdm.asyncio import tqdm as atqdm
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import LLMAsyncProcessor, get_openai_judge_client
@@ -18,18 +19,6 @@ from .evaluate_utils import LLMAsyncProcessor, get_openai_judge_client
 # カテゴリが参照回答を必要とするかどうかのリスト
 NEED_REF_CATS = ["math", "reasoning", "coding", "arena-hard-200"]
 
-# default settings for temperature
-temperature_config = {
-    "writing": 0.7,
-    "roleplay": 0.7,
-    "extraction": 0.0,
-    "math": 0.0,
-    "coding": 0.0,
-    "reasoning": 0.0,
-    "stem": 0.1,
-    "humanities": 0.1,
-    "arena-hard-200": 0.0,
-}
 
 @dataclass
 class Question:
@@ -42,6 +31,8 @@ class Answer:
     question_id: int
     model_id: str
     choices: List[Dict[str, List[str]]]
+    tstamp: Optional[float] = None
+    answer_id: str = field(default_factory=shortuuid.uuid)
     
 @dataclass
 class Judge:
@@ -143,7 +134,6 @@ def make_match_single(
     models: List[str], 
     model_answers: Dict[str, Dict[int, Answer]], 
     judge: Judge, 
-    baseline_model: Optional[str] = None,
     ref_answers: Optional[Dict[str, Dict[int, Answer]]] = None, 
     multi_turn: bool = False
 ) -> List[MatchSingle]:
@@ -173,114 +163,34 @@ def make_match_single(
             matches.append(match)
     return matches
 
-async def generate_model_answer(question: Question, llm, model_id: str, max_tokens: int) -> Tuple[str, str]:
+async def generate_model_answer(
+    question: Question,
+    llm_ap: LLMAsyncProcessor,
+    answer: Answer,
+    default_generator_config: Dict[str, Any],
+    temperature_overrides: Dict[str, float],
+    turn1_task: Optional[Awaitable] = None,
+) -> Answer:
     """モデルの回答を生成する（非同期）"""
-    temperature = temperature_config.get(question.category, 0.7)
-    # 一回目の質問に回答
-    messages_turn1 = [{"role": "user", "content": question.turns[0]}]
-    response_turn1 = await asyncio.to_thread(
-        llm.invoke,
-        messages_turn1,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        n=1,
-        stop=None,
-        presence_penalty=0.0,
-        frequency_penalty=0.0,
-    )
-    answer_turn1 = response_turn1.content if hasattr(response_turn1, 'content') else str(response_turn1)
-    # 二回目の質問に回答（マルチターン）
-    messages_turn2 = [
-        {"role": "user", "content": question.turns[0]},
-        {"role": "assistant", "content": answer_turn1},
-        {"role": "user", "content": question.turns[1]}
-    ]
-    response_turn2 = await asyncio.to_thread(
-        llm.invoke,
-        messages_turn2,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        n=1,
-        stop=None,
-        presence_penalty=0.0,
-        frequency_penalty=0.0,
-    )
-    answer_turn2 = response_turn2.content if hasattr(response_turn2, 'content') else str(response_turn2)
-    return answer_turn1, answer_turn2
+    generator_config = {
+        **default_generator_config,
+        'temperature': temperature_overrides[question.category]
+    }
 
-async def generate_model_answers(questions: List[Question], output_file: str):
-    """すべての質問に対するモデル回答を生成（LLMAsyncProcessorを使用）"""
-    instance = WandbConfigSingleton.get_instance()
-    cfg = instance.config
-    llm = instance.llm
-    model_id = cfg.mtbench.model_id
-    # mtbenchの設定からmax_tokensを取得、なければデフォルト1024
-    max_tokens = cfg.mtbench.get("max_new_token", 1024) # 修正: cfg.mtbench から取得
-    # グローバルのtemperatureをデフォルト値として取得
-    default_temperature = cfg.generator.get("temperature", 0.7) 
-    # mtbenchのtemperatureオーバーライド設定を取得
-    temperature_overrides = cfg.mtbench.get("temperature_override", {}) 
-
-    # 出力ディレクトリを作成
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    
-    # LLMAsyncProcessor に渡す inputs を作成
-    inputs_for_processor = []
-    for question in questions:
-        # カテゴリに基づいてtemperatureを取得 (オーバーライドがあれば優先、なければデフォルト)
-        temperature = temperature_overrides.get(question.category, default_temperature) # 修正: cfg から取得
-        
-        # ターン1のメッセージとパラメータ
-        messages_turn1 = [{"role": "user", "content": question.turns[0]}]
-        params_turn1 = {"max_tokens": max_tokens, "temperature": temperature}
-        inputs_for_processor.append((messages_turn1, params_turn1))
-        
-        # ターン2のメッセージとパラメータ（プレースホルダとして、ターン1の結果が必要）
-        # まずはターン1の結果を取得してから、ターン2の inputs を作成する
-
-    print(f"Generating answers for turn 1... (using LLMAsyncProcessor)")
-    llm_ap_turn1 = LLMAsyncProcessor(llm=llm, inputs=[item for item in inputs_for_processor])
-    # get_results を asyncio.to_thread で呼び出す
-    results_turn1 = await asyncio.to_thread(llm_ap_turn1.get_results)
-
-    answers_turn1 = [res.content if hasattr(res, 'content') else str(res) for res in results_turn1]
-
-    # ターン2の inputs を作成
-    inputs_for_processor_turn2 = []
-    for i, question in enumerate(questions):
-         # カテゴリに基づいてtemperatureを取得 (ターン2も同じ設定を使う)
-        temperature = temperature_overrides.get(question.category, default_temperature) # 修正: cfg から取得
-        # ターン2のメッセージを作成
-        answer_turn1 = answers_turn1[i]
-        messages_turn2 = [
-            {"role": "user", "content": question.turns[0]},
-            {"role": "assistant", "content": answer_turn1},
+    messages = [{"role": "user", "content": question.turns[0]}]
+    # turn1_taskがあれば、turn1の完了を待ったあとにturn2の質問を生成
+    if turn1_task is not None:
+        await asyncio.wait([turn1_task])
+        messages += [
+            {"role": "assistant", "content": answer.choices[0]["turns"][0]},
             {"role": "user", "content": question.turns[1]}
         ]
-        params_turn2 = {"max_tokens": max_tokens, "temperature": temperature}
-        inputs_for_processor_turn2.append((messages_turn2, params_turn2))
 
-    print(f"Generating answers for turn 2... (using LLMAsyncProcessor)")
-    llm_ap_turn2 = LLMAsyncProcessor(llm=llm, inputs=inputs_for_processor_turn2)
-    # get_results を asyncio.to_thread で呼び出す
-    results_turn2 = await asyncio.to_thread(llm_ap_turn2.get_results)
-    answers_turn2 = [res.content if hasattr(res, 'content') else str(res) for res in results_turn2]
-
-    # 結果をファイルに書き込み
-    print(f"Saving model answers to {output_file}...")
-    with open(output_file, "w") as f:
-        for i, question in enumerate(questions):
-            answer = {
-                "question_id": question.question_id,
-                "answer_id": shortuuid.uuid(),
-                "model_id": model_id,
-                "choices": [{"turns": [answers_turn1[i], answers_turn2[i]]}],
-                "tstamp": time.time(),
-            }
-            f.write(json.dumps(answer, ensure_ascii=False) + "\n")
-
-    print("Model answer generation finished.")
-    return
+    response = await llm_ap.process_single_async(messages, **generator_config)
+    content = response.content if hasattr(response, 'content') else str(response)
+    answer.choices[0]["turns"].append(content)
+    answer.tstamp = time.time()
+    return answer
 
 def task_to_sub_category(category):
     """カテゴリをサブカテゴリにマッピング"""
@@ -320,6 +230,7 @@ async def async_evaluate():
     # WandbConfigSingletonからインスタンスを取得
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
+    llm = instance.llm
     cfg = instance.config
     
     # ハッシュを作成してmodel_idに追加（重複を避けるため）
@@ -338,10 +249,6 @@ async def async_evaluate():
         artifact_dir = run.use_artifact(cfg.mtbench.question_artifacts_path, type='dataset').download()
     question_file = artifact_dir + "/question.jsonl"
     
-    # 回答ファイルと回答ディレクトリ
-    answer_file = f"data/{cfg.mtbench.bench_name}/model_answer/{cfg.mtbench.model_id}.jsonl"
-    answer_dir = f"data/{cfg.mtbench.bench_name}/model_answer"
-    
     # 参照回答
     if cfg.testmode:
         ref_answer_dir = run.use_artifact(cfg.mtbench.referenceanswer_artifacts_path_test, type='dataset').download()
@@ -358,18 +265,46 @@ async def async_evaluate():
     # *****************************************
 
     # 1. モデル回答の生成 (修正済み関数を呼び出す)
-    print(f"2. モデル回答を生成中... (質問数: {len(questions)}) (using LLMAsyncProcessor)")
-    await generate_model_answers(
-        questions=questions,
-        output_file=answer_file,
-        # parallel パラメータは LLMAsyncProcessor が内部で管理するので不要
+    print(f"2. モデル回答タスクを生成中... (質問数: {len(questions)})")
+    # mtbenchのgenerator_configを取得
+    default_generator_config = cfg.mtbench.get("generator_config", {})
+    # mtbenchのtemperatureオーバーライド設定を取得
+    temperature_overrides = cfg.mtbench.get("temperature_override", {}) 
+
+    llm_ap = LLMAsyncProcessor(llm=llm, inputs=[])
+    model_answers = {cfg.mtbench.model_id: {
+        q.question_id: Answer(question_id=q.question_id, model_id=cfg.mtbench.model_id, choices=[{"turns": []}])
+        for q in questions
+    }}
+
+    # turn1が終わり次第並行でJudgeを実施するため、turn1とturn2のタスクを分けて管理する
+    turn1_tasks = {
+        q.question_id: asyncio.create_task(generate_model_answer(
+            q, llm_ap, model_answers[cfg.mtbench.model_id][q.question_id],
+            default_generator_config, temperature_overrides,
+        )) for q in questions
+    }
+    turn2_tasks = {
+        q.question_id: asyncio.create_task(generate_model_answer(
+            q, llm_ap, model_answers[cfg.mtbench.model_id][q.question_id],
+            default_generator_config, temperature_overrides,
+            turn1_task=turn1_tasks[q.question_id],
+        )) for q in questions
+    }
+
+    # 回答生成タスクをProgressbar付きで並列実行
+    generate_results = asyncio.create_task( # Judgeと並列で行うためにここではawaitしない
+        atqdm.gather(*turn1_tasks.values(), *turn2_tasks.values(), desc="Generating MT-Bench answers"),
+        name="generate_answer_tasks",
     )
-    
+
+    # OpenAIの場合、推論とJudgeが同じAPIになるため、Rate Limit対策として推論がすべて終わるのを待つ
+    if cfg.api == 'openai':
+        await generate_results
+
     # 2. 評価
-    print("3. モデル回答とリファレンス回答を読み込み中...")
-    # モデル回答とリファレンス回答を読み込む
-    model_answers = load_model_answers(answer_dir)
-    model_answers = {cfg.mtbench.model_id: model_answers[cfg.mtbench.model_id]}
+    print("3. リファレンス回答を読み込み中...")
+    # リファレンス回答を読み込む
     ref_answers = load_model_answers(ref_answer_dir)
     
     # ジャッジプロンプトを読み込む
@@ -438,17 +373,18 @@ async def async_evaluate():
     print("統計情報:")
     print(json.dumps(match_stat, indent=4))
     
+    print("5. 回答生成とジャッジを実行中...(using LLMAsyncProcessor)")
     # ジャッジ用のパラメータ
     judge_model_name = cfg.mtbench.judge.model
     judge_parallel = cfg.mtbench.judge.parallel
     judge_params = cfg.mtbench.judge.params
-    client = get_openai_judge_client(judge_model_name, text_format=JudgeSingle, **judge_params)
+    client = get_openai_judge_client(judge_model_name, text_format=JudgeSingle)
+    judge_llm_ap = LLMAsyncProcessor(llm=client, batch_size=judge_parallel, inference_interval=0.)
 
     # LLMAsyncProcessor に渡す inputs を作成
-    inputs_for_judge_processor = []
-    for match in matches:
+    async def wait_answer_and_judge(match, judge_llm_ap, generate_answer_task):
         question = match.question
-        answer = match.answer
+        answer = await generate_answer_task
         judge = match.judge
         ref_answer = match.ref_answer
         multi_turn = match.multi_turn
@@ -479,26 +415,29 @@ async def async_evaluate():
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ]
-        inputs_for_judge_processor.append((messages, {}))
+        judge_result = await judge_llm_ap.process_single_async(messages, **judge_params)
+        return judge_result, user_prompt
 
+    judge_tasks = [wait_answer_and_judge(
+        match, judge_llm_ap,
+        turn2_tasks[match.question.question_id] if match.multi_turn
+        else turn1_tasks[match.question.question_id],
+    ) for match in matches]
+
+    # JudgeをProgressbar付きで並列実行
     print(f"Processing judge results (OpenAI API parallel, batch={judge_parallel})...")
-    llm_ap = LLMAsyncProcessor(
-        llm=client,
-        inputs=inputs_for_judge_processor,
-        batch_size=judge_parallel,
-        inference_interval=0.,
-    )
-    judge_results = await llm_ap.get_results_async()
+    judge_results = await atqdm.gather(*judge_tasks, desc="Judging MT-Bench")
 
     results = []
-    for match, judge_result in zip(matches, judge_results):
+    for match, (judge_result, judge_prompt) in zip(matches, judge_results):
         question_id = match.question.question_id
         turn = 1 if not match.multi_turn else 2
         result = {
             "question_id": question_id,
             "model": match.model,
-            "judge": (match.judge.model_name, match.judge.prompt_template["name"]),
-            "user_prompt": user_prompt,
+            "judge_model": match.judge.model_name,
+            "judge_prompt_template": match.judge.prompt_template["name"],
+            "judge_prompt": judge_prompt,
             "judgment": judge_result.parsed_output.explanation,
             "score": int(judge_result.parsed_output.rating.replace("[[", "").replace("]]", "")),
             "turn": turn,
@@ -528,7 +467,7 @@ async def async_evaluate():
     df_question_repeat = df_question.loc[df_question.index.repeat(judge_count)].reset_index(drop=True)
     
     # 回答を読み込む
-    df_answer = pd.read_json(answer_file, lines=True)
+    df_answer = pd.DataFrame(list(model_answers[cfg.mtbench.model_id].values()))
     df_answer = df_answer[(df_answer.model_id == cfg.mtbench.model_id)|(df_answer.model_id == cfg.model.pretrained_model_name_or_path)]
     df_answer = df_answer.sort_values(['question_id'])
     df_answer_repeat = df_answer.loc[df_answer.index.repeat(judge_count)].reset_index(drop=True)
@@ -562,7 +501,7 @@ async def async_evaluate():
     # 元のコードと同じ固定の列リスト
     use_col = [
         'model', 'question_id', 'category', 'question', 
-        'answer', 'judge', 'user_prompt', 'judgment', 
+        'answer', 'judge_model', 'judge_prompt_template', 'judge_prompt', 'judgment', 
         'score', 'turn', 'tstamp'
     ]
     df_judge = df_judge[use_col]

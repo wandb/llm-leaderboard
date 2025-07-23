@@ -4,14 +4,12 @@ import copy
 import math
 import numpy as np
 from pathlib import Path
-from typing import Literal, Dict, Any, List, Optional
+from typing import Literal, Dict, Any, List
 from pydantic import BaseModel
-from tqdm import tqdm
+from tqdm.asyncio import tqdm as atqdm
 import pandas as pd
 
 import wandb
-from openai import AsyncOpenAI, OpenAI, AzureOpenAI
-import os
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import LLMAsyncProcessor, get_openai_judge_client
@@ -161,60 +159,7 @@ def calculate_metrics(predictions: Dict[str, Dict[str, Any]], total_questions: i
         "answered_questions": len(correct)
     }
 
-def evaluate_batch(
-    questions: List[Dict[str, Any]],
-    predictions: Dict[str, Dict[str, Any]],
-    judge_model: str,
-    judge_parallel: int = 32,
-    judge_params: Dict[str, Any] = {},
-) -> Dict[str, Dict[str, Any]]:
-    """Evaluate a batch of questions with judge"""
-    client = get_openai_judge_client(judge_model, text_format=ExtractedAnswer, **judge_params)
-
-    # Only judge questions that have predictions but no judge response
-    questions_have_predictions = [q for q in questions if q["id"] in predictions]
-
-    questions_to_judge = []
-    judge_inputs = []
-    judged_predictions = {}
-
-    for q in questions_have_predictions:
-        prediction = predictions[q["id"]]
-        if "judge_response" in prediction:  # already judged
-            judged_predictions[q["id"]] = prediction
-            continue
-        else:
-            questions_to_judge.append(q)
-
-        prompt = JUDGE_PROMPT.format(
-            question=q["question"],
-            correct_answer=q["answer"],
-            response=predictions[q["id"]]["response"],
-        )
-        judge_inputs.append(([{"role": "user", "content": prompt}], {}))
-
-    llm_ap = LLMAsyncProcessor(
-        llm=client,
-        inputs=judge_inputs,
-        batch_size=judge_parallel,
-        inference_interval=0.,
-    )
-    results = llm_ap.get_results()
-
-    for q, result in zip(questions_to_judge, results):
-        prediction = copy.deepcopy(predictions[q["id"]])
-        prediction["judge_response"] = {
-            "correct_answer": q["answer"],
-            "model_answer": result.parsed_output.extracted_final_answer,
-            "reasoning": result.parsed_output.reasoning,
-            "correct": result.parsed_output.correct,
-            "confidence": result.parsed_output.confidence,
-        }
-        judged_predictions[q["id"]] = prediction
-    
-    return judged_predictions
-
-def evaluate():
+async def evaluate_async():
     """Main evaluation function for HLE benchmark"""
     # Get configuration
     instance = WandbConfigSingleton.get_instance()
@@ -223,7 +168,7 @@ def evaluate():
     llm = instance.llm
     
     # Configuration parameters
-    max_completion_tokens = cfg.hle.get("max_completion_tokens", 8192)
+    generator_config = cfg.hle.get("generator_config", {})
     judge_model = cfg.hle.judge.get("model", "o3-mini-2025-01-31")
     judge_parallel = cfg.hle.judge.get("parallel", 32)
     judge_params = cfg.hle.judge.get("params", {})
@@ -276,41 +221,73 @@ def evaluate():
         
         print("Generating model responses...")
         predictions = {}
-        generator_config = {"max_tokens": max_completion_tokens}
-        
-        inputs = [
-            (format_message_for_llm_processor(q, cfg.model.pretrained_model_name_or_path), generator_config)
-            for q in questions
-        ]
-        
-        try:
-            llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
-            results = llm_ap.get_results()
-            
-            for q, result in zip(questions, results):
-                if result and result.content:
-                    predictions[q["id"]] = {
-                        "model": cfg.model.pretrained_model_name_or_path,
-                        "response": result.content,
-                        "usage": {
-                            "completion_tokens": len(result.content.split()),
-                            "prompt_tokens": len(q["question"].split())
-                        }
+        judged_predictions = {}
+        llm_ap = LLMAsyncProcessor(llm=llm)
+        judge_llm = get_openai_judge_client(judge_model, text_format=ExtractedAnswer)
+        judge_llm_ap = LLMAsyncProcessor(llm=judge_llm, batch_size=judge_parallel, inference_interval=0.)
+
+        # Inference and judge in parallel
+        # Generate model responses
+        async def generate_answer(q):
+            messages = format_message_for_llm_processor(q, cfg.model.pretrained_model_name_or_path)
+            try:
+                result = await llm_ap.process_single_async(messages, **generator_config)
+                predictions[q["id"]] = {
+                    "model": cfg.model.pretrained_model_name_or_path,
+                    "response": result.content,
+                    "usage": {
+                        "completion_tokens": len(result.content.split()),
+                        "prompt_tokens": len(q["question"].split())
                     }
+                }
+            except Exception as e:
+                print(f"Error generating model responses for subset '{subset}': {e}")
+            return q
+
+        generate_answer_tasks = [asyncio.create_task(generate_answer(q)) for q in questions]
+        generate_answer_results = asyncio.create_task(
+            atqdm.gather(*generate_answer_tasks, desc="Generating HLE answers")
+        )
+
+        # OpenAIの場合、推論とJudgeが同じAPIになるため、Rate Limit対策として推論がすべて終わるのを待つ
+        if cfg.api == 'openai':
+            await generate_answer_results
             print(f"Generated {len(predictions)} model responses for {subset}")
-            
-        except Exception as e:
-            print(f"Error generating model responses for subset '{subset}': {e}")
-            continue
-        
-        print("Judging responses...")
-        try:
-            judged_predictions = evaluate_batch(questions, predictions, judge_model, judge_parallel, judge_params)
-            print(f"Judged {len(judged_predictions)} responses for {subset}")
-            
-        except Exception as e:
-            print(f"Error in judging responses for subset '{subset}': {e}")
-            continue
+
+        # Judge model responses
+        async def judge(q, generate_answer_task):
+            await generate_answer_task
+            if q["id"] not in predictions:
+                return
+
+            if "judge_response" in predictions[q["id"]]:
+                judged_predictions[q["id"]] = predictions[q["id"]]
+                return
+
+            prompt = JUDGE_PROMPT.format(
+                question=q["question"],
+                correct_answer=q["answer"],
+                response=predictions[q["id"]]["response"],
+            )
+            messages = [{"role": "user", "content": prompt}]
+
+            try:
+                result = await judge_llm_ap.process_single_async(messages, **judge_params)
+                prediction = copy.deepcopy(predictions[q["id"]])
+                prediction["judge_response"] = {
+                    "correct_answer": q["answer"],
+                    "model_answer": result.parsed_output.extracted_final_answer,
+                    "reasoning": result.parsed_output.reasoning,
+                    "correct": result.parsed_output.correct,
+                    "confidence": result.parsed_output.confidence,
+                }
+                judged_predictions[q["id"]] = prediction
+            except Exception as e:
+                print(f"Error judging model responses for subset '{subset}': {e}")
+
+        judge_tasks = [judge(q, task) for q, task in zip(questions, generate_answer_tasks)]
+        await atqdm.gather(*judge_tasks, desc="Judging HLE")
+        print(f"Judged {len(judged_predictions)} responses for {subset}")
         
         metrics = calculate_metrics(judged_predictions, len(questions))
         
@@ -355,3 +332,6 @@ def evaluate():
         })
         
         print(f"HLE evaluation for subset '{subset}' completed and logged to wandb")
+
+def evaluate():
+    asyncio.run(evaluate_async())
