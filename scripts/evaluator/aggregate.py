@@ -26,7 +26,7 @@ def update_flag(cfg, blend_cfg):
     
     # 新しいベンチマークのフラグ
     arc_agi_2_flag = bfcl_flag = hle_flag = jhumaneval_flag = hallulens_flag = False
-    jmmlu_pro_flag = jamc_qa_flag = m_ifeval_flag = False  # 将来追加予定
+    jmmlu_pro_flag = jamc_qa_flag = m_ifeval_flag = False
 
     if hasattr(cfg, 'run'):
         mtbench_flag = cfg.run.mtbench
@@ -39,6 +39,7 @@ def update_flag(cfg, blend_cfg):
         bfcl_flag = cfg.run.get('bfcl', False)
         hle_flag = cfg.run.get('hle', False)
         hallulens_flag = cfg.run.get('hallulens', False)
+        m_ifeval_flag = cfg.run.get('m_ifeval', False)
 
     if blend_cfg:
         for old_run in blend_cfg.old_runs:
@@ -65,7 +66,9 @@ def update_flag(cfg, blend_cfg):
                     hle_flag = True
                 elif "hallulens" in dataset:
                     hallulens_flag = True
-
+                elif "m_ifeval" in dataset:
+                    m_ifeval_flag = True
+    
     if mtbench_flag and jaster_flag:
         GLP_flag = True
     if jbbq_flag and toxicity_flag and jtruthfulqa_flag:
@@ -78,8 +81,7 @@ def update_flag(cfg, blend_cfg):
         'hle': hle_flag,
         'jhumaneval': jaster_flag,  # jhuman_evalはjasterの一部
         'hallulens': hallulens_flag,
-        'jmmlu_pro': jmmlu_pro_flag,  # 将来的にjasterの一部として追加
-        'jamc_qa': jamc_qa_flag,
+        'jamc_qa': jamc_qa_flag,  # 将来実装予定
         'm_ifeval': m_ifeval_flag,
     }
     
@@ -179,12 +181,12 @@ def calculate_glp_scores(cfg, leaderboard_dict, jaster_0shot, jaster_fewshots, m
        │   └── 数学的推論
        ├── 知識・質問応答
        │   ├── 一般的知識
-       │   └── 専門的知識（JMMLU, JMMLU-Pro(将来), HLE）
+       │   └── 専門的知識（JMMLU, JMMLU-Pro(mmlu_prox_ja), HLE）
        ├── 基礎的言語性能
        │   ├── 意味解析
        │   └── 構文解析
        └── アプリケーション開発
-           ├── コーディング（SWE-Bench, JHumanEval）
+           ├── コーディング（SWE-Bench, JHumanEval, MT-bench:coding）
            └── 関数呼び出し（BFCL）
     """
     
@@ -276,7 +278,7 @@ def calculate_glp_scores(cfg, leaderboard_dict, jaster_0shot, jaster_fewshots, m
         general_knowledge_dict["stem_mtbench"] = mtbench["stem"][0] / 10
     create_subcategory_table(run, cfg, "general_knowledge", general_knowledge_dict)
     
-    # 専門的知識（JMMLU-Proは将来的にjasterの一部として追加予定）
+    # 専門的知識（JMMLU, JMMLU-Pro(mmlu_prox_ja), HLE）
     expert_knowledge_scores = []
     expert_knowledge_dict = {}
     
@@ -286,6 +288,14 @@ def calculate_glp_scores(cfg, leaderboard_dict, jaster_0shot, jaster_fewshots, m
         expert_knowledge_dict["jmmlu_0shot"] = jaster_0shot["jmmlu"][0]
         expert_knowledge_dict["jmmlu_fewshot"] = jaster_fewshots["jmmlu"][0]
         expert_knowledge_dict["jmmlu_avg"] = jmmlu_score
+    
+    # JMMLU-Pro (mmlu_prox_ja)の追加
+    if "mmlu_prox_ja" in jaster_0shot.columns:
+        mmlu_prox_ja_score = (jaster_0shot["mmlu_prox_ja"][0] + jaster_fewshots["mmlu_prox_ja"][0]) / 2
+        expert_knowledge_scores.append(mmlu_prox_ja_score)
+        expert_knowledge_dict["mmlu_prox_ja_0shot"] = jaster_0shot["mmlu_prox_ja"][0]
+        expert_knowledge_dict["mmlu_prox_ja_fewshot"] = jaster_fewshots["mmlu_prox_ja"][0]
+        expert_knowledge_dict["mmlu_prox_ja_avg"] = mmlu_prox_ja_score
     
     if hle_result is not None and additional_flags.get('hle', False):
         hle_score_raw = hle_result["accuracy"][0] if "accuracy" in hle_result.columns else float('nan')
@@ -359,6 +369,12 @@ def calculate_glp_scores(cfg, leaderboard_dict, jaster_0shot, jaster_fewshots, m
         coding_scores.append(jhumaneval_score)
         coding_dict["jhumaneval_score"] = jhumaneval_score
     
+    # MT-benchのcodingカテゴリを追加
+    if mtbench is not None and "coding" in mtbench.columns:
+        mtbench_coding_score = mtbench["coding"][0] / 10  # 10で割って正規化
+        coding_scores.append(mtbench_coding_score)
+        coding_dict["coding_mtbench"] = mtbench_coding_score
+    
     leaderboard_dict["GLP_コーディング"] = np.mean(coding_scores) if coding_scores else float('nan')
     coding_dict["AVG"] = leaderboard_dict["GLP_コーディング"]
     create_subcategory_table(run, cfg, "coding", coding_dict)
@@ -404,13 +420,13 @@ def calculate_glp_scores(cfg, leaderboard_dict, jaster_0shot, jaster_fewshots, m
 
 def calculate_alt_scores(cfg, leaderboard_dict, jaster_control_0shot, jaster_control_fewshots, 
                         jaster_fewshots, toxicity, jbbq_fewshots, jtruthfulqa, 
-                        jmmlu_robust_fewshots, additional_flags, hallulens_result, run):
+                        jmmlu_robust_fewshots, additional_flags, hallulens_result, m_ifeval_result, run):
     """
     アラインメント（ALT）のスコアを計算
     
     構造:
     - アラインメント（ALT）
-      ├── 制御性（M-IFEVAL は将来追加予定）
+      ├── 制御性（Jaster Control, M-IFEVAL）
       ├── 倫理・道徳
       ├── 毒性
       ├── バイアス
@@ -418,19 +434,33 @@ def calculate_alt_scores(cfg, leaderboard_dict, jaster_control_0shot, jaster_con
       └── 堅牢性
     """
     
-    # 制御性（M-IFEVALは将来追加予定）
+    # 制御性（M-IFEVAL, Jaster Control）
+    control_scores = []
+    control_dict = {}
+    
+    # Jaster Control
     if (jaster_control_0shot is not None and "AVG" in jaster_control_0shot.columns and 
         jaster_control_fewshots is not None and "AVG" in jaster_control_fewshots.columns):
-        control_scores = [jaster_control_0shot["AVG"][0], jaster_control_fewshots["AVG"][0]]
-        leaderboard_dict["ALT_制御性"] = np.mean(control_scores)
-        create_subcategory_table(run, cfg, "controllability", {
-            "AVG": leaderboard_dict["ALT_制御性"],
-            "jaster_control_0shot": jaster_control_0shot["AVG"][0],
-            "jaster_control_fewshot": jaster_control_fewshots["AVG"][0],
-        })
+        jaster_control_avg = np.mean([jaster_control_0shot["AVG"][0], jaster_control_fewshots["AVG"][0]])
+        control_scores.append(jaster_control_avg)
+        control_dict["jaster_control_0shot"] = jaster_control_0shot["AVG"][0]
+        control_dict["jaster_control_fewshot"] = jaster_control_fewshots["AVG"][0]
+        control_dict["jaster_control_avg"] = jaster_control_avg
     else:
-        leaderboard_dict["ALT_制御性"] = float('nan')
         print(f"Warning: Jaster Control data not available")
+    
+    # M-IFEVAL
+    if additional_flags.get('m_ifeval', False) and m_ifeval_result is not None:
+        if "m_ifeval_score" in m_ifeval_result.columns:
+            m_ifeval_score = m_ifeval_result["m_ifeval_score"][0]
+            control_scores.append(m_ifeval_score)
+            control_dict["m_ifeval_score"] = m_ifeval_score
+        else:
+            print(f"Warning: m_ifeval_score column not found in M-IFEVAL results")
+    
+    leaderboard_dict["ALT_制御性"] = np.mean(control_scores) if control_scores else float('nan')
+    control_dict["AVG"] = leaderboard_dict["ALT_制御性"]
+    create_subcategory_table(run, cfg, "controllability", control_dict)
     
     # 倫理・道徳
     if jaster_fewshots is not None and "commonsensemoralja" in jaster_fewshots.columns:
@@ -567,6 +597,7 @@ def evaluate():
                 additional_flags['hle'] = False
     jhumaneval_result = load_benchmark_results(run, 'jhumaneval', "jhumaneval_leaderboard_table", additional_flags)
     hallulens_result = load_benchmark_results(run, 'hallulens', "hallulens_leaderboard_table", additional_flags)
+    m_ifeval_result = load_benchmark_results(run, 'm_ifeval', "m_ifeval_leaderboard_table", additional_flags)
 
     print("-------- aggregating results ----------")
 
@@ -590,7 +621,7 @@ def evaluate():
         calculate_alt_scores(
             cfg, leaderboard_dict, jaster_control_0shot, jaster_control_fewshots,
             jaster_fewshots, toxicity, jbbq_fewshots, jtruthfulqa,
-            jmmlu_robust_fewshots, additional_flags, hallulens_result, run
+            jmmlu_robust_fewshots, additional_flags, hallulens_result, m_ifeval_result, run
         )
     
     # 総合スコア
