@@ -17,6 +17,7 @@ class OutputExample:
   response: str
   follow_all_instructions: bool
   follow_instruction_list: list[bool]
+  score: float
 
 def read_prompt_list(json_file):
   """Read inputs from jsonl."""
@@ -65,6 +66,7 @@ def test_instruction_following_strict(
       response=response,
       follow_all_instructions=all(is_following_list),
       follow_instruction_list=is_following_list,
+      score=sum(is_following_list) / len(is_following_list)
   )
 
 
