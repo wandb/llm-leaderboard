@@ -13,6 +13,7 @@ from ..model_handler.api_inference.gorilla import GorillaHandler
 from ..model_handler.api_inference.grok import GrokHandler
 from ..model_handler.api_inference.mining import MiningHandler
 from ..model_handler.api_inference.mistral import MistralHandler
+from ..model_handler.api_inference.nemotron import NemotronHandler
 from ..model_handler.api_inference.nexus import NexusHandler
 from ..model_handler.api_inference.nova import NovaHandler
 from ..model_handler.api_inference.novita import NovitaHandler
@@ -847,6 +848,18 @@ api_inference_model_map = {
         org="NVIDIA",
         license="nvidia-open-model-license",
         model_handler=NvidiaHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=False,
+        underscore_to_dot=False,
+    ),
+    "nvidia/llama-3.1-nemotron-ultra-253b-v1": ModelConfig(
+        model_name="nvidia/llama-3.1-nemotron-ultra-253b-v1",
+        display_name="Llama-3.1-Nemotron-Ultra-253B-v1 (Prompt)",
+        url="https://huggingface.co/nvidia/llama-3.1-nemotron-ultra-253b-v1",
+        org="NVIDIA",
+        license="custom",
+        model_handler=NemotronHandler,
         input_price=None,
         output_price=None,
         is_fc_model=False,

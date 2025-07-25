@@ -1,7 +1,7 @@
 import os
 
-from bfcl_eval.model_handler.api_inference.openai import OpenAIHandler
-from bfcl_eval.model_handler.model_style import ModelStyle
+from .openai import OpenAIHandler
+from ..model_style import ModelStyle
 from openai import OpenAI
 from overrides import override
 

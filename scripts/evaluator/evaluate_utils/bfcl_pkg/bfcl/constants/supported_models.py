@@ -76,6 +76,7 @@ SUPPORTED_MODELS = [
     "command-a-r-FC",
     "snowflake/arctic",
     "nvidia/nemotron-4-340b-instruct",
+    "nvidia/llama-3.1-nemotron-ultra-253b-v1",
     "BitAgent/GoGoAgent",
     "palmyra-x-004",
     "grok-3-beta-FC",
