@@ -119,6 +119,7 @@ For model names containing `{...}`, multiple versions are available. For example
 | Llama-4-Scout-17B-16E-Instruct                 | Prompt           | Novita AI      | meta-llama/llama-4-scout-17b-16e-instruct-novita            |
 | Llama-4-Scout-17B-16E-Instruct                 | Function Calling | Novita AI      | meta-llama/llama-4-scout-17b-16e-instruct-FC-novita         |
 | Llama-4-Scout-17B-16E-Instruct                 | Function Calling | Self-hosted 💻 | meta-llama/Llama-4-Scout-17B-16E-Instruct-FC                |
+| Ling-lite-v1.5                                 | Prompt           | Ant Group      | Ling/ling-lite-v1.5                              |
 | MiniCPM3-4B                                    | Prompt           | Self-hosted 💻 | openbmb/MiniCPM3-4B                                         |
 | MiniCPM3-4B-FC                                 | Function Calling | Self-hosted 💻 | openbmb/MiniCPM3-4B-FC                                      |
 | Ministral-8B-Instruct-2410                     | Function Calling | Self-hosted 💻 | mistralai/Ministral-8B-Instruct-2410                        |

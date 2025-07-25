@@ -11,6 +11,7 @@ from ..model_handler.api_inference.gemini import GeminiHandler
 from ..model_handler.api_inference.gogoagent import GoGoAgentHandler
 from ..model_handler.api_inference.gorilla import GorillaHandler
 from ..model_handler.api_inference.grok import GrokHandler
+from ..model_handler.api_inference.ling import LingAPIHandler
 from ..model_handler.api_inference.mining import MiningHandler
 from ..model_handler.api_inference.mistral import MistralHandler
 from ..model_handler.api_inference.nemotron import NemotronHandler
@@ -2024,6 +2025,18 @@ third_party_inference_model_map = {
         model_handler=NovitaHandler,
         input_price=0.18,
         output_price=0.2,
+        is_fc_model=False,
+        underscore_to_dot=False,
+    ),
+    "Ling/ling-lite-v1.5": ModelConfig(
+        model_name="Ling/ling-lite-v1.5",
+        display_name="Ling-lite-v1.5",
+        url="https://zxb.alipay.com/llm/landing",
+        org="Ant Group",
+        license="Commercial",
+        model_handler=LingAPIHandler,
+        input_price=None,
+        output_price=None,
         is_fc_model=False,
         underscore_to_dot=False,
     ),

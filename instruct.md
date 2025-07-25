@@ -25,7 +25,7 @@ bfcl/
 
 ### 1.1 PRの特定
 - GitHub URLからPR番号を取得
-- https://github.com/ShishirPatil/gorilla/pull/1032/files
+- https://github.com/ShishirPatil/gorilla/pull/1056/files
 
 
 ### 1.2 変更内容の確認
@@ -37,67 +37,37 @@ curl -s "https://api.github.com/repos/ShishirPatil/gorilla/pulls/PR番号/files"
 - 📝 **既存修正**: import文、設定追加など
 - 🗑️ **削除**: 廃止ファイル、重複コードなど
 
-## 🛠️ STEP 2: ハンドラーの追加などの対応
+## 🛠️ STEP 2: 変更の追加などの対応
 ### 注意点
 - 元のパス: `from bfcl_eval.model_handler...`
 - 現在のパス: `from ..model_handler...`
 - **注意**: 相対importに変更すること。localの中のファイルを参考にして
 
-## 🗂️ STEP 4: ファイルの整理
-
-### 4.1 重複ファイルの削除
-```bash
-# 古いファイルの確認
-ls -la bfcl/model_handler/api_inference/ | grep 関連名
-
-# 削除（慎重に！）
-rm bfcl/model_handler/api_inference/old_file.py
-```
-
-### 4.2 重複import文の削除
+## 🗂️ STEP 3: ファイルの整理
+- 重複ファイルの削除などを行なってください
+- 重複import文の削除
 - 古いファイルからのimportを削除
 - 新しいファイルからのimportが正しく設定されているか確認
 
-## ✅ STEP 5: 検証
-
-### 5.1 構文チェック
+## ✅ STEP 4: 検証
+- 構文チェック
 ```bash
 python3 -m py_compile bfcl/model_handler/api_inference/新しいファイル.py　
 python3 -m py_compile bfcl/constants/model_config.py
 python3 -m py_compile bfcl/constants/supported_models.py
 ```
 
-
-### 5.2 インポートテスト（依存関係が解決されている場合）
-```python
-from bfcl.constants.model_config import MODEL_CONFIG_MAPPING
-new_models = [k for k in MODEL_CONFIG_MAPPING.keys() if 'new-model' in k]
-print(f"追加されたモデル: {len(new_models)}個")
-```
+## 
 
 ## 📚 注意事項
-
 ### ⚠️ 重要なポイント
 1. **importパス**: 必ず相対パス（`..`）に変更
 2. **ファイル命名**: 元のファイル名を維持
-3. **設定の一貫性**: FC/Promptの両モードを必ず追加
-4. **ライセンス**: 元の設定を維持
-5. **依存関係**: 不要な外部依存を持ち込まない
 
 ### 🚫 避けるべきこと
 - import文の重複
 - 古いファイルの放置
 - テストを怠る
-
-### 💡 トラブルシューティング
-**問題**: ModuleNotFoundError
-**解決**: importパスが相対パスになっているか確認
-
-**問題**: 重複するクラス名エラー  
-**解決**: 古いファイルからのimportが残っていないか確認
-
-**問題**: モデルが認識されない
-**解決**: supported_models.pyに追加されているか確認
 
 ## 📝 作業ログテンプレート
 
@@ -160,6 +130,29 @@ print(f"追加されたモデル: {len(new_models)}個")
 - 参照: https://github.com/ShishirPatil/gorilla/pull/1060/files
 - 修正内容: `if item_name == ".": return self`を追加
 - 目的: "."ディレクトリ参照時の適切な処理を実現
+
+### [2025-01-22] BFCL更新: PR #1056
+
+#### 変更内容
+- [x] 新規APIハンドラー追加: `ling.py`
+- [x] モデル設定追加: `Ling/ling-lite-v1.5`
+- [x] サポートモデル更新: 1個のモデル追加
+- [x] SUPPORTED_MODELS.md更新: Ling-lite-v1.5エントリ追加
+- [x] env.example更新: LING_API_KEY追加
+- [x] import文追加: model_config.pyにLingAPIHandler
+
+#### 検証結果  
+- [x] 構文チェック: OK (ling.py, model_config.py, supported_models.py)
+- [x] 設定確認: OK (Ling/ling-lite-v1.5: 追加済み, LingAPIHandler: 参照済み)
+- [x] ファイル整理: OK
+
+#### 備考
+- 参照: https://github.com/ShishirPatil/gorilla/pull/1056/files
+- 追加モデル: Ling-lite-v1.5 (Prompt)
+- 特徴: Ant Group提供のLingモデル、プロンプトベース推論
+- APIベース: https://bailingchat.alipay.com 経由での推論
+- 継承関係: OpenAIHandler → LingAPIHandler
+- 環境変数: LING_API_KEY (env.exampleに追加済み)
 
 ### [2025-01-22] BFCL更新: PR #1032
 
