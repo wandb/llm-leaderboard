@@ -198,3 +198,95 @@ class QwenAPIHandler(OpenAICompletionsHandler):
             del response_data["reasoning_content"]
 
         return response_data 
+
+
+class QwenAgentThinkHandler(QwenAPIHandler):
+    """
+    Qwen Agent handler with thinking enabled.
+    """
+
+    def __init__(self, model_name, temperature) -> None:
+        super().__init__(model_name, temperature)
+
+    @override
+    def _query_FC(self, inference_data: dict):
+        message: list[dict] = inference_data["message"]
+        tools = inference_data["tools"]
+        inference_data["inference_input_log"] = {"message": repr(message), "tools": tools}
+
+        return self.generate_with_backoff(
+            messages=inference_data["message"],
+            model=self.model_name.replace("-FC", ""),
+            tools=tools,
+            parallel_tool_calls=True,
+            extra_body={
+                "enable_thinking": True
+            },
+            stream=True,
+            stream_options={
+                "include_usage": True
+            },
+        )
+
+    @override
+    def _query_prompting(self, inference_data: dict):
+        message: list[dict] = inference_data["message"]
+        inference_data["inference_input_log"] = {"message": repr(message)}
+
+        return self.generate_with_backoff(
+            messages=inference_data["message"],
+            model=self.model_name,
+            extra_body={
+                "enable_thinking": True
+            },
+            stream=True,
+            stream_options={
+                "include_usage": True
+            },
+        )
+
+
+class QwenAgentNoThinkHandler(QwenAPIHandler):
+    """
+    Qwen Agent handler with thinking disabled.
+    """
+
+    def __init__(self, model_name, temperature) -> None:
+        super().__init__(model_name, temperature)
+
+    @override
+    def _query_FC(self, inference_data: dict):
+        message: list[dict] = inference_data["message"]
+        tools = inference_data["tools"]
+        inference_data["inference_input_log"] = {"message": repr(message), "tools": tools}
+
+        return self.generate_with_backoff(
+            messages=inference_data["message"],
+            model=self.model_name.replace("-FC", ""),
+            tools=tools,
+            parallel_tool_calls=True,
+            extra_body={
+                "enable_thinking": False
+            },
+            stream=True,
+            stream_options={
+                "include_usage": True
+            },
+        )
+
+    @override
+    def _query_prompting(self, inference_data: dict):
+        message: list[dict] = inference_data["message"]
+        inference_data["inference_input_log"] = {"message": repr(message)}
+
+        return self.generate_with_backoff(
+            messages=inference_data["message"],
+            model=self.model_name,
+            extra_body={
+                "enable_thinking": False
+            },
+            stream=True,
+            stream_options={
+                "include_usage": True
+            },
+        ) 
