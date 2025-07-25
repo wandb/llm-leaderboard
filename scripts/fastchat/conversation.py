@@ -628,15 +628,7 @@ register_conv_template(
     )
 )
 
-# Cohere default template
-register_conv_template(
-    Conversation(
-        name="cohere",
-        roles=("USER", "CHATBOT"),
-        sep_style=SeparatorStyle.ADD_COLON_SINGLE,
-        sep="\n\n",
-    )
-)
+
 
 # Bard default template
 # Reference: https://github.com/google/generative-ai-python/blob/9c99bcb474a991a97a2e7d62fcdb52db7ce40729/google/generativeai/discuss.py#L150

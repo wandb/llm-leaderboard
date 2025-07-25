@@ -708,18 +708,6 @@ class ClaudeAdapter(BaseModelAdapter):
         return get_conv_template("claude")
 
 
-class CohereAdapter(BaseModelAdapter):
-    """The model adapter for Cohere"""
-
-    def match(self, model_path: str):
-        config = WandbConfigSingleton.get_instance().config
-        return config.api == "cohere"
-
-    def load_model(self, model_path: str, from_pretrained_kwargs: dict):
-        raise NotImplementedError()
-
-    def get_default_conv_template(self, model_path: str) -> Conversation:
-        return get_conv_template("cohere")
 
 
 class BardAdapter(BaseModelAdapter):
@@ -811,7 +799,7 @@ register_model_adapter(PaLM2Adapter)
 register_model_adapter(GeminiAdapter)
 register_model_adapter(ChatGPTAdapter)
 register_model_adapter(AzureOpenAIAdapter)
-register_model_adapter(CohereAdapter)
+
 register_model_adapter(BedrockAdapter)
 register_model_adapter(MistralAPIAdapter)
 register_model_adapter(ClaudeAdapter)

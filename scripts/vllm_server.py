@@ -150,7 +150,7 @@ def start_vllm_server():
     if model_artifact_path is not None:
         artifact = run.use_artifact(model_artifact_path, type='model')
         artifact = Path(artifact.download())
-        cfg.model.update({"local_path": artifact / artifact.name.split(":")[0]})
+        cfg.model.update({"local_path": artifact})
 
     def run_vllm_server():
         tokenizer_config = get_tokenizer_config()
@@ -164,6 +164,10 @@ def start_vllm_server():
             chat_template_path = temp_file.name
             model_id = cfg.model.pretrained_model_name_or_path
             model_path = cfg.model.get("local_path", model_id)
+            
+            # If using wandb artifacts and model_id is None, use model_path as model_id
+            if model_id is None and model_path is not None:
+                model_id = str(model_path)
 
             command = [
                 "python3", "-m", "vllm.entrypoints.openai.api_server",

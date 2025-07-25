@@ -1,0 +1,16 @@
+wandb:
+  run_name: "Distilled-qwen2.5-0.5b-instruct" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
+api: vllm
+num_gpus: 1
+batch_size: 256 # vllmは256, apiは32を推奨
+
+model:
+  artifacts_path: 'recruit-default/mode-kd/model-mode-kd-cluster1-qwen2.5-0.5b-lambda00-seqkd_false-epoch10:v1'
+  pretrained_model_name_or_path:   #if you use openai api, put the name of model
+  chat_template: "recruit/distilled-qwen2.5-0.5b-instruct"
+  size_category: "1B≤"
+  size: 500000000
+  release_date: "7/25/2025"
