@@ -19,7 +19,7 @@ run:
   swebench: true
   bfcl: true
   hallulens: true
-  arc_agi_2: true
+  arc_agi: true
   m_ifeval: true
   aggregate: true
 
@@ -163,8 +163,9 @@ hle:
     parallel: 32
     params: {} # Currently using OpenAI's default
 
-arc_agi_2:
-  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval_50:production"
+arc_agi:
+  arc_agi_1_artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-1_public-eval_50:production"
+  arc_agi_2_artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval_50:production"
   max_output_tokens: 4096
   num_attempts: 2
 

@@ -1,9 +1,10 @@
 import json
+from glob import glob
 from tempfile import TemporaryDirectory
 import wandb
 from argparse import ArgumentParser
 from wandb import Table
-from wandb.apis.public.runs import Run   
+from wandb.apis.public.runs import Run
 import pandas as pd
 import os
 
@@ -40,6 +41,12 @@ parser.add_argument(
     default=None,
 )
 parser.add_argument(
+    "-V",
+    "--arg_agi_version",
+    type=str,
+    choices=["1", "2"],
+)
+parser.add_argument(
     "-s",
     "--seed",
     type=int,
@@ -60,19 +67,23 @@ parser.add_argument(
 args = parser.parse_args()
 
 with wandb.init(entity=args.entity, project=args.project, job_type="upload_data") as run:
-    dataset_artifact = wandb.Artifact(name=f"arc-agi-2_public-eval_{args.num_samples}",
+    if args.sampling_reference_run is not None:
+        dataset_name = f"arc-agi-{args.arg_agi_version}_public-eval_{args.num_samples}"
+    else:
+        dataset_name = f"arc-agi-{args.arg_agi_version}_public-eval"
+    dataset_artifact = wandb.Artifact(name=dataset_name,
                                     type="dataset",
                                     metadata={"version":args.dataset_version},
                                     description="This dataset is based on version {}".format(args.dataset_version))
 
     # load tasks
-    with open(os.path.join(args.file_path, "evaluation.txt"), 'r') as f:
-        task_ids = [line.strip() for line in f.readlines()]
+    task_files = glob(os.path.join(args.file_path, "evaluation", "*.json"))
 
     # create inference inputs
     num_elements = {}
-    for task_id in task_ids:
-        with open(os.path.join(args.file_path, "evaluation", f'{task_id}.json'), 'r') as f:
+    for task_file in task_files:
+        task_id = os.path.basename(task_file).split('.')[0]
+        with open(task_file, 'r') as f:
             task = json.load(f)
         num_element = 0
         for train_example in task['train']:
@@ -83,11 +94,11 @@ with wandb.init(entity=args.entity, project=args.project, job_type="upload_data"
     if args.sampling_reference_run is not None:
         artifacts = wandb.Api().run(args.sampling_reference_run).logged_artifacts()
         for artifact in artifacts:
-            if '-arc_agi_2_output_table:' in artifact.name:
-                artifact_filepath = artifact.get_entry("arc_agi_2_output_table.table.json").download()
+            if f'-arc_agi_{args.arg_agi_version}_output_table:' in artifact.name:
+                artifact_filepath = artifact.get_entry(f"arc_agi_{args.arg_agi_version}_output_table.table.json").download()
                 break
         else:
-            raise ValueError(f"No arc_agi_2_output_table artifact found in {args.sampling_reference_run}")
+            raise ValueError(f"No arc_agi_{args.arg_agi_version}_output_table artifact found in {args.sampling_reference_run}")
 
         with open(artifact_filepath) as f:
             df = Table.from_json(json.load(f), source_artifact=artifact)
@@ -102,7 +113,7 @@ with wandb.init(entity=args.entity, project=args.project, job_type="upload_data"
         correct_df = df[df.task_id.isin((score_df.correct > 0).index)] # task単位で正解があるものを抽出
         correct_df = correct_df[correct_df.correct == True].drop_duplicates(subset=['task_id', 'test_example_id']) # attemptで重複正解しているものを除外
         correct_df = correct_df.sample(frac=1, random_state=args.seed).drop_duplicates(subset=['task_id']) # 同じtaskに複数example正解しているものを除外
-        incorrect_df = df[df.task_id.isin((score_df.correct == 0).index)].drop_duplicates(subset=['task_id', 'test_example_id'])
+        incorrect_df = df[~df.task_id.isin(correct_df.task_id)].drop_duplicates(subset=['task_id', 'test_example_id'])
         incorrect_df = incorrect_df.sample(frac=1, random_state=args.seed).drop_duplicates(subset=['task_id'])
         # トータルスコアと同じになるようにサンプリングする
         # オリジナルのデータはTask単位で平均後に全Taskの平均を取るので、Taskごとのスコアの重みが異なる
@@ -112,10 +123,9 @@ with wandb.init(entity=args.entity, project=args.project, job_type="upload_data"
         correct_df = correct_df.sample(n=num_correct, random_state=args.seed)
         incorrect_df = incorrect_df.sample(n=num_incorrect, random_state=args.seed)
         df = pd.concat([correct_df, incorrect_df])
+        assert len(df) == args.num_samples
 
         with TemporaryDirectory() as tmp_dir:
-            with open(os.path.join(tmp_dir, "evaluation.txt"), "w") as id_file:
-                id_file.write("\n".join(df.task_id.values.tolist()))
             os.makedirs(os.path.join(tmp_dir, "evaluation"))
             for task_id, test_example_id in zip(df.task_id.values, df.test_example_id.values):
                 with open(os.path.join(args.file_path, "evaluation", f"{task_id}.json"), "r") as task_org_file:
@@ -124,9 +134,7 @@ with wandb.init(entity=args.entity, project=args.project, job_type="upload_data"
                 with open(os.path.join(tmp_dir, "evaluation", f"{task_id}.json"), "w") as task_write_file:
                     json.dump(task_def, task_write_file, indent=2)
             dataset_artifact.add_dir(tmp_dir)
-
     else:
         # 全件アップロード
-        dataset_artifact.add_file(os.path.join(args.file_path, "evaluation.txt"))
         dataset_artifact.add_dir(os.path.join(args.file_path, "evaluation"), name="evaluation")
     run.log_artifact(dataset_artifact)

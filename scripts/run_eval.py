@@ -23,7 +23,7 @@ from evaluator import (
     m_ifeval,
     aggregate,
     swebench,
-    arc_agi_2,
+    arc_agi,
 )
 from utils import paginate_choices
 
@@ -181,9 +181,9 @@ if cfg.run.bfcl:
 if cfg.run.hallulens:
     hallulens.evaluate()
 
-# ARC-AGI-2
-if cfg.run.arc_agi_2:
-    arc_agi_2.evaluate()
+# ARC-AGI
+if cfg.run.arc_agi:
+    arc_agi.evaluate()
 
 # M-IFEval
 if cfg.run.m_ifeval:

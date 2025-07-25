@@ -21,7 +21,7 @@ Our evaluation framework incorporates a diverse set of metrics to provide a holi
 | ^ | Code Generation | SWE-bench (full) <br> BFCL (Code Generation) <br> HumanEval-ja (jaster) | | |
 | ^ | Tool Usage | BFCL (Tool Usage) | | |
 | ^ | Instruction Following | M-IFEval | | |
-| ^ | Logical Reasoning | ARC-AGI-2 | | |
+| ^ | Logical Reasoning | ARC-AGI | | |
 | Alignment | Controllability | jaster* (0shot, 2shot)<br> | | |
 | ^ | Ethics/Moral | JCommonsenseMorality*(2shot) | | |
 | ^ | Toxicity || LINE Yahoo Reliability Evaluation Benchmark | This dataset is not publicly available due to its sensitive content.| <TBU> |
@@ -203,8 +203,9 @@ Below, you will find a detailed description of the variables utilized in the `ba
     - `artifact_path`: URL of the WandB Artifact for the HLE-JA dataset.
     - `judge_model`: Model used for judging the generated responses.
 
-- **arc_agi_2:** Settings for the ARC-AGI-2 dataset.
-    - `artifacts_path`: URL of the WandB Artifact for the ARC-AGI-2 dataset.
+- **arc_agi:** Settings for the ARC-AGI dataset.
+    - `arc_agi_1_artifacts_path`: URL of the WandB Artifact for the ARC-AGI-1 dataset.
+    - `arc_agi_2_artifacts_path`: URL of the WandB Artifact for the ARC-AGI-2 dataset.
 
 - **m_ifeval:** Settings for the M-IFEval dataset.
     - `artifacts_path`: URL of the WandB Artifact for the M-IFEval dataset.
