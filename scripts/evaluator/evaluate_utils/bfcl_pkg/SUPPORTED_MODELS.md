@@ -52,8 +52,6 @@ For model names containing `{...}`, multiple versions are available. For example
 | Amazon-Nova-Pro-v1:0                           | Function Calling | AWS            | nova-pro-v1.0                                               |
 | Bielik-11B-v2.3-Instruct                       | Prompt           | Self-hosted 💻 | speakleash/Bielik-11B-v2.3-Instruct                         |
 | BitAgent-8B                                    | Prompt           | Self-hosted 💻 | BitAgent/BitAgent-8B                                        |
-| Claude-3-Opus-20240229                         | Function Calling | Anthropic      | claude-3-opus-20240229-FC                                   |
-| Claude-3-Opus-20240229                         | Prompt           | Anthropic      | claude-3-opus-20240229                                      |
 | claude-3.5-haiku-20241022                      | Function Calling | Anthropic      | claude-3-5-haiku-20241022-FC                                |
 | claude-3.5-haiku-20241022                      | Prompt           | Anthropic      | claude-3-5-haiku-20241022                                   |
 | Claude-3.5-Sonnet-20241022                     | Function Calling | Anthropic      | claude-3-5-sonnet-20241022-FC                               |
