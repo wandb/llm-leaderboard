@@ -8,7 +8,7 @@ class ModelStyle(Enum):
     OpenAI_Responses = "gpt_responses"
     Anthropic = "claude"
     Mistral = "mistral"
-    Google = "google"
+    GOOGLE = "google"
     AMAZON = "amazon"
     FIREWORK_AI = "firework_ai"
     NEXUS = "nexus"
