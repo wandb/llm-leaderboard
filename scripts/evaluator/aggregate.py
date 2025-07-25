@@ -25,7 +25,7 @@ def update_flag(cfg, blend_cfg):
     mtbench_flag = jbbq_flag  = toxicity_flag = jtruthfulqa_flag = jaster_flag = GLP_flag = ALT_flag = False
     
     # 新しいベンチマークのフラグ
-    arc_agi_2_flag = bfcl_flag = hle_flag = jhumaneval_flag = hallulens_flag = False
+    arc_agi_flag = bfcl_flag = hle_flag = jhumaneval_flag = hallulens_flag = False
     jmmlu_pro_flag = jamc_qa_flag = m_ifeval_flag = False
 
     if hasattr(cfg, 'run'):
@@ -35,7 +35,7 @@ def update_flag(cfg, blend_cfg):
         jtruthfulqa_flag = cfg.run.jtruthfulqa
         jaster_flag = cfg.run.jaster
         swebench_flag = cfg.run.get('swebench', False)
-        arc_agi_2_flag = cfg.run.get('arc_agi_2', False)
+        arc_agi_flag = cfg.run.get('arc_agi', False)
         bfcl_flag = cfg.run.get('bfcl', False)
         hle_flag = cfg.run.get('hle', False)
         hallulens_flag = cfg.run.get('hallulens', False)
@@ -58,8 +58,8 @@ def update_flag(cfg, blend_cfg):
                     jaster_flag = True
                 elif "swebench" in dataset:
                     swebench_flag = True
-                elif "arc_agi_2" in dataset:
-                    arc_agi_2_flag = True
+                elif "arc_agi" in dataset:
+                    arc_agi_flag = True
                 elif "bfcl" in dataset:
                     bfcl_flag = True
                 elif "hle" in dataset:
@@ -76,7 +76,7 @@ def update_flag(cfg, blend_cfg):
     
     # 新しいフラグの追加
     additional_flags = {
-        'arc_agi_2': arc_agi_2_flag,
+        'arc_agi': arc_agi_flag,
         'bfcl': bfcl_flag,
         'hle': hle_flag,
         'jhumaneval': jaster_flag,  # jhuman_evalはjasterの一部
@@ -164,7 +164,7 @@ def create_subcategory_table(run, cfg, category, data_dict, table_name=None):
 
 
 def calculate_glp_scores(cfg, leaderboard_dict, jaster_0shot, jaster_fewshots, mtbench, 
-                        additional_flags, arc_agi_2_result, hle_result, swebench_flag, 
+                        additional_flags, arc_agi_result, hle_result, swebench_flag, 
                         swebench_result, jhumaneval_result, bfcl_result, run):
     """
     汎用的言語性能（GLP）のスコアを階層的に計算
@@ -176,7 +176,7 @@ def calculate_glp_scores(cfg, leaderboard_dict, jaster_0shot, jaster_fewshots, m
        │   ├── 翻訳
        │   └── 情報検索
        ├── 推論能力
-       │   ├── 抽象的推論（ARC-AGI-2）
+       │   ├── 抽象的推論（ARC-AGI）
        │   ├── 論理的推論
        │   └── 数学的推論
        ├── 知識・質問応答
@@ -228,11 +228,12 @@ def calculate_glp_scores(cfg, leaderboard_dict, jaster_0shot, jaster_fewshots, m
     
     # --- 推論能力 ---
     # 抽象的推論
-    if additional_flags.get('arc_agi_2', False) and arc_agi_2_result is not None:
-        leaderboard_dict["GLP_抽象的推論"] = arc_agi_2_result["AVG"][0]
+    if additional_flags.get('arc_agi', False) and arc_agi_result is not None:
+        leaderboard_dict["GLP_抽象的推論"] = arc_agi_result["AVG"][0]
         create_subcategory_table(run, cfg, "abstract_reasoning", {
             "AVG": leaderboard_dict["GLP_抽象的推論"],
-            "arc_agi_2_score": arc_agi_2_result["AVG"][0],
+            "arc-agi-1": arc_agi_result["arc-agi-1"][0],
+            "arc-agi-2": arc_agi_result["arc-agi-2"][0],
         })
     else:
         leaderboard_dict["GLP_抽象的推論"] = float('nan')
@@ -581,7 +582,7 @@ def evaluate():
         jtruthfulqa = read_wandb_table(table_name=f"jtruthfulqa_leaderboard_table", run=run)
 
     # 新しいベンチマークのデータ
-    arc_agi_2_result = load_benchmark_results(run, 'arc_agi_2', "arc_agi_2_leaderboard_table", additional_flags)
+    arc_agi_result = load_benchmark_results(run, 'arc_agi', "arc_agi_leaderboard_table", additional_flags)
     bfcl_result = load_benchmark_results(run, 'bfcl', "bfcl_leaderboard_table", additional_flags)
     # HLEは dev/test で分かれているため、優先順位に従って読み込む
     hle_result = None
@@ -612,7 +613,7 @@ def evaluate():
     if GLP_flag:
         calculate_glp_scores(
             cfg, leaderboard_dict, jaster_0shot, jaster_fewshots, mtbench,
-            additional_flags, arc_agi_2_result, hle_result, swebench_flag,
+            additional_flags, arc_agi_result, hle_result, swebench_flag,
             swebench_result, jhumaneval_result, bfcl_result, run
         )
     

@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
 from typing import List, Optional
-import re
+from glob import glob
+import os
 
 import pandas as pd
 from tqdm import tqdm
@@ -226,91 +227,100 @@ def evaluate():
     llm = instance.llm
 
     # download dataset
-    dataset_name = "arc_agi_2"
-    artifact = run.use_artifact(cfg[dataset_name].artifacts_path, type="dataset")
-    artifact_dir = artifact.download()
-    dataset_dir = Path(artifact_dir)
-    if not dataset_dir.exists():
-        print(f"skip {dataset_name} because it is not found in {artifact_dir}")
-        raise FileNotFoundError(f"dataset_dir not found: {dataset_dir}")
+    dataset_name = "arc_agi"
+    v1_artifact = run.use_artifact(cfg[dataset_name].arc_agi_1_artifacts_path, type="dataset")
+    v1_artifact_dir = v1_artifact.download()
+    v2_artifact = run.use_artifact(cfg[dataset_name].arc_agi_2_artifacts_path, type="dataset")
+    v2_artifact_dir = v2_artifact.download()
 
-    # load tasks
-    with open(dataset_dir / 'evaluation.txt', 'r') as f:
-        task_ids = [line.strip() for line in f.readlines()]
-    if cfg.testmode:
-        task_ids = task_ids[:10]
+    total_scores = []
+    for arc_version, artifact_dir in enumerate([v1_artifact_dir, v2_artifact_dir], start=1):
+        dataset_dir = Path(artifact_dir)
+        if not dataset_dir.exists():
+            print(f"skip {dataset_name} because it is not found in {artifact_dir}")
+            raise FileNotFoundError(f"dataset_dir not found: {dataset_dir}")
 
-    # create inference inputs
-    tasks = []
-    all_inputs = []
-    for task_id in task_ids:
-        with open(dataset_dir / 'evaluation' / f'{task_id}.json', 'r') as f:
-            task = {'id': task_id, **json.load(f)}
-            for test_example_id, test_example in enumerate(task['test']):
-                prompt = convert_task_pairs_to_prompt(task['train'], test_example)
-                for num_attempts in range(cfg[dataset_name].num_attempts):
-                    all_inputs.append((prompt, {"max_tokens": cfg[dataset_name].max_output_tokens}))
-                    tasks.append({
-                        'id': task_id,
-                        'test_example_id': test_example_id,
-                        'num_attempts': num_attempts,
-                        'input': test_example['input'],
-                        'output': test_example['output'],
-                        'prompt': prompt,
-                    })
-                if cfg.testmode: # test modeの場合1task1問のみ
-                    break
+        # load tasks
+        task_files = glob(os.path.join(dataset_dir, "evaluation", "*.json"))
+        if cfg.testmode:
+            task_files = task_files[:5]
 
-    # Run inference in parallel
-    llm_ap = LLMAsyncProcessor(llm=llm, inputs=all_inputs)
-    results = llm_ap.get_results()
+        # create inference inputs
+        tasks = []
+        all_inputs = []
+        for task_file in task_files:
+            task_id = os.path.basename(task_file).split('.')[0]
+            with open(task_file, 'r') as f:
+                task = {'id': task_id, **json.load(f)}
+                for test_example_id, test_example in enumerate(task['test']):
+                    prompt = convert_task_pairs_to_prompt(task['train'], test_example)
+                    for num_attempts in range(cfg[dataset_name].num_attempts):
+                        all_inputs.append((prompt, {"max_tokens": cfg[dataset_name].max_output_tokens}))
+                        tasks.append({
+                            'id': task_id,
+                            'test_example_id': test_example_id,
+                            'num_attempts': num_attempts,
+                            'input': test_example['input'],
+                            'output': test_example['output'],
+                            'prompt': prompt,
+                        })
+                    if cfg.testmode: # test modeの場合1task1問のみ
+                        break
 
-    # Evaluation
-    evaluation_results = []
-    for response, task in tqdm(zip(results, tasks), total=len(results), desc="Evaluating ARC-AGI-2"):
-        raw_output = response.content
-        y_pred = backscan_json_parser(raw_output)
+        # Run inference in parallel
+        llm_ap = LLMAsyncProcessor(llm=llm, inputs=all_inputs)
+        results = llm_ap.get_results()
 
-        if y_pred is not None:
-            expected_arr = np.array(task['output'], np.int8)
-            try:
-                y_pred_arr = np.array(y_pred, np.int8)
-                # ARC-AGI-2の有効な値は0-9のみ
-                if np.any(y_pred_arr < 0) or np.any(y_pred_arr > 9):
+        # Evaluation
+        evaluation_results = []
+        for response, task in tqdm(zip(results, tasks), total=len(results), desc=f"Evaluating ARC-AGI-{arc_version}"):
+            raw_output = response.content
+            y_pred = backscan_json_parser(raw_output)
+
+            if y_pred is not None:
+                expected_arr = np.array(task['output'], np.int8)
+                try:
+                    y_pred_arr = np.array(y_pred, np.int8)
+                    # ARC-AGI-2の有効な値は0-9のみ
+                    if np.any(y_pred_arr < 0) or np.any(y_pred_arr > 9):
+                        correct = False
+                    else:
+                        correct = expected_arr.shape == y_pred_arr.shape and np.all(y_pred_arr == expected_arr) # 完全一致の場合のみ正解
+                except ValueError:
                     correct = False
-                else:
-                    correct = expected_arr.shape == y_pred_arr.shape and np.all(y_pred_arr == expected_arr) # 完全一致の場合のみ正解
-            except ValueError:
+            else:
                 correct = False
-        else:
-            correct = False
 
-        evaluation_results.append({
-            "model_name": cfg.model.pretrained_model_name_or_path,
-            "task": "arc-agi-2",
-            "task_id": task['id'],
-            "test_example_id": task['test_example_id'],
-            "num_attempts": task['num_attempts'],
-            "prompt": task['prompt'][0]['content'],
-            "raw_output": raw_output,
-            "input": pretty_print_tile(task['input']),
-            "reasoning_content": response.reasoning_content,
-            "output": pretty_print_tile(y_pred) if y_pred is not None else None,
-            "expected_output": pretty_print_tile(task['output']),
-            "correct": correct,
-            "visualize": tile_to_img(task['output'], y_pred),
-        })
+            evaluation_results.append({
+                "model_name": cfg.model.pretrained_model_name_or_path,
+                "task": f"arc-agi-{arc_version}",
+                "task_id": task['id'],
+                "test_example_id": task['test_example_id'],
+                "num_attempts": task['num_attempts'],
+                "prompt": task['prompt'][0]['content'],
+                "raw_output": raw_output,
+                "input": pretty_print_tile(task['input']),
+                "reasoning_content": response.reasoning_content,
+                "output": pretty_print_tile(y_pred) if y_pred is not None else None,
+                "expected_output": pretty_print_tile(task['output']),
+                "correct": correct,
+                "visualize": tile_to_img(task['output'], y_pred),
+            })
 
-    output_df = pd.DataFrame(evaluation_results)
-    score_df = output_df.groupby(['task_id', 'test_example_id']).agg({'correct': 'max'}) # num_attemptsの中で最大値を取る
-    score_df = score_df.groupby('task_id').agg({'correct': 'mean'}) # task id単位で平均
-    total_score = score_df['correct'].mean()
-    leaderboard_table = pd.DataFrame([{"model_name": cfg.model.pretrained_model_name_or_path, "AVG": total_score}])
+        output_df = pd.DataFrame(evaluation_results)
+        score_df = output_df.groupby(['task_id', 'test_example_id']).agg({'correct': 'max'}) # num_attemptsの中で最大値を取る
+        score_df = score_df.groupby('task_id').agg({'correct': 'mean'}) # task id単位で平均
+        total_score = score_df['correct'].mean()
 
-    run.log(
-        {
-            f"{dataset_name}_output_table": output_df,
-            f"{dataset_name}_leaderboard_table": leaderboard_table,
-        }
-    )
+        run.log({f"{dataset_name}_{arc_version}_output_table": output_df})
+        total_scores.append(total_score)
+
+    leaderboard_table = pd.DataFrame([{
+        "model_name": cfg.model.pretrained_model_name_or_path,
+        "arc-agi-1": total_scores[0],
+        "arc-agi-2": total_scores[1],
+        "AVG": (total_scores[0] + total_scores[1]) / 2,
+    }])
+
+    run.log({f"{dataset_name}_leaderboard_table": leaderboard_table})
 

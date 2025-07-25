@@ -10,7 +10,7 @@ from . import bfcl
 from . import swebench
 from . import swebench_official
 from . import hallulens
-from . import arc_agi_2
+from . import arc_agi
 from . import hle
 from . import m_ifeval
 
@@ -26,7 +26,7 @@ __all__ = [
     'swebench',
     'swebench_official',
     'hallulens',
-    'arc_agi_2',
+    'arc_agi',
     'hle',
     'm_ifeval',
 ]
