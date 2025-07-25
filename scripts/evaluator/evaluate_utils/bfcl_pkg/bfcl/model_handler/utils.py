@@ -70,9 +70,10 @@ def convert_to_tool(functions, mapping, model_style):
     oai_tool = []
     for item in functions:
         if "." in item["name"] and model_style in [
-            ModelStyle.OpenAI,
+            ModelStyle.OpenAI_Completions,
+            ModelStyle.OpenAI_Responses,
             ModelStyle.Mistral,
-            ModelStyle.Google,
+            ModelStyle.GOOGLE,
             ModelStyle.OSSMODEL,
             ModelStyle.Anthropic,
             ModelStyle.COHERE,
@@ -96,7 +97,7 @@ def convert_to_tool(functions, mapping, model_style):
             del item["parameters"]
 
         if model_style in [
-            ModelStyle.Google,
+            ModelStyle.GOOGLE,
             ModelStyle.WRITER,
         ]:
             # Remove fields that are not supported by Gemini or Palmyra.
@@ -104,7 +105,9 @@ def convert_to_tool(functions, mapping, model_style):
             if "optional" in item["parameters"]:
                 del item["parameters"]["optional"]
             for params in item["parameters"]["properties"].values():
-                # No `default` field in Google or Palmyra's schema.
+                if "description" not in params:
+                    params["description"] = ""
+                # No `default` field in GOOGLE or Palmyra's schema.
                 if "default" in params:
                     params["description"] += f" Default is: {str(params['default'])}."
                     del params["default"]
@@ -112,6 +115,10 @@ def convert_to_tool(functions, mapping, model_style):
                 if "optional" in params:
                     params["description"] += f" Optional: {str(params['optional'])}."
                     del params["optional"]
+                # No `required` field in parameter schema as well.
+                if "required" in params:
+                    params["description"] += f" Required: {str(params['required'])}."
+                    del params["required"]
                 # No `maximum` field.
                 if "maximum" in params:
                     params["description"] += f" Maximum value: {str(params['maximum'])}."
@@ -138,16 +145,20 @@ def convert_to_tool(functions, mapping, model_style):
                 # For Palmyra, `enum` field is not supported.
                 if "enum" in params and (
                     model_style == ModelStyle.WRITER
-                    or (model_style == ModelStyle.Google and params["type"] != "string")
+                    or (model_style == ModelStyle.GOOGLE and params["type"] != "string")
                 ):
                     params["description"] += f" Enum values: {str(params['enum'])}."
                     del params["enum"]
+                # No `format` when type is `string`
+                if "format" in params and params["type"] == "string":
+                    params["description"] += f" Format: {str(params['format'])}."
+                    del params["format"]
 
         # Process the return field
         if "response" in item:
             if model_style in [
                 ModelStyle.Anthropic,
-                ModelStyle.Google,
+                ModelStyle.GOOGLE,
                 ModelStyle.FIREWORK_AI,
                 ModelStyle.WRITER,
                 ModelStyle.AMAZON,
@@ -160,13 +171,20 @@ def convert_to_tool(functions, mapping, model_style):
 
         if model_style in [
             ModelStyle.Anthropic,
-            ModelStyle.Google,
+            ModelStyle.GOOGLE,
             ModelStyle.OSSMODEL,
         ]:
             oai_tool.append(item)
         elif model_style in [
+            ModelStyle.OpenAI_Responses
+        ]:
+            oai_tool.append({"type": "function", 
+                             "name": item["name"], 
+                             "description": item["description"], 
+                             "parameters": item["parameters"]})
+        elif model_style in [
             ModelStyle.COHERE,
-            ModelStyle.OpenAI,
+            ModelStyle.OpenAI_Completions,
             ModelStyle.Mistral,
             ModelStyle.FIREWORK_AI,
             ModelStyle.WRITER,
@@ -220,7 +238,7 @@ def convert_value(value, type_str):
         return value
 
 
-def ast_parse(input_str, language="Python"):
+def ast_parse(input_str: str, language: str="Python") -> list[dict]:
     if language == "Python":
         cleaned_input = input_str.strip("[]'")
         parsed = ast.parse(cleaned_input, mode="eval")
@@ -262,7 +280,7 @@ def resolve_ast_call(elem):
 def resolve_ast_by_type(value):
     if isinstance(value, ast.Constant):
         if value.value is Ellipsis:
-            output = ".."
+            output = "..."
         else:
             output = value.value
     elif isinstance(value, ast.UnaryOp):
@@ -294,7 +312,7 @@ def resolve_ast_by_type(value):
     elif isinstance(value, ast.Lambda):
         output = eval(ast.unparse(value.body[0].value))
     elif isinstance(value, ast.Ellipsis):
-        output = ".."
+        output = "..."
     elif isinstance(value, ast.Subscript):
         try:
             output = ast.unparse(value.body[0].value)
@@ -437,7 +455,7 @@ def construct_tool_use_system_prompt(tools):
         "<tool_name>$TOOL_NAME</tool_name>\n"
         "<parameters>\n"
         "<$PARAMETER_NAME>$PARAMETER_VALUE</$PARAMETER_NAME>\n"
-        "..\n"
+        "...\n"
         "</parameters>\n"
         "</invoke>\n"
         "</function_calls>\n"
@@ -674,7 +692,7 @@ def format_execution_results_prompting(
     return repr(tool_results)
 
 
-def default_decode_ast_prompting(result, language="Python"):
+def default_decode_ast_prompting(result: str, language: str="Python") -> list[dict]:
     result = result.strip("`\n ")
     if not result.startswith("["):
         result = "[" + result
@@ -684,7 +702,7 @@ def default_decode_ast_prompting(result, language="Python"):
     return decoded_output
 
 
-def default_decode_execute_prompting(result):
+def default_decode_execute_prompting(result: str) -> list[str]:
     result = result.strip("`\n ")
     if not result.startswith("["):
         result = "[" + result
@@ -721,7 +739,7 @@ def parse_nested_value(value):
     return repr(value)
 
 
-def decoded_output_to_execution_list(decoded_output):
+def decoded_output_to_execution_list(decoded_output: list[dict]) -> list[str]:
     """
     Convert decoded output to a list of executable function calls.
 
@@ -790,7 +808,7 @@ def retry_with_backoff(
             retry=retry_policy,
             before_sleep=lambda retry_state: print(
                 f"Attempt {retry_state.attempt_number} failed. "
-                f"Sleeping for {retry_state.next_action.sleep:.2f} seconds before retrying.. "
+                f"Sleeping for {retry_state.next_action.sleep:.2f} seconds before retrying... "
                 f"Error: {retry_state.outcome.exception()}"
             ),
             **kwargs,
