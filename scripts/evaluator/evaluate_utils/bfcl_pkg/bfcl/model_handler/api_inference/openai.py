@@ -16,6 +16,7 @@ from ..utils import (
     system_prompt_pre_processing_chat_model,
 )
 from openai import OpenAI, RateLimitError
+from config_singleton import WandbConfigSingleton
 
 
 class OpenAIHandler(BaseHandler):
@@ -23,6 +24,8 @@ class OpenAIHandler(BaseHandler):
         super().__init__(model_name, temperature)
         self.model_style = ModelStyle.OpenAI
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        #instance = WandbConfigSingleton.get_instance()
+        #self.client = instance.llm
 
     def decode_ast(self, result, language="Python"):
         if "FC" in self.model_name or self.is_fc_model:
@@ -31,8 +34,10 @@ class OpenAIHandler(BaseHandler):
                 name = list(invoked_function.keys())[0]
                 params = json.loads(invoked_function[name])
                 decoded_output.append({name: params})
+                print("using FC decode")
             return decoded_output
         else:
+            print("using default decode")
             return default_decode_ast_prompting(result, language)
 
     def decode_execute(self, result):
