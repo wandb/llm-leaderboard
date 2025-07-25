@@ -9,7 +9,7 @@ batch_size: 32 # vllmは256, apiは32を推奨
 
 model:
   pretrained_model_name_or_path: "gpt-4o-2024-11-20" #if you use openai api, put the name of model
-  bfcl_model_id: "OpenAI-FC"
+  bfcl_model_id: "gpt-4o-2024-11-20-FC"
   size_category: "api"
   size: null
   release_date: "11/20/2024"

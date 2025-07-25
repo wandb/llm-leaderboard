@@ -58,7 +58,10 @@ def get_args():
     return args
 
 def build_handler(model_id, model_name, temperature):
-    handler = MODEL_CONFIG_MAPPING[model_id].model_handler(model_name, temperature)
+    config = MODEL_CONFIG_MAPPING[model_id]
+    handler = config.model_handler(model_name, temperature)
+    # Propagate config flags to the handler instance
+    handler.is_fc_model = config.is_fc_model
     return handler
 
 def get_involved_test_entries(test_category_args, run_ids, samples_per_category=None,artifacts_path=None):
