@@ -2,7 +2,7 @@ import json
 import os
 import time
 
-from ..api_inference.openai import OpenAIHandler
+from ..api_inference.openai_completion import OpenAICompletionsHandler
 from ..model_style import ModelStyle
 from ..utils import (
     combine_consecutive_user_prompts,
@@ -14,10 +14,10 @@ from openai import OpenAI, RateLimitError
 from overrides import override
 
 
-class LingAPIHandler(OpenAIHandler):
+class LingAPIHandler(OpenAICompletionsHandler):
     def __init__(self, model_name, temperature) -> None:
         super().__init__(model_name, temperature)
-        self.model_style = ModelStyle.OpenAI
+        self.model_style = ModelStyle.OpenAI_Completions
         api_url="https://bailingchat.alipay.com"
         self.client = OpenAI(
             base_url=api_url,
