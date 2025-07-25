@@ -1,6 +1,9 @@
-BFCLの結果を確認した。
+BFCLのupdateを反映したい。
 
-# multi-turnが以下で
-- microsoft/phi-4
-- meta-llama/Llama-3.3-70B-Instruct
-- gpt-4.1-2025-04-14
+# やりたいこと
+/home/olachinkeigpu/Project/llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg
+に対して、
+https://github.com/ShishirPatil/gorilla/pull/1061/files
+の中のfileの内容を反映させたい。
+
+# fileのimport pathは少し違うが、それは無視して
