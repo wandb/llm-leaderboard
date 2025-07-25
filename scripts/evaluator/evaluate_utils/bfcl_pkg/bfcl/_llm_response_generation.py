@@ -1,6 +1,7 @@
 import argparse
 import json
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 
@@ -200,6 +201,7 @@ def multi_threaded_inference(handler, test_case, include_input_log, exclude_stat
                     "❗️❗️ Error occurred during inference. Maximum reties reached for rate limit or other error. Continuing to next test case."
                 )
                 print(f"❗️❗️ Test case ID: {test_case['id']}, Error: {str(e)}")
+                traceback.print_exc()
                 print("-" * 100)
 
                 return {
