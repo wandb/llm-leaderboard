@@ -232,33 +232,21 @@ def relevance_file_runner(
         temp["model_name"] = model_name
         temp["test_category"] = test_category
         temp["valid"] = success
-        temp["success"] = 1 if success else 0  # Explicit success field (1=success, 0=failure)
+        if "irrelevance" in test_category:
+            temp["error"] = [
+                f"Valid syntax. Successfully decode AST when it should not."
+            ]
+            temp["error_type"] = "irrelevance_error:decoder_success"
+        else:
+            temp["error"] = [
+                f"Invalid syntax. Failed to decode AST when it should have. {decode_error}"
+            ]
+            temp["error_type"] = "relevance_error:decoder_failed"
         temp["prompt"] = prompt[i]
         temp["model_result"] = model_result_item
         temp["decoded_result"] = decoded_result
         temp["input_token_count"] = model_result[i].get("input_token_count", 0)
         temp["output_token_count"] = model_result[i].get("output_token_count", 0)
-        
-        if success:
-            correct_count += 1
-            # For successful cases, add success information
-            temp["error"] = None
-            temp["error_type"] = None
-            temp["status"] = "success"
-        else:
-            # For failed cases, add error information
-            if "irrelevance" in test_category:
-                temp["error"] = [
-                    f"Valid syntax. Successfully decode AST when it should not."
-                ]
-                temp["error_type"] = "irrelevance_error:decoder_success"
-            else:
-                temp["error"] = [
-                    f"Invalid syntax. Failed to decode AST when it should have. {decode_error}"
-                ]
-                temp["error_type"] = "relevance_error:decoder_failed"
-            temp["status"] = "failed"
-        
         result.append(temp)
 
     accuracy = correct_count / len(model_result)
@@ -310,53 +298,44 @@ def ast_file_runner(
         prompt_item = prompt[i]["function"]
         possible_answer_item = possible_answer[i]["ground_truth"]
 
-        model_result_item_raw = model_result_item
-        decode_error = None
-        decoder_output_valid = False
-        
         try:
+            model_result_item_raw = model_result_item
             model_result_item = handler.decode_ast(model_result_item, language)
-            decoder_output_valid = is_function_calling_format_output(model_result_item)
         except Exception as e:
-            decode_error = str(e)
-            
-        # Create detailed entry for all cases (decode error, format error, and successful cases)
-        temp = {}
-        temp["id"] = index
-        temp["model_name"] = model_name
-        temp["test_category"] = test_category
-        temp["prompt"] = prompt[i]
-        temp["model_result_raw"] = model_result_item_raw
-        temp["possible_answer"] = possible_answer_item
-        temp["input_token_count"] = model_result[i].get("input_token_count", 0)
-        temp["output_token_count"] = model_result[i].get("output_token_count", 0)
-        
-        if decode_error:
-            # AST decode failed
-            temp["valid"] = False
-            temp["success"] = 0  # Explicit success field (1=success, 0=failure)
-            temp["error"] = [f"Invalid syntax. Failed to decode AST. {decode_error}"]
-            temp["error_type"] = "ast_decoder:decoder_failed"
-            temp["model_result_decoded"] = None
-            temp["status"] = "failed"
-            result.append(temp)
+            result.append(
+                {
+                    "id": index,
+                    "model_name": model_name,
+                    "test_category": test_category,
+                    "valid": False,
+                    "error": [f"Invalid syntax. Failed to decode AST. {str(e)}"],
+                    "error_type": "ast_decoder:decoder_failed",
+                    "prompt": prompt[i],
+                    "model_result_raw": model_result_item_raw,
+                    "possible_answer": possible_answer_item,
+                }
+            )
             continue
-            
+
+        decoder_output_valid = is_function_calling_format_output(model_result_item)
         if not decoder_output_valid:
-            # Wrong output format
-            temp["valid"] = False
-            temp["success"] = 0  # Explicit success field (1=success, 0=failure)
-            temp["error"] = [
-                "Did not output in the specified format. Note: the model_result is wrapped in a string to ensure json serializability."
-            ]
-            temp["error_type"] = "ast_decoder:decoder_wrong_output_format"
-            temp["model_result_decoded"] = str(model_result_item)
-            temp["status"] = "failed"
-            result.append(temp)
+            result.append(
+                {
+                    "id": index,
+                    "model_name": model_name,
+                    "test_category": test_category,
+                    "valid": False,
+                    "error": [
+                        "Did not output in the specified format. Note: the model_result is wrapped in a string to ensure json serializability."
+                    ],
+                    "error_type": "ast_decoder:decoder_wrong_output_format",
+                    "prompt": prompt[i],
+                    "model_result_raw": str(model_result_item_raw),
+                    "model_result_decoded": str(model_result_item),
+                    "possible_answer": possible_answer_item,
+                }
+            )
             continue
-            
-        # If we reach here, decoding was successful, now check the actual result
-        temp["model_result_decoded"] = model_result_item
 
         checker_result = ast_checker(
             prompt_item,
@@ -368,23 +347,21 @@ def ast_file_runner(
             model_name,
         )
 
-        # Update temp with checker result information
-        temp["valid"] = checker_result["valid"]
-        temp["success"] = 1 if checker_result["valid"] else 0  # Explicit success field (1=success, 0=failure)
-        
         if checker_result["valid"]:
             correct_count += 1
-            # For successful cases, add success information
-            temp["error"] = None
-            temp["error_type"] = None
-            temp["status"] = "success"
         else:
-            # For failed cases, add error information
+            temp = {}
+            temp["id"] = index
+            temp["model_name"] = model_name
+            temp["test_category"] = test_category
+            temp["valid"] = checker_result["valid"]
             temp["error"] = checker_result["error"]
             temp["error_type"] = checker_result["error_type"]
-            temp["status"] = "failed"
-        
-        result.append(temp)
+            temp["prompt"] = prompt[i]
+            temp["model_result_raw"] = model_result_item_raw
+            temp["model_result_decoded"] = model_result_item
+            temp["possible_answer"] = possible_answer_item
+            result.append(temp)
 
     accuracy = correct_count / len(model_result)
     result.insert(

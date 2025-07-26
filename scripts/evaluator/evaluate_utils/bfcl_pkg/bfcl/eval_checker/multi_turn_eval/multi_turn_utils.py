@@ -58,19 +58,13 @@ def execute_multi_turn_func_call(
     class_method_name_mapping = {}
     involved_instances = {}
     for class_name in involved_classes:
-        module_file = CLASS_FILE_MAPPING[class_name]
-        module_path = FUNC_SOURCE_DIR / f"{module_file}.py"
-        
-        # Create a spec from the file path
-        spec = importlib.util.spec_from_file_location(module_file, module_path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)  # Fixed incomplete exec_mo
-        
+        module_name = CLASS_FILE_MAPPING[class_name]        
         # TODO: Handler the model name issue from handler more elegantly
         instance_name = (
             f"{model_name.replace('-', '_').replace('.', '_').replace('/', '_')}_{test_entry_id}_{class_name.lower()}_instance"
         )
         if instance_name not in globals():
+            module = importlib.import_module(module_name)
             class_ = getattr(module, class_name)
             class_instance = class_()
             if class_name not in STATELESS_CLASSES:

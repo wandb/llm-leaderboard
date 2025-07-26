@@ -73,9 +73,12 @@ def get_possible_answer_type(possible_answer: list):
 
 
 def convert_func_name(function_name, model_id: str):
-    #model_name_escaped = model_name.replace("_", "/")
+    #model_name_escaped = model_id.replace("_", "/")
+    print(MODEL_CONFIG_MAPPING[model_id])
+    print(function_name)
     if "." in function_name:
         if MODEL_CONFIG_MAPPING[model_id].underscore_to_dot:
+            print("here")
             # OAI does not support "." in the function name so we replace it with "_". ^[a-zA-Z0-9_-]{1,64}$ is the regex for the name.
             # This happens for OpenAI, Mistral, and Google models
             return re.sub(r"\.", "_", function_name)

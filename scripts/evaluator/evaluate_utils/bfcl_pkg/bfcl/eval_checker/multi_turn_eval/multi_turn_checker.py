@@ -260,13 +260,9 @@ def _compare_instances(model_obect, ground_truth_object):
     """
     Checks if the model_object has the same attributes as the ground_truth_object. They are instances of the same class.
     """
-    model_class_name = model_obect.__class__.__name__
-    ground_truth_class_name = ground_truth_object.__class__.__name__
-    
-    # Check if the class names match (instead of strict type equality)
-    # This handles the case where same class is loaded from different module instances
-    if model_class_name != ground_truth_class_name:
-        return False, {"type_mismatch": {"model": model_class_name, "ground_truth": ground_truth_class_name}}
+    assert type(model_obect) == type(
+        ground_truth_object
+    ), "Objects are not of the same type."
 
     # Compare attribute values
     differences = {}

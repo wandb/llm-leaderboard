@@ -1,4 +1,3 @@
-import ast
 import re
 from typing import List, Dict, Union
 from ....constants.type_mappings import JAVA_TYPE_CONVERSION

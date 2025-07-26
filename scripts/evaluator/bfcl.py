@@ -20,12 +20,14 @@ from evaluator.evaluate_utils.bfcl_pkg.bfcl.constants.eval_config import RESULT_
 from evaluator.evaluate_utils.bfcl_pkg.bfcl.utils import extract_test_category, load_file
 from evaluator.evaluate_utils.bfcl_pkg.bfcl.constants.eval_config import PROMPT_PATH, POSSIBLE_ANSWER_PATH
 
+import weave
+weave.init(project_name="llm-leaderboard/nejumi-leaderboard4-dev-bfcl")
 
 def get_default_config() -> Dict[str, Any]:
     """BFCLのデフォルト設定を返す"""
     return {
         "model_name": None,  # モデル名
-        "test_category": "all",  # テストするカテゴリのリスト
+        "test_category": "java",  # テストするカテゴリのリスト
         "temperature": 0.001,  # 生成時の温度パラメータ
         "num_gpus": None,  # 使用するGPUの数 (vllmを使うことになるので、Nejumi Leaderboardでは、これは利用しない。)
         "batch_size": 256, # 使用するGPUの数 (Nejumi Leaderboardでは、これは利用しない。)
@@ -136,8 +138,9 @@ def evaluate():
     # Radar chart Table 
     radar_data = []
     first_row = overall_df.iloc[0]  
-    radar_data.append(['Non-Live Acc', first_row['Non-Live Acc']])
-    radar_data.append(['Live Acc', first_row['Live Acc']])
+    print(first_row)
+    radar_data.append(['Non-Live Ast Acc', first_row['Non-Live AST Acc']])
+    radar_data.append(['Live Ast Acc', first_row['Live AST Acc']])
     radar_data.append(['Multi Turn Acc', first_row['Multi Turn Acc']])
     radar_data.append(['Irrelevance Detection', first_row['Irrelevance Detection']])
     radar_data.append(['Overall Acc', first_row['Overall Acc']]) 

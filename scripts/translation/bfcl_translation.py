@@ -110,8 +110,8 @@ async def process_bfcl_file(input_file, output_file):
 
 async def main():
     # Get all BFCL JSON files from the data directory
-    input_dir = "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v0/bfcl"
-    output_dir = "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v0/bfcl_improved"
+    input_dir = "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v5/bfcl"
+    output_dir = "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v5/bfcl/translated"
     
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
@@ -119,7 +119,10 @@ async def main():
     # Get list of all files to process
     #input_files = glob.glob(os.path.join(input_dir, "BFCL_v3_*.json"))
     input_files = [
-        "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v0/bfcl/BFCL_v3_multi_turn_base.json",
+        "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v5/bfcl/BFCL_v3_multi_turn_base.json",
+        "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v5/bfcl/BFCL_v3_multi_turn_long_context.json",
+        "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v5/bfcl/BFCL_v3_multi_turn_miss_func.json",
+        "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v5/bfcl/BFCL_v3_multi_turn_miss_param.json",
     ]
 
     # Process all JSON files

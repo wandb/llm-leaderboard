@@ -1,4 +1,4 @@
-import ast
+
 import re
 from ....constants.type_mappings import JS_TYPE_CONVERSION
 
