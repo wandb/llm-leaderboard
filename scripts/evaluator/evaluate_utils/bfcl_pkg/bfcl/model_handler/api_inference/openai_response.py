@@ -17,7 +17,6 @@ from ..utils import (
 )
 from openai import OpenAI, RateLimitError
 from openai.types.responses import Response
-import weave
 
 class OpenAIResponsesHandler(BaseHandler):
     def __init__(self, model_name, temperature) -> None:
@@ -54,7 +53,6 @@ class OpenAIResponsesHandler(BaseHandler):
             return default_decode_execute_prompting(result)
 
     @retry_with_backoff(error_type=RateLimitError)
-    @weave.op()
     def generate_with_backoff(self, **kwargs):
         start_time = time.time()
         api_response = self.client.responses.create(**kwargs)
@@ -67,10 +65,6 @@ class OpenAIResponsesHandler(BaseHandler):
     def _query_FC(self, inference_data: dict):
         message: list[dict] = inference_data["message"]
         tools = inference_data["tools"]
-
-        # Debug: tools information
-        print(f"[DEBUG] _query_FC - Number of tools: {len(tools)}")
-        print(f"[DEBUG] _query_FC - Tools content: {tools}")
 
         inference_data["inference_input_log"] = {
             "message": repr(message),
@@ -90,11 +84,6 @@ class OpenAIResponsesHandler(BaseHandler):
 
         if len(tools) > 0:
             kwargs["tools"] = tools
-            print(f"[DEBUG] _query_FC - Tools added to kwargs")
-        else:
-            print(f"[DEBUG] _query_FC - No tools added (empty tools list)")
-
-        print(f"[DEBUG] _query_FC - Final kwargs keys: {list(kwargs.keys())}")
 
         return self.generate_with_backoff(**kwargs)
 
@@ -109,26 +98,14 @@ class OpenAIResponsesHandler(BaseHandler):
         return inference_data
 
     def _compile_tools(self, inference_data: dict, test_entry: dict) -> dict:
-        print(f"[DEBUG] _compile_tools - METHOD CALLED!")
-        
         functions: list = test_entry["function"]
         test_category: str = test_entry["id"].rsplit("_", 1)[0]
 
-        # Debug: function information
-        print(f"[DEBUG] _compile_tools - Original functions count: {len(functions)}")
-        print(f"[DEBUG] _compile_tools - Original functions: {functions}")
-        print(f"[DEBUG] _compile_tools - Test category: {test_category}")
-
         functions = func_doc_language_specific_pre_processing(functions, test_category)
-        print(f"[DEBUG] _compile_tools - After pre-processing functions count: {len(functions)}")
-        print(f"[DEBUG] _compile_tools - After pre-processing functions: {functions}")
 
         tools = convert_to_tool(functions, GORILLA_TO_OPENAPI, self.model_style)
-        print(f"[DEBUG] _compile_tools - Generated tools count: {len(tools)}")
-        print(f"[DEBUG] _compile_tools - Generated tools: {tools}")
 
         inference_data["tools"] = tools
-        print(f"[DEBUG] _compile_tools - Set inference_data['tools'] with {len(tools)} tools")
 
         return inference_data
 

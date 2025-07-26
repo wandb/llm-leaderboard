@@ -169,16 +169,22 @@ def write_score_csv_file(
         data[i][0] = str(i + 1)
         for j in range(1, len(data[i])):
             if type(data[i][j]) == str:
-                if data[i][j] == "N/A": # Replace "N/A" with empty string
-                    data[i][j] = ""
+                # Keep "N/A" as "N/A" instead of converting to empty string
+                # This prevents pandas from interpreting it as NaN when reading CSV
+                if data[i][j] == "N/A":
+                    data[i][j] = "N/A"  # Keep as is
                 continue
             # Some columns such as Latency and Cost, should not be presented in the percentage format
             elif j in no_conversion_numeric_column_index:
                 data[i][j] = str(data[i][j])
             else:
-                # Convert numeric value to str
-                # data[i][j] = "{:.2f}".format(data[i][j] * 100)
-                data[i][j] = str(data[i][j])
+                # Convert numeric value to str - special handling for 0.0
+                if data[i][j] == 0.0 or data[i][j] == 0:
+                    data[i][j] = "0.0"
+                else:
+                    # Convert numeric value to str
+                    # data[i][j] = "{:.2f}".format(data[i][j] * 100)
+                    data[i][j] = str(data[i][j])
 
 
     data.insert(0, header)
@@ -332,6 +338,7 @@ def generate_leaderboard_csv(
         multi_turn_miss_func = get_category_score(value, "multi_turn_miss_func",artifacts_path)
         multi_turn_miss_param = get_category_score(value, "multi_turn_miss_param",artifacts_path)
         multi_turn_long_context = get_category_score(value, "multi_turn_long_context",artifacts_path)
+        
         overall_accuracy_multi_turn = calculate_unweighted_accuracy(
             [
                 multi_turn_base,
@@ -342,17 +349,25 @@ def generate_leaderboard_csv(
             display_na_if_category_missing=False,
         )
 
-        data_multi_turn.append(
-            [
-                "N/A",
-                model_name,
-                overall_accuracy_multi_turn["display_accuracy"],
-                multi_turn_base["display_accuracy"],
-                multi_turn_miss_func["display_accuracy"],
-                multi_turn_miss_param["display_accuracy"],
-                multi_turn_long_context["display_accuracy"],
-            ]
-        )
+        # Convert 0.0 values to "0.0" strings to prevent CSV writing issues
+        def format_accuracy(value):
+            if isinstance(value, (int, float)) and value == 0.0:
+                return "0.0"
+            elif value == "N/A":
+                return "N/A"
+            else:
+                return value
+        
+        multi_turn_row = [
+            "N/A",
+            model_name,
+            format_accuracy(overall_accuracy_multi_turn["display_accuracy"]),
+            format_accuracy(multi_turn_base["display_accuracy"]),
+            format_accuracy(multi_turn_miss_func["display_accuracy"]),
+            format_accuracy(multi_turn_miss_param["display_accuracy"]),
+            format_accuracy(multi_turn_long_context["display_accuracy"]),
+        ]
+        data_multi_turn.append(multi_turn_row)
 
         # Total Score
         single_turn_ast = calculate_unweighted_accuracy(
@@ -372,38 +387,37 @@ def generate_leaderboard_csv(
             display_na_if_category_missing=False,
         )
 
-        data_combined.append(
-            [
-                "N/A",
-                total_overall_accuracy["display_accuracy"],
-                model_name,
-                #model_config.url,
-                #cost,
-                #latency_mean,
-                #latency_std,
-                #percentile_95_latency,
-                overall_accuracy_non_live["display_accuracy"],
-                summary_ast_non_live["display_accuracy"],
-                simple_ast_non_live["display_accuracy"],
-                multiple_ast_non_live["display_accuracy"],
-                parallel_ast_non_live["display_accuracy"],
-                parallel_multiple_ast_non_live["display_accuracy"],
-                overall_accuracy_live["display_accuracy"],
-                python_simple_ast_live["display_accuracy"],
-                python_multiple_ast_live["display_accuracy"],
-                python_parallel_ast_live["display_accuracy"],
-                python_parallel_multiple_ast_live["display_accuracy"],
-                overall_accuracy_multi_turn["display_accuracy"],
-                multi_turn_base["display_accuracy"],
-                multi_turn_miss_func["display_accuracy"],
-                multi_turn_miss_param["display_accuracy"],
-                multi_turn_long_context["display_accuracy"],
-                total_relevance["display_accuracy"],
-                total_irrelevance["display_accuracy"],
-                #model_config.org,
-                #model_config.license,
-            ]
-        )
+        combined_row = [
+            "N/A",
+            format_accuracy(total_overall_accuracy["display_accuracy"]),
+            model_name,
+            "N/A",  # model_config.url,
+            "N/A",  # cost,
+            "N/A",  # latency_mean,
+            "N/A",  # latency_std,
+            "N/A",  # percentile_95_latency,
+            format_accuracy(overall_accuracy_non_live["display_accuracy"]),
+            format_accuracy(summary_ast_non_live["display_accuracy"]),
+            format_accuracy(simple_ast_non_live["display_accuracy"]),
+            format_accuracy(multiple_ast_non_live["display_accuracy"]),
+            format_accuracy(parallel_ast_non_live["display_accuracy"]),
+            format_accuracy(parallel_multiple_ast_non_live["display_accuracy"]),
+            format_accuracy(overall_accuracy_live["display_accuracy"]),
+            format_accuracy(python_simple_ast_live["display_accuracy"]),
+            format_accuracy(python_multiple_ast_live["display_accuracy"]),
+            format_accuracy(python_parallel_ast_live["display_accuracy"]),
+            format_accuracy(python_parallel_multiple_ast_live["display_accuracy"]),
+            format_accuracy(overall_accuracy_multi_turn["display_accuracy"]),
+            format_accuracy(multi_turn_base["display_accuracy"]),
+            format_accuracy(multi_turn_miss_func["display_accuracy"]),
+            format_accuracy(multi_turn_miss_param["display_accuracy"]),
+            format_accuracy(multi_turn_long_context["display_accuracy"]),
+            format_accuracy(total_relevance["display_accuracy"]),
+            format_accuracy(total_irrelevance["display_accuracy"]),
+            "N/A",  # model_config.org,
+            "N/A",  # model_config.license,
+        ]
+        data_combined.append(combined_row)
 
     # Write Non-Live Score File
     write_score_csv_file(
@@ -459,10 +473,12 @@ def generate_leaderboard_csv(
 
         # Log CSV files to WandB
         # Read the CSV files
-    non_live_df = pd.read_csv(output_path / "data_non_live.csv")
-    live_df = pd.read_csv(output_path / "data_live.csv")
-    multi_turn_df = pd.read_csv(output_path / "data_multi_turn.csv")
-    overall_df = pd.read_csv(output_path / "data_overall.csv")
+    # Read CSV files with proper handling of "N/A" values
+    # Keep "N/A" as string instead of converting to NaN
+    non_live_df = pd.read_csv(output_path / "data_non_live.csv", keep_default_na=False, na_values=[])
+    live_df = pd.read_csv(output_path / "data_live.csv", keep_default_na=False, na_values=[])
+    multi_turn_df = pd.read_csv(output_path / "data_multi_turn.csv", keep_default_na=False, na_values=[])
+    overall_df = pd.read_csv(output_path / "data_overall.csv", keep_default_na=False, na_values=[])
 
     # Convert DataFrames to WandB Tables
     #non_live_table = wandb.Table(dataframe=non_live_df)

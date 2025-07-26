@@ -20,14 +20,12 @@ from evaluator.evaluate_utils.bfcl_pkg.bfcl.constants.eval_config import RESULT_
 from evaluator.evaluate_utils.bfcl_pkg.bfcl.utils import extract_test_category, load_file
 from evaluator.evaluate_utils.bfcl_pkg.bfcl.constants.eval_config import PROMPT_PATH, POSSIBLE_ANSWER_PATH
 
-import weave
-weave.init(project_name="llm-leaderboard/nejumi-leaderboard4-dev-bfcl")
 
 def get_default_config() -> Dict[str, Any]:
     """BFCLのデフォルト設定を返す"""
     return {
         "model_name": None,  # モデル名
-        "test_category": "java",  # テストするカテゴリのリスト
+        "test_category": "all",  # テストするカテゴリのリスト
         "temperature": 0.001,  # 生成時の温度パラメータ
         "num_gpus": None,  # 使用するGPUの数 (vllmを使うことになるので、Nejumi Leaderboardでは、これは利用しない。)
         "batch_size": 256, # 使用するGPUの数 (Nejumi Leaderboardでは、これは利用しない。)
@@ -71,9 +69,7 @@ def evaluate():
     user_config = cfg.get('bfcl', {})
     bfcl_cfg = merge_config(default_config, user_config)
     
-    # BFCL対応モデル名がある場合はそれを使用、なければ従来の方法を使用
-    bfcl_cfg['bfcl_model_id'] = cfg.model.bfcl_model_id
-    bfcl_cfg['model_name'] = cfg.model.pretrained_model_name_or_path
+    bfcl_cfg['model_name'] = cfg.model.bfcl_model_id
 
 
     # testmodeの場合はサンプル数を1に設定
@@ -88,9 +84,10 @@ def evaluate():
     artifact = run.use_artifact(bfcl_cfg['artifacts_path'])
     artifact_dir = artifact.download()
     
+
+    
     # generate arguments
     gen_args = SimpleNamespace(
-        model_id=bfcl_cfg['bfcl_model_id'],
         model_name=bfcl_cfg['model_name'],
         test_category=bfcl_cfg['test_category'],
         temperature=bfcl_cfg['temperature'],
@@ -108,28 +105,27 @@ def evaluate():
         samples_per_category=bfcl_cfg['samples_per_category'],
         artifacts_path=artifact_dir,
     )
+    
+
+    
     # Prediction 
     generation_main(gen_args)
 
     # Evaluation
     _, _, _, overall_df = evaluation_main(
-        model_id=bfcl_cfg['bfcl_model_id'],
         model_names=[bfcl_cfg['model_name'].replace("/", "_")],
-        test_categories=bfcl_cfg['test_category'],
+        test_categories=bfcl_cfg['test_category'],  # This now contains only available categories
         result_dir=bfcl_cfg['result_dir'],
         score_dir=bfcl_cfg['score_dir'],
         samples_per_category=bfcl_cfg['samples_per_category'],
         artifacts_path=artifact_dir
     )
     
-
     # Leaderboard Table
-    print(f"DEBUG: Overall DataFrame columns: {list(overall_df.columns)}")
     columns_to_drop = ['Organization','License','Model Link','Cost ($ Per 1k Function Calls)','Latency Mean (s)','Latency Standard Deviation (s)','Latency 95th Percentile (s)']
 
     # Only drop columns that exist
     existing_columns_to_drop = [col for col in columns_to_drop if col in overall_df.columns]
-    print(f"DEBUG: Dropping columns: {existing_columns_to_drop}")
     overall_df.drop(columns=existing_columns_to_drop, inplace=True)
     overall_df.rename(columns={'Model': 'BFCL Model Name'}, inplace=True)
     overall_df["model_name"] = cfg.model.pretrained_model_name_or_path
@@ -139,11 +135,21 @@ def evaluate():
     radar_data = []
     first_row = overall_df.iloc[0]  
     print(first_row)
-    radar_data.append(['Non-Live Ast Acc', first_row['Non-Live AST Acc']])
-    radar_data.append(['Live Ast Acc', first_row['Live AST Acc']])
-    radar_data.append(['Multi Turn Acc', first_row['Multi Turn Acc']])
-    radar_data.append(['Irrelevance Detection', first_row['Irrelevance Detection']])
-    radar_data.append(['Overall Acc', first_row['Overall Acc']]) 
+    
+    # Helper function to convert empty strings to 0.0 for numeric display
+    def convert_to_numeric(value):
+        if pd.isna(value) or value == '' or value == 'N/A':
+            return 0.0
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return 0.0
+    
+    radar_data.append(['Non-Live Ast Acc', convert_to_numeric(first_row['Non-Live AST Acc'])])
+    radar_data.append(['Live Ast Acc', convert_to_numeric(first_row['Live AST Acc'])])
+    radar_data.append(['Multi Turn Acc', convert_to_numeric(first_row['Multi Turn Acc'])])
+    radar_data.append(['Irrelevance Detection', convert_to_numeric(first_row['Irrelevance Detection'])])
+    radar_data.append(['Overall Acc', convert_to_numeric(first_row['Overall Acc'])]) 
     radar_df = pd.DataFrame(radar_data, columns=['category', 'score'])
     table_radar = wandb.Table(dataframe=radar_df)
 
@@ -156,32 +162,48 @@ def evaluate():
         else:
             return 0
     
-    print("DEBUG: Starting bfcl_output_table generation...")
     model_dir = Path(bfcl_cfg['score_dir']) / bfcl_cfg['model_name'].replace("/", "_")
     results = []
-    
-    print(f"DEBUG: Looking for score files in: {model_dir}")
-    print(f"DEBUG: Model directory exists: {model_dir.exists()}")
+    processed_ids = set()  # Track which IDs we've already processed
     
     # Extract information from score files (contains all test case details)
     score_files = list(model_dir.glob("BFCL_v3_*_score.json"))
-    print(f"DEBUG: Found {len(score_files)} score files: {[f.name for f in score_files]}")
     
+    # Also check result files for comprehensive data
+    result_model_dir = Path(bfcl_cfg['result_dir']) / bfcl_cfg['model_name'].replace("/", "_")
+    result_files = list(result_model_dir.glob("BFCL_v3_*.json")) if result_model_dir.exists() else []
+    
+    # Create a map of entry_id to result data for easier lookup
+    result_data_map = {}
+    for result_file in result_files:
+        test_category = extract_test_category(result_file.name)
+        try:
+            with open(result_file, 'r') as f:
+                result_data = json.load(f)
+                if isinstance(result_data, list):
+                    for entry in result_data:
+                        if 'id' in entry:
+                            result_data_map[entry['id']] = {
+                                'category': test_category,
+                                'raw_data': entry
+                            }
+        except Exception as e:
+            print(f"Warning: Could not read result file {result_file}: {e}")
+    
+    # Process score files first (these have detailed evaluation results)
     for json_file in score_files:
         test_category = extract_test_category(json_file.name)
-        print(f"DEBUG: Processing file: {json_file.name}, category: {test_category}")
         
         with open(json_file, 'r') as f:
             lines = f.readlines()
-            print(f"DEBUG: File {json_file.name} has {len(lines)} lines")
             # Skip the first line (overall accuracy summary)
             for line_num, line in enumerate(lines[1:], 2):
                 if line.strip():
                     entry = json.loads(line)
                     entry_id = entry.get('id', '')
-                    print(f"DEBUG: Processing entry {entry_id} from line {line_num}")
+                    processed_ids.add(entry_id)  # Mark as processed
                     
-                    # Extract prompt text
+                    # Extract prompt text (prioritize score file, fallback to result file)
                     prompt_text = ""
                     if 'prompt' in entry:
                         prompt_entry = entry['prompt']
@@ -200,6 +222,27 @@ def evaluate():
                                     prompt_text = " | ".join(prompt_parts)
                                 else:
                                     # Single turn: show first instruction
+                                    first_question = question_data[0]
+                                    if isinstance(first_question, list) and len(first_question) > 0:
+                                        first_message = first_question[0]
+                                        if isinstance(first_message, dict) and 'content' in first_message:
+                                            prompt_text = first_message['content']
+                    
+                    # Fallback to result file data if prompt is empty
+                    if not prompt_text and entry_id in result_data_map:
+                        result_entry_data = result_data_map[entry_id]['raw_data']
+                        if 'question' in result_entry_data:
+                            question_data = result_entry_data['question']
+                            if isinstance(question_data, list) and len(question_data) > 0:
+                                if len(question_data) > 1:
+                                    prompt_parts = []
+                                    for i, turn in enumerate(question_data):
+                                        if isinstance(turn, list) and len(turn) > 0:
+                                            first_message = turn[0]
+                                            if isinstance(first_message, dict) and 'content' in first_message:
+                                                prompt_parts.append(f"Turn {i+1}: {first_message['content']}")
+                                    prompt_text = " | ".join(prompt_parts)
+                                else:
                                     first_question = question_data[0]
                                     if isinstance(first_question, list) and len(first_question) > 0:
                                         first_message = first_question[0]
@@ -231,7 +274,7 @@ def evaluate():
                         'id': entry_id,
                         'category': test_category,
                         'prompt': prompt_text,
-                        'output': str(output_raw),  # Check both model_result_raw and model_result
+                        'output': str(output_raw),
                         'accuracy': entry.get('success', 0),  # Use success field (1=success, 0=failure)
                         'possible_answer': str(possible_answer_raw),
                         'input_token_count': get_max_token_count(entry.get('input_token_count', 0)),
@@ -243,26 +286,70 @@ def evaluate():
                         result_entry['error'] = str(entry.get('error', ''))
                     
                     results.append(result_entry)
-                    print(f"DEBUG: Added result entry for {entry_id}")
     
-    print(f"DEBUG: Total results collected: {len(results)}")
+    # Now process any result entries that weren't found in score files
+    # These might be successful cases that weren't included in score files
+    for entry_id, result_info in result_data_map.items():
+        if entry_id not in processed_ids:  # Only process if not already processed
+            result_entry_data = result_info['raw_data']
+            test_category = result_info['category']
+            
+            # Extract prompt text from result file
+            prompt_text = ""
+            if 'question' in result_entry_data:
+                question_data = result_entry_data['question']
+                if isinstance(question_data, list) and len(question_data) > 0:
+                    if len(question_data) > 1:
+                        prompt_parts = []
+                        for i, turn in enumerate(question_data):
+                            if isinstance(turn, list) and len(turn) > 0:
+                                first_message = turn[0]
+                                if isinstance(first_message, dict) and 'content' in first_message:
+                                    prompt_parts.append(f"Turn {i+1}: {first_message['content']}")
+                        prompt_text = " | ".join(prompt_parts)
+                    else:
+                        first_question = question_data[0]
+                        if isinstance(first_question, list) and len(first_question) > 0:
+                            first_message = first_question[0]
+                            if isinstance(first_message, dict) and 'content' in first_message:
+                                prompt_text = first_message['content']
+            
+            # Get model output from result file
+            output_raw = result_entry_data.get('model_result', '')
+            
+            result_entry = {
+                'id': entry_id,
+                'category': test_category,
+                'prompt': prompt_text,
+                'output': str(output_raw),
+                'accuracy': 1,  # Assume success if only in result file (might need adjustment)
+                'possible_answer': '',  # Not available in result files
+                'input_token_count': result_entry_data.get('input_token_count', 0),
+                'output_token_count': result_entry_data.get('output_token_count', 0),
+            }
+            
+            results.append(result_entry)
+            print(f"Added result entry from result file: {entry_id}")
+
+    if results:
+        correct_examples = [r for r in results if r['accuracy'] == 1]
+        incorrect_examples = [r for r in results if r['accuracy'] == 0]
+        
+        print(f"Total results: {len(results)}, Correct: {len(correct_examples)}, Incorrect: {len(incorrect_examples)}")
+        
+        if correct_examples:
+            print(f"Correct examples: {[r['id'] for r in correct_examples[:3]]}")
+        
+        if incorrect_examples:
+            print(f"Incorrect examples: {[r['id'] for r in incorrect_examples[:3]]}")
     
-    if len(results) > 0:
-        print(f"DEBUG: Sample result: {results[0]}")
-    else:
-        print("DEBUG: No results found!")
-    
-    print(f"DEBUG: Creating wandb table with {len(results)} results")
     table_log = wandb.Table(dataframe=pd.DataFrame(results))
-    print(f"DEBUG: Wandb table created successfully")
 
     # Log
-    print("DEBUG: Starting wandb logging...")
     run.log({
             "bfcl_output_table": table_log,
             "bfcl_leaderboard_table": table_metric,
             "bfcl_radar_table": table_radar,
         })
-    print("DEBUG: Wandb logging completed successfully")
 
     print("BFCLの評価が正常に完了しました！")

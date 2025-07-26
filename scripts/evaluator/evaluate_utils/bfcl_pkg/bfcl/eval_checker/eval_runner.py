@@ -21,14 +21,14 @@ from dotenv import load_dotenv
 from tqdm import tqdm
 
 
-def get_handler(model_id, model_name):
-    return MODEL_CONFIG_MAPPING[model_id].model_handler(
+def get_handler(model_name):
+    return MODEL_CONFIG_MAPPING[model_name].model_handler(
         model_name, temperature=0
     )  # Temperature doesn't matter for evaluation
 
 
 def multi_turn_runner(
-    handler, model_result, prompt, possible_answer, model_id, model_name, test_category, score_dir
+    handler, model_result, prompt, possible_answer, model_name, test_category, score_dir
 ):
     assert (
         len(model_result) == len(prompt) == len(possible_answer)
@@ -282,7 +282,6 @@ def ast_file_runner(
     possible_answer,
     language,
     test_category,
-    model_id,
     model_name,
     score_dir,
 ):
@@ -343,7 +342,6 @@ def ast_file_runner(
             possible_answer_item,
             language,
             test_category,
-            model_id,
             model_name,
         )
 
@@ -390,7 +388,7 @@ def ast_file_runner(
 
 
 #### Main runner function ####
-def runner(model_id, model_names, test_categories, result_dir, score_dir, samples_per_category=None,artifacts_path=None):
+def runner(model_names, test_categories, result_dir, score_dir, samples_per_category=None,artifacts_path=None):
 
     # State udpated by each eval subtask.
     state = dict(
@@ -423,7 +421,7 @@ def runner(model_id, model_names, test_categories, result_dir, score_dir, sample
             if test_category not in test_categories:
                 continue
 
-            handler = get_handler(model_id, model_name_escaped)
+            handler = get_handler(model_name_escaped)
 
             # We don't evaluate the following categories in the current iteration of the benchmark
             if is_chatable(test_category) or is_sql(test_category) or is_executable(test_category):
@@ -438,7 +436,6 @@ def runner(model_id, model_names, test_categories, result_dir, score_dir, sample
                 result_dir,
                 score_dir,
                 model_result,
-                model_id,
                 model_name,
                 handler,
                 state,
@@ -462,7 +459,6 @@ def evaluate_task(
     result_dir,
     score_dir,
     model_result,
-    model_id,
     model_name,
     handler,
     state,
@@ -507,7 +503,6 @@ def evaluate_task(
                 model_result,
                 prompt,
                 possible_answer,
-                model_id,
                 model_name,
                 test_category,
                 score_dir,
@@ -522,7 +517,6 @@ def evaluate_task(
                 possible_answer,
                 language,
                 test_category,
-                model_id,
                 model_name,
                 score_dir,
             )
@@ -540,7 +534,7 @@ def evaluate_task(
     return state
 
 
-def main(model_id, model_names, test_categories, result_dir, score_dir, samples_per_category=None,artifacts_path=None):
+def main(model_names, test_categories, result_dir, score_dir, samples_per_category=None,artifacts_path=None):
     if result_dir is None:
         result_dir = RESULT_PATH
     else:
@@ -566,7 +560,7 @@ def main(model_id, model_names, test_categories, result_dir, score_dir, samples_
     #        model_names.append(model_name.replace("/", "_"))
 
     # Driver function to run the evaluation for all categories involved.
-    non_live_df, live_df, multi_turn_df, overall_df = runner(model_id, model_names, all_test_categories, result_dir, score_dir, samples_per_category, artifacts_path)
+    non_live_df, live_df, multi_turn_df, overall_df = runner(model_names, all_test_categories, result_dir, score_dir, samples_per_category, artifacts_path)
 
     print(
         f"🏁 Evaluation completed. See {score_dir / 'data_overall.csv'} for overall evaluation results on BFCL V3."
@@ -584,9 +578,6 @@ if __name__ == "__main__":
     # Add arguments for two lists of strings
     parser.add_argument(
         "--model_names", nargs="+", type=str, help="A list of model names to evaluate"
-    )
-    parser.add_argument(
-        "--model_id", nargs="+", type=str, help="model id for model handler"
     )
     parser.add_argument(
         "--test-category",
@@ -612,7 +603,6 @@ if __name__ == "__main__":
 
     load_dotenv(dotenv_path=DOTENV_PATH, verbose=True, override=True)  # Load the .env file
     main(
-        args.model_id,
         args.model_names,
         args.test_category,
         args.result_dir,
