@@ -213,7 +213,7 @@ def generate_leaderboard_csv(
         if csv_path.exists():
             try:
                 os.remove(csv_path)
-                print(f"Removed existing CSV file: {csv_path}")
+                #print(f"Removed existing CSV file: {csv_path}")
             except Exception as e:
                 print(f"Warning: Could not remove existing CSV file {csv_path}: {e}")
     

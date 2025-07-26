@@ -329,20 +329,7 @@ def evaluate():
             }
             
             results.append(result_entry)
-            print(f"Added result entry from result file: {entry_id}")
-
-    if results:
-        correct_examples = [r for r in results if r['accuracy'] == 1]
-        incorrect_examples = [r for r in results if r['accuracy'] == 0]
-        
-        print(f"Total results: {len(results)}, Correct: {len(correct_examples)}, Incorrect: {len(incorrect_examples)}")
-        
-        if correct_examples:
-            print(f"Correct examples: {[r['id'] for r in correct_examples[:3]]}")
-        
-        if incorrect_examples:
-            print(f"Incorrect examples: {[r['id'] for r in incorrect_examples[:3]]}")
-    
+            
     table_log = wandb.Table(dataframe=pd.DataFrame(results))
 
     # Log

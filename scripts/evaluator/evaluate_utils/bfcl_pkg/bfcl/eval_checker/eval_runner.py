@@ -232,21 +232,30 @@ def relevance_file_runner(
         temp["model_name"] = model_name
         temp["test_category"] = test_category
         temp["valid"] = success
-        if "irrelevance" in test_category:
-            temp["error"] = [
-                f"Valid syntax. Successfully decode AST when it should not."
-            ]
-            temp["error_type"] = "irrelevance_error:decoder_success"
-        else:
-            temp["error"] = [
-                f"Invalid syntax. Failed to decode AST when it should have. {decode_error}"
-            ]
-            temp["error_type"] = "relevance_error:decoder_failed"
+        temp["success"] = 1 if success else 0  # Explicit success field (1=success, 0=failure)
         temp["prompt"] = prompt[i]
         temp["model_result"] = model_result_item
         temp["decoded_result"] = decoded_result
         temp["input_token_count"] = model_result[i].get("input_token_count", 0)
         temp["output_token_count"] = model_result[i].get("output_token_count", 0)
+        
+        if success:
+            correct_count += 1
+            temp["error"] = None
+            temp["status"] = "success"
+        else:
+            if "irrelevance" in test_category:
+                temp["error"] = [
+                    f"Valid syntax. Successfully decode AST when it should not."
+                ]
+                temp["error_type"] = "irrelevance_error:decoder_success"
+            else:
+                temp["error"] = [
+                    f"Invalid syntax. Failed to decode AST when it should have. {decode_error}"
+                ]
+                temp["error_type"] = "relevance_error:decoder_failed"
+            temp["status"] = "failed"
+        
         result.append(temp)
 
     accuracy = correct_count / len(model_result)
@@ -307,11 +316,15 @@ def ast_file_runner(
                     "model_name": model_name,
                     "test_category": test_category,
                     "valid": False,
+                    "success": 0,  # Explicit success field (1=success, 0=failure)
                     "error": [f"Invalid syntax. Failed to decode AST. {str(e)}"],
                     "error_type": "ast_decoder:decoder_failed",
                     "prompt": prompt[i],
                     "model_result_raw": model_result_item_raw,
                     "possible_answer": possible_answer_item,
+                    "input_token_count": model_result[i].get("input_token_count", 0),
+                    "output_token_count": model_result[i].get("output_token_count", 0),
+                    "status": "failed",
                 }
             )
             continue
@@ -324,6 +337,7 @@ def ast_file_runner(
                     "model_name": model_name,
                     "test_category": test_category,
                     "valid": False,
+                    "success": 0,  # Explicit success field (1=success, 0=failure)
                     "error": [
                         "Did not output in the specified format. Note: the model_result is wrapped in a string to ensure json serializability."
                     ],
@@ -332,6 +346,9 @@ def ast_file_runner(
                     "model_result_raw": str(model_result_item_raw),
                     "model_result_decoded": str(model_result_item),
                     "possible_answer": possible_answer_item,
+                    "input_token_count": model_result[i].get("input_token_count", 0),
+                    "output_token_count": model_result[i].get("output_token_count", 0),
+                    "status": "failed",
                 }
             )
             continue
@@ -345,21 +362,30 @@ def ast_file_runner(
             model_name,
         )
 
+        # Create detailed entry for both successful and failed cases
+        temp = {}
+        temp["id"] = index
+        temp["model_name"] = model_name
+        temp["test_category"] = test_category
+        temp["valid"] = checker_result["valid"]
+        temp["success"] = 1 if checker_result["valid"] else 0  # Explicit success field (1=success, 0=failure)
+        temp["prompt"] = prompt[i]
+        temp["model_result_raw"] = model_result_item_raw
+        temp["model_result_decoded"] = model_result_item
+        temp["possible_answer"] = possible_answer_item
+        temp["input_token_count"] = model_result[i].get("input_token_count", 0)
+        temp["output_token_count"] = model_result[i].get("output_token_count", 0)
+        
         if checker_result["valid"]:
             correct_count += 1
+            temp["error"] = None
+            temp["status"] = "success"
         else:
-            temp = {}
-            temp["id"] = index
-            temp["model_name"] = model_name
-            temp["test_category"] = test_category
-            temp["valid"] = checker_result["valid"]
             temp["error"] = checker_result["error"]
             temp["error_type"] = checker_result["error_type"]
-            temp["prompt"] = prompt[i]
-            temp["model_result_raw"] = model_result_item_raw
-            temp["model_result_decoded"] = model_result_item
-            temp["possible_answer"] = possible_answer_item
-            result.append(temp)
+            temp["status"] = "failed"
+        
+        result.append(temp)
 
     accuracy = correct_count / len(model_result)
     result.insert(
@@ -405,7 +431,7 @@ def runner(model_names, test_categories, result_dir, score_dir, samples_per_cate
     subdirs = [entry for entry in entries if entry.is_dir()]
 
     # Traverse each subdirectory
-    for subdir in tqdm(subdirs, desc="Number of models evaluated"):
+    for subdir in subdirs:
 
         model_name = subdir.relative_to(result_dir).name
         if model_names is not None and model_name not in model_names:
@@ -472,7 +498,7 @@ def evaluate_task(
     if is_js(test_category):
         language = "JavaScript"
 
-    print(f"🔍 Running test: {test_category}")
+    #print(f"🔍 Running test: {test_category}")
 
     record_cost_latency(state["leaderboard_table"], model_name, model_result)
 
@@ -565,9 +591,9 @@ def main(model_names, test_categories, result_dir, score_dir, samples_per_catego
     print(
         f"🏁 Evaluation completed. See {score_dir / 'data_overall.csv'} for overall evaluation results on BFCL V3."
     )
-    print(
-        f"See {score_dir / 'data_live.csv'}, {score_dir / 'data_non_live.csv'} and {score_dir / 'data_multi_turn.csv'} for detailed evaluation results on each sub-section categories respectively."
-    )
+    #print(
+    #    f"See {score_dir / 'data_live.csv'}, {score_dir / 'data_non_live.csv'} and {score_dir / 'data_multi_turn.csv'} for detailed evaluation results on each sub-section categories respectively."
+    #)
         
     return non_live_df, live_df, multi_turn_df, overall_df
 
