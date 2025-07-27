@@ -32,4 +32,4 @@ swebench:
   max_samples: 500
   max_tokens: 4096
   max_workers: 8
-  evaluation_method: official
+  # evaluation_method: official  # DEPRECATED - 常に公式実装を使用します

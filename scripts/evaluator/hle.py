@@ -152,7 +152,8 @@ def calculate_metrics(predictions: Dict[str, Dict[str, Any]], total_questions: i
     calibration_error = 100 * round(calib_err(confidence, correct, p='2', beta=100), 2)
 
     return {
-        "accuracy": accuracy,
+        "accuracy": accuracy / 100.0, # 0-1スケールに正規化
+        "accuracy_percent": accuracy, # 元のパーセント表記
         "confidence_half_width": confidence_half_width,
         "calibration_error": calibration_error,
         "total_questions": total_questions,
@@ -292,7 +293,7 @@ async def evaluate_async():
         metrics = calculate_metrics(judged_predictions, len(questions))
         
         print(f"*** HLE Evaluation Results for {subset} ***")
-        print(f"Accuracy: {metrics['accuracy']}% +/- {metrics['confidence_half_width']}% | n = {metrics['total_questions']}")
+        print(f"Accuracy: {metrics['accuracy_percent']}% +/- {metrics['confidence_half_width']}% | n = {metrics['total_questions']}")
         print(f"Calibration Error: {metrics['calibration_error']}")
         
         results_data = []
@@ -317,6 +318,7 @@ async def evaluate_async():
         leaderboard_data = {
             "model_name": cfg.model.pretrained_model_name_or_path,
             "accuracy": metrics["accuracy"],
+            "accuracy_percent": metrics["accuracy_percent"],
             "calibration_error": metrics["calibration_error"],
             "confidence_half_width": metrics["confidence_half_width"],
             "total_questions": metrics["total_questions"],
@@ -327,7 +329,7 @@ async def evaluate_async():
         run.log({
             f"hle_{subset}_output_table": wandb.Table(dataframe=output_df),
             f"hle_{subset}_leaderboard_table": wandb.Table(dataframe=leaderboard_df),
-            f"hle_{subset}_accuracy": metrics["accuracy"],
+            f"hle_{subset}_accuracy": metrics["accuracy_percent"],
             f"hle_{subset}_calibration_error": metrics["calibration_error"]
         })
         
