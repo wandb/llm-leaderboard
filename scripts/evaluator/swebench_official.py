@@ -1,4 +1,3 @@
-
 import json
 import logging
 import tempfile
@@ -13,6 +12,8 @@ import multiprocessing as mp
 import pandas as pd
 import wandb
 from tqdm import tqdm
+import subprocess
+import os
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils.llm_async_processor import LLMAsyncProcessor
@@ -203,6 +204,9 @@ def extract_diff(response: str | None) -> str | None:
     """
     if response is None:
         return None
+    
+
+    
     diff_matches = []
     other_matches = []
     pattern = re.compile(r"\<([\w-]+)\>(.*?)\<\/\1\>", re.DOTALL)
@@ -243,19 +247,45 @@ def format_problem_statement(instance: Dict) -> str:
 
     prompt += """
 
-Please provide the **unified diff** that fixes the bug, enclosed in one of the following:
+Please provide the **unified diff** that fixes the bug. The diff MUST follow the standard unified diff format with proper line numbers.
 
-<patch>
-...diff here...
-</patch>
-
-または
-
+Example of correct unified diff format:
 ```diff
-...diff here...
+--- a/path/to/file.py
++++ b/path/to/file.py
+@@ -10,7 +10,7 @@
+ def function_name():
+     context_line1
+     context_line2
+-    old_line_to_remove
++    new_line_to_add
+     context_line3
+     context_line4
 ```
 
-必要最小限の変更のみを含めてください。"""
+Important requirements:
+1. Each hunk MUST start with `@@ -start,count +start,count @@` where:
+   - First pair (-start,count) refers to the original file
+   - Second pair (+start,count) refers to the modified file
+   - start = starting line number
+   - count = number of lines in the hunk
+2. Include at least 3 lines of context before and after changes
+3. Use `-` prefix for removed lines and `+` prefix for added lines
+4. Context lines have no prefix (just a space)
+
+Enclose your diff in one of the following:
+
+<patch>
+...your unified diff here...
+</patch>
+
+OR
+
+```diff
+...your unified diff here...
+```
+
+Include only the minimal changes necessary to fix the bug."""
     
     return prompt
 
@@ -384,6 +414,78 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instan
         
         # ローカルファイルパスを使用（公式ハーネスがサポートしている場合）
         print(f"Using local dataset file: {eval_dataset_file}")
+        
+        # ----------------------------------------------------------------------
+        # ★★★ 事前にDockerイメージをビルドする処理を追加 ★★★
+        # ----------------------------------------------------------------------
+        # 設定で有効な場合のみ事前ビルドを実行
+        instance = WandbConfigSingleton.get_instance()
+        cfg = instance.config
+        
+        if cfg.swebench.get("prebuild_images", False):
+            print("Pre-build images is enabled. Attempting to pre-build Docker images for the dataset...")
+            try:
+                # Dockerクライアントを作成してbuild_instance_images関数を呼び出す
+                import docker
+                from swebench.harness.docker_build import build_instance_images
+                
+                # eval_dataset_fileからデータセットを読み込む
+                dataset_for_build = []
+                with open(eval_dataset_file, 'r') as f:
+                    for line in f:
+                        dataset_for_build.append(json.loads(line))
+                
+                print(f"Pre-building Docker images for {len(dataset_for_build)} instances...")
+                
+                # Dockerクライアントを作成
+                client = docker.from_env()
+                
+                # Docker Hubにログイン（環境変数から認証情報を取得）
+                docker_username = os.environ.get('DOCKER_USERNAME')
+                docker_password = os.environ.get('DOCKER_PASSWORD')
+                
+                if docker_username and docker_password:
+                    try:
+                        print(f"Logging in to Docker Hub as {docker_username}...")
+                        client.login(username=docker_username, password=docker_password)
+                        print("Successfully logged in to Docker Hub")
+                    except Exception as e:
+                        logger.warning(f"Failed to login to Docker Hub: {e}")
+                        logger.warning("Proceeding without authentication (may hit rate limits)")
+                else:
+                    logger.warning("DOCKER_USERNAME or DOCKER_PASSWORD not set. Proceeding without Docker Hub authentication.")
+                
+                # build_instance_images関数を呼び出す
+                # force_rebuild=Falseで既存のイメージは再利用
+                
+                # プライベートレジストリの設定を取得
+                private_registry = cfg.swebench.get("private_registry", None)
+                namespace = private_registry if private_registry else "swebench"
+                
+                build_instance_images(
+                    client=client,
+                    dataset=dataset_for_build,
+                    force_rebuild=False,
+                    max_workers=max_workers,
+                    namespace=namespace,  # プライベートレジストリまたはデフォルト
+                    tag="latest"  # instance_image_tagを追加
+                )
+                
+                print("Successfully pre-built all necessary Docker images.")
+                
+            except ImportError as e:
+                logger.warning(
+                    f"Could not import required modules for pre-building: {e}. "
+                    "Skipping pre-build. Images will be built on-demand during evaluation."
+                )
+            except Exception as e:
+                logger.error(f"An error occurred during image pre-building: {e}")
+                logger.error(traceback.format_exc())
+                # ビルドエラーは警告として扱い、評価は続行する（オンデマンドビルドに期待）
+                logger.warning("Image pre-build failed. Proceeding with evaluation (images will be built on-demand).")
+        else:
+            print("Pre-build images is disabled. Images will be built on-demand during evaluation.")
+
         try:
             result = run_evaluation(
                 dataset_name=str(eval_dataset_file),  # ローカルファイルパス
@@ -404,26 +506,8 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instan
                 report_dir="."
             )
         except Exception as e:
-            print(f"Local file approach failed: {e}")
-            print("Falling back to internet-based dataset...")
-            result = run_evaluation(
-                dataset_name="nejumi/swe-bench-verified-50-ja",
-                split="train",
-                instance_ids=instance_ids,
-                predictions_path=str(predictions_file),
-                max_workers=max_workers,
-                force_rebuild=False,
-                cache_level="env",
-                clean=False,
-                open_file_limit=4096,
-                run_id=run_id,
-                timeout=1800,
-                namespace="swebench",
-                rewrite_reports=False,
-                modal=False,
-                instance_image_tag="latest",
-                report_dir="."
-            )
+            logger.error(f"Local file approach failed: {e}")
+            raise RuntimeError("Local dataset evaluation failed. No fallback to internet-based dataset.")
         
         # 一時ファイルをクリーンアップ（成功時のみ）
         try:
@@ -433,25 +517,8 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instan
             pass  # デバッグのため保持
         
     else:
-        # 従来の方法（インターネット経由）
-        result = run_evaluation(
-            dataset_name="nejumi/swe-bench-verified-50-ja",
-            split="train",
-            instance_ids=instance_ids,
-            predictions_path=str(predictions_file),
-            max_workers=max_workers,
-            force_rebuild=False,
-            cache_level="env",
-            clean=False,
-            open_file_limit=4096,
-            run_id=run_id,
-            timeout=1800,
-            namespace="swebench",
-            rewrite_reports=False,
-            modal=False,
-            instance_image_tag="latest",
-            report_dir="."
-        )
+        # インターネット経由の評価は削除（データの一元管理のため）
+        raise RuntimeError("Internet-based dataset evaluation is disabled for data consistency.")
     
     print(f"Evaluation result type: {type(result)}")
     
@@ -513,16 +580,24 @@ def evaluate():
         max_tokens = cfg.swebench.get("max_tokens", 32768)
         model_name = cfg.model.pretrained_model_name_or_path
         
-        if model_name in ["o1", "o1-preview", "o1-mini", "o3", "o3-mini"]:
-            generator_config = {}
-        else:
-            generator_config = {"max_tokens": max_tokens}
+        generator_config = {"max_tokens": max_tokens}
         
         # パッチ生成
         generate_predictions(samples, llm, generator_config, predictions_file, model_name)
         
         # 公式評価実行
-        max_workers = cfg.swebench.get("max_workers", 4)
+        max_workers_config = cfg.swebench.get("max_workers", 4)
+        
+        # max_workersが"auto"の場合は自動計算
+        if max_workers_config == "auto":
+            import os
+            cpu_count = os.cpu_count()
+            # 推奨値: min(0.75 * cpu_count, 24) に安全マージン0.8を掛ける
+            max_workers = min(int(0.75 * cpu_count * 0.8), 20)  # 24の代わりに20に制限
+            print(f"Auto-calculated max_workers: {max_workers} (from {cpu_count} CPUs)")
+        else:
+            max_workers = max_workers_config
+        
         # サンプリングしたIDを取得
         instance_ids = [sample["instance_id"] for sample in samples]
 
@@ -623,6 +698,8 @@ def calculate_metrics(samples, results_or_queue, temp_dir):
             empty_set = set(results.get("empty_patch_ids", []))
 
             table_rows = []
+            missing_images = []  # 不足しているイメージを記録
+            
             for sample in samples:
                 iid = sample["instance_id"]
                 if iid in resolved_set:
@@ -640,12 +717,60 @@ def calculate_metrics(samples, results_or_queue, temp_dir):
                 inp = sample.get("text") or sample.get("problem_statement", "")
                 patch_str = predictions_map.get(iid, {}).get("model_patch", "")
 
+                # イメージ存在確認（新規追加）
+                # SWE-benchのイメージ名規則に従う
+                # 設定からnamespaceを取得
+                instance = WandbConfigSingleton.get_instance()
+                cfg = instance.config
+                private_registry = cfg.swebench.get("private_registry", None)
+                namespace = private_registry if private_registry else "swebench"
+                
+                # "__" を "_1776_" に変換（SWE-benchの特殊な命名規則）
+                # 注: 現在のシステムでは namespace="swebench" でも変換されている
+                iid_formatted = iid.replace("__", "_1776_")
+                image_name = f"{namespace}/sweb.eval.x86_64.{iid_formatted.lower()}:latest"
+                try:
+                    import docker
+                    client = docker.from_env()
+                    client.images.get(image_name)
+                    image_available = True
+                except (docker.errors.ImageNotFound, ImportError, Exception):
+                    image_available = False
+                    missing_images.append(image_name)
+
                 table_rows.append({
                     "instance_id": iid,
                     "status": status,
                     "input": inp,
                     "patch": patch_str,
+                    "image_available": image_available,  # 新規追加
+                    "image_name": image_name,           # 新規追加
                 })
+
+            # 不足しているイメージがあれば警告を出力
+            if missing_images:
+                logger.error("🚨 MISSING DOCKER IMAGES DETECTED!")
+                logger.error(f"❌ {len(missing_images)}/{len(samples)} images are missing:")
+                for img in missing_images:
+                    logger.error(f"   - {img}")
+                
+                # Rate limitの可能性を判定
+                if len(missing_images) > len(samples) * 0.3:  # 30%以上が不足
+                    logger.error("🚨 DOCKER HUB RATE LIMIT LIKELY REACHED!")
+                    logger.error("💡 Consider using private registry or waiting for rate limit reset")
+                
+                # WandBにも記録
+                try:
+                    run.log({
+                        "missing_images_count": len(missing_images),
+                        "total_instances": len(samples),
+                        "image_coverage_rate": (len(samples) - len(missing_images)) / len(samples),
+                        "rate_limit_suspicion": len(missing_images) > len(samples) * 0.3
+                    })
+                except Exception as e:
+                    logger.warning(f"Failed to log image availability metrics: {e}")
+            else:
+                logger.info("✅ All Docker images are available")
 
             instance_df = pd.DataFrame(table_rows)
             run.log({"swebench_output_table": wandb.Table(dataframe=instance_df)})

@@ -8,3 +8,26 @@ model:
   size_category: api
   size: null
   release_date: 4/14/2025
+
+swebench:
+  max_samples: 80
+  max_workers: auto
+  background_eval: false
+  prebuild_images: true
+
+run:
+  jaster: false
+  jmmlu_robustness: false # if this is set as true, jaster should set as true
+  mtbench: false
+  jbbq: false
+  toxicity: false
+  jtruthfulqa: false
+  hle: false
+  swebench: true
+  bfcl: false
+  hallulens: false
+  arc_agi: false
+  m_ifeval: false
+  aggregate: false
+
+testmode: false
