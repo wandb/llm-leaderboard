@@ -74,7 +74,7 @@ def evaluate():
 
     # testmodeの場合はサンプル数を1に設定
     if cfg.testmode:
-        bfcl_cfg['samples_per_category'] = 5
+        bfcl_cfg['samples_per_category'] = 100
     
     # 結果保存用のディレクトリを作成
     result_path = bfcl_cfg['result_dir']

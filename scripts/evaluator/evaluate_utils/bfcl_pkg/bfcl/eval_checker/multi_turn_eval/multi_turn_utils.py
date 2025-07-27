@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 
-
 # Get the directory containing func_source_code
 FUNC_SOURCE_DIR = Path(__file__).parent / "func_source_code"
 
@@ -76,8 +75,10 @@ def execute_multi_turn_func_call(
             # For stateless classes, we don't need to pass any initial configuration
             instance = class_obj()
         else:
-            # For stateful classes, we need to pass the initial configuration
-            instance = class_obj(initial_config)
+            # For stateful classes, create instance without initial_config and then load scenario
+            instance = class_obj()
+            if hasattr(instance, '_load_scenario'):
+                instance._load_scenario(initial_config, long_context)
         
         # Add the instance to the global namespace
         instance_name = f"{model_name}_{test_entry_id}_{class_name.lower()}_instance"
@@ -94,6 +95,19 @@ def execute_multi_turn_func_call(
     for func_call in func_call_list:
         # Add the instance name to the method calls
         func_call = _process_method_call(func_call, class_method_name_mapping)
+
+        # Fix leading zeros in the entire function call string before eval
+        def fix_leading_zeros_in_string(match):
+            number = match.group(0)
+            # If it's a number with leading zeros and not 0, convert to decimal
+            if number.startswith('0') and len(number) > 1 and not number.startswith('0x') and not number.startswith('0o') and not number.startswith('0b'):
+                # Remove leading zeros and convert to int, then back to string
+                return str(int(number))
+            return number
+
+        # Pattern to match numeric literals with potential leading zeros
+        number_pattern = r'\b0\d+\b'
+        func_call = re.sub(number_pattern, fix_leading_zeros_in_string, func_call)
 
         # Evaluate the function call
         try:
@@ -170,5 +184,19 @@ def _process_method_call(function_call_string: str, instance_mapping: dict) -> s
 
     # Replace function names with their class-prepended versions
     processed_string = re.sub(pattern, replace_function, function_call_string)
+
+    # Fix leading zeros in numeric literals to prevent octal interpretation
+    # This handles cases like 08, 09 which are invalid in Python 3
+    def fix_leading_zeros(match):
+        number = match.group(0)
+        # If it's a number with leading zeros and not 0, convert to decimal
+        if number.startswith('0') and len(number) > 1 and not number.startswith('0x') and not number.startswith('0o') and not number.startswith('0b'):
+            # Remove leading zeros and convert to int, then back to string
+            return str(int(number))
+        return number
+
+    # Pattern to match numeric literals with potential leading zeros
+    number_pattern = r'\b0\d+\b'
+    processed_string = re.sub(number_pattern, fix_leading_zeros, processed_string)
 
     return processed_string

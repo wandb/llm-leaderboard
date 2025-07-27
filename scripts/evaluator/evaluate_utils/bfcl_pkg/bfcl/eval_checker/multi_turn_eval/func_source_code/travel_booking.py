@@ -485,7 +485,8 @@ class TravelAPI:
             self._add_booking_records()  # Add booking record extension
 
     def __eq__(self, value: object) -> bool:
-        if not isinstance(value, TravelAPI):
+        # Use class name comparison instead of isinstance to avoid module import issues
+        if not hasattr(value, '__class__') or value.__class__.__name__ != 'TravelAPI':
             return False
 
         for attr_name in vars(self):

@@ -263,3 +263,19 @@ class TicketAPI:
             ]
 
         return user_tickets
+
+    def __eq__(self, value: object) -> bool:
+        # Use class name comparison instead of isinstance to avoid module import issues
+        if not hasattr(value, '__class__') or value.__class__.__name__ != 'TicketAPI':
+            return False
+
+        for attr_name in vars(self):
+            if attr_name.startswith("_"):
+                continue
+            model_attr = getattr(self, attr_name)
+            ground_truth_attr = getattr(value, attr_name)
+
+            if model_attr != ground_truth_attr:
+                return False
+
+        return True

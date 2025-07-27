@@ -145,7 +145,7 @@ mtbench:
 
 bfcl:
   temperature: 0.01
-  num_threads: 4
+  num_threads: 16
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:production'
 
 hallulens:
