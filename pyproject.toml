@@ -63,4 +63,5 @@ dependencies = [
     "weave==0.51.56",
     "writer-sdk>=2.1.0",
     "matplotlib>=3.10.3",
+    "docker>=6.0.0",  # SWE-bench評価用に追加
 ]
