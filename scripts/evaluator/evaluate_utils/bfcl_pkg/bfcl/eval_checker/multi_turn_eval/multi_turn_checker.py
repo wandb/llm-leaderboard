@@ -101,7 +101,6 @@ def multi_turn_checker(
         assert len(model_instances) == len(
             ground_truth_instances
         ), f"Model instances and ground truth instances do not match in length for turn {turn_index}. Model instances: {len(model_instances)}, Ground truth instances: {len(ground_truth_instances)}"
-        
         assert set(model_instances.keys()) == set(ground_truth_instances.keys())
 
         # Check the state of the instances
@@ -165,11 +164,8 @@ def state_checker(model_instances: dict, ground_truth_instances: dict):
     Checks if, after executing the function calls, the model_instance has the same state (defined by the attributes) as the ground_truth_instance.
     It checks if every instance in the model_instances has the same attributes as their corresponding instance (of the same class) from ground_truth_instances.
     """
-    
     for class_name, ground_truth_instance in ground_truth_instances.items():
-        
         model_instance = model_instances[class_name]
-        
         valid, differences = _compare_instances(model_instance, ground_truth_instance)
 
         if not valid:
@@ -260,41 +256,25 @@ def method_invoke_order_checker(model_instances: dict, ground_truth_instances: d
 #### Helper functions ####
 
 
-def _compare_instances(model_obect, ground_truth_object):
+def _compare_instances(model_object, ground_truth_object):
     """
     Checks if the model_object has the same attributes as the ground_truth_object. They are instances of the same class.
     """
-    model_type = type(model_obect)
-    ground_truth_type = type(ground_truth_object)
+    # Use class name comparison instead of type() to avoid module import issues
+    model_class_name = model_object.__class__.__name__
+    ground_truth_class_name = ground_truth_object.__class__.__name__
     
-    # First try direct type comparison
-    types_match = model_type == ground_truth_type
+    assert model_class_name == ground_truth_class_name, f"Objects are not of the same class. Model: {model_class_name}, Ground truth: {ground_truth_class_name}"
     
-    # If direct comparison fails, try name-based comparison as fallback
-    if not types_match:
-        model_type_name = getattr(model_type, '__name__', str(model_type))
-        ground_truth_type_name = getattr(ground_truth_type, '__name__', str(ground_truth_type))
-        
-        # Try name-based comparison as a fallback
-        if model_type_name == ground_truth_type_name:
-            types_match = True
-        else:
-            pass # No DEBUG print here
-    
-    if not types_match:
-        raise AssertionError(f"Objects are not of the same type. Model type: {model_type}, Ground truth type: {ground_truth_type}")
-
-    # Compare attribute values
     differences = {}
     valid = True
     for attr_name in vars(ground_truth_object):
         # We don't check for private attributes
         if attr_name.startswith("_"):
             continue
-        model_attr = getattr(model_obect, attr_name)
- 
+        model_attr = getattr(model_object, attr_name)
         ground_truth_attr = getattr(ground_truth_object, attr_name)
- 
+
         if model_attr != ground_truth_attr:
             valid = False
             differences[attr_name] = {"model": model_attr, "ground_truth": ground_truth_attr}
@@ -335,3 +315,4 @@ def _is_subsequence_unordered(list1, list2) -> tuple[bool, list]:
     # If there are missing elements, list1 is not a subsequence of list2
     is_subsequence = len(missing_elements) == 0
     return is_subsequence, missing_elements
+

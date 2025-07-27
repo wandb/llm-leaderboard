@@ -25,7 +25,7 @@ def get_default_config() -> Dict[str, Any]:
     """BFCLのデフォルト設定を返す"""
     return {
         "model_name": None,  # モデル名
-        "test_category": "all",  # テストするカテゴリのリスト
+        "test_category": ["multi_turn_base","multi_turn_miss_param","multi_turn_miss_func","multi_turn_long_context"],  # テストするカテゴリのリスト
         "temperature": 0.001,  # 生成時の温度パラメータ
         "num_gpus": None,  # 使用するGPUの数 (vllmを使うことになるので、Nejumi Leaderboardでは、これは利用しない。)
         "batch_size": 256, # 使用するGPUの数 (Nejumi Leaderboardでは、これは利用しない。)
@@ -74,7 +74,7 @@ def evaluate():
 
     # testmodeの場合はサンプル数を1に設定
     if cfg.testmode:
-        bfcl_cfg['samples_per_category'] = 1
+        bfcl_cfg['samples_per_category'] = 5
     
     # 結果保存用のディレクトリを作成
     result_path = bfcl_cfg['result_dir']
