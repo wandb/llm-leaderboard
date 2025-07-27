@@ -25,6 +25,6 @@ run:
 swebench:
   max_samples: 10
   max_workers: 2
-  evaluation_method: official
+  # evaluation_method: official  # DEPRECATED - 常に公式実装を使用します
   artifacts_path: your-wandb-entity/nejumi-swebench/swebench-verified:latest
   dataset_dir: swebench_verified

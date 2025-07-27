@@ -22,7 +22,7 @@ from evaluator import (
     hallulens,
     m_ifeval,
     aggregate,
-    swebench,
+    swe_bench,
     arc_agi,
 )
 from utils import paginate_choices
@@ -142,16 +142,11 @@ if run:
 
 # SWE-Bench Verified evaluation
 if cfg.run.swebench:
-    evaluation_method = cfg.swebench.get("evaluation_method", "official")
-    if evaluation_method == "official":
-        from evaluator import swebench_official
-        if cfg.swebench.background_eval:
-            # 評価プロセスの実行時間が長いため、他のベンチと並行でバックグラウンド実行する
-            swebench_postprocess = swebench_official.evaluate()
-        else:
-            swebench_official.evaluate()
+    if cfg.swebench.background_eval:
+        # 評価プロセスの実行時間が長いため、他のベンチと並行でバックグラウンド実行する
+        swebench_postprocess = swe_bench.evaluate()
     else:
-        swebench.evaluate()
+        swe_bench.evaluate()
 
 # mt-bench evaluation
 if cfg.run.mtbench:

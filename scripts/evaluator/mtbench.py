@@ -515,6 +515,10 @@ async def async_evaluate():
     # レーダーチャート用のテーブル
     _df_judge = df_judge.query('score != -1').groupby(['question_id', 'turn', 'category'], as_index=False).score.mean()
     df_summary = _df_judge.groupby(['category'], as_index=False).score.mean()
+    
+    # スコアを0-1スケールに正規化
+    df_summary['score'] = df_summary['score'] / 10.0
+    
     table_radar = wandb.Table(dataframe=df_summary)
 
     # リーダーボード用のテーブル

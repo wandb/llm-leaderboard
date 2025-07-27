@@ -124,7 +124,7 @@ def calculate_combined_means(jaster_0shot, jaster_fewshots, mtbench, cols_jaster
     if cols_mtbench and mtbench is not None:
         for col in cols_mtbench:
             if col in mtbench.columns:
-                means.append(mtbench[col][0] / 10)
+                means.append(mtbench[col][0])
     
     return np.mean(means) if means else float('nan')
 
@@ -199,9 +199,9 @@ def calculate_glp_scores(cfg, leaderboard_dict, jaster_0shot, jaster_fewshots, m
     )
     create_subcategory_table(run, cfg, "expression", {
         "AVG": leaderboard_dict["GLP_表現"],
-        "roleplay_mtbench": mtbench["roleplay"][0] / 10 if mtbench is not None and "roleplay" in mtbench.columns else float('nan'),
-        "writing_mtbench": mtbench["writing"][0] / 10 if mtbench is not None and "writing" in mtbench.columns else float('nan'),
-        "humanities_mtbench": mtbench["humanities"][0] / 10 if mtbench is not None and "humanities" in mtbench.columns else float('nan'),
+        "roleplay_mtbench": mtbench["roleplay"][0] if mtbench is not None and "roleplay" in mtbench.columns else float('nan'),
+        "writing_mtbench": mtbench["writing"][0] if mtbench is not None and "writing" in mtbench.columns else float('nan'),
+        "humanities_mtbench": mtbench["humanities"][0] if mtbench is not None and "humanities" in mtbench.columns else float('nan'),
     })
     
     # 翻訳
@@ -244,7 +244,7 @@ def calculate_glp_scores(cfg, leaderboard_dict, jaster_0shot, jaster_fewshots, m
     )
     create_subcategory_table(run, cfg, "logical_reasoning", {
         "AVG": leaderboard_dict["GLP_論理的推論"],
-        "reasoning_mtbench": mtbench["reasoning"][0] / 10 if mtbench is not None and "reasoning" in mtbench.columns else float('nan'),
+        "reasoning_mtbench": mtbench["reasoning"][0] if mtbench is not None and "reasoning" in mtbench.columns else float('nan'),
     })
     
     # 数学的推論
@@ -257,7 +257,7 @@ def calculate_glp_scores(cfg, leaderboard_dict, jaster_0shot, jaster_fewshots, m
         "mawps_fewshot": jaster_fewshots["mawps"][0] if "mawps" in jaster_fewshots.columns else float('nan'),
         "mgsm_0shot": jaster_0shot["mgsm"][0] if "mgsm" in jaster_0shot.columns else float('nan'),
         "mgsm_fewshot": jaster_fewshots["mgsm"][0] if "mgsm" in jaster_fewshots.columns else float('nan'),
-        "math_mtbench": mtbench["math"][0] / 10 if mtbench is not None and "math" in mtbench.columns else float('nan'),
+        "math_mtbench": mtbench["math"][0] if mtbench is not None and "math" in mtbench.columns else float('nan'),
     })
     
     # --- 知識・質問応答 ---
@@ -276,7 +276,7 @@ def calculate_glp_scores(cfg, leaderboard_dict, jaster_0shot, jaster_fewshots, m
         if jaster_fewshots is not None and col in jaster_fewshots.columns:
             general_knowledge_dict[f"{col}_fewshot"] = jaster_fewshots[col][0]
     if mtbench is not None and "stem" in mtbench.columns:
-        general_knowledge_dict["stem_mtbench"] = mtbench["stem"][0] / 10
+        general_knowledge_dict["stem_mtbench"] = mtbench["stem"][0]
     create_subcategory_table(run, cfg, "general_knowledge", general_knowledge_dict)
     
     # 専門的知識（JMMLU, JMMLU-Pro(mmlu_prox_ja), HLE）
@@ -299,16 +299,14 @@ def calculate_glp_scores(cfg, leaderboard_dict, jaster_0shot, jaster_fewshots, m
         expert_knowledge_dict["mmlu_prox_ja_avg"] = mmlu_prox_ja_score
     
     if hle_result is not None and additional_flags.get('hle', False):
-        hle_score_raw = hle_result["accuracy"][0] if "accuracy" in hle_result.columns else float('nan')
-        # HLEの精度はパーセント表記なので100で割る
-        hle_score = hle_score_raw / 100.0 if not np.isnan(hle_score_raw) else float('nan')
+        hle_score = hle_result["accuracy"][0] if "accuracy" in hle_result.columns else float('nan')
         if not np.isnan(hle_score):
             expert_knowledge_scores.append(hle_score)
             expert_knowledge_dict["hle_accuracy"] = hle_score
         create_subcategory_table(run, cfg, "hle", {
             "AVG": hle_score,
             "accuracy": hle_score,
-            "accuracy_raw": hle_score_raw,  # 元のパーセント値も保存
+            "accuracy_percent": hle_result.get("accuracy_percent", [np.nan])[0],
             "calibration_error": hle_result.get("calibration_error", [np.nan])[0],
             "confidence_half_width": hle_result.get("confidence_half_width", [np.nan])[0],
             "total_questions": hle_result.get("total_questions", [np.nan])[0],
@@ -372,7 +370,7 @@ def calculate_glp_scores(cfg, leaderboard_dict, jaster_0shot, jaster_fewshots, m
     
     # MT-benchのcodingカテゴリを追加
     if mtbench is not None and "coding" in mtbench.columns:
-        mtbench_coding_score = mtbench["coding"][0] / 10  # 10で割って正規化
+        mtbench_coding_score = mtbench["coding"][0]  # すでに正規化済み
         coding_scores.append(mtbench_coding_score)
         coding_dict["coding_mtbench"] = mtbench_coding_score
     

@@ -7,8 +7,7 @@ from . import toxicity
 from . import jtruthfulqa
 from . import aggregate
 from . import bfcl
-from . import swebench
-from . import swebench_official
+from . import swe_bench
 from . import hallulens
 from . import arc_agi
 from . import hle
@@ -23,8 +22,7 @@ __all__ = [
     'jtruthfulqa',
     'aggregate',
     'bfcl',
-    'swebench',
-    'swebench_official',
+    'swe_bench',
     'hallulens',
     'arc_agi',
     'hle',
