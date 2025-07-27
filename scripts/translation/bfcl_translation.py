@@ -7,13 +7,12 @@ from tqdm import tqdm
 import time
 
 # 並列数を制限（APIのレート制限に応じて調整）
-MAX_CONCURRENT_CALLS = 3
+MAX_CONCURRENT_CALLS = 10
 MAX_RETRIES = 3
-RETRY_DELAY = 10  # 秒
+RETRY_DELAY = 0.5  # 秒
 
 client = AsyncOpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENROUTER_API_KEY"),
+    api_key=os.getenv("OPENAI_API_KEY"),
 )
 
 # 並列数を制限するためのセマフォ
@@ -24,8 +23,7 @@ async def translate_content(content, retry_count=0):
         async with semaphore:  # セマフォを使用して並列数を制限
             print(f"翻訳中: {content[:50]}...")
             completion = await client.chat.completions.create(
-                extra_body={},
-                model="qwen/qwen3-235b-a22b:free",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "user",
@@ -74,7 +72,7 @@ async def process_bfcl_file(input_file, output_file):
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
         # Process items in batches for efficiency
-        batch_size = 5  # Process 5 items at a time
+        batch_size = 20  # Process 20 items at a time
         translated_data = []
         
         for batch_start in range(0, len(data), batch_size):

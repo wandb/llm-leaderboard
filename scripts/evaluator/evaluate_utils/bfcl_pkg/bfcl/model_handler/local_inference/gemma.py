@@ -49,7 +49,7 @@ class GemmaHandler(OSSHandler):
             test_entry["question"][round_idx] = combine_consecutive_user_prompts(
                 test_entry["question"][round_idx]
             )
-            test_entry["question"][round_idx] = self._substitute_prompt_role(
+            test_entry["question"][round_idx] = GemmaHandler._substitute_prompt_role(
                 test_entry["question"][round_idx]
             )
 

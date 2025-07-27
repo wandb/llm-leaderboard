@@ -89,7 +89,7 @@ class OpenAIResponsesHandler(BaseHandler):
 
     def _pre_query_processing_FC(self, inference_data: dict, test_entry: dict) -> dict:
         for round_idx in range(len(test_entry["question"])):
-            test_entry["question"][round_idx] = self._substitute_prompt_role(
+            test_entry["question"][round_idx] = OpenAIResponsesHandler._substitute_prompt_role(
                 test_entry["question"][round_idx]
             )
 
@@ -207,7 +207,7 @@ class OpenAIResponsesHandler(BaseHandler):
         )
 
         for round_idx in range(len(test_entry["question"])):
-            test_entry["question"][round_idx] = self._substitute_prompt_role(
+            test_entry["question"][round_idx] = OpenAIResponsesHandler._substitute_prompt_role(
                 test_entry["question"][round_idx]
             )
 

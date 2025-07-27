@@ -174,6 +174,7 @@ def multi_turn_runner(
             "total_count": len(model_result),
         },
     )
+    
     output_file_name = f"{VERSION_PREFIX}_{test_category}_score.json"
     output_file_dir = score_dir / model_name
     write_list_of_dicts_to_file(output_file_name, result, output_file_dir)
@@ -453,9 +454,11 @@ def runner(model_names, test_categories, result_dir, score_dir, samples_per_cate
             if is_chatable(test_category) or is_sql(test_category) or is_executable(test_category):
                 continue
 
-            model_result = load_file(model_result_json, sort_by_id=True)
+            model_result = load_file(model_result_json, sort_by_id=False)
             if samples_per_category is not None:
                 model_result = model_result[:samples_per_category]
+                # Sort by ID after sampling
+                model_result.sort(key=lambda x: sort_key(x))
 
             state = evaluate_task(
                 test_category,
@@ -504,10 +507,12 @@ def evaluate_task(
 
     # Find the corresponding test file.
     prompt_file = find_file_with_suffix(Path(artifacts_path + PROMPT_PATH), test_category)
-    prompt = load_file(prompt_file, sort_by_id=True)
+    prompt = load_file(prompt_file, sort_by_id=False)
 
     if samples_per_category is not None:
         prompt = prompt[:samples_per_category]
+        # Sort by ID after sampling
+        prompt.sort(key=lambda x: sort_key(x))
 
     if is_relevance_or_irrelevance(test_category):
         accuracy, total_count, individual_results = relevance_file_runner(
@@ -517,11 +522,13 @@ def evaluate_task(
     else:
         # Find the corresponding possible answer file
         possible_answer_file = find_file_with_suffix(Path(artifacts_path + POSSIBLE_ANSWER_PATH), test_category)
-        possible_answer = load_file(possible_answer_file, sort_by_id=True)
+        possible_answer = load_file(possible_answer_file, sort_by_id=False)
 
         # If samples_per_category is specified, limit the number of possible answers
         if samples_per_category is not None:
             possible_answer = possible_answer[:samples_per_category]
+            # Sort by ID after sampling
+            possible_answer.sort(key=lambda x: sort_key(x))
 
         if is_multi_turn(test_category):
             accuracy, total_count, individual_results = multi_turn_runner(

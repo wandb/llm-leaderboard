@@ -110,7 +110,7 @@ class GeminiHandler(BaseHandler):
     def _pre_query_processing_FC(self, inference_data: dict, test_entry: dict) -> dict:
 
         for round_idx in range(len(test_entry["question"])):
-            test_entry["question"][round_idx] = self._substitute_prompt_role(
+            test_entry["question"][round_idx] = GeminiHandler._substitute_prompt_role(
                 test_entry["question"][round_idx]
             )
 
@@ -264,7 +264,7 @@ class GeminiHandler(BaseHandler):
         functions = func_doc_language_specific_pre_processing(functions, test_category)
 
         for round_idx in range(len(test_entry["question"])):
-            test_entry["question"][round_idx] = self._substitute_prompt_role(
+            test_entry["question"][round_idx] = GeminiHandler._substitute_prompt_role(
                 test_entry["question"][round_idx]
             )
 

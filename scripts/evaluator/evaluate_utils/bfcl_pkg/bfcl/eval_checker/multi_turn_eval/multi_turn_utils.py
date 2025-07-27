@@ -124,7 +124,10 @@ def execute_multi_turn_func_call(
             if func_call_copy in ["kill", "exit", "quit", "remove", "unlink", "popen", "Popen", "run"]:
                 raise Exception(f"Function call {func_call_copy} is not allowed.")
 
-            func_call_result = eval(func_call)
+            # Create a safe execution environment with necessary variables
+            exec_globals = globals().copy()
+            
+            func_call_result = eval(func_call, exec_globals)
 
             if type(func_call_result) == str:
                 pass
