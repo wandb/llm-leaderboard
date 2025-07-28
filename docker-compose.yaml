@@ -30,7 +30,6 @@ services:
       dockerfile: Dockerfile
     runtime: nvidia
     container_name: llm-leaderboard
-    # GPU設定はdocker-compose.override.ymlで定義
     environment:
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
