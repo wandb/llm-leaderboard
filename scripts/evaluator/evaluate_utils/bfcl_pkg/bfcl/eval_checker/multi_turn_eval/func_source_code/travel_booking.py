@@ -485,7 +485,8 @@ class TravelAPI:
             self._add_booking_records()  # Add booking record extension
 
     def __eq__(self, value: object) -> bool:
-        if not isinstance(value, TravelAPI):
+        # Use class name comparison instead of isinstance to avoid module import issues
+        if not hasattr(value, '__class__') or value.__class__.__name__ != 'TravelAPI':
             return False
 
         for attr_name in vars(self):
@@ -679,6 +680,7 @@ class TravelAPI:
             ("LAX", "ATV"): 400,
             ("LAX", "PHV"): 410,
             ("LAX", "GFD"): 420,
+            ("LAX", "HND"): 430,
             ("JFK", "ORD"): 300,
             ("JFK", "BOS"): 250,
             ("JFK", "RMS"): 450,
@@ -791,6 +793,8 @@ class TravelAPI:
             ("CRH", "GFD"): 260,
             ("CRH", "SFO"): 270,
             ("CRH", "RMS"): 280,
+            ("CRH", "HKG"): 290,
+            ("CRH", "JFK"): 300,
             ("ATV", "PHV"): 230,
             ("ATV", "GFD"): 240,
             ("PHV", "GFD"): 220,
@@ -875,7 +879,6 @@ class TravelAPI:
         travel_from: str,
         travel_to: str,
         travel_class: str,
-        travel_cost: float,
     ) -> Dict[str, Union[str, bool]]:
         """
         Book a flight given the travel information. From and To should be the airport codes in the IATA format.
@@ -887,7 +890,6 @@ class TravelAPI:
             travel_from (str): The location the travel is from
             travel_to (str): The location the travel is to
             travel_class (str): The class of the travel
-            travel_cost (float): The cost of the travel
         Returns:
             booking_id (str): The ID of the booking
             transaction_id (str): The ID of the transaction
@@ -910,6 +912,14 @@ class TravelAPI:
             return {"booking_status": False, "error": "Card not registered"}
         if "balance" not in self.credit_card_list[card_id]:
             return {"booking_status": False, "error": "Balance not found"}
+        
+        # Calculate travel cost internally
+        try:
+            cost_result = self.get_flight_cost(travel_from, travel_to, travel_date, travel_class)
+            travel_cost = cost_result["travel_cost_list"][0]
+        except (ValueError, KeyError, IndexError) as e:
+            return {"booking_status": False, "error": f"Unable to calculate flight cost: {str(e)}"}
+        
         if self.credit_card_list[card_id]["balance"] < travel_cost:
             return {"booking_status": False, "error": "Insufficient funds"}
         if (
@@ -920,7 +930,6 @@ class TravelAPI:
                 "booking_status": False,
                 "error": "Balance is less than budget limit",
             }
-        travel_cost = float(travel_cost)
         self.credit_card_list[card_id]["balance"] -= travel_cost
         booking_id = str(self._random.randint(1000000, 9999999))  # 7 digits
         transaction_id = str(self._random.randint(10000000, 99999999))  # 8 digits

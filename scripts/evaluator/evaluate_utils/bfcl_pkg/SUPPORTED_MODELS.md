@@ -52,8 +52,6 @@ For model names containing `{...}`, multiple versions are available. For example
 | Amazon-Nova-Pro-v1:0                           | Function Calling | AWS            | nova-pro-v1.0                                               |
 | Bielik-11B-v2.3-Instruct                       | Prompt           | Self-hosted 💻 | speakleash/Bielik-11B-v2.3-Instruct                         |
 | BitAgent-8B                                    | Prompt           | Self-hosted 💻 | BitAgent/BitAgent-8B                                        |
-| Claude-3-Opus-20240229                         | Function Calling | Anthropic      | claude-3-opus-20240229-FC                                   |
-| Claude-3-Opus-20240229                         | Prompt           | Anthropic      | claude-3-opus-20240229                                      |
 | claude-3.5-haiku-20241022                      | Function Calling | Anthropic      | claude-3-5-haiku-20241022-FC                                |
 | claude-3.5-haiku-20241022                      | Prompt           | Anthropic      | claude-3-5-haiku-20241022                                   |
 | Claude-3.5-Sonnet-20241022                     | Function Calling | Anthropic      | claude-3-5-sonnet-20241022-FC                               |
@@ -119,6 +117,7 @@ For model names containing `{...}`, multiple versions are available. For example
 | Llama-4-Scout-17B-16E-Instruct                 | Prompt           | Novita AI      | meta-llama/llama-4-scout-17b-16e-instruct-novita            |
 | Llama-4-Scout-17B-16E-Instruct                 | Function Calling | Novita AI      | meta-llama/llama-4-scout-17b-16e-instruct-FC-novita         |
 | Llama-4-Scout-17B-16E-Instruct                 | Function Calling | Self-hosted 💻 | meta-llama/Llama-4-Scout-17B-16E-Instruct-FC                |
+| Ling-lite-v1.5                                 | Prompt           | Ant Group      | Ling/ling-lite-v1.5                              |
 | MiniCPM3-4B                                    | Prompt           | Self-hosted 💻 | openbmb/MiniCPM3-4B                                         |
 | MiniCPM3-4B-FC                                 | Function Calling | Self-hosted 💻 | openbmb/MiniCPM3-4B-FC                                      |
 | Ministral-8B-Instruct-2410                     | Function Calling | Self-hosted 💻 | mistralai/Ministral-8B-Instruct-2410                        |
@@ -165,7 +164,7 @@ For model names containing `{...}`, multiple versions are available. For example
 ## Additional Requirements for Certain Models
 
 - **Gemini Models:**
-  For `Gemini` models, we use the Google Vertex AI endpoint for inference. Ensure you have set the `VERTEX_AI_PROJECT_ID` and `VERTEX_AI_LOCATION` in your `.env` file.
+  For `Gemini` models, we use the Google AI Studio API for inference. Ensure you have set the `GOOGLE_API_KEY` in your `.env` file.
 
 - **Databricks Models:**
   For `databrick-dbrx-instruct`, you must create an Azure Databricks workspace and set up a dedicated inference endpoint. Provide the endpoint URL via `DATABRICKS_AZURE_ENDPOINT_URL` in `.env`.

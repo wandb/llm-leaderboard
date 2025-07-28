@@ -1,6 +1,7 @@
 import argparse
 import json
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 
@@ -56,8 +57,11 @@ def get_args():
 
     return args
 
-def build_handler(model_id, model_name, temperature):
-    handler = MODEL_CONFIG_MAPPING[model_id].model_handler(model_name, temperature)
+def build_handler(model_name, temperature):
+    config = MODEL_CONFIG_MAPPING[model_name]
+    handler = config.model_handler(model_name, temperature)
+    # Propagate config flags to the handler instance
+    handler.is_fc_model = config.is_fc_model
     return handler
 
 def get_involved_test_entries(test_category_args, run_ids, samples_per_category=None,artifacts_path=None):
@@ -200,6 +204,7 @@ def multi_threaded_inference(handler, test_case, include_input_log, exclude_stat
                     "❗️❗️ Error occurred during inference. Maximum reties reached for rate limit or other error. Continuing to next test case."
                 )
                 print(f"❗️❗️ Test case ID: {test_case['id']}, Error: {str(e)}")
+                traceback.print_exc()
                 print("-" * 100)
 
                 return {
@@ -217,10 +222,10 @@ def multi_threaded_inference(handler, test_case, include_input_log, exclude_stat
     return result_to_write
 
 
-def generate_results(args, model_id, model_name, test_cases_total):
+def generate_results(args, model_name, test_cases_total):
     # Always use update_mode=True to prevent duplicate entries for the same test case
     update_mode = True
-    handler = build_handler(model_id, model_name, args.temperature)
+    handler = build_handler(model_name, args.temperature)
 
     if handler.model_style == ModelStyle.OSSMODEL:
         # batch_inference will handle the writing of results
@@ -241,7 +246,7 @@ def generate_results(args, model_id, model_name, test_cases_total):
         futures = []
         with ThreadPoolExecutor(max_workers=args.num_threads) as executor:
             with tqdm(
-                total=len(test_cases_total), desc=f"Generating results for {model_id}"
+                total=len(test_cases_total), desc=f"Generating results for {model_name}"
             ) as pbar:
 
                 for test_case in test_cases_total:
@@ -274,13 +279,13 @@ def main(args):
         all_test_entries_involved,
     ) = get_involved_test_entries(args.test_category, args.run_ids, args.samples_per_category,args.artifacts_path)
 
-    if args.model_id not in MODEL_CONFIG_MAPPING:
+    if args.model_name not in MODEL_CONFIG_MAPPING:
         raise ValueError(
-                    f"Unknown model_name '{args.model_id}'.\n"
+                    f"Unknown model_name '{args.model_name}'.\n"
                     "• For officially supported models, please refer to `SUPPORTED_MODELS.md`.\n"
                     "• For running new models, please refer to `README.md` and `CONTRIBUTING.md`."
                 )
-    print(f"Generating results for {args.model_id}")
+    print(f"Generating results for {args.model_name}")
     if args.run_ids:
         print("Running specific test cases. Ignoring `--test-category` argument.")
     else:
@@ -293,7 +298,7 @@ def main(args):
 
     test_cases_total = collect_test_cases(
         args,
-        args.model_id,
+        args.model_name,
         all_test_categories,
         all_test_file_paths,
         all_test_entries_involved,
@@ -304,6 +309,6 @@ def main(args):
             f"All selected test cases have been previously generated for {args.model}. No new test cases to generate."
         )
     else:
-        generate_results(args, args.model_id, args.model_name, test_cases_total)
+        generate_results(args, args.model_name, test_cases_total)
     
     return test_cases_total

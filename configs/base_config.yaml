@@ -1,6 +1,6 @@
 wandb:
   entity: 'llm-leaderboard'
-  project: 'nejumi-leaderboard4-dev'
+  project: 'nejumi-leaderboard4'
   #run: please set up run name in a model-base config
 
 github_version: v3.0.0 #for recording
@@ -140,7 +140,7 @@ mtbench:
 
 bfcl:
   temperature: 0.01
-  num_threads: 4
+  num_threads: 16
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:production'
 
 hallulens:

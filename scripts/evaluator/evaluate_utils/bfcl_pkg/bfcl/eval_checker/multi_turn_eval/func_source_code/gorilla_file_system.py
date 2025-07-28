@@ -464,7 +464,8 @@ class File:
         return f"<<File: {self.name}, Content: {self.content}>>"
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, File):
+        # Use class name comparison instead of isinstance to avoid module import issues
+        if not hasattr(other, '__class__') or other.__class__.__name__ != 'File':
             return False
         return self.name == other.name and self.content == other.content
 
@@ -521,6 +522,8 @@ class Directory:
         Returns:
             item (any): The retrieved item or None if it does not exist.
         """
+        if item_name == ".":
+            return self
         return self.contents.get(item_name)
 
     def _list_contents(self) -> List[str]:
@@ -536,7 +539,8 @@ class Directory:
         return f"<Directory: {self.name}, Parent: {self.parent.name if self.parent else None}, Contents: {self.contents}>"
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, Directory):
+        # Use class name comparison instead of isinstance to avoid module import issues
+        if not hasattr(other, '__class__') or other.__class__.__name__ != 'Directory':
             return False
         return self.name == other.name and self.contents == other.contents
 
@@ -555,7 +559,8 @@ class GorillaFileSystem:
         self._api_description = "This tool belongs to the Gorilla file system. It is a simple file system that allows users to perform basic file operations such as navigating directories, creating files and directories, reading and writing to files, etc."
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, GorillaFileSystem):
+        # Use class name comparison instead of isinstance to avoid module import issues
+        if not hasattr(other, '__class__') or other.__class__.__name__ != 'GorillaFileSystem':
             return False
         return self.root == other.root
 

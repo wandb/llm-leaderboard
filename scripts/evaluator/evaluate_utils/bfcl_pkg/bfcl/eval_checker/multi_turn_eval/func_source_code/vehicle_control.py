@@ -569,7 +569,8 @@ class VehicleControlAPI:
         self.long_context = long_context
 
     def __eq__(self, value: object) -> bool:
-        if not isinstance(value, VehicleControlAPI):
+        # Use class name comparison instead of isinstance to avoid module import issues
+        if not hasattr(value, '__class__') or value.__class__.__name__ != 'VehicleControlAPI':
             return False
 
         for attr_name in vars(self):

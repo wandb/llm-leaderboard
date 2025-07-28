@@ -256,34 +256,71 @@ def method_invoke_order_checker(model_instances: dict, ground_truth_instances: d
 #### Helper functions ####
 
 
-def _compare_instances(model_obect, ground_truth_object):
+def _compare_instances(model_object, ground_truth_object):
     """
     Checks if the model_object has the same attributes as the ground_truth_object. They are instances of the same class.
+    Uses class name comparison to avoid module import issues.
     """
-    model_class_name = model_obect.__class__.__name__
+    # Use class name comparison instead of type() to avoid module import issues
+    model_class_name = model_object.__class__.__name__
     ground_truth_class_name = ground_truth_object.__class__.__name__
     
-    # Check if the class names match (instead of strict type equality)
-    # This handles the case where same class is loaded from different module instances
-    if model_class_name != ground_truth_class_name:
-        return False, {"type_mismatch": {"model": model_class_name, "ground_truth": ground_truth_class_name}}
-
-    # Compare attribute values
+    assert model_class_name == ground_truth_class_name, f"Objects are not of the same class. Model: {model_class_name}, Ground truth: {ground_truth_class_name}"
+    
     differences = {}
     valid = True
     for attr_name in vars(ground_truth_object):
         # We don't check for private attributes
         if attr_name.startswith("_"):
             continue
-        model_attr = getattr(model_obect, attr_name)
- 
+        model_attr = getattr(model_object, attr_name)
         ground_truth_attr = getattr(ground_truth_object, attr_name)
- 
-        if model_attr != ground_truth_attr:
+
+        # Compare attributes using class name for objects, direct comparison for primitives
+        if _compare_attributes(model_attr, ground_truth_attr):
+            continue
+        else:
             valid = False
             differences[attr_name] = {"model": model_attr, "ground_truth": ground_truth_attr}
 
     return valid, differences
+
+
+def _compare_attributes(model_attr, ground_truth_attr):
+    """
+    Compare two attributes, handling both primitive types and objects.
+    For objects, compares by class name to avoid module import issues.
+    """
+    # Direct comparison for primitive types
+    if model_attr == ground_truth_attr:
+        return True
+    
+    # Handle None values
+    if model_attr is None and ground_truth_attr is None:
+        return True
+    if model_attr is None or ground_truth_attr is None:
+        return False
+    
+    # Handle objects with class names
+    if hasattr(model_attr, '__class__') and hasattr(ground_truth_attr, '__class__'):
+        model_class_name = model_attr.__class__.__name__
+        ground_truth_class_name = ground_truth_attr.__class__.__name__
+        return model_class_name == ground_truth_class_name
+    
+    # Handle lists, tuples, and other iterables
+    if isinstance(model_attr, (list, tuple)) and isinstance(ground_truth_attr, (list, tuple)):
+        if len(model_attr) != len(ground_truth_attr):
+            return False
+        return all(_compare_attributes(a, b) for a, b in zip(model_attr, ground_truth_attr))
+    
+    # Handle dictionaries
+    if isinstance(model_attr, dict) and isinstance(ground_truth_attr, dict):
+        if set(model_attr.keys()) != set(ground_truth_attr.keys()):
+            return False
+        return all(_compare_attributes(model_attr[k], ground_truth_attr[k]) for k in model_attr.keys())
+    
+    # For other types, use direct comparison
+    return model_attr == ground_truth_attr
 
 
 def _is_subsequence(list1, list2) -> tuple[bool, list]:
@@ -319,3 +356,4 @@ def _is_subsequence_unordered(list1, list2) -> tuple[bool, list]:
     # If there are missing elements, list1 is not a subsequence of list2
     is_subsequence = len(missing_elements) == 0
     return is_subsequence, missing_elements
+

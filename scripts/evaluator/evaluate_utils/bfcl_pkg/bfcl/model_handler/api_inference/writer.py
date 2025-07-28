@@ -2,11 +2,11 @@ import os
 import time
 
 from ..model_style import ModelStyle
-from .openai import OpenAIHandler
+from .openai_completion import OpenAICompletionsHandler
 from writerai import Writer
 
 
-class WriterHandler(OpenAIHandler):
+class WriterHandler(OpenAICompletionsHandler):
     def __init__(self, model_name, temperature) -> None:
         super().__init__(model_name, temperature)
         self.model_style = ModelStyle.WRITER

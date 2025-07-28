@@ -6,6 +6,7 @@ import copy
 import sys
 from pathlib import Path
 
+
 # Get the directory containing func_source_code
 FUNC_SOURCE_DIR = Path(__file__).parent / "func_source_code"
 
@@ -64,41 +65,49 @@ def execute_multi_turn_func_call(
         # Create a spec from the file path
         spec = importlib.util.spec_from_file_location(module_file, module_path)
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)  # Fixed incomplete exec_mo
+        spec.loader.exec_module(module)
         
-        # TODO: Handler the model name issue from handler more elegantly
-        instance_name = (
-            f"{model_name.replace('-', '_').replace('.', '_').replace('/', '_')}_{test_entry_id}_{class_name.lower()}_instance"
-        )
-        if instance_name not in globals():
-            class_ = getattr(module, class_name)
-            class_instance = class_()
-            if class_name not in STATELESS_CLASSES:
-                class_initial_config = initial_config.get(class_name, {})
-                # Deep copy the initial configuration to avoid mutation issues
-                class_instance._load_scenario(
-                    copy.deepcopy(class_initial_config), long_context=long_context
-                )
-            globals()[instance_name] = class_instance
-        # This happens in subsequent turns
+        # Get the class from the module
+        class_obj = getattr(module, class_name)
+        
+        # Create an instance of the class
+        if class_name in STATELESS_CLASSES:
+            # For stateless classes, we don't need to pass any initial configuration
+            instance = class_obj()
         else:
-            class_instance = globals()[instance_name]
-
-        involved_instances[class_name] = class_instance
-
-        # Retrieve all method names and map them to the instance
-        for method_name, method in inspect.getmembers(
-            class_instance, predicate=inspect.ismethod
-        ):
-            # Skip private methods
-            if method_name.startswith("_"):
-                continue
-            class_method_name_mapping[method_name] = instance_name
+            # For stateful classes, create instance without initial_config and then load scenario
+            instance = class_obj()
+            if hasattr(instance, '_load_scenario'):
+                instance._load_scenario(initial_config, long_context)
+        
+        # Add the instance to the global namespace
+        instance_name = f"{model_name}_{test_entry_id}_{class_name.lower()}_instance"
+        globals()[instance_name] = instance
+        involved_instances[class_name] = instance
+        
+        # Get all methods of the class
+        methods = inspect.getmembers(class_obj, inspect.isfunction)
+        for method_name, method_obj in methods:
+            if not method_name.startswith("_"):  # Skip private methods
+                class_method_name_mapping[method_name] = instance_name
 
     execution_results = []
     for func_call in func_call_list:
         # Add the instance name to the method calls
         func_call = _process_method_call(func_call, class_method_name_mapping)
+
+        # Fix leading zeros in the entire function call string before eval
+        def fix_leading_zeros_in_string(match):
+            number = match.group(0)
+            # If it's a number with leading zeros and not 0, convert to decimal
+            if number.startswith('0') and len(number) > 1 and not number.startswith('0x') and not number.startswith('0o') and not number.startswith('0b'):
+                # Remove leading zeros and convert to int, then back to string
+                return str(int(number))
+            return number
+
+        # Pattern to match numeric literals with potential leading zeros
+        number_pattern = r'\b0\d+\b'
+        func_call = re.sub(number_pattern, fix_leading_zeros_in_string, func_call)
 
         # Evaluate the function call
         try:
@@ -115,7 +124,10 @@ def execute_multi_turn_func_call(
             if func_call_copy in ["kill", "exit", "quit", "remove", "unlink", "popen", "Popen", "run"]:
                 raise Exception(f"Function call {func_call_copy} is not allowed.")
 
-            func_call_result = eval(func_call)
+            # Create a safe execution environment with necessary variables
+            exec_globals = globals().copy()
+            
+            func_call_result = eval(func_call, exec_globals)
 
             if type(func_call_result) == str:
                 pass
@@ -175,5 +187,19 @@ def _process_method_call(function_call_string: str, instance_mapping: dict) -> s
 
     # Replace function names with their class-prepended versions
     processed_string = re.sub(pattern, replace_function, function_call_string)
+
+    # Fix leading zeros in numeric literals to prevent octal interpretation
+    # This handles cases like 08, 09 which are invalid in Python 3
+    def fix_leading_zeros(match):
+        number = match.group(0)
+        # If it's a number with leading zeros and not 0, convert to decimal
+        if number.startswith('0') and len(number) > 1 and not number.startswith('0x') and not number.startswith('0o') and not number.startswith('0b'):
+            # Remove leading zeros and convert to int, then back to string
+            return str(int(number))
+        return number
+
+    # Pattern to match numeric literals with potential leading zeros
+    number_pattern = r'\b0\d+\b'
+    processed_string = re.sub(number_pattern, fix_leading_zeros, processed_string)
 
     return processed_string
