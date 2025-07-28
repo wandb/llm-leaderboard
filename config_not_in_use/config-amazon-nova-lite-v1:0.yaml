@@ -1,0 +1,11 @@
+wandb:
+  run_name: us.amazon.nova-lite-v1:0
+api: amazon_bedrock
+batch_size: 2
+inference_interval: 16
+model:
+  pretrained_model_name_or_path: us.amazon.nova-lite-v1:0 #if you use openai api, put the name of model
+  bfcl_model_id: "nova-lite-v1.0" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  size_category: api
+  size: null
+  release_date: 12/3/2024

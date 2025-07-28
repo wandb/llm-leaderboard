@@ -1,0 +1,29 @@
+wandb:
+  run_name: tokyotech-llm/Swallow-7b-instruct-v0.1-jbbq-test
+api: vllm
+batch_size: 256
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: tokyotech-llm/Swallow-7b-instruct-v0.1
+  bfcl_model_id: ""
+  chat_template: tokyotech-llm/Swallow-7b-instruct-v0.1
+  size_category: <10B
+  size: 6829969408
+  release_date: 4/26/2024
+
+# JBBQのみ実行
+run:
+  jaster: false
+  jmmlu_robustness: false
+  mtbench: false
+  jbbq: true
+  toxicity: false
+  jtruthfulqa: false
+  hle: false
+  swebench: false
+  bfcl: false
+  hallulens: false
+  m_ifeval: false
+  sample: false
+
+testmode: false 

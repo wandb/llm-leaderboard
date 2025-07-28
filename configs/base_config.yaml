@@ -3,7 +3,7 @@ wandb:
   project: 'nejumi-leaderboard4'
   #run: please set up run name in a model-base config
 
-testmode: false
+testmode: true
 inference_interval: 0 # seconds
 
 run:
@@ -84,6 +84,10 @@ jbbq:
 toxicity:
   artifact_path: 'llm-leaderboard/nejumi-leaderboard4-private/toxicity_dataset_full:production'
   judge_prompts_path: 'llm-leaderboard/nejumi-leaderboard4-private/toxicity_judge_prompts:production'
+  generator_config:
+    max_tokens: 256
+    temperature: 0.0
+    top_p: 1.0
   judge:
     model: 'gpt-4.1-2025-04-14'
     parallel: 32
@@ -98,10 +102,11 @@ jtruthfulqa:
 swebench:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/swebench_verified_official:production'  # SWE-Bench Verifiedデータセットのアーティファクトパス
   dataset_dir: 'swebench_verified_official'
-  max_samples: 50  # 全500件は時間がかかるため制限（フルセットの場合は500を指定）
+  max_samples: 80  # 全500件は時間がかかるため制限（フルセットの場合は500を指定）
   max_tokens: 2048  # SWE-Benchのパッチ生成に必要なトークン数
-  max_workers: 8  # 並列実行ワーカー数
+  max_workers: 24  # 並列実行ワーカー数
   evaluation_method: 'official'  # 'official' or 'docker' - 公式パッケージまたは独自Docker実装
+  background_eval: false
 
 mtbench:
   temperature_override:
@@ -167,8 +172,9 @@ hle:
     parallel: 32
     params: {} # Currently using OpenAI's default
 
-arc_agi_2:
-  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval_50:production"
+arc_agi:
+  arc_agi_1_artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-1_public-eval_50:production"
+  arc_agi_2_artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval_50:production"
   max_output_tokens: 4096
   num_attempts: 2
 
