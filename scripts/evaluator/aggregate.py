@@ -625,10 +625,34 @@ def evaluate():
     
     # 総合スコア
     if GLP_flag and ALT_flag:
-        leaderboard_dict["TOTAL_AVG"] = np.mean([
-            leaderboard_dict["汎用的言語性能(GLP)_AVG"], 
-            leaderboard_dict["アラインメント(ALT)_AVG"]
-        ])
+        # 重み1のカテゴリ
+        weight_1_categories = [
+            "GLP_応用的言語性能", "GLP_基礎的言語性能", 
+            "ALT_制御性", "ALT_倫理・道徳", "ALT_毒性", "ALT_バイアス", "ALT_真実性", "ALT_堅牢性"
+        ]
+        
+        # 重み2のカテゴリ
+        weight_2_categories = [
+            "GLP_推論能力", "GLP_知識・質問応答", "GLP_アプリケーション開発"
+        ]
+        
+        # 重み付き平均の計算
+        weight_1_scores = []
+        weight_2_scores = []
+        
+        for cat in weight_1_categories:
+            if cat in leaderboard_dict and not np.isnan(leaderboard_dict[cat]):
+                weight_1_scores.append(leaderboard_dict[cat])
+        
+        for cat in weight_2_categories:
+            if cat in leaderboard_dict and not np.isnan(leaderboard_dict[cat]):
+                weight_2_scores.append(leaderboard_dict[cat])
+        
+        # 重み付き平均の計算
+        total_weight = len(weight_1_scores) * 1 + len(weight_2_scores) * 2
+        weighted_sum = sum(weight_1_scores) * 1 + sum(weight_2_scores) * 2
+        
+        leaderboard_dict["TOTAL_SCORE"] = weighted_sum / total_weight if total_weight > 0 else float('nan')
 
     # ========== データセット別の平均値 ==========
     if GLP_flag or ALT_flag:
@@ -649,7 +673,7 @@ def evaluate():
     
     # 総合スコアの列
     if GLP_flag and ALT_flag:
-        first_cols.append("TOTAL_AVG")
+        first_cols.append("TOTAL_SCORE")
     
     # GLPの階層構造テーブルの作成
     if GLP_flag:
