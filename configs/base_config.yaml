@@ -1,27 +1,25 @@
 wandb:
   entity: 'llm-leaderboard'
-  project: 'nejumi-leaderboard4-dev-bfcl'
+  project: 'nejumi-leaderboard4'
   #run: please set up run name in a model-base config
-
-github_version: v3.0.0 #for recording
 
 testmode: false
 inference_interval: 0 # seconds
 
 run:
-  jaster: false
-  jmmlu_robustness: false # if this is set as true, jaster should set as true
-  mtbench: false
-  jbbq: false
-  toxicity: false
-  jtruthfulqa: false
-  hle: false
-  swebench: false
+  jaster: true
+  jmmlu_robustness: true # if this is set as true, jaster should set as true
+  mtbench: true
+  jbbq: true
+  toxicity: true
+  jtruthfulqa: true
+  hle: true
+  swebench: true
   bfcl: true
-  hallulens: false
-  arc_agi_2: false
-  m_ifeval: false
-  aggregate: false
+  hallulens: true
+  arc_agi: true
+  m_ifeval: true
+  aggregate: true
 
 model:
   artifact_path: null
@@ -145,7 +143,7 @@ mtbench:
 
 bfcl:
   temperature: 0.01
-  num_threads: 16
+  num_threads: 4
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:production'
 
 hallulens:

@@ -2,37 +2,6 @@
 
 Below is a comprehensive table of models supported for running leaderboard evaluations. Each model entry indicates whether it supports native Function Calling (FC) or requires a special prompt format to generate function calls. Models marked with `💻` are intended to be hosted locally (using vllm or sglang), while models without the `💻` icon are accessed via API calls. To quickly see all available models, you can also run the `bfcl models` command.
 
-## 🆕 Nejumi Leaderboard Enhancement: Simplified OSS Model Addition
-
-**For Nejumi Leaderboard users:** You can now easily add new OSS models without creating custom handler files! Use the **`oss_handler`** model identifier in your configuration files. This unified handler automatically detects and processes various output patterns from different models.
-
-### How to use the unified OSS handler:
-1. Set `bfcl_model_name: "oss_handler"` in your model configuration YAML
-2. The handler will automatically detect and process output patterns from:
-   - Standard JSON arrays (Hammer-style)
-   - Markdown code blocks (DeepSeek-style)
-   - XML tags (Hermes-style)
-   - Special model-specific tags (Llama 3.1, Granite, MiniCPM, etc.)
-   
-3. No need to create individual handler files for new OSS models!
-
-## 🆕 Generic API Handlers: Simplified Provider Integration
-
-**For API-based models:** You can now use generic handlers for major providers without specifying exact model versions! These handlers provide a flexible way to access the latest models from each provider.
-
-### Available Generic Handlers:
-- **`OpenAI-FC`**: Generic OpenAI Function Calling handler
-- **`claude-FC`**: Generic Anthropic Claude Function Calling handler  
-- **`gemini-FC`**: Generic Google Gemini Function Calling handler
-- **`mistral-FC`**: Generic Mistral AI Function Calling handler
-- **`command-a-r-FC`**: Generic Cohere Command A-R Function Calling handler
-- **`upstage-FC`**: Generic Upstage Function Calling handler
-
-### How to use generic API handlers:
-1. Use the generic handler model ID (e.g., `OpenAI-FC`) in your configuration
-2. The handler will use the provider's default or latest available model
-3. Perfect for testing and when you don't need to specify exact model versions
-
 ## Function Calling (FC) vs. Prompt Mode
 
 - **Function Calling (FC) Mode:**  
