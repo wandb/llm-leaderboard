@@ -6,7 +6,7 @@ import time
 from ..base_handler import BaseHandler
 from ...constants.type_mappings import GORILLA_TO_OPENAPI
 from ..model_style import ModelStyle
-from .openai import OpenAIHandler
+from .openai_completion import OpenAICompletionsHandler
 from ..utils import (
     ast_parse,
     combine_consecutive_user_prompts,

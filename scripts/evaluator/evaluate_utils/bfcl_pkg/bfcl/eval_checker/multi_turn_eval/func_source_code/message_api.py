@@ -87,7 +87,8 @@ class MessageAPI:
         self.current_user = scenario.get("current_user", DEFAULT_STATE_COPY["current_user"])
 
     def __eq__(self, value: object) -> bool:
-        if not isinstance(value, MessageAPI):
+        # Use class name comparison instead of isinstance to avoid module import issues
+        if not hasattr(value, '__class__') or value.__class__.__name__ != 'MessageAPI':
             return False
 
         for attr_name in vars(self):

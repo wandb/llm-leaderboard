@@ -21,14 +21,14 @@ from dotenv import load_dotenv
 from tqdm import tqdm
 
 
-def get_handler(model_id, model_name):
-    return MODEL_CONFIG_MAPPING[model_id].model_handler(
+def get_handler(model_name):
+    return MODEL_CONFIG_MAPPING[model_name].model_handler(
         model_name, temperature=0
     )  # Temperature doesn't matter for evaluation
 
 
 def multi_turn_runner(
-    handler, model_result, prompt, possible_answer, model_id, model_name, test_category, score_dir
+    handler, model_result, prompt, possible_answer, model_name, test_category, score_dir
 ):
     assert (
         len(model_result) == len(prompt) == len(possible_answer)
@@ -174,6 +174,7 @@ def multi_turn_runner(
             "total_count": len(model_result),
         },
     )
+    
     output_file_name = f"{VERSION_PREFIX}_{test_category}_score.json"
     output_file_dir = score_dir / model_name
     write_list_of_dicts_to_file(output_file_name, result, output_file_dir)
@@ -241,12 +242,9 @@ def relevance_file_runner(
         
         if success:
             correct_count += 1
-            # For successful cases, add success information
             temp["error"] = None
-            temp["error_type"] = None
             temp["status"] = "success"
         else:
-            # For failed cases, add error information
             if "irrelevance" in test_category:
                 temp["error"] = [
                     f"Valid syntax. Successfully decode AST when it should not."
@@ -294,7 +292,6 @@ def ast_file_runner(
     possible_answer,
     language,
     test_category,
-    model_id,
     model_name,
     score_dir,
 ):
@@ -310,53 +307,52 @@ def ast_file_runner(
         prompt_item = prompt[i]["function"]
         possible_answer_item = possible_answer[i]["ground_truth"]
 
-        model_result_item_raw = model_result_item
-        decode_error = None
-        decoder_output_valid = False
-        
         try:
+            model_result_item_raw = model_result_item
             model_result_item = handler.decode_ast(model_result_item, language)
-            decoder_output_valid = is_function_calling_format_output(model_result_item)
         except Exception as e:
-            decode_error = str(e)
-            
-        # Create detailed entry for all cases (decode error, format error, and successful cases)
-        temp = {}
-        temp["id"] = index
-        temp["model_name"] = model_name
-        temp["test_category"] = test_category
-        temp["prompt"] = prompt[i]
-        temp["model_result_raw"] = model_result_item_raw
-        temp["possible_answer"] = possible_answer_item
-        temp["input_token_count"] = model_result[i].get("input_token_count", 0)
-        temp["output_token_count"] = model_result[i].get("output_token_count", 0)
-        
-        if decode_error:
-            # AST decode failed
-            temp["valid"] = False
-            temp["success"] = 0  # Explicit success field (1=success, 0=failure)
-            temp["error"] = [f"Invalid syntax. Failed to decode AST. {decode_error}"]
-            temp["error_type"] = "ast_decoder:decoder_failed"
-            temp["model_result_decoded"] = None
-            temp["status"] = "failed"
-            result.append(temp)
+            result.append(
+                {
+                    "id": index,
+                    "model_name": model_name,
+                    "test_category": test_category,
+                    "valid": False,
+                    "success": 0,  # Explicit success field (1=success, 0=failure)
+                    "error": [f"Invalid syntax. Failed to decode AST. {str(e)}"],
+                    "error_type": "ast_decoder:decoder_failed",
+                    "prompt": prompt[i],
+                    "model_result_raw": model_result_item_raw,
+                    "possible_answer": possible_answer_item,
+                    "input_token_count": model_result[i].get("input_token_count", 0),
+                    "output_token_count": model_result[i].get("output_token_count", 0),
+                    "status": "failed",
+                }
+            )
             continue
-            
+
+        decoder_output_valid = is_function_calling_format_output(model_result_item)
         if not decoder_output_valid:
-            # Wrong output format
-            temp["valid"] = False
-            temp["success"] = 0  # Explicit success field (1=success, 0=failure)
-            temp["error"] = [
-                "Did not output in the specified format. Note: the model_result is wrapped in a string to ensure json serializability."
-            ]
-            temp["error_type"] = "ast_decoder:decoder_wrong_output_format"
-            temp["model_result_decoded"] = str(model_result_item)
-            temp["status"] = "failed"
-            result.append(temp)
+            result.append(
+                {
+                    "id": index,
+                    "model_name": model_name,
+                    "test_category": test_category,
+                    "valid": False,
+                    "success": 0,  # Explicit success field (1=success, 0=failure)
+                    "error": [
+                        "Did not output in the specified format. Note: the model_result is wrapped in a string to ensure json serializability."
+                    ],
+                    "error_type": "ast_decoder:decoder_wrong_output_format",
+                    "prompt": prompt[i],
+                    "model_result_raw": str(model_result_item_raw),
+                    "model_result_decoded": str(model_result_item),
+                    "possible_answer": possible_answer_item,
+                    "input_token_count": model_result[i].get("input_token_count", 0),
+                    "output_token_count": model_result[i].get("output_token_count", 0),
+                    "status": "failed",
+                }
+            )
             continue
-            
-        # If we reach here, decoding was successful, now check the actual result
-        temp["model_result_decoded"] = model_result_item
 
         checker_result = ast_checker(
             prompt_item,
@@ -364,22 +360,28 @@ def ast_file_runner(
             possible_answer_item,
             language,
             test_category,
-            model_id,
             model_name,
         )
 
-        # Update temp with checker result information
+        # Create detailed entry for both successful and failed cases
+        temp = {}
+        temp["id"] = index
+        temp["model_name"] = model_name
+        temp["test_category"] = test_category
         temp["valid"] = checker_result["valid"]
         temp["success"] = 1 if checker_result["valid"] else 0  # Explicit success field (1=success, 0=failure)
+        temp["prompt"] = prompt[i]
+        temp["model_result_raw"] = model_result_item_raw
+        temp["model_result_decoded"] = model_result_item
+        temp["possible_answer"] = possible_answer_item
+        temp["input_token_count"] = model_result[i].get("input_token_count", 0)
+        temp["output_token_count"] = model_result[i].get("output_token_count", 0)
         
         if checker_result["valid"]:
             correct_count += 1
-            # For successful cases, add success information
             temp["error"] = None
-            temp["error_type"] = None
             temp["status"] = "success"
         else:
-            # For failed cases, add error information
             temp["error"] = checker_result["error"]
             temp["error_type"] = checker_result["error_type"]
             temp["status"] = "failed"
@@ -413,7 +415,7 @@ def ast_file_runner(
 
 
 #### Main runner function ####
-def runner(model_id, model_names, test_categories, result_dir, score_dir, samples_per_category=None,artifacts_path=None):
+def runner(model_names, test_categories, result_dir, score_dir, samples_per_category=None,artifacts_path=None):
 
     # State udpated by each eval subtask.
     state = dict(
@@ -430,7 +432,7 @@ def runner(model_id, model_names, test_categories, result_dir, score_dir, sample
     subdirs = [entry for entry in entries if entry.is_dir()]
 
     # Traverse each subdirectory
-    for subdir in tqdm(subdirs, desc="Number of models evaluated"):
+    for subdir in subdirs:
 
         model_name = subdir.relative_to(result_dir).name
         if model_names is not None and model_name not in model_names:
@@ -446,22 +448,23 @@ def runner(model_id, model_names, test_categories, result_dir, score_dir, sample
             if test_category not in test_categories:
                 continue
 
-            handler = get_handler(model_id, model_name_escaped)
+            handler = get_handler(model_name_escaped)
 
             # We don't evaluate the following categories in the current iteration of the benchmark
             if is_chatable(test_category) or is_sql(test_category) or is_executable(test_category):
                 continue
 
-            model_result = load_file(model_result_json, sort_by_id=True)
+            model_result = load_file(model_result_json, sort_by_id=False)
             if samples_per_category is not None:
                 model_result = model_result[:samples_per_category]
+                # Sort by ID after sampling
+                model_result.sort(key=lambda x: sort_key(x))
 
             state = evaluate_task(
                 test_category,
                 result_dir,
                 score_dir,
                 model_result,
-                model_id,
                 model_name,
                 handler,
                 state,
@@ -485,7 +488,6 @@ def evaluate_task(
     result_dir,
     score_dir,
     model_result,
-    model_id,
     model_name,
     handler,
     state,
@@ -499,16 +501,18 @@ def evaluate_task(
     if is_js(test_category):
         language = "JavaScript"
 
-    print(f"🔍 Running test: {test_category}")
+    #print(f"🔍 Running test: {test_category}")
 
     record_cost_latency(state["leaderboard_table"], model_name, model_result)
 
     # Find the corresponding test file.
     prompt_file = find_file_with_suffix(Path(artifacts_path + PROMPT_PATH), test_category)
-    prompt = load_file(prompt_file, sort_by_id=True)
+    prompt = load_file(prompt_file, sort_by_id=False)
 
     if samples_per_category is not None:
         prompt = prompt[:samples_per_category]
+        # Sort by ID after sampling
+        prompt.sort(key=lambda x: sort_key(x))
 
     if is_relevance_or_irrelevance(test_category):
         accuracy, total_count, individual_results = relevance_file_runner(
@@ -518,11 +522,13 @@ def evaluate_task(
     else:
         # Find the corresponding possible answer file
         possible_answer_file = find_file_with_suffix(Path(artifacts_path + POSSIBLE_ANSWER_PATH), test_category)
-        possible_answer = load_file(possible_answer_file, sort_by_id=True)
+        possible_answer = load_file(possible_answer_file, sort_by_id=False)
 
         # If samples_per_category is specified, limit the number of possible answers
         if samples_per_category is not None:
             possible_answer = possible_answer[:samples_per_category]
+            # Sort by ID after sampling
+            possible_answer.sort(key=lambda x: sort_key(x))
 
         if is_multi_turn(test_category):
             accuracy, total_count, individual_results = multi_turn_runner(
@@ -530,7 +536,6 @@ def evaluate_task(
                 model_result,
                 prompt,
                 possible_answer,
-                model_id,
                 model_name,
                 test_category,
                 score_dir,
@@ -545,7 +550,6 @@ def evaluate_task(
                 possible_answer,
                 language,
                 test_category,
-                model_id,
                 model_name,
                 score_dir,
             )
@@ -563,7 +567,7 @@ def evaluate_task(
     return state
 
 
-def main(model_id, model_names, test_categories, result_dir, score_dir, samples_per_category=None,artifacts_path=None):
+def main(model_names, test_categories, result_dir, score_dir, samples_per_category=None,artifacts_path=None):
     if result_dir is None:
         result_dir = RESULT_PATH
     else:
@@ -589,14 +593,14 @@ def main(model_id, model_names, test_categories, result_dir, score_dir, samples_
     #        model_names.append(model_name.replace("/", "_"))
 
     # Driver function to run the evaluation for all categories involved.
-    non_live_df, live_df, multi_turn_df, overall_df = runner(model_id, model_names, all_test_categories, result_dir, score_dir, samples_per_category, artifacts_path)
+    non_live_df, live_df, multi_turn_df, overall_df = runner(model_names, all_test_categories, result_dir, score_dir, samples_per_category, artifacts_path)
 
     print(
         f"🏁 Evaluation completed. See {score_dir / 'data_overall.csv'} for overall evaluation results on BFCL V3."
     )
-    print(
-        f"See {score_dir / 'data_live.csv'}, {score_dir / 'data_non_live.csv'} and {score_dir / 'data_multi_turn.csv'} for detailed evaluation results on each sub-section categories respectively."
-    )
+    #print(
+    #    f"See {score_dir / 'data_live.csv'}, {score_dir / 'data_non_live.csv'} and {score_dir / 'data_multi_turn.csv'} for detailed evaluation results on each sub-section categories respectively."
+    #)
         
     return non_live_df, live_df, multi_turn_df, overall_df
 
@@ -607,9 +611,6 @@ if __name__ == "__main__":
     # Add arguments for two lists of strings
     parser.add_argument(
         "--model_names", nargs="+", type=str, help="A list of model names to evaluate"
-    )
-    parser.add_argument(
-        "--model_id", nargs="+", type=str, help="model id for model handler"
     )
     parser.add_argument(
         "--test-category",
@@ -635,7 +636,6 @@ if __name__ == "__main__":
 
     load_dotenv(dotenv_path=DOTENV_PATH, verbose=True, override=True)  # Load the .env file
     main(
-        args.model_id,
         args.model_names,
         args.test_category,
         args.result_dir,

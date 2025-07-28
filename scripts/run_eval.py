@@ -26,6 +26,7 @@ from evaluator import (
     arc_agi,
 )
 from utils import paginate_choices
+import weave
 
 # Set config path
 config_dir = Path("configs")
@@ -94,6 +95,7 @@ try:
         config=cfg_dict,
         job_type="evaluation",
     )
+    weave.init(cfg_dict["wandb"]["entity"]+"/"+cfg_dict["wandb"]["project"])
 except Exception as e:
     print(f"Warning: Failed to initialize Wandb: {e}")
     print("Continuing without Wandb logging...")
