@@ -606,6 +606,7 @@ def evaluate():
     leaderboard_dict["model_size_category"] = cfg.model.get("size_category", np.nan)
     leaderboard_dict["model_size"] = cfg.model.get("size", np.nan)
     leaderboard_dict["model_release_date"] = pd.to_datetime(cfg.model.release_date, format='%m/%d/%Y')
+    leaderboard_dict["base_model"] = cfg.model.get("base_model", np.nan)
     
     # GLP（汎用的言語性能）の計算
     if GLP_flag:
@@ -669,8 +670,8 @@ def evaluate():
     # ========== テーブルの作成とログ ==========
     
     # 基本情報の列
-    first_cols = ["model_name", "model_size_category"]
-    
+    first_cols = ["model_name", "model_size_category", "base_model"]
+
     # 総合スコアの列
     if GLP_flag and ALT_flag:
         first_cols.append("TOTAL_SCORE")
