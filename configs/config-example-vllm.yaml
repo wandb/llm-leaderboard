@@ -1,29 +1,32 @@
 wandb:
   run_name: "" # name of model
 
-api: "vllm"  # 最もシンプルな指定（推奨）
+api: "vllm-docker"  # 最もシンプルな指定（推奨）
 # base_urlは自動的に "http://vllm:8000/v1" が設定されます
 
 model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: "" # huggingface model name
   bfcl_model_id:  # find from "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
-  chat_template: 
-  dtype: 'float16'
   size: # parameter size
   size_category:  # "Small (<10B)", "Medium (10–30B)", "Large (30B+)"
   base_model: "" # base model name such as "llama3.1", "qwen2.5"
   release_date:  # M/DD/YYYY
-  max_model_len: 8192
-  trust_remote_code: true
 
 batch_size: 32
 
 # vLLM server configuration
 vllm:
-  extra_args:
-    - --max-model-len=8192
-    - --trust-remote-code
+  vllm_tag: latest
+  lifecycle: auto
+  # 以下はモデルにより調整が必要な場合のみ設定
+  # disable_triton_mma: false
+  # dtype: bfloat16
+  # max_model_len: 8192
+  # device_map: auto
+  # gpu_memory_utilization: 0.95
+  # reasoning_parser: deepseek_r1
+  # trust_remote_code: false
 
 # Number of GPUs for tensor parallelism
 num_gpus: 1 

@@ -184,18 +184,18 @@ def start_vllm_server():
                 "python3", "-m", "vllm.entrypoints.openai.api_server",
                 "--model", str(model_path),
                 "--served-model-name", model_id,
-                "--dtype", cfg.model.dtype, 
+                "--dtype", cfg.vllm.dtype,
                 "--chat-template", chat_template_path,
-                "--max-model-len", str(cfg.model.max_model_len),
+                "--max-model-len", str(cfg.vllm.max_model_len),
                 "--max-num-seqs", str(cfg.batch_size),
                 "--tensor-parallel-size", str(cfg.get("num_gpus", 1)),
-                "--device", cfg.model.device_map,
+                "--device", cfg.vllm.device_map,
                 "--seed", "42",
                 "--uvicorn-log-level", "warning",
                 "--disable-log-stats",
                 "--disable-log-requests",
                 "--revision", str(cfg.get("revision", 'main')),
-                "--gpu-memory-utilization", str(cfg.get("gpu_memory_utilization", 0.9)),
+                "--gpu-memory-utilization", str(cfg.vllm.get("gpu_memory_utilization", 0.9)),
                 "--port", str(port),
             ]
 
@@ -231,7 +231,7 @@ def start_vllm_server():
                 if lora_config.fully_sharded_loras:
                     command.append("--fully-sharded-loras")
                     
-            if cfg.model.trust_remote_code:
+            if cfg.vllm.trust_remote_code:
                 command.append("--trust-remote-code")
 
             print(command)
