@@ -1,19 +1,28 @@
 wandb:
-  run_name: "example-vllm-swallow-7b"
+  run_name: "" # name of model
 
 api: "vllm"  # 最もシンプルな指定（推奨）
 # base_urlは自動的に "http://vllm:8000/v1" が設定されます
 
 model:
-  pretrained_model_name_or_path: "tokyotech-llm/Swallow-7b-instruct-v0.1"
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "" # huggingface model name
+  bfcl_model_id:  # find from "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  chat_template: 
   dtype: 'float16'
-  max_model_len: 3000
+  size: # parameter size
+  size_category:  # "Small (<10B)", "Medium (10–30B)", "Large (30B+)"
+  base_model: "" # base model name such as "llama3.1", "qwen2.5"
+  release_date:  # M/DD/YYYY
+  max_model_len: 8192
   trust_remote_code: true
+
+batch_size: 32
 
 # vLLM server configuration
 vllm:
   extra_args:
-    - --max-model-len=3000
+    - --max-model-len=8192
     - --trust-remote-code
 
 # Number of GPUs for tensor parallelism

@@ -3,12 +3,17 @@ wandb:
 
 api: "openai-compatible"
 base_url: "https://your-api-endpoint.com/v1"  # 外部APIのエンドポイント
+batch_size: 32
 
 model:
   pretrained_model_name_or_path: "your-model-name"  # APIで使用するモデル名
+  bfcl_model_id:  # find id from "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  size_category: # "Small (<10B)", "Medium (10–30B)", "Large (30B+)"
+  size: # parameter size
+  release_date: # MM/DD/YYYY
 
 # Generator configuration
 generator:
-  temperature: 0.1
+  temperature: 0.01
   top_p: 1.0
-  max_tokens: 256 
+  max_tokens: 8192
