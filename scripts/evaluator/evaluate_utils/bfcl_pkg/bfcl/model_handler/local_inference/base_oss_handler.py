@@ -35,7 +35,7 @@ class OSSHandler(BaseHandler, EnforceOverrides):
         self.model_path_or_id = cfg.model.pretrained_model_name_or_path
 
         # Read from env vars with fallbacks
-        if cfg.api == "vllm":
+        if cfg.api in ["vllm", "vllm-docker"]:
             self.base_url = "http://vllm:8000/v1"
             self.client = OpenAI(base_url=self.base_url, api_key="EMPTY")
         elif cfg.api == "openai-compatible":

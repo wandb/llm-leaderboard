@@ -49,7 +49,7 @@ services:
       # VLLM Configuration
       - VLLM_ENDPOINT=vllm
       - VLLM_PORT=8000
-      - VLLM_API_KEY=${VLLM_API_KEY}
+      - VLLM_API_KEY=${VLLM_API_KEY:-EMPTY} # 空文字列を入れるとリクエストエラーになる
       - OPENAI_COMPATIBLE_API_KEY=${OPENAI_COMPATIBLE_API_KEY}
 
       # AWS Configuration (optional)

@@ -23,33 +23,30 @@ run:
 
 model:
   artifact_path: null
-  ### deprecated: for in-process vllm launch ###
-  max_model_len: 3000
-  chat_template: null
-  dtype: 'float16'
-  trust_remote_code: true
-  device_map: 'auto'
-  load_in_8bit: false
-  load_in_4bit: false
-  ### deprecated ###
 
 vllm: # vLLM server-side launch configuration
-  extra_args: []
   # vLLM docker image tag (default). Override in each model config with `vllm_tag:` or `vllm_docker_image:`
   vllm_tag: latest
   # Volta/Turing など Ampere 未満の GPU で vLLM が Triton MMA カーネルを使ってクラッシュする場合に true に設定
   disable_triton_mma: false
   # vLLMコンテナのライフサイクル管理: auto | always_on | stop_restart
   lifecycle: auto
-  # モデルのデータ型: bfloat16 (推奨), float16, half, auto
-  dtype: bfloat16
-  # example
+  # モデルのデータ型 null の場合はモデル内config.jsonのデフォルト値を使用
+  dtype: null
+  # モデルの最大トークン数 null の場合はモデル内config.jsonのデフォルト値を使用
+  max_model_len: null
+  # モデルのデバイスマップ
+  device_map: null
+  # GPUメモリ使用率制限
+  gpu_memory_utilization: null
+  # Reasoningモデル用のParser設定
+  reasoning_parser: null
+  # HF repository内のリモートコードを信頼するかどうか
+  trust_remote_code: false
+  # 追加のvLLMコマンドライン引数
   # extra_args:
-  #   - --dtype=bfloat16
-  #   - --max_model_len=3000
   #   - '--override_generation_config={"temperature":0.6,"top_p":0.95}' # do not include space
-  #   - --trust_remote_code
-  #   - --reasoning-parser=deepseek_r1
+  extra_args: []
 
 generator: # LLM client default configuration: to be overridden by each benchmark
   top_p: 1.0
