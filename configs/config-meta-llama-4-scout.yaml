@@ -1,0 +1,23 @@
+wandb:
+  run_name: "meta-llama/llama-4-scout"
+
+api: "openai-compatible"
+base_url: "https://openrouter.ai/api/v1"
+batch_size: 32
+
+model:
+  pretrained_model_name_or_path: "meta-llama/llama-4-scout"  # APIで使用するモデル名
+  bfcl_model_id: "meta-llama/llama-4-scout-17b-16e-instruct-FC-novita" # find id from "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  size_category: "Large (30B+)"
+  size: 109000000000
+  release_date: "4/5/2025"
+
+# Generator configuration
+generator:
+  temperature: 0.01
+  top_p: 1.0
+  max_tokens: 8192
+  extra_body:
+    provider:
+      order: ["novita"]
+      allow_fallbacks: false  # フォールバック無効

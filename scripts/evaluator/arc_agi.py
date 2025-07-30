@@ -280,32 +280,61 @@ def evaluate():
             if y_pred is not None:
                 expected_arr = np.array(task['output'], np.int8)
                 try:
-                    y_pred_arr = np.array(y_pred, np.int8)
-                    # ARC-AGI-2の有効な値は0-9のみ
-                    if np.any(y_pred_arr < 0) or np.any(y_pred_arr > 9):
+                    # まず、y_predが正しい2次元リスト構造かチェック
+                    if not isinstance(y_pred, list) or not all(isinstance(row, list) for row in y_pred):
+                        correct = False
+                    elif len(y_pred) == 0 or any(len(row) == 0 for row in y_pred):
                         correct = False
                     else:
-                        correct = expected_arr.shape == y_pred_arr.shape and np.all(y_pred_arr == expected_arr) # 完全一致の場合のみ正解
-                except ValueError:
+                        # 各行の長さが同じかチェック（矩形配列であることを確認）
+                        row_lengths = [len(row) for row in y_pred]
+                        if len(set(row_lengths)) != 1:
+                            correct = False
+                        else:
+                            y_pred_arr = np.array(y_pred, np.int8)
+                            # ARC-AGI-2の有効な値は0-9のみ
+                            if np.any(y_pred_arr < 0) or np.any(y_pred_arr > 9):
+                                correct = False
+                            else:
+                                correct = expected_arr.shape == y_pred_arr.shape and np.all(y_pred_arr == expected_arr) # 完全一致の場合のみ正解
+                except (ValueError, TypeError) as e:
                     correct = False
             else:
                 correct = False
 
-            evaluation_results.append({
-                "model_name": cfg.model.pretrained_model_name_or_path,
-                "task": f"arc-agi-{arc_version}",
-                "task_id": task['id'],
-                "test_example_id": task['test_example_id'],
-                "num_attempts": task['num_attempts'],
-                "prompt": task['prompt'][0]['content'],
-                "raw_output": raw_output,
-                "input": pretty_print_tile(task['input']),
-                "reasoning_content": response.reasoning_content,
-                "output": pretty_print_tile(y_pred) if y_pred is not None else None,
-                "expected_output": pretty_print_tile(task['output']),
-                "correct": correct,
-                "visualize": tile_to_img(task['output'], y_pred),
-            })
+            try:
+                evaluation_results.append({
+                    "model_name": cfg.model.pretrained_model_name_or_path,
+                    "task": f"arc-agi-{arc_version}",
+                    "task_id": task['id'],
+                    "test_example_id": task['test_example_id'],
+                    "num_attempts": task['num_attempts'],
+                    "prompt": task['prompt'][0]['content'],
+                    "raw_output": raw_output,
+                    "input": pretty_print_tile(task['input']),
+                    "reasoning_content": response.reasoning_content,
+                    "output": pretty_print_tile(y_pred) if y_pred is not None else None,
+                    "expected_output": pretty_print_tile(task['output']),
+                    "correct": correct,
+                    "visualize": tile_to_img(task['output'], y_pred),
+                })
+            except Exception as e:
+                print(f"Error visualizing tile for task {task['id']}, example {task['test_example_id']}: {e}")
+                evaluation_results.append({
+                    "model_name": cfg.model.pretrained_model_name_or_path,
+                    "task": f"arc-agi-{arc_version}",
+                    "task_id": task['id'],
+                    "test_example_id": task['test_example_id'],
+                    "num_attempts": task['num_attempts'],
+                    "prompt": task['prompt'][0]['content'],
+                    "raw_output": raw_output,
+                    "input": pretty_print_tile(task['input']),
+                    "reasoning_content": response.reasoning_content,
+                    "output": pretty_print_tile(y_pred) if y_pred is not None else None,
+                    "expected_output": pretty_print_tile(task['output']),
+                    "correct": correct,
+                    "visualize": None,
+                })
 
         output_df = pd.DataFrame(evaluation_results)
         score_df = output_df.groupby(['task_id', 'test_example_id']).agg({'correct': 'max'}) # num_attemptsの中で最大値を取る

@@ -218,6 +218,52 @@ class OpenAIClient:
         
         self.param_mapping = {}
 
+    def invoke(self, messages, max_tokens=None, **kwargs):
+        """同期版のinvoke（後方互換性のため）"""
+        all_kwargs = {**self.kwargs, **kwargs}
+        mapped_params = map_common_params(all_kwargs, self.param_mapping)
+        filtered_params = filter_params(mapped_params, self.allowed_params)
+        
+        params = {
+            "model": self.model,
+            "messages": messages,
+            **filtered_params
+        }
+        
+        if max_tokens:
+            params["max_tokens"] = max_tokens
+        
+        # extra_bodyを直接渡す（OpenRouterのprovider、reasoningなどに対応）
+        if "extra_body" in all_kwargs:
+            # DictConfigを通常の辞書に変換
+            try:
+                import omegaconf
+                if isinstance(all_kwargs["extra_body"], omegaconf.DictConfig):
+                    params["extra_body"] = omegaconf.OmegaConf.to_container(all_kwargs["extra_body"])
+                else:
+                    params["extra_body"] = all_kwargs["extra_body"]
+            except (ImportError, AttributeError):
+                # omegaconfが利用できない場合やDictConfigでない場合はそのまま使用
+                params["extra_body"] = all_kwargs["extra_body"]
+        
+        # 後方互換性のためのレガシーパラメータサポート
+        if "include_reasoning" in all_kwargs:
+            if "extra_body" not in params:
+                params["extra_body"] = {}
+            if all_kwargs["include_reasoning"] is True:
+                params["extra_body"]["reasoning"] = {}
+            elif all_kwargs["include_reasoning"] is False:
+                params["extra_body"]["reasoning"] = {"exclude": True}
+        
+        response = self.client.chat.completions.create(**params)
+        content = response.choices[0].message.content
+        # vLLM reasoning parser output
+        reasoning_content = getattr(response.choices[0].message, 'reasoning_content', '')
+        # OpenRouter reasoning field support
+        if not reasoning_content and hasattr(response.choices[0].message, 'reasoning'):
+            reasoning_content = getattr(response.choices[0].message, 'reasoning', '')
+        return LLMResponse(content=content, reasoning_content=reasoning_content)
+
     async def ainvoke(self, messages, max_tokens=None, **kwargs):
         """非同期版のinvoke"""
         all_kwargs = {**self.kwargs, **kwargs}
@@ -233,11 +279,36 @@ class OpenAIClient:
         if max_tokens:
             params["max_tokens"] = max_tokens
         
+        # extra_bodyを直接渡す（OpenRouterのprovider、reasoningなどに対応）
+        if "extra_body" in all_kwargs:
+            # DictConfigを通常の辞書に変換
+            try:
+                import omegaconf
+                if isinstance(all_kwargs["extra_body"], omegaconf.DictConfig):
+                    params["extra_body"] = omegaconf.OmegaConf.to_container(all_kwargs["extra_body"])
+                else:
+                    params["extra_body"] = all_kwargs["extra_body"]
+            except (ImportError, AttributeError):
+                # omegaconfが利用できない場合やDictConfigでない場合はそのまま使用
+                params["extra_body"] = all_kwargs["extra_body"]
+        
+        # 後方互換性のためのレガシーパラメータサポート
+        if "include_reasoning" in all_kwargs:
+            if "extra_body" not in params:
+                params["extra_body"] = {}
+            if all_kwargs["include_reasoning"] is True:
+                params["extra_body"]["reasoning"] = {}
+            elif all_kwargs["include_reasoning"] is False:
+                params["extra_body"]["reasoning"] = {"exclude": True}
+        
         response: OpenAIChatCompletion = await self.async_client.chat.completions.create(**params)
         content = response.choices[0].message.content
         # vLLM reasoning parser output
         # https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#quickstart
         reasoning_content = getattr(response.choices[0].message, 'reasoning_content', '')
+        # OpenRouter reasoning field support
+        if not reasoning_content and hasattr(response.choices[0].message, 'reasoning'):
+            reasoning_content = getattr(response.choices[0].message, 'reasoning', '')
         return LLMResponse(content=content, reasoning_content=reasoning_content)
 
 
