@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import traceback
+import json
 from typing import Any, TypeAlias, List, Tuple, Optional
 
 import backoff
@@ -55,7 +56,7 @@ class LLMAsyncProcessor:
     @error_handler
     @backoff.on_exception(
         backoff.expo, 
-        (openai.APIConnectionError, openai.APITimeoutError, openai.RateLimitError, openai.APIError, pydantic_core.ValidationError),
+        (openai.APIConnectionError, openai.APITimeoutError, openai.RateLimitError, openai.APIError, pydantic_core.ValidationError, json.JSONDecodeError),
         max_tries=MAX_TRIES,
         max_time=1800,  # 最大30分でタイムアウト
         jitter=backoff.full_jitter
@@ -70,6 +71,11 @@ class LLMAsyncProcessor:
             # JSONパースエラーの場合は、エラー内容をログに出力してから再スロー
             print(f"JSON parsing error occurred: {str(e)}")
             print(f"Retrying due to JSON validation error...")
+            raise  # backoffデコレータがリトライを処理
+        except json.JSONDecodeError as e:
+            # JSONデコードエラーの場合は、エラー内容をログに出力してから再スロー
+            print(f"JSON decode error occurred: {str(e)}")
+            print(f"Retrying due to JSON decode error...")
             raise  # backoffデコレータがリトライを処理
 
     def _assert_messages_format(self, data: Messages):
