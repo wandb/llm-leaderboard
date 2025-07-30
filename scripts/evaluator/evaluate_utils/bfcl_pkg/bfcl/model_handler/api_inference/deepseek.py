@@ -19,7 +19,7 @@ class DeepSeekAPIHandler(OpenAICompletionsHandler):
         super().__init__(model_name, temperature)
         self.model_style = ModelStyle.OpenAI_Completions
         self.client = OpenAI(
-            base_url="https://api.deepseek.com", api_key=os.getenv("DEEPSEEK_API_KEY")
+            base_url="https://api.deepseek.com", api_key=os.getenv("OPENAI_COMPATIBLE_API_KEY")
         )
 
     # The deepseek API is unstable at the moment, and will frequently give empty responses, so retry on JSONDecodeError is necessary
