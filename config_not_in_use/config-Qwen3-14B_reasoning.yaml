@@ -3,7 +3,7 @@ wandb:
 
 # if you don't use api, please set "api" as "false"
 # if you use api, please select from "openai", "anthoropic", "google", "cohere", "vllm"
-api: vllm
+api: vllm-docker
 num_gpus: 1
 batch_size: 32 # vllmは256, apiは32を推奨
 # inference_interval: 1 # seconds
@@ -11,18 +11,20 @@ batch_size: 32 # vllmは256, apiは32を推奨
 model:
   use_wandb_artifacts: false
   pretrained_model_name_or_path: "Qwen/Qwen3-14B" #if you use openai api, put the name of model
+  bfcl_model_id: "Qwen/Qwen3-14B-FC"
   size_category: "10B≤ <30B"
   size: 1
   release_date: "4/28/2025"
 
 vllm: # vLLM server-side launch configuration
-  vllm_tag: v0.5.5
-  disable_triton_mma: true
-  lifecycle: stop_restart
-  dtype: half
+  vllm_tag: v0.8.5
+  lifecycle: always_on
+  reasoning_parser: qwen3
+  gpu_memory_utilization: 0.95
+  enable_auto_tool_choice: true
+  tool_call_parser: hermes
   extra_args:
-    - '--override_generation_config={"temperature":0.6,"top_p":0.95}' # do not include space
-    - --reasoning-parser=qwen3
+    - '--override_generation_config={"temperature":0.6,"top_p":0.95}'
 
 generator:
   temperature: 0.6
@@ -68,5 +70,11 @@ hle:
 
 arc_agi_2:
   max_output_tokens: 16384
+
+bfcl:
+  generator_config:
+    max_tokens: 16384
+    temperature: 0.6
+    top_p: 0.95
 
 testmode: false

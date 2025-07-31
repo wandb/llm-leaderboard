@@ -45,6 +45,7 @@ services:
       - MISTRAL_API_KEY=${MISTRAL_API_KEY}
       - UPSTAGE_API_KEY=${UPSTAGE_API_KEY}
       - XAI_API_KEY=${XAI_API_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       
       # VLLM Configuration
       - VLLM_ENDPOINT=vllm

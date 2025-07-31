@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import traceback
+import json
 from typing import Any, TypeAlias, List, Tuple, Optional
 
 import backoff
@@ -55,7 +56,7 @@ class LLMAsyncProcessor:
     @error_handler
     @backoff.on_exception(
         backoff.expo, 
-        (openai.APIConnectionError, openai.APITimeoutError, openai.RateLimitError, openai.APIError, pydantic_core.ValidationError),
+        (openai.APIConnectionError, openai.APITimeoutError, openai.RateLimitError, openai.APIError, pydantic_core.ValidationError, json.JSONDecodeError),
         max_tries=MAX_TRIES,
         max_time=1800,  # 最大30分でタイムアウト
         jitter=backoff.full_jitter
@@ -71,6 +72,11 @@ class LLMAsyncProcessor:
             print(f"JSON parsing error occurred: {str(e)}")
             print(f"Retrying due to JSON validation error...")
             raise  # backoffデコレータがリトライを処理
+        except json.JSONDecodeError as e:
+            # JSONデコードエラーの場合は、エラー内容をログに出力してから再スロー
+            print(f"JSON decode error occurred: {str(e)}")
+            print(f"Retrying due to JSON decode error...")
+            raise  # backoffデコレータがリトライを処理
 
     def _assert_messages_format(self, data: Messages):
         """メッセージフォーマットの検証"""
@@ -83,7 +89,7 @@ class LLMAsyncProcessor:
             assert "role" in item, "'role' key is missing in an item"
             assert "content" in item, "'content' key is missing in an item"
             # 'role'の値が'system', 'assistant', 'user'のいずれかであることを確認
-            roles = {"system", "assistant", "user"}
+            roles = {"system", "assistant", "user", "tool"}
             assert item["role"] in roles, f"'role' should be one of {str(roles)}"
             # 'content'の値が文字列であることを確認
             assert isinstance(item["content"], str), "'content' should be a string"

@@ -43,6 +43,10 @@ vllm: # vLLM server-side launch configuration
   reasoning_parser: null
   # HF repository内のリモートコードを信頼するかどうか
   trust_remote_code: false
+  # Tool callingの自動パースの有効化
+  enable_auto_tool_choice: false
+  # ツール呼び出しのパーサー
+  tool_call_parser: null
   # 追加のvLLMコマンドライン引数
   # extra_args:
   #   - '--override_generation_config={"temperature":0.6,"top_p":0.95}' # do not include space
@@ -144,7 +148,10 @@ mtbench:
       temperature: 0.0
 
 bfcl:
-  temperature: 0.01
+  temperature: 0.01  # 推論共通化未対応のHandler用: 移行終わったら消す
+  generator_config:  # 推論共通化後のHandler用
+    max_tokens: 4096
+    temperature: 0.01
   num_threads: 4
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:production'
 

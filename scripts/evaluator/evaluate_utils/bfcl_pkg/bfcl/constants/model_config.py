@@ -70,6 +70,7 @@ from ..model_handler.local_inference.salesforce_qwen import (
 )
 from ..model_handler.local_inference.think_agent import ThinkAgentHandler
 from ..model_handler.local_inference.unified_oss_handler import UnifiedOSSHandler
+from ..model_handler.local_inference.unified_oss_fc_handler import UnifiedOSSFCHandler
 
 # -----------------------------------------------------------------------------
 # A mapping of model identifiers to their respective model configurations.
@@ -1617,11 +1618,11 @@ local_inference_model_map = {
         url="https://huggingface.co/Qwen/Qwen3-14B",
         org="Qwen",
         license="apache-2.0",
-        model_handler=QwenFCHandler,
+        model_handler=UnifiedOSSFCHandler,
         input_price=None,
         output_price=None,
         is_fc_model=True,
-        underscore_to_dot=False,
+        underscore_to_dot=True,
     ),
     "Qwen/Qwen3-14B": ModelConfig(
         model_name="Qwen/Qwen3-14B",
