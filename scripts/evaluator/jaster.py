@@ -193,8 +193,6 @@ def evaluate_n_shot(few_shots: bool):
     # Process all results uniformly
     for response, evaluation_result in tqdm(zip(results, evaluation_results)):
         raw_output = response.content
-        if evaluation_result["task"] == "jhumaneval":
-            print(f"DEBUG: raw_output: {repr(raw_output)}")
         
         # For jhumaneval, don't split by \n\n to preserve code blocks
         if evaluation_result["task"] == "jhumaneval":
@@ -223,29 +221,13 @@ def evaluate_n_shot(few_shots: bool):
         if evaluation_result["metrics"] in ["code_exec_sandbox", "pylint_check"]: #jhumaneval
             # These metrics expect lists of predictions and ground truths
             # Extract code from the response using CODE_OUTPUT_JP pattern
-            print(f"DEBUG: Before extraction - y_pred: {repr(y_pred)}")
-            print(f"DEBUG: raw_output for extraction: {repr(raw_output)}")
-            
-            # Extract code from raw_output directly for jhumaneval
-            print(f"DEBUG: Using pattern: {AnswerPatternId.CODE_OUTPUT_JP}")
             extracted_code = extract_answer_with_pattern(
                                     raw_output, 
                                     AnswerPatternId.CODE_OUTPUT_JP,
                                     None
                                 )
-            print(f"DEBUG: After extraction from raw_output - extracted_code: {repr(extracted_code)}")
-            
-            # Manual regex test
-            import re
-            manual_match = re.search(r"```(?:\w+)?\s*\n?(.*?)\n?```", raw_output, re.DOTALL)
-            if manual_match:
-                manual_extracted = manual_match.group(1).strip()
-                print(f"DEBUG: Manual regex extraction: {repr(manual_extracted)}")
-            else:
-                print(f"DEBUG: Manual regex extraction failed")
             
             y_pred = normalize(extracted_code).strip()
-            print(f"DEBUG: Final y_pred: {repr(y_pred)}")
             
             y_preds = [y_pred]
             y_trues = [evaluation_result["expected_output"]]

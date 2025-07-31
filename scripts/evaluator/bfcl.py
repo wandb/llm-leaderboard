@@ -40,7 +40,7 @@ def get_default_config() -> Dict[str, Any]:
         "result_dir": RESULT_PATH,
         "score_dir": SCORE_PATH,
         "run_ids": False,  # テストエントリーIDを実行するかどうか
-        "samples_per_category": 50,  # 各カテゴリから取得するサンプル数
+        "samples_per_category": 30,  # 各カテゴリから取得するサンプル数
         "artifacts_path": None,  # WandB Artifactのパス
     }
 
@@ -179,8 +179,13 @@ def evaluate():
         test_category = extract_test_category(result_file.name)
         try:
             with open(result_file, 'r') as f:
+                result_data = []
                 for line in f:
-                    entry = json.loads(line)
+                    if line.strip():  # Skip empty lines
+                        entry = json.loads(line)
+                        result_data.append(entry)
+                
+                for entry in result_data:
                     if 'id' in entry:
                         result_data_map[entry['id']] = {
                             'category': test_category,
