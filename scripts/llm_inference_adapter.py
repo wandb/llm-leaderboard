@@ -66,10 +66,17 @@ class BaseLLMClient(ABC):
 
 class ChatBedrock(BaseLLMClient):
     def __init__(self, cfg) -> None:
+        # 接続プールとタイムアウト設定を改善
+        config = Config(
+            read_timeout=1000,
+            connect_timeout=60,
+            max_pool_connections=50,  # 接続プールサイズを増加
+        )
+        
         self.bedrock_runtime = boto3.client(
             service_name="bedrock-runtime",
             region_name=os.environ.get("AWS_DEFAULT_REGION", "us-west-1"),
-            config=Config(read_timeout=1000),
+            config=config,
         )
         self.model_id = cfg.model.pretrained_model_name_or_path
         self.ignore_keys = ["max_tokens"]
@@ -145,6 +152,10 @@ class ChatBedrock(BaseLLMClient):
         except ClientError as e:
             print(f"ERROR: Can't invoke '{self.model_id}'. Reason: {e}")
             raise
+        except Exception as e:
+            print(f"ERROR: Unexpected error during invocation of '{self.model_id}'. Reason: {e}")
+            # エラーの場合は空のレスポンスを返す
+            return {"content": []}
 
         return response_body
 
@@ -173,14 +184,23 @@ class ChatBedrock(BaseLLMClient):
         response = await self._invoke_async(messages=messages, max_tokens=max_tokens)
         
         if "anthropic" in self.model_id.lower():
-            content = response.get("content", [{"text": ""}])[0]["text"]
+            content_list = response.get("content", [])
+            if content_list and len(content_list) > 0:
+                content = content_list[0].get("text", "")
+            else:
+                content = ""
         elif "llama" in self.model_id.lower():
             content = response.get("generation", "")
             content = content.replace("<|start_header_id|>assistant<|end_header_id|>\n", "").replace("\n<|eot_id|>", "") 
         elif "nova" in self.model_id.lower():
-            content = response.get("output", {}).get("message", {}).get("content", [{}])[0].get("text", "")
+            content_list = response.get("output", {}).get("message", {}).get("content", [])
+            if content_list and len(content_list) > 0:
+                content = content_list[0].get("text", "")
+            else:
+                content = ""
         else:
             content = ""
+        
         return LLMResponse(content=content)
 
 
