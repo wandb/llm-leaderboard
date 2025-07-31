@@ -179,14 +179,18 @@ def evaluate():
         test_category = extract_test_category(result_file.name)
         try:
             with open(result_file, 'r') as f:
-                result_data = json.load(f)
-                if isinstance(result_data, list):
-                    for entry in result_data:
-                        if 'id' in entry:
-                            result_data_map[entry['id']] = {
-                                'category': test_category,
-                                'raw_data': entry
-                            }
+                result_data = []
+                for line in f:
+                    if line.strip():  # Skip empty lines
+                        entry = json.loads(line)
+                        result_data.append(entry)
+                
+                for entry in result_data:
+                    if 'id' in entry:
+                        result_data_map[entry['id']] = {
+                            'category': test_category,
+                            'raw_data': entry
+                        }
         except Exception as e:
             print(f"Warning: Could not read result file {result_file}: {e}")
     
