@@ -2,7 +2,7 @@ import json
 import os
 import time
 
-from anthropic import Anthropic, RateLimitError
+from anthropic import Anthropic, AnthropicBedrock, RateLimitError
 from anthropic.types import TextBlock, ToolUseBlock
 from ..base_handler import BaseHandler
 from ...constants.type_mappings import GORILLA_TO_OPENAPI
@@ -20,13 +20,60 @@ from ..utils import (
     system_prompt_pre_processing_chat_model,
 )
 from ...utils import is_multi_turn
+from config_singleton import WandbConfigSingleton
 
 
 class ClaudeHandler(BaseHandler):
+    """
+    Claudeモデルのハンドラー
+    
+    Amazon Bedrock対応:
+    - 公式ドキュメント: https://docs.anthropic.com/ja/api/claude-on-amazon-bedrock
+    - AnthropicBedrockクライアントを使用
+    - 認証情報は環境変数またはAWS認証情報プロバイダーから自動検出
+    - Function Callingは標準のAnthropic APIと同じ形式でサポート
+    """
     def __init__(self, model_name, temperature) -> None:
         super().__init__(model_name, temperature)
-        self.model_style = ModelStyle.Anthropic
-        self.client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        instance = WandbConfigSingleton.get_instance()
+        cfg = instance.config
+        
+        # 設定ファイルから実際のモデル名を取得
+        self.actual_model_name = cfg.model.pretrained_model_name_or_path
+        
+        if cfg.api == "anthropic":
+            self.model_style = ModelStyle.Anthropic
+            self.client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        elif cfg.api == "amazon_bedrock":
+            self.model_style = ModelStyle.Anthropic
+            # AWS認証情報を取得（公式ドキュメントに基づく柔軟な設定）
+            aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
+            aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+            aws_session_token = os.getenv("AWS_SESSION_TOKEN")
+            aws_region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+            
+            # 認証情報の設定（公式ドキュメントの推奨方法）
+            bedrock_kwargs = {
+                "aws_region": aws_region,
+            }
+            
+            # 明示的な認証情報が提供されている場合のみ設定
+            if aws_access_key and aws_secret_key:
+                bedrock_kwargs.update({
+                    "aws_access_key": aws_access_key,
+                    "aws_secret_key": aws_secret_key,
+                })
+                
+                # セッショントークンがある場合は含める
+                if aws_session_token:
+                    bedrock_kwargs["aws_session_token"] = aws_session_token
+            
+            # AnthropicBedrockクライアントを初期化
+            # 認証情報が明示的に設定されていない場合、デフォルトのAWS認証情報プロバイダーを使用
+            self.client = AnthropicBedrock(**bedrock_kwargs)
+            self.use_bedrock = True
+        else:
+            self.use_bedrock = False
 
     def decode_ast(self, result, language="Python"):
         if "FC" not in self.model_name:
@@ -72,24 +119,40 @@ class ClaudeHandler(BaseHandler):
 
     @retry_with_backoff(error_type=RateLimitError)
     def generate_with_backoff(self, **kwargs):
-        start_time = time.time()
-        api_response = self.client.messages.create(**kwargs)
-        end_time = time.time()
-
-        return api_response, end_time - start_time
+        try:
+            start_time = time.time()
+            api_response = self.client.messages.create(**kwargs)
+            end_time = time.time()
+            return api_response, end_time - start_time
+        except Exception as e:
+            # 公式ドキュメントに基づくエラーハンドリング
+            if hasattr(self, 'use_bedrock') and self.use_bedrock:
+                print(f"Bedrock API Error: {str(e)}")
+                print(f"Check your AWS credentials and Bedrock model access")
+            else:
+                print(f"Anthropic API Error: {str(e)}")
+            raise e
 
     def _get_max_tokens(self):
         """
         max_tokens is required to be set when querying, so we default to the model's max tokens
         """
-        if "claude-opus-4-20250514" in self.model_name:
-            return 32000
-        elif "claude-sonnet-4-20250514" in self.model_name:
-            return 64000
-        elif "claude-3-5-haiku-20241022" in self.model_name:
-            return 8192
+        # 実際のモデル名を使用
+        model_name = getattr(self, 'actual_model_name', self.model_name)
+        
+        # モデル名から動的にmax_tokensを決定（公式トークン制限に基づく）
+        if "opus" in model_name.lower():
+            return 64000  # Claude Opus 4: 64,000 tokens
+        elif "sonnet" in model_name.lower():
+            if "3-7" in model_name.lower():
+                return 128000  # Claude 3.7 Sonnet: 128,000 tokens (ベータ版)
+            else:
+                return 8192    # Claude 3.5 Sonnet, Sonnet 4: 8,192 tokens
+        elif "haiku" in model_name.lower():
+            return 8192   # Claude 3.5 Haiku: 8,192 tokens
         else:
-            raise ValueError(f"Unsupported model: {self.model_name}")
+            # デフォルト値（安全な値）
+            return 8192
 
     #### FC methods ####
 
@@ -100,7 +163,7 @@ class ClaudeHandler(BaseHandler):
         }
         messages = inference_data["message"]
 
-        if inference_data["caching_enabled"]:
+        if inference_data["caching_enabled"] and not hasattr(self, 'use_bedrock'):
             # Only add cache control to the last two user messages
             # Remove previously set cache control flags from all user messages except the last two
             count = 0
@@ -115,14 +178,20 @@ class ClaudeHandler(BaseHandler):
 
         # Need to set timeout to avoid auto-error when requesting large context length
         # https://github.com/anthropics/anthropic-sdk-python#long-requests
-        return self.generate_with_backoff(
-            model=self.model_name.strip("-FC"),
+        
+        # 設定ファイルから取得した実際のモデル名を使用
+        model_name = getattr(self, 'actual_model_name', self.model_name)
+        
+        api_response, query_latency = self.generate_with_backoff(
+            model=model_name,
             max_tokens=self._get_max_tokens(),
             tools=inference_data["tools"],
             temperature=self.temperature,
             messages=messages,
             timeout=1200,
         )
+        
+        return api_response, query_latency
 
     def _pre_query_processing_FC(self, inference_data: dict, test_entry: dict) -> dict:
         for round_idx in range(len(test_entry["question"])):
@@ -148,7 +217,8 @@ class ClaudeHandler(BaseHandler):
         functions = func_doc_language_specific_pre_processing(functions, test_category)
         tools = convert_to_tool(functions, GORILLA_TO_OPENAPI, self.model_style)
 
-        if inference_data["caching_enabled"]:
+        # Bedrockではcache_controlがサポートされていないため、条件分岐を追加
+        if inference_data["caching_enabled"] and not hasattr(self, 'use_bedrock'):
             # First time compiling tools, so adding cache control flag to the last tool
             if "tools" not in inference_data:
                 tools[-1]["cache_control"] = {"type": "ephemeral"}
@@ -248,7 +318,7 @@ class ClaudeHandler(BaseHandler):
             "system_prompt": inference_data["system_prompt"],
         }
 
-        if inference_data["caching_enabled"]:
+        if inference_data["caching_enabled"] and not hasattr(self, 'use_bedrock'):
             # Cache the system prompt
             inference_data["system_prompt"][0]["cache_control"] = {"type": "ephemeral"}
             # Add cache control to the last two user messages as well

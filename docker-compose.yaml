@@ -55,6 +55,7 @@ services:
       # AWS Configuration (optional)
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
 
       # Azure OpenAI (if using)
@@ -66,6 +67,7 @@ services:
       - LANG=${LANG:-ja_JP.UTF-8}
       - PYTHONPATH=${PYTHONPATH}
       - JUMANPP_COMMAND=${JUMANPP_COMMAND:-/usr/local/bin/jumanpp}
+      - WEAVE_PRINT_CALL_LINK=${WEAVE_PRINT_CALL_LINK:-false}
 
       # Docker in Docker settings for SWE-bench
       - DOCKER_HOST=unix:///var/run/docker.sock

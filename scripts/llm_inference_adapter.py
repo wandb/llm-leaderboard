@@ -68,7 +68,7 @@ class ChatBedrock(BaseLLMClient):
     def __init__(self, cfg) -> None:
         self.bedrock_runtime = boto3.client(
             service_name="bedrock-runtime",
-            region_name=os.environ.get("AWS_DEFAULT_REGION", "us-west-2"),
+            region_name=os.environ.get("AWS_DEFAULT_REGION", "us-west-1"),
             config=Config(read_timeout=1000),
         )
         self.model_id = cfg.model.pretrained_model_name_or_path
