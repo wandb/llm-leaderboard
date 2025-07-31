@@ -179,14 +179,13 @@ def evaluate():
         test_category = extract_test_category(result_file.name)
         try:
             with open(result_file, 'r') as f:
-                result_data = json.load(f)
-                if isinstance(result_data, list):
-                    for entry in result_data:
-                        if 'id' in entry:
-                            result_data_map[entry['id']] = {
-                                'category': test_category,
-                                'raw_data': entry
-                            }
+                for line in f:
+                    entry = json.loads(line)
+                    if 'id' in entry:
+                        result_data_map[entry['id']] = {
+                            'category': test_category,
+                            'raw_data': entry
+                        }
         except Exception as e:
             print(f"Warning: Could not read result file {result_file}: {e}")
     
@@ -253,6 +252,7 @@ def evaluate():
                     # Handle different field names used by different evaluation functions
                     output_raw = entry.get('model_result_raw', entry.get('model_result', ''))
                     possible_answer_raw = entry.get('possible_answer', '')
+                    reasoning_content = result_data_map.get(entry_id, {}).get('reasoning_content', '')
                     
                     # Helper function to get max value from potentially nested arrays
                     def get_max_token_count(token_data):
@@ -271,12 +271,14 @@ def evaluate():
                             return 0
                     
                     result_entry = {
+                        'model': bfcl_cfg['model_name'],
                         'id': entry_id,
                         'category': test_category,
                         'prompt': prompt_text,
                         'output': str(output_raw),
                         'accuracy': entry.get('success', 0),  # Use success field (1=success, 0=failure)
                         'possible_answer': str(possible_answer_raw),
+                        'reasoning_content': reasoning_content,
                         'input_token_count': get_max_token_count(entry.get('input_token_count', 0)),
                         'output_token_count': get_max_token_count(entry.get('output_token_count', 0)),
                     }   
@@ -316,12 +318,15 @@ def evaluate():
             
             # Get model output from result file
             output_raw = result_entry_data.get('model_result', '')
+            reasoning_content = result_entry_data.get('reasoning_content', '')
             
             result_entry = {
+                'model': bfcl_cfg['model_name'],
                 'id': entry_id,
                 'category': test_category,
                 'prompt': prompt_text,
                 'output': str(output_raw),
+                'reasoning_content': reasoning_content,
                 'accuracy': 1,  # Assume success if only in result file (might need adjustment)
                 'possible_answer': '',  # Not available in result files
                 'input_token_count': result_entry_data.get('input_token_count', 0),
