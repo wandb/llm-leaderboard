@@ -1,9 +1,9 @@
 wandb:
   entity: 'llm-leaderboard'
-  project: 'nejumi-leaderboard4'
+  project: 'nejumi-leaderboard4-bfcl-test'
   #run: please set up run name in a model-base config
 
-testmode: false
+testmode: true
 inference_interval: 0 # seconds
 
 run:
