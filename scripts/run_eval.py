@@ -142,6 +142,10 @@ if run:
     instance = WandbConfigSingleton.get_instance()
     instance.llm = llm
 
+# BFCL
+if cfg.run.bfcl:
+    bfcl.evaluate()
+
 # SWE-Bench Verified evaluation
 if cfg.run.swebench:
     if cfg.swebench.background_eval:
@@ -169,10 +173,6 @@ if cfg.run.jtruthfulqa:
 # hle
 if cfg.run.hle:
     hle.evaluate()
-
-# BFCL
-if cfg.run.bfcl:
-    bfcl.evaluate()
 
 # HalluLens
 if cfg.run.hallulens:
