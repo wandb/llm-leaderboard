@@ -2,6 +2,7 @@ import argparse
 import json
 import time
 import traceback
+import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 
@@ -15,6 +16,7 @@ from .constants.model_config import MODEL_CONFIG_MAPPING
 from .model_handler.model_style import ModelStyle
 from .utils import is_multi_turn, parse_test_category_argument, sort_key
 from tqdm import tqdm
+from tqdm.asyncio import tqdm as atqdm
 
 RETRY_LIMIT = 3
 # 60s for the timer to complete. But often we find that even with 60 there is a conflict. So 65 is a safe no.
@@ -222,26 +224,76 @@ def multi_threaded_inference(handler, test_case, include_input_log, exclude_stat
     return result_to_write
 
 
+async def async_inference(handler, test_case, include_input_log, exclude_state_log):
+
+    assert type(test_case["function"]) is list
+
+    retry_count = 0
+
+    while True:
+        try:
+            result, metadata = await handler.inference_async(
+                deepcopy(test_case), include_input_log, exclude_state_log
+            )
+            break  # Success, exit the loop
+        except Exception as e:
+            # TODO: It might be better to handle the exception in the handler itself rather than a universal catch block here, as each handler use different ways to call the endpoint.
+            # OpenAI has openai.RateLimitError while Anthropic has anthropic.RateLimitError. It would be more robust in the long run.
+            if retry_count < RETRY_LIMIT and (
+                "rate limit reached" in str(e).lower()
+                or (hasattr(e, "status_code") and (e.status_code in {429, 503, 500}))
+            ):
+                print(
+                    f"Rate limit reached. Sleeping for 65 seconds. Retry {retry_count + 1}/{RETRY_LIMIT}"
+                )
+                time.sleep(RETRY_DELAY)
+                retry_count += 1
+            else:
+                # This is usually the case when the model getting stuck on one particular test case.
+                # For example, timeout error or FC model returning invalid JSON response.
+                # Since temperature is already set to 0.001, retrying the same test case will not help.
+                # So we continue the generation process and record the error message as the model response
+                print("-" * 100)
+                print(
+                    "❗️❗️ Error occurred during inference. Maximum reties reached for rate limit or other error. Continuing to next test case."
+                )
+                print(f"❗️❗️ Test case ID: {test_case['id']}, Error: {str(e)}")
+                traceback.print_exc()
+                print("-" * 100)
+
+                return {
+                    "id": test_case["id"],
+                    "result": f"Error during inference: {str(e)}",
+                }
+
+    result_to_write = {
+        "id": test_case["id"],
+        "result": result,
+    }
+
+    result_to_write.update(metadata)
+
+    return result_to_write
+
+async def async_generate_results(args, handler, test_cases_total):
+    tasks = [
+        asyncio.create_task(async_inference(handler, test_case, args.include_input_log, args.exclude_state_log))
+        for test_case in test_cases_total
+    ]
+    results = await atqdm.gather(*tasks)
+    for result in results:
+        handler.write(
+            result, result_dir=args.result_dir, update_mode=True
+        )  # Always use update_mode=True to prevent duplicate entries for the same test case
+
 def generate_results(args, model_name, test_cases_total):
     # Always use update_mode=True to prevent duplicate entries for the same test case
     update_mode = True
     handler = build_handler(model_name, args.temperature)
 
     if handler.model_style == ModelStyle.OSSMODEL:
-        # batch_inference will handle the writing of results
-        handler.batch_inference(
-            test_entries=test_cases_total,
-            num_gpus=args.num_gpus,
-            gpu_memory_utilization=args.gpu_memory_utilization,
-            backend=args.backend,
-            skip_server_setup=args.skip_server_setup,
-            local_model_path=args.local_model_path,
-            include_input_log=args.include_input_log,
-            exclude_state_log=args.exclude_state_log,
-            result_dir=args.result_dir,
-            update_mode=update_mode,
-        )
-
+        handler.setup_tokenizer(args.local_model_path)
+        asyncio.run(async_generate_results(args, handler, test_cases_total))
     else:
         futures = []
         with ThreadPoolExecutor(max_workers=args.num_threads) as executor:

@@ -148,8 +148,10 @@ mtbench:
       temperature: 0.0
 
 bfcl:
-  temperature: 0.01
-  max_tokens: 4096 # Currently only used for open source models
+  temperature: 0.01  # 推論共通化未対応のHandler用: 移行終わったら消す
+  generator_config:  # 推論共通化後のHandler用
+    max_tokens: 4096
+    temperature: 0.01
   num_threads: 4
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:production'
 
