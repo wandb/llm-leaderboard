@@ -89,7 +89,7 @@ class OSSHandler(BaseHandler, EnforceOverrides):
             decoded_output = []
             for invoked_function in result:
                 name = list(invoked_function.keys())[0]
-                params = json.loads(invoked_function[name])
+                params = invoked_function[name]
                 decoded_output.append({name: params})
             return decoded_output
         else:
