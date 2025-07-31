@@ -40,7 +40,7 @@ def get_default_config() -> Dict[str, Any]:
         "result_dir": RESULT_PATH,
         "score_dir": SCORE_PATH,
         "run_ids": False,  # テストエントリーIDを実行するかどうか
-        "samples_per_category": 50,  # 各カテゴリから取得するサンプル数
+        "samples_per_category": 30,  # 各カテゴリから取得するサンプル数
         "artifacts_path": None,  # WandB Artifactのパス
     }
 
