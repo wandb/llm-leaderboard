@@ -70,6 +70,19 @@ if [ "$trust_remote_code" == "true" ]; then
 fi
 echo "trust_remote_code: ${trust_remote_code}"
 
+enable_auto_tool_choice=$(yq -r '.vllm.enable_auto_tool_choice' configs/$EVAL_CONFIG_PATH)
+if [ "$enable_auto_tool_choice" == "true" ]; then
+    vllm_args+=("--enable-auto-tool-choice")
+fi
+echo "enable_auto_tool_choice: ${enable_auto_tool_choice}"
+
+tool_call_parser=$(yq -r '.vllm.tool_call_parser' configs/$EVAL_CONFIG_PATH)
+if [ ! -z "$tool_call_parser" ] && [ "$tool_call_parser" != "null" ]; then
+    vllm_args+=("--tool-call-parser" "${tool_call_parser}")
+fi
+echo "tool_call_parser: ${tool_call_parser}"
+
+
 disable_triton_mma=$(yq -r '.vllm.disable_triton_mma' configs/$EVAL_CONFIG_PATH)
 echo "disable_triton_mma: ${disable_triton_mma}"
 

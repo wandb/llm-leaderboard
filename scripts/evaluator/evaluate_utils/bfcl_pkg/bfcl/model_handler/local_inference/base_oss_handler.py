@@ -33,6 +33,7 @@ class OSSHandler(BaseHandler, EnforceOverrides):
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config
         self.model_path_or_id = cfg.model.pretrained_model_name_or_path
+        self.max_tokens = cfg.bfcl.max_tokens
 
         # Read from env vars with fallbacks
         if cfg.api in ["vllm", "vllm-docker"]:
@@ -267,7 +268,6 @@ class OSSHandler(BaseHandler, EnforceOverrides):
                 stdout_thread.join()
                 stderr_thread.join()
 
-    @final
     def _multi_threaded_inference(
         self, test_case, include_input_log: bool, exclude_state_log: bool
     ):
@@ -344,7 +344,7 @@ class OSSHandler(BaseHandler, EnforceOverrides):
             leftover_tokens_count = 1000
         else:
             leftover_tokens_count = min(
-                4096,  # ここが問題！
+                self.max_tokens,
                 self.max_context_length - input_token_count - 2,
             )
 
