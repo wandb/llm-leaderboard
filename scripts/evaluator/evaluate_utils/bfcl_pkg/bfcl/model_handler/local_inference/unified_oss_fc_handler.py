@@ -26,8 +26,6 @@ class UnifiedOSSFCHandler(OSSHandler):
     def __init__(self, model_name, temperature) -> None:
         super().__init__(model_name, temperature)
         self.is_fc_model = True
-        self.model_name_huggingface = model_name.replace("-FC", "")
-
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config
 
