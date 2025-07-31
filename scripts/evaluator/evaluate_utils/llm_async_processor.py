@@ -89,7 +89,7 @@ class LLMAsyncProcessor:
             assert "role" in item, "'role' key is missing in an item"
             assert "content" in item, "'content' key is missing in an item"
             # 'role'の値が'system', 'assistant', 'user'のいずれかであることを確認
-            roles = {"system", "assistant", "user"}
+            roles = {"system", "assistant", "user", "tool"}
             assert item["role"] in roles, f"'role' should be one of {str(roles)}"
             # 'content'の値が文字列であることを確認
             assert isinstance(item["content"], str), "'content' should be a string"

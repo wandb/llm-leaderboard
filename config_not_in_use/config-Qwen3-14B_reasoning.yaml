@@ -72,7 +72,9 @@ arc_agi_2:
   max_output_tokens: 16384
 
 bfcl:
-  temperature: 0.6
-  max_tokens: 16384
+  generator_config:
+    max_tokens: 16384
+    temperature: 0.6
+    top_p: 0.95
 
 testmode: false

@@ -1598,7 +1598,7 @@ local_inference_model_map = {
         input_price=None,
         output_price=None,
         is_fc_model=True,
-        underscore_to_dot=False,
+        underscore_to_dot=True,
     ),
     "Qwen/Qwen3-14B": ModelConfig(
         model_name="Qwen/Qwen3-14B",

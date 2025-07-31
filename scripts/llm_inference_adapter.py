@@ -1,8 +1,9 @@
 import os
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Union, Any
+import uuid
 import json
 import warnings
 import logging
@@ -27,10 +28,21 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class ToolCall:
+    name: str
+    arguments: Dict[str, Any]
+    type: str = 'function'
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+
+
+@dataclass
 class LLMResponse:
     content: str
     reasoning_content: str = ""
     parsed_output: Optional[BaseModel] = None
+    tool_calls: Optional[List[ToolCall]] = None
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
 
 
 def filter_params(params, allowed_params):
@@ -309,7 +321,22 @@ class OpenAIClient:
         # OpenRouter reasoning field support
         if not reasoning_content and hasattr(response.choices[0].message, 'reasoning'):
             reasoning_content = getattr(response.choices[0].message, 'reasoning', '')
-        return LLMResponse(content=content, reasoning_content=reasoning_content)
+
+        llm_response = LLMResponse(
+            content=content,
+            reasoning_content=reasoning_content,
+            prompt_tokens=response.usage.prompt_tokens,
+            completion_tokens=response.usage.completion_tokens
+        )
+        if tool_calls := response.choices[0].message.tool_calls:
+            llm_response.tool_calls = [ToolCall(
+                name=tool_call.function.name,
+                arguments=json.loads(tool_call.function.arguments),
+                id=tool_call.id,
+                type=tool_call.type
+            ) for tool_call in tool_calls]
+
+        return llm_response
 
 
 class OpenAIResponsesClient(BaseLLMClient):
