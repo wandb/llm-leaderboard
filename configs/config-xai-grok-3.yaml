@@ -1,0 +1,12 @@
+wandb:
+  run_name: grok-3
+api: xai # openai, anthropic, google,..
+batch_size: 8
+model:
+  pretrained_model_name_or_path: grok-3 #if you use openai api, put the name of model
+  bfcl_model_id: grok-3-beta-FC  # find id from "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  base_model: unknown
+  size_category: api
+  size: null
+  release_date: "2/19/2025"
+
