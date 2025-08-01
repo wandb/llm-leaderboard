@@ -56,7 +56,8 @@ class LLMAsyncProcessor:
     @error_handler
     @backoff.on_exception(
         backoff.expo, 
-        (openai.APIConnectionError, openai.APITimeoutError, openai.RateLimitError, openai.APIError, pydantic_core.ValidationError, json.JSONDecodeError),
+        (openai.APIConnectionError, openai.APITimeoutError, openai.RateLimitError, 
+         openai.InternalServerError, pydantic_core.ValidationError, json.JSONDecodeError),
         max_tries=MAX_TRIES,
         max_time=1800,  # 最大30分でタイムアウト
         jitter=backoff.full_jitter
@@ -67,6 +68,10 @@ class LLMAsyncProcessor:
         try:
             async with self.semaphore:
                 return await self.llm.ainvoke(messages, **kwargs)
+        except openai.PermissionDeniedError as e:
+            # コンテンツポリシー違反は即座に失敗させる（リトライしない）
+            print(f"Content policy violation occurred: {str(e)}")
+            raise  # backoffデコレータの対象外なので即座に例外が伝播される
         except pydantic_core.ValidationError as e:
             # JSONパースエラーの場合は、エラー内容をログに出力してから再スロー
             print(f"JSON parsing error occurred: {str(e)}")
@@ -88,7 +93,7 @@ class LLMAsyncProcessor:
             # 'role'キーと'content'キーが存在することを確認
             assert "role" in item, "'role' key is missing in an item"
             assert "content" in item, "'content' key is missing in an item"
-            # 'role'の値が'system', 'assistant', 'user'のいずれかであることを確認
+            # 'role'の値が'system', 'assistant', 'user', 'tool'のいずれかであることを確認
             roles = {"system", "assistant", "user", "tool"}
             assert item["role"] in roles, f"'role' should be one of {str(roles)}"
             # 'content'の値が文字列であることを確認
