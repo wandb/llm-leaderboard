@@ -13,17 +13,28 @@ from ..utils import (
     default_decode_execute_prompting,
     format_execution_results_prompting,
     func_doc_language_specific_pre_processing,
-    retry_with_backoff,
     system_prompt_pre_processing_chat_model,
 )
-from openai import OpenAI, RateLimitError
+from openai.types.chat.chat_completion import ChatCompletion
+from evaluator.evaluate_utils.llm_async_processor import LLMAsyncProcessor
+from config_singleton import WandbConfigSingleton
+from omegaconf import OmegaConf
 
 
 class OpenAICompletionsHandler(BaseHandler):
     def __init__(self, model_name, temperature) -> None:
         super().__init__(model_name, temperature)
         self.model_style = ModelStyle.OpenAI_Completions
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+        instance = WandbConfigSingleton.get_instance()
+        cfg = instance.config
+        self.model_path_or_id = cfg.model.pretrained_model_name_or_path
+        self.generator_config = OmegaConf.to_container(cfg.bfcl.generator_config)
+        self.max_tokens = self.generator_config.pop("max_tokens") # 使用済みTokenに応じて調整するためgenerator_configから取り除く
+
+        # Read from env vars with fallbacks
+        llm = instance.llm
+        self.llm_ap = LLMAsyncProcessor(llm)
 
     def decode_ast(self, result, language="Python"):
         if "FC" in self.model_name or self.is_fc_model:
@@ -42,23 +53,14 @@ class OpenAICompletionsHandler(BaseHandler):
         else:
             return default_decode_execute_prompting(result)
 
-    @retry_with_backoff(error_type=RateLimitError)
-    def generate_with_backoff(self, **kwargs):
-        start_time = time.time()
-        api_response = self.client.chat.completions.create(**kwargs)
-        end_time = time.time()
-
-        return api_response, end_time - start_time
-
     #### FC methods ####
 
-    def _query_FC(self, inference_data: dict):
+    async def _query_FC_async(self, inference_data: dict):
         message: list[dict] = inference_data["message"]
         tools = inference_data["tools"]
         inference_data["inference_input_log"] = {"message": repr(message), "tools": tools}
 
         kwargs = {
-            "messages": message,
             "model": self.model_name.replace("-FC", ""),
             "temperature": self.temperature,
             "store": False,
@@ -67,7 +69,10 @@ class OpenAICompletionsHandler(BaseHandler):
         if len(tools) > 0:
             kwargs["tools"] = tools
 
-        return self.generate_with_backoff(**kwargs)
+        start_time = time.time()
+        api_response = await self.llm_ap.process_single_async(message, **kwargs)
+        end_time = time.time()
+        return api_response, end_time - start_time
 
     def _pre_query_processing_FC(self, inference_data: dict, test_entry: dict) -> dict:
         inference_data["message"] = []
@@ -85,26 +90,27 @@ class OpenAICompletionsHandler(BaseHandler):
         return inference_data
 
     def _parse_query_response_FC(self, api_response: any) -> dict:
+        raw_response: ChatCompletion = api_response.raw_response
         try:
             model_responses = [
                 {func_call.function.name: func_call.function.arguments}
-                for func_call in api_response.choices[0].message.tool_calls
+                for func_call in raw_response.choices[0].message.tool_calls
             ]
             tool_call_ids = [
-                func_call.id for func_call in api_response.choices[0].message.tool_calls
+                func_call.id for func_call in raw_response.choices[0].message.tool_calls
             ]
         except:
-            model_responses = api_response.choices[0].message.content
+            model_responses = raw_response.choices[0].message.content
             tool_call_ids = []
 
-        model_responses_message_for_chat_history = api_response.choices[0].message
+        model_responses_message_for_chat_history = raw_response.choices[0].message
 
         return {
             "model_responses": model_responses,
             "model_responses_message_for_chat_history": model_responses_message_for_chat_history,
             "tool_call_ids": tool_call_ids,
-            "input_token": api_response.usage.prompt_tokens,
-            "output_token": api_response.usage.completion_tokens,
+            "input_token": raw_response.usage.prompt_tokens,
+            "output_token": raw_response.usage.completion_tokens,
         }
 
     def add_first_turn_message_FC(
@@ -193,15 +199,19 @@ class OpenAICompletionsHandler(BaseHandler):
 
     #### Prompting methods ####
 
-    def _query_prompting(self, inference_data: dict):
+    async def _query_prompting_async(self, inference_data: dict):
         inference_data["inference_input_log"] = {"message": repr(inference_data["message"])}
 
-        return self.generate_with_backoff(
-            messages=inference_data["message"],
-            model=self.model_name,
-            temperature=self.temperature,
-            store=False,
-        )
+        kwargs = {
+            "model": self.model_name,
+            "store": False,
+            **self.generator_config,
+        }
+
+        start_time = time.time()
+        api_response = await self.llm_ap.process_single_async(inference_data["message"], **kwargs)
+        end_time = time.time()
+        return api_response, end_time - start_time
 
     def _pre_query_processing_prompting(self, test_entry: dict) -> dict:
         functions: list = test_entry["function"]
@@ -216,11 +226,12 @@ class OpenAICompletionsHandler(BaseHandler):
         return {"message": []}
 
     def _parse_query_response_prompting(self, api_response: any) -> dict:
+        raw_response: ChatCompletion = api_response.raw_response
         return {
-            "model_responses": api_response.choices[0].message.content,
-            "model_responses_message_for_chat_history": api_response.choices[0].message,
-            "input_token": api_response.usage.prompt_tokens,
-            "output_token": api_response.usage.completion_tokens,
+            "model_responses": raw_response.choices[0].message.content,
+            "model_responses_message_for_chat_history": raw_response.choices[0].message,
+            "input_token": raw_response.usage.prompt_tokens,
+            "output_token": raw_response.usage.completion_tokens,
         }
 
     def add_first_turn_message_prompting(
@@ -267,7 +278,8 @@ class OpenAICompletionsHandler(BaseHandler):
         Thus, this method saves reasoning content to response_data (for local result file) if present in the response,
         but does not include it in the chat history.
         """
-        message = api_response.choices[0].message
+        raw_response: ChatCompletion = api_response.raw_response
+        message = raw_response.choices[0].message
         if hasattr(message, "reasoning_content"):
             response_data["reasoning_content"] = message.reasoning_content
             # Reasoning content should not be included in the chat history

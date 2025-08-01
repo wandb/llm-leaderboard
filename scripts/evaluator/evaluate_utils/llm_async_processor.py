@@ -9,6 +9,7 @@ from tqdm import tqdm
 from tqdm.asyncio import tqdm as atqdm
 import openai
 import pydantic_core
+import pydantic
 
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import LLMResponse
@@ -89,15 +90,22 @@ class LLMAsyncProcessor:
         assert isinstance(data, list), "Data should be a list"
         # 各要素が辞書であることを確認
         for item in data:
+            if isinstance(item, pydantic.BaseModel):
+                # モデル固有の型付きデータの場合、ここではバリデーションをスキップ
+                continue
             assert isinstance(item, dict), "Each item should be a dictionary"
             # 'role'キーと'content'キーが存在することを確認
             assert "role" in item, "'role' key is missing in an item"
-            assert "content" in item, "'content' key is missing in an item"
-            # 'role'の値が'system', 'assistant', 'user', 'tool'のいずれかであることを確認
-            roles = {"system", "assistant", "user", "tool"}
+            assert "content" in item or "tool_calls" in item, "'content' or 'tool_calls' key is missing in an item"
+            # 'role'の値が'system', 'assistant', 'user', 'tool', 'developer'のいずれかであることを確認
+            roles = {"system", "assistant", "user", "tool", "developer"}
             assert item["role"] in roles, f"'role' should be one of {str(roles)}"
             # 'content'の値が文字列であることを確認
-            assert isinstance(item["content"], str), "'content' should be a string"
+            if 'content' in item:
+                assert isinstance(item["content"], str), "'content' should be a string"
+            elif 'tool_calls' in item:
+                assert isinstance(item["tool_calls"], list), "'tool_calls' should be a list"
+
 
     async def _gather_tasks(self) -> List[LLMResponse]:
         """すべてのタスクを収集して実行"""

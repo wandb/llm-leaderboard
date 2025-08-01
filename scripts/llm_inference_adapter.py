@@ -43,6 +43,7 @@ class LLMResponse:
     tool_calls: Optional[List[ToolCall]] = None
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
+    raw_response: Optional[Any] = None
 
 
 def filter_params(params, allowed_params):
@@ -346,7 +347,8 @@ class OpenAIClient:
             content=content,
             reasoning_content=reasoning_content,
             prompt_tokens=response.usage.prompt_tokens,
-            completion_tokens=response.usage.completion_tokens
+            completion_tokens=response.usage.completion_tokens,
+            raw_response=response,
         )
         if tool_calls := response.choices[0].message.tool_calls:
             llm_response.tool_calls = [ToolCall(
@@ -403,13 +405,32 @@ class OpenAIResponsesClient(BaseLLMClient):
             response: OpenAIResponse = await self.async_client.responses.create(**params)
             parsed_output = None
 
-        content, reasoning_content = "", ""
+        content, reasoning_content, tool_calls = "", "", []
         for output in response.output:
             if output.type == "message":
                 content = output.content[0].text
             elif output.type == "reasoning" and len(output.summary) > 0: # reasoning contentは長さ0の場合がある
                 reasoning_content = output.summary[0].text
-        return LLMResponse(content=content, reasoning_content=reasoning_content, parsed_output=parsed_output)
+            elif output.type == "function_call":
+                tool_calls.append(ToolCall(
+                    name=output.name,
+                    arguments=json.loads(output.arguments),
+                    id=output.call_id,
+                    type=output.type
+                ))
+        if len(tool_calls) == 0:
+            tool_calls = None
+
+        llm_response = LLMResponse(
+            content=content,
+            reasoning_content=reasoning_content,
+            parsed_output=parsed_output,
+            tool_calls=tool_calls,
+            prompt_tokens=response.usage.input_tokens,
+            completion_tokens=response.usage.output_tokens,
+            raw_response=response,
+        )
+        return llm_response
 
 
 class AzureOpenAIResponsesClient(OpenAIResponsesClient):

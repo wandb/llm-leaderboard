@@ -291,8 +291,13 @@ def generate_results(args, model_name, test_cases_total):
     update_mode = True
     handler = build_handler(model_name, args.temperature)
 
-    if handler.model_style == ModelStyle.OSSMODEL:
-        handler.setup_tokenizer(args.local_model_path)
+    ## 暫定: AsyncLLMProcessor対応済みハンドラーはasync実行
+    if handler.model_style == ModelStyle.OSSMODEL or type(handler).__name__ in [
+        "OpenAICompletionsHandler",
+        "OpenAIResponsesHandler",
+    ]:
+        if hasattr(handler, "setup_tokenizer"):
+            handler.setup_tokenizer(args.local_model_path)
         asyncio.run(async_generate_results(args, handler, test_cases_total))
     else:
         futures = []

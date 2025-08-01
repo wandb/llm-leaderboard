@@ -12,17 +12,30 @@ from ..utils import (
     default_decode_execute_prompting,
     format_execution_results_prompting,
     func_doc_language_specific_pre_processing,
-    retry_with_backoff,
     system_prompt_pre_processing_chat_model,
 )
-from openai import OpenAI, RateLimitError
-from openai.types.responses import Response
+from openai.types.responses import Response, ResponseFunctionToolCallOutputItem
+from llm_inference_adapter import OpenAIResponsesClient
+from evaluator.evaluate_utils.llm_async_processor import LLMAsyncProcessor, LLMResponse
+from config_singleton import WandbConfigSingleton
+
 
 class OpenAIResponsesHandler(BaseHandler):
     def __init__(self, model_name, temperature) -> None:
         super().__init__(model_name, temperature)
         self.model_style = ModelStyle.OpenAI_Responses
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+        # Will be overridden in batch_inference method
+        # Used to indicate where the tokenizer and config should be loaded from
+        instance = WandbConfigSingleton.get_instance()
+        cfg = instance.config
+        self.model_path_or_id = cfg.model.pretrained_model_name_or_path
+        self.generator_config = cfg.bfcl.generator_config
+
+        # Read from env vars with fallbacks
+        llm = instance.llm
+        assert isinstance(llm, OpenAIResponsesClient), "llm must be an instance of OpenAIResponsesClient"
+        self.llm_ap = LLMAsyncProcessor(llm)
 
     @staticmethod
     def _substitute_prompt_role(prompts: list[dict]) -> list[dict]:
@@ -52,17 +65,9 @@ class OpenAIResponsesHandler(BaseHandler):
         else:
             return default_decode_execute_prompting(result)
 
-    @retry_with_backoff(error_type=RateLimitError)
-    def generate_with_backoff(self, **kwargs):
-        start_time = time.time()
-        api_response = self.client.responses.create(**kwargs)
-        end_time = time.time()
-
-        return api_response, end_time - start_time
-
     #### FC methods ####
 
-    def _query_FC(self, inference_data: dict):
+    async def _query_FC_async(self, inference_data: dict):
         message: list[dict] = inference_data["message"]
         tools = inference_data["tools"]
 
@@ -76,16 +81,20 @@ class OpenAIResponsesHandler(BaseHandler):
             "model": self.model_name.replace("-FC", ""),
             "store": False,
             "reasoning": {"summary": "auto"},
+            **self.generator_config,
         }
 
         # OpenAI reasoning models don't support temperature parameter
-        if "o3" not in self.model_name and "o4-mini" not in self.model_name:
-            kwargs["temperature"] = self.temperature
+        if "o3" in self.model_name or "o4-mini" in self.model_name:
+            del kwargs["temperature"]
 
         if len(tools) > 0:
             kwargs["tools"] = tools
 
-        return self.generate_with_backoff(**kwargs)
+        start_time = time.time()
+        api_response = await self.llm_ap.process_single_async(message, **kwargs)
+        end_time = time.time()
+        return api_response, end_time - start_time
 
     def _pre_query_processing_FC(self, inference_data: dict, test_entry: dict) -> dict:
         for round_idx in range(len(test_entry["question"])):
@@ -109,33 +118,34 @@ class OpenAIResponsesHandler(BaseHandler):
 
         return inference_data
 
-    def _parse_query_response_FC(self, api_response: Response) -> dict:
+    def _parse_query_response_FC(self, api_response: LLMResponse) -> dict:
+        raw_response: Response = api_response.raw_response
         model_responses = []
         tool_call_ids = []
 
-        for func_call in api_response.output:
+        for func_call in raw_response.output:
             if func_call.type == "function_call":
                 model_responses.append({func_call.name: func_call.arguments})
                 tool_call_ids.append(func_call.call_id)
 
         if not model_responses:  # If there are no function calls
-            model_responses = api_response.output_text
+            model_responses = raw_response.output_text
 
         # OpenAI reasoning models don't show full reasoning content in the api response,
         # but only a summary of the reasoning content.
         reasoning_content = ""
-        for item in api_response.output:
+        for item in raw_response.output:
             if item.type == "reasoning":
                 for summary in item.summary:
                     reasoning_content += summary.text + "\n"
 
         return {
             "model_responses": model_responses,
-            "model_responses_message_for_chat_history": api_response.output,
+            "model_responses_message_for_chat_history": raw_response.output,
             "tool_call_ids": tool_call_ids,
             "reasoning_content": reasoning_content,
-            "input_token": api_response.usage.input_tokens,
-            "output_token": api_response.usage.output_tokens,
+            "input_token": raw_response.usage.input_tokens,
+            "output_token": raw_response.usage.output_tokens,
         }
 
     def add_first_turn_message_FC(
@@ -168,33 +178,37 @@ class OpenAIResponsesHandler(BaseHandler):
         for execution_result, tool_call_id in zip(
             execution_results, model_response_data["tool_call_ids"]
         ):
-            tool_message = {
-                "type": "function_call_output",
-                "call_id": tool_call_id,
-                "output": execution_result,
-            }
+            tool_message = ResponseFunctionToolCallOutputItem(
+                type="function_call_output",
+                id='fc_' + tool_call_id,
+                call_id=tool_call_id,
+                output=execution_result,
+            )
             inference_data["message"].append(tool_message)
 
         return inference_data
 
     #### Prompting methods ####
 
-    def _query_prompting(self, inference_data: dict):
+    async def _query_prompting_async(self, inference_data: dict):
         inference_data["inference_input_log"] = {"message": repr(inference_data["message"])}
 
         kwargs = {
-            "input": inference_data["message"],
             "model": self.model_name.replace("-FC", ""),
             "store": False,
             "include": ["reasoning.encrypted_content"],
             "reasoning": {"summary": "auto"},
+            **self.generator_config,
         }
 
         # OpenAI reasoning models don't support temperature parameter
         if "o3" not in self.model_name and "o4-mini" not in self.model_name:
             kwargs["temperature"] = self.temperature
 
-        return self.generate_with_backoff(**kwargs)
+        start_time = time.time()
+        response = await self.llm_ap.process_single_async(inference_data["message"], **kwargs)
+        end_time = time.time()
+        return response, end_time - start_time
 
     def _pre_query_processing_prompting(self, test_entry: dict) -> dict:
         functions: list = test_entry["function"]
@@ -213,21 +227,22 @@ class OpenAIResponsesHandler(BaseHandler):
 
         return {"message": []}
 
-    def _parse_query_response_prompting(self, api_response: Response) -> dict:
+    def _parse_query_response_prompting(self, api_response: LLMResponse) -> dict:
+        raw_response: Response = api_response.raw_response
         # OpenAI reasoning models don't show full reasoning content in the api response,
         # but only a summary of the reasoning content.
         reasoning_content = ""
-        for item in api_response.output:
+        for item in raw_response.output:
             if item.type == "reasoning":
                 for summary in item.summary:
                     reasoning_content += summary.text + "\n"
 
         return {
-            "model_responses": api_response.output_text,
-            "model_responses_message_for_chat_history": api_response.output,
+            "model_responses": raw_response.output_text,
+            "model_responses_message_for_chat_history": raw_response.output,
             "reasoning_content": reasoning_content,
-            "input_token": api_response.usage.input_tokens,
-            "output_token": api_response.usage.output_tokens,
+            "input_token": raw_response.usage.input_tokens,
+            "output_token": raw_response.usage.output_tokens,
         }
 
     def add_first_turn_message_prompting(
