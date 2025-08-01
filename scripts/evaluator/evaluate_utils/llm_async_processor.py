@@ -20,11 +20,6 @@ Messages: TypeAlias = List[dict[str, str]]
 Inputs: TypeAlias = List[Tuple[Messages, dict[str, Any]]]
 
 
-class PermanentAPIError(Exception):
-    """永続的なAPIエラー（リトライしない）"""
-    pass
-
-
 def error_handler(func: callable) -> callable:
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
@@ -61,7 +56,8 @@ class LLMAsyncProcessor:
     @error_handler
     @backoff.on_exception(
         backoff.expo, 
-        (openai.APIError, pydantic_core.ValidationError, json.JSONDecodeError),
+        (openai.APIConnectionError, openai.APITimeoutError, openai.RateLimitError, 
+         openai.InternalServerError, pydantic_core.ValidationError, json.JSONDecodeError),
         max_tries=MAX_TRIES,
         max_time=1800,  # 最大30分でタイムアウト
         jitter=backoff.full_jitter
@@ -72,10 +68,10 @@ class LLMAsyncProcessor:
         try:
             async with self.semaphore:
                 return await self.llm.ainvoke(messages, **kwargs)
-        except (openai.PermissionDeniedError, openai.AuthenticationError, openai.BadRequestError) as e:
-            # 永続的なエラーは即座に失敗させる（リトライしない）
-            print(f"Permanent error occurred (will not retry): {type(e).__name__}: {str(e)}")
-            raise PermanentAPIError(f"{type(e).__name__}: {str(e)}") from e
+        except openai.PermissionDeniedError as e:
+            # コンテンツポリシー違反は即座に失敗させる（リトライしない）
+            print(f"Content policy violation occurred: {str(e)}")
+            raise  # backoffデコレータの対象外なので即座に例外が伝播される
         except pydantic_core.ValidationError as e:
             # JSONパースエラーの場合は、エラー内容をログに出力してから再スロー
             print(f"JSON parsing error occurred: {str(e)}")
