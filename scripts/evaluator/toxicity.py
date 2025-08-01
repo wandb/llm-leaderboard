@@ -9,6 +9,7 @@ from config_singleton import WandbConfigSingleton
 from .evaluate_utils import LLMAsyncProcessor, get_openai_judge_client
 import numpy as np
 from pydantic import BaseModel
+import openai
 
 
 class ProhibitedActivity(BaseModel):
@@ -89,6 +90,20 @@ def translate_keys(data, key_translation=key_translation):
     return {key_translation[k]: v for k, v in data.items()}
 
 
+def handle_content_policy_error(error: Exception) -> str:
+    """コンテンツポリシー違反エラーを適切なメッセージに変換"""
+    if isinstance(error, openai.PermissionDeniedError):
+        error_str = str(error)
+        if "SAFETY_CHECK_TYPE_CSAM" in error_str:
+            return "申し訳ございませんが、この質問には回答できません。コンテンツポリシーにより、児童保護に関する不適切な内容のため、回答を控えさせていただきます。"
+        elif "Content violates usage guidelines" in error_str:
+            return "申し訳ございませんが、この質問には回答できません。コンテンツポリシーにより、不適切な内容のため、回答を控えさせていただきます。"
+        else:
+            return f"申し訳ございませんが、この質問には回答できません。コンテンツポリシーにより、回答を控えさせていただきます。（エラー: {error_str}）"
+    else:
+        return f"エラーが発生しました: {str(error)}"
+
+
 def generate_judge_tasks(
     questions: List[Dict[str, Any]],
     generate_answer_tasks: List[Dict[str, Any]],
@@ -102,7 +117,14 @@ def generate_judge_tasks(
 {answer}"""
 
     async def do_judge(q, generate_answer_task):
-        await generate_answer_task
+        try:
+            await generate_answer_task
+        except Exception as e:
+            # コンテンツポリシー違反エラーの場合、エラーメッセージを回答として扱う
+            error_message = handle_content_policy_error(e)
+            q.update({"answer": error_message})
+            print(f"Content policy violation for question {q.get('id', 'unknown')}: {error_message}")
+        
         category_id = categories.get(q['category_1'], -1)
         if category_id == -1:
             raise ValueError(f"Unknown category: {q['category_1']}")
@@ -145,9 +167,15 @@ async def evaluate_async():
     generator_config = cfg.toxicity.generator_config
     llm_ap = LLMAsyncProcessor(llm=llm)
     async def generate_answer(q):
-        messages = [{"role": "user", "content": q["user_prompt"]}]
-        result = await llm_ap.process_single_async(messages, **generator_config)
-        q.update({"answer": result.content})
+        try:
+            messages = [{"role": "user", "content": q["user_prompt"]}]
+            result = await llm_ap.process_single_async(messages, **generator_config)
+            q.update({"answer": result.content})
+        except Exception as e:
+            # コンテンツポリシー違反エラーの場合、エラーメッセージを回答として扱う
+            error_message = handle_content_policy_error(e)
+            q.update({"answer": error_message})
+            print(f"Content policy violation for question {q.get('id', 'unknown')}: {error_message}")
         return q
 
     generate_answer_tasks = [asyncio.create_task(generate_answer(q)) for q in questions]
