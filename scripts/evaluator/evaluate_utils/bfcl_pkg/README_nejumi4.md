@@ -61,6 +61,7 @@
     - 問題：Python 3での8進数解釈によるTypeError
     - 修正：正規表現によるleading zerosの10進数変換
     - 対象ファイル：multi_turn_utils.py
+- STEP limitを20から10に変更 (in bfcl/constants/default_prompts.py)
 - llm-leadrboardで起動されるvllmを利用するように変更
     - llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/bfcl/model_handler/local_inference/base_oss_handler.pyのvllm_hostとportを変更
 - ローカルモデルのchat templateへの対応
