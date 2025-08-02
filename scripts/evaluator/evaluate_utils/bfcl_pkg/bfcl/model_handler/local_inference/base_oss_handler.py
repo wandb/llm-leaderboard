@@ -19,18 +19,20 @@ from overrides import EnforceOverrides, final, override
 from config_singleton import WandbConfigSingleton
 from omegaconf import OmegaConf
 
+
 class OSSHandler(BaseHandler, EnforceOverrides):
     def __init__(self, model_name, temperature) -> None:
         # temperatureは後方互換のため残しているがgenerator_configから取るので使用しない
         super().__init__(model_name, temperature)
-        self.model_name_huggingface = model_name
+
+        
         self.model_style = ModelStyle.OSSMODEL
 
         # Will be overridden in batch_inference method
         # Used to indicate where the tokenizer and config should be loaded from
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config
-        self.model_path_or_id = cfg.model.pretrained_model_name_or_path
+        self.model_name_huggingface = cfg.model.pretrained_model_name_or_path
         self.generator_config = OmegaConf.to_container(cfg.bfcl.generator_config)
         self.max_tokens = self.generator_config.pop("max_tokens") # 使用済みTokenに応じて調整するためgenerator_configから取り除く
 
