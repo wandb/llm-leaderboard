@@ -2085,6 +2085,30 @@ third_party_inference_model_map = {
     #     is_fc_model=True,
     #     underscore_to_dot=False,
     # ),
+    "tokyotech-llm/Llama-3.1-Swallow-8B-Instruct-v0.5": ModelConfig(
+        model_name="tokyotech-llm/Llama-3.1-Swallow-8B-Instruct-v0.5",
+        display_name="Llama-3.1-Swallow-8B-Instruct-v0.5",
+        url="https://huggingface.co/tokyotech-llm/Llama-3.1-Swallow-8B-Instruct-v0.5",
+        org="Science Tokyo",
+        license="Meta Llama 3.1 Community",
+        model_handler=UnifiedOSSJsonSchemaHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=False,
+        underscore_to_dot=False,
+    ),
+    "cyberagent/calm3-22b-chat": ModelConfig(
+        model_name="cyberagent/calm3-22b-chat",
+        display_name="calm3-22b-chat",
+        url="https://huggingface.co/cyberagent/calm3-22b-chat",
+        org="CyberAgent",
+        license="Apache 2.0",
+        model_handler=UnifiedOSSJsonSchemaHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=False,
+        underscore_to_dot=False,
+    ),
 }
 
 
