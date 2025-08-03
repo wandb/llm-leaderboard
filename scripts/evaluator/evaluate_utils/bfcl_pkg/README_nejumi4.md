@@ -244,50 +244,79 @@ BaseHandlerクラスは、BFCL（Berkeley Function-calling Leaderboard）にお�
             )
         ```
 
-    2. vLLMサーバーとの通信管理
-    ```python
-    class OSSHandler(BaseHandler):
-        def __init__(self, model_name, temperature, dtype="bfloat16"):
-            # vLLMサーバーへの接続設定
-            self.vllm_host = os.getenv("VLLM_ENDPOINT", "localhost")
-            self.vllm_port = os.getenv("VLLM_PORT", VLLM_PORT)
-            self.base_url = f"http://{self.vllm_host}:{self.vllm_port}/v1"
-            self.client = OpenAI(base_url=self.base_url, api_key="EMPTY")
-    ```
-
-    3. バッチ推論の実装
-    APIモデルと異なり、ローカルモデルは**サーバーを起動してからバッチで処理**することで効率化：
+    2. LLMAsyncProcessorへの対応
+    ローカルモデルは他のベンチマークでも使用しているLLMAsyncProcessorを使用してvLLMのAPIをコールします。
+    そのため、並列度やリクエストパラメータなどの設定がconfigで一元管理されます。
 
     ```python
-    def batch_inference(self, test_entries, num_gpus, gpu_memory_utilization, ...):
-        # 1. モデルとトークナイザーのロード
-        self.tokenizer = AutoTokenizer.from_pretrained(**load_kwargs)
-        config = AutoConfig.from_pretrained(**load_kwargs)
-        
-        # 2. コンテキスト長の設定
-        if hasattr(config, "max_position_embeddings"):
-            self.max_context_length = config.max_position_embeddings
-        
-        # 3. バッチ処理の実行
-        # (個別のエントリーを一度にまとめて処理)
+    class OSSHandler(BaseHandler, EnforceOverrides):
+        def __init__(self, model_name, temperature) -> None:
+            # temperatureは後方互換のため残しているがgenerator_configから取るので使用しない
+            super().__init__(model_name, temperature)
+            self.model_style = ModelStyle.OSSMODEL
+
+            # Will be overridden in batch_inference method
+            # Used to indicate where the tokenizer and config should be loaded from
+            instance = WandbConfigSingleton.get_instance()
+            cfg = instance.config
+            self.model_name_huggingface = cfg.model.pretrained_model_name_or_path
+            self.generator_config = OmegaConf.to_container(cfg.bfcl.generator_config)
+            self.max_tokens = self.generator_config.pop("max_tokens") # 使用済みTokenに応じて調整するためgenerator_configから取り除く
+
+            # Read from env vars with fallbacks
+            llm = instance.llm
+            self.llm_ap = LLMAsyncProcessor(llm)
     ```
+
+    3. toolsパラメータ(FCモデル)への対応
+    公式のOSSHandlerはプロンプトモードにしか対応していません(FCモデルでもprompt系の関数を使用している)が、
+    vLLMのtool_call_parserを使用したOpenAI API互換のTool Callingに対応するため、 `_FC` 系の関数を追加実装しています。
+
+    ```python
+    kwargs = {
+        "model": self.model_name.replace("-FC", ""),
+        "max_tokens": leftover_tokens_count,
+        **self.generator_config,
+        # "store": False, removed: because vLLM server doesn't support it
+    }
+
+    if len(tools) > 0:
+        kwargs["tools"] = tools
+        kwargs["tool_choice"] = "auto" # vLLM requires tool_choice=auto to parse tool output
+
+    start_time = time.time()
+    api_response = await self.llm_ap.process_single_async(message, **kwargs)
+    end_time = time.time()
+    ```
+
 
     4. デフォルトのデコード処理
     ```python
     @override
     def decode_ast(self, result, language="Python"):
-        return default_decode_ast_prompting(result, language)
+        if "FC" in self.model_name or self.is_fc_model:
+            decoded_output = []
+            for invoked_function in result:
+                name = list(invoked_function.keys())[0]
+                params = invoked_function[name]
+                decoded_output.append({name: params})
+            return decoded_output
+        else:
+            return default_decode_ast_prompting(result, language)
 
     @override
     def decode_execute(self, result):
-        return default_decode_execute_prompting(result)
+        if "FC" in self.model_name or self.is_fc_model:
+            return convert_to_function_call(result)
+        else:
+            return default_decode_execute_prompting(result)
+
     ```
 
     5. トークン数の推定
     ```python
     # Chat Completions APIではメッセージからトークン数を推定
-    messages_text = " ".join([msg.get("content", "") for msg in message])
-    input_token_count = len(self.tokenizer.tokenize(messages_text))
+    input_token_count = len(self.tokenizer.apply_chat_template(message, tokenize=True, tools=tools))
     ```
 
 - 処理フロー
@@ -295,7 +324,7 @@ BaseHandlerクラスは、BFCL（Berkeley Function-calling Leaderboard）にお�
     ```
     1. バッチ推論開始
     ↓
-    2. モデル・トークナイザーのロード (vLLMサーバーがすでに起動されている場合はスキップ)
+    2. モデル・トークナイザーのロード
     ↓
     3. vLLMサーバーとの接続確立
     ↓
@@ -462,3 +491,30 @@ local_inferenceディレクトリには**25個以上のローカルモデル専�
                         "content": execution_result,
                     })
             ```
+
+### 5. 汎用OSS追加ハンドラークラスについて
+
+各モデルに合わせてHandlerを新しく実装するのは大変なため、デフォルトの設定で多くのモデルに対応出来る追加ハンドラーを実装しています。
+
+#### UnifiedOSSFCHandler [source](./bfcl/model_handler/local_inference/unified_oss_fc_handler.py)
+
+vLLMの[Tool Calling](https://docs.vllm.ai/en/latest/features/tool_calling.html)機能を使用して、OpenAIと互換のAPIでtoolのリクエスト及びレスポンスのパースを行うHandlerです。
+
+APIレスポンスに指定のフォーマットで `tool_calls` が返ってくるため個別のパース処理を行う必要がありません。
+
+使用するためにはモデルがTool Calling対応(chat templateがtools引数を受け付ける)であり、vLLMの起動オプションにモデルに対応した [`tool_call_parser`](https://docs.vllm.ai/en/latest/features/tool_calling.html#automatic-function-calling) が指定されている必要があります。
+
+#### UnifiedOSSJsonSchemaHandler [source](./bfcl/model_handler/local_inference/unified_oss_jsonschema_handler.py)
+
+vLLMの[Structured Outputs](https://docs.vllm.ai/en/latest/features/structured_outputs.html)機能を利用して、レスポンスメッセージ本文にtool callの指定したJSONを強制するハンドラーです。
+
+プロンプトベースの手法ではあるものの、指定したPydanticモデルの型で必ずレスポンスが返ってくるためパース不要でフォーマットが保証され、Tool Calling非対応のモデルでも利用できます。
+
+#### UnifiedOSSHandler [source](./bfcl/model_handler/local_inference/unified_oss_handler.py)
+
+プロンプトベースで主要なフォーマットのパースを行うHandlerです。以下の形式に対応しています。
+
+1. 標準JSON形式（base_oss_handlerのデフォルト）
+2. XMLツールタグ形式（<tool_call>...</tool_call>）
+3. Markdownコードブロック内のJSON
+4. 基本的な特殊タグ（<|python_tag|>など）

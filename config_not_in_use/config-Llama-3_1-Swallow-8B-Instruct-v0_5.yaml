@@ -1,0 +1,21 @@
+wandb:
+  run_name: tokyotech-llm/Llama-3.1-Swallow-8B-Instruct-v0.5
+api: vllm
+batch_size: 256
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: tokyotech-llm/Llama-3.1-Swallow-8B-Instruct-v0.5 #if you use openai api, put the name of model
+  bfcl_model_id: "tokyotech-llm/Llama-3.1-Swallow-8B-Instruct-v0.5" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  size_category: <10B
+  size: 8030261248
+  release_date: 11/11/2024
+
+vllm: # vLLM server-side launch configuration
+  vllm_tag: v0.8.5
+  lifecycle: always_on
+  gpu_memory_utilization: 0.95
+
+bfcl:
+  generator_config:  # 推論共通化後のHandler用
+    max_tokens: 16384
+    temperature: 0.01

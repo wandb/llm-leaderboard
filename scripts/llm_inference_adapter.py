@@ -332,8 +332,15 @@ class OpenAIClient:
                 params["extra_body"]["reasoning"] = {}
             elif all_kwargs["include_reasoning"] is False:
                 params["extra_body"]["reasoning"] = {"exclude": True}
-        
-        response: OpenAIChatCompletion = await self.async_client.chat.completions.create(**params)
+
+        # Structured output
+        if "response_format" in params:
+            response: OpenAIChatCompletion = await self.async_client.beta.chat.completions.parse(**params)
+            parsed_output = response.choices[0].message.parsed
+        else:
+            response: OpenAIChatCompletion = await self.async_client.chat.completions.create(**params)
+            parsed_output = None
+
         content = response.choices[0].message.content
         # vLLM reasoning parser output
         # https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#quickstart
@@ -345,6 +352,7 @@ class OpenAIClient:
         llm_response = LLMResponse(
             content=content,
             reasoning_content=reasoning_content,
+            parsed_output=parsed_output,
             prompt_tokens=response.usage.prompt_tokens,
             completion_tokens=response.usage.completion_tokens
         )

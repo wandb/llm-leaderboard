@@ -1,0 +1,16 @@
+wandb:
+  run_name: cyberagent/calm3-22b-chat
+api: vllm
+batch_size: 256
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: cyberagent/calm3-22b-chat #if you use openai api, put the name of model
+  bfcl_model_id: "cyberagent/calm3-22b-chat" # check the model name in "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  size_category: "10B≤ <30B"
+  size: 1
+  release_date: 7/9/2024
+
+vllm: # vLLM server-side launch configuration
+  vllm_tag: v0.8.5
+  lifecycle: always_on
+  gpu_memory_utilization: 0.95
