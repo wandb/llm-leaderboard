@@ -71,6 +71,7 @@ from ..model_handler.local_inference.salesforce_qwen import (
 from ..model_handler.local_inference.think_agent import ThinkAgentHandler
 from ..model_handler.local_inference.unified_oss_handler import UnifiedOSSHandler
 from ..model_handler.local_inference.unified_oss_fc_handler import UnifiedOSSFCHandler
+from ..model_handler.local_inference.unified_oss_jsonschema_handler import UnifiedOSSJsonSchemaHandler
 
 # -----------------------------------------------------------------------------
 # A mapping of model identifiers to their respective model configurations.
