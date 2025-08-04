@@ -36,29 +36,41 @@ def calculate_weighted_accuracy(accuracy_dict_list, display_na_if_category_missi
     return result
 
 
-def calculate_unweighted_accuracy(accuracy_dict_list, display_na_if_category_missing=True):
+def calculate_unweighted_accuracy(accuracy_dict_list, display_na_if_category_missing=True, exclude_na_categories=False):
     has_na = False
     total_count = 0
     total_accuracy = 0
+    valid_categories = 0
+    
     for accuracy_dict in accuracy_dict_list:
         accuracy = accuracy_dict["accuracy"]
         count = accuracy_dict["total_count"]
         if accuracy_dict["display_accuracy"] == "N/A":
             # If a category is not being evaluated, it will still be considered 0 in the overall score calculation.
             has_na = True
+            if exclude_na_categories:
+                continue  # Skip N/A categories when exclude_na_categories is True
 
         total_count += count
         total_accuracy += accuracy
+        valid_categories += 1
 
-    result = {
-        "accuracy": total_accuracy / len(accuracy_dict_list),
-        "total_count": total_count,
-    }
-
-    if has_na and display_na_if_category_missing:
-        result["display_accuracy"] = "N/A"
+    if valid_categories == 0:
+        result = {
+            "accuracy": 0,
+            "total_count": total_count,
+            "display_accuracy": "N/A"
+        }
     else:
-        result["display_accuracy"] = result["accuracy"]
+        result = {
+            "accuracy": total_accuracy / valid_categories,
+            "total_count": total_count,
+        }
+
+        if has_na and display_na_if_category_missing:
+            result["display_accuracy"] = "N/A"
+        else:
+            result["display_accuracy"] = result["accuracy"]
 
     return result
 
@@ -243,33 +255,46 @@ def generate_leaderboard_csv(
         javascript_simple_ast_non_live = get_category_score(value, "javascript",artifacts_path)
         irrelevance_non_live = get_category_score(value, "irrelevance",artifacts_path)
 
-        simple_ast_non_live = calculate_unweighted_accuracy(
-            [
-                python_simple_ast_non_live,
-                java_simple_ast_non_live,
-                javascript_simple_ast_non_live,
-            ]
-        )
-        multiple_ast_non_live = python_multiple_ast_non_live
-        parallel_ast_non_live = python_parallel_ast_non_live
-        parallel_multiple_ast_non_live = python_parallel_multiple_ast_non_live
+        # Filter categories based on eval_categories if specified
+        simple_categories = []
+        if eval_categories is None or "simple" in eval_categories:
+            simple_categories.append(python_simple_ast_non_live)
+        if eval_categories is None or "java" in eval_categories:
+            simple_categories.append(java_simple_ast_non_live)
+        if eval_categories is None or "javascript" in eval_categories:
+            simple_categories.append(javascript_simple_ast_non_live)
+        
+        simple_ast_non_live = calculate_unweighted_accuracy(simple_categories) if simple_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
+        multiple_ast_non_live = python_multiple_ast_non_live if eval_categories is None or "multiple" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
+        parallel_ast_non_live = python_parallel_ast_non_live if eval_categories is None or "parallel" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
+        parallel_multiple_ast_non_live = python_parallel_multiple_ast_non_live if eval_categories is None or "parallel_multiple" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
 
-        summary_ast_non_live = calculate_unweighted_accuracy(
-            [
-                simple_ast_non_live,
-                multiple_ast_non_live,
-                parallel_ast_non_live,
-                parallel_multiple_ast_non_live,
-            ]
-        )
+        summary_categories = []
+        if eval_categories is None or any(cat in eval_categories for cat in ["simple", "java", "javascript"]):
+            summary_categories.append(simple_ast_non_live)
+        if eval_categories is None or "multiple" in eval_categories:
+            summary_categories.append(multiple_ast_non_live)
+        if eval_categories is None or "parallel" in eval_categories:
+            summary_categories.append(parallel_ast_non_live)
+        if eval_categories is None or "parallel_multiple" in eval_categories:
+            summary_categories.append(parallel_multiple_ast_non_live)
+        
+        summary_ast_non_live = calculate_unweighted_accuracy(summary_categories) if summary_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
+        
+        overall_categories = []
+        if eval_categories is None or any(cat in eval_categories for cat in ["simple", "java", "javascript"]):
+            overall_categories.append(simple_ast_non_live)
+        if eval_categories is None or "multiple" in eval_categories:
+            overall_categories.append(multiple_ast_non_live)
+        if eval_categories is None or "parallel" in eval_categories:
+            overall_categories.append(parallel_ast_non_live)
+        if eval_categories is None or "parallel_multiple" in eval_categories:
+            overall_categories.append(parallel_multiple_ast_non_live)
+        if eval_categories is None or "irrelevance" in eval_categories:
+            overall_categories.append(irrelevance_non_live)
+        
         overall_accuracy_non_live = calculate_unweighted_accuracy(
-            [
-                simple_ast_non_live,
-                multiple_ast_non_live,
-                parallel_ast_non_live,
-                parallel_multiple_ast_non_live,
-                irrelevance_non_live,
-            ],
+            overall_categories,
             display_na_if_category_missing=False,
         )
 
@@ -297,24 +322,36 @@ def generate_leaderboard_csv(
         python_parallel_multiple_ast_live = get_category_score(value, "live_parallel_multiple",artifacts_path)
         irrelevance_live = get_category_score(value, "live_irrelevance",artifacts_path)
         relevance_live = get_category_score(value, "live_relevance",artifacts_path)
-        summary_ast_live = calculate_weighted_accuracy(
-            [
-                python_simple_ast_live,
-                python_multiple_ast_live,
-                python_parallel_ast_live,
-                python_parallel_multiple_ast_live,
-            ]
-        )
+        
+        # Filter live categories based on eval_categories if specified
+        summary_live_categories = []
+        if eval_categories is None or "live_simple" in eval_categories:
+            summary_live_categories.append(python_simple_ast_live)
+        if eval_categories is None or "live_multiple" in eval_categories:
+            summary_live_categories.append(python_multiple_ast_live)
+        if eval_categories is None or "live_parallel" in eval_categories:
+            summary_live_categories.append(python_parallel_ast_live)
+        if eval_categories is None or "live_parallel_multiple" in eval_categories:
+            summary_live_categories.append(python_parallel_multiple_ast_live)
+        
+        summary_ast_live = calculate_weighted_accuracy(summary_live_categories) if summary_live_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
 
+        overall_live_categories = []
+        if eval_categories is None or "live_simple" in eval_categories:
+            overall_live_categories.append(python_simple_ast_live)
+        if eval_categories is None or "live_multiple" in eval_categories:
+            overall_live_categories.append(python_multiple_ast_live)
+        if eval_categories is None or "live_parallel" in eval_categories:
+            overall_live_categories.append(python_parallel_ast_live)
+        if eval_categories is None or "live_parallel_multiple" in eval_categories:
+            overall_live_categories.append(python_parallel_multiple_ast_live)
+        if eval_categories is None or "live_irrelevance" in eval_categories:
+            overall_live_categories.append(irrelevance_live)
+        if eval_categories is None or "live_relevance" in eval_categories:
+            overall_live_categories.append(relevance_live)
+        
         overall_accuracy_live = calculate_weighted_accuracy(
-            [
-                python_simple_ast_live,
-                python_multiple_ast_live,
-                python_parallel_ast_live,
-                python_parallel_multiple_ast_live,
-                irrelevance_live,
-                relevance_live,
-            ],
+            overall_live_categories,
             display_na_if_category_missing=False,
         )
 
@@ -339,13 +376,19 @@ def generate_leaderboard_csv(
         multi_turn_miss_param = get_category_score(value, "multi_turn_miss_param",artifacts_path)
         multi_turn_long_context = get_category_score(value, "multi_turn_long_context",artifacts_path)
         
+        # Filter multi-turn categories based on eval_categories if specified
+        multi_turn_categories = []
+        if eval_categories is None or "multi_turn_base" in eval_categories:
+            multi_turn_categories.append(multi_turn_base)
+        if eval_categories is None or "multi_turn_miss_func" in eval_categories:
+            multi_turn_categories.append(multi_turn_miss_func)
+        if eval_categories is None or "multi_turn_miss_param" in eval_categories:
+            multi_turn_categories.append(multi_turn_miss_param)
+        if eval_categories is None or "multi_turn_long_context" in eval_categories:
+            multi_turn_categories.append(multi_turn_long_context)
+        
         overall_accuracy_multi_turn = calculate_unweighted_accuracy(
-            [
-                multi_turn_base,
-                multi_turn_miss_func,
-                multi_turn_miss_param,
-                multi_turn_long_context,
-            ],
+            multi_turn_categories,
             display_na_if_category_missing=False,
         )
 
@@ -358,15 +401,17 @@ def generate_leaderboard_csv(
             else:
                 return value
         
-        multi_turn_row = [
-            "N/A",
-            model_name,
-            format_accuracy(overall_accuracy_multi_turn["display_accuracy"]),
-            format_accuracy(multi_turn_base["display_accuracy"]),
-            format_accuracy(multi_turn_miss_func["display_accuracy"]),
-            format_accuracy(multi_turn_miss_param["display_accuracy"]),
-            format_accuracy(multi_turn_long_context["display_accuracy"]),
-        ]
+        # Build multi_turn_row based on eval_categories
+        multi_turn_row = ["N/A", model_name, format_accuracy(overall_accuracy_multi_turn["display_accuracy"])]
+        
+        if eval_categories is None or "multi_turn_base" in eval_categories:
+            multi_turn_row.append(format_accuracy(multi_turn_base["display_accuracy"]))
+        if eval_categories is None or "multi_turn_miss_func" in eval_categories:
+            multi_turn_row.append(format_accuracy(multi_turn_miss_func["display_accuracy"]))
+        if eval_categories is None or "multi_turn_miss_param" in eval_categories:
+            multi_turn_row.append(format_accuracy(multi_turn_miss_param["display_accuracy"]))
+        if eval_categories is None or "multi_turn_long_context" in eval_categories:
+            multi_turn_row.append(format_accuracy(multi_turn_long_context["display_accuracy"]))
         data_multi_turn.append(multi_turn_row)
 
         # Total Score
@@ -387,6 +432,7 @@ def generate_leaderboard_csv(
             display_na_if_category_missing=False,
         )
 
+        # Build combined_row based on eval_categories
         combined_row = [
             "N/A",
             format_accuracy(total_overall_accuracy["display_accuracy"]),
@@ -396,27 +442,53 @@ def generate_leaderboard_csv(
             "N/A",  # latency_mean,
             "N/A",  # latency_std,
             "N/A",  # percentile_95_latency,
-            format_accuracy(overall_accuracy_non_live["display_accuracy"]),
-            format_accuracy(summary_ast_non_live["display_accuracy"]),
-            format_accuracy(simple_ast_non_live["display_accuracy"]),
-            format_accuracy(multiple_ast_non_live["display_accuracy"]),
-            format_accuracy(parallel_ast_non_live["display_accuracy"]),
-            format_accuracy(parallel_multiple_ast_non_live["display_accuracy"]),
-            format_accuracy(overall_accuracy_live["display_accuracy"]),
-            format_accuracy(python_simple_ast_live["display_accuracy"]),
-            format_accuracy(python_multiple_ast_live["display_accuracy"]),
-            format_accuracy(python_parallel_ast_live["display_accuracy"]),
-            format_accuracy(python_parallel_multiple_ast_live["display_accuracy"]),
-            format_accuracy(overall_accuracy_multi_turn["display_accuracy"]),
-            format_accuracy(multi_turn_base["display_accuracy"]),
-            format_accuracy(multi_turn_miss_func["display_accuracy"]),
-            format_accuracy(multi_turn_miss_param["display_accuracy"]),
-            format_accuracy(multi_turn_long_context["display_accuracy"]),
-            format_accuracy(total_relevance["display_accuracy"]),
-            format_accuracy(total_irrelevance["display_accuracy"]),
-            "N/A",  # model_config.org,
-            "N/A",  # model_config.license,
         ]
+        
+        # Non-Live categories
+        if eval_categories is None or any(cat in eval_categories for cat in ["simple", "multiple", "parallel", "parallel_multiple", "irrelevance"]):
+            combined_row.append(format_accuracy(overall_accuracy_non_live["display_accuracy"]))
+        if eval_categories is None or any(cat in eval_categories for cat in ["simple", "java", "javascript", "multiple", "parallel", "parallel_multiple"]):
+            combined_row.append(format_accuracy(summary_ast_non_live["display_accuracy"]))
+        if eval_categories is None or any(cat in eval_categories for cat in ["simple", "java", "javascript"]):
+            combined_row.append(format_accuracy(simple_ast_non_live["display_accuracy"]))
+        if eval_categories is None or "multiple" in eval_categories:
+            combined_row.append(format_accuracy(multiple_ast_non_live["display_accuracy"]))
+        if eval_categories is None or "parallel" in eval_categories:
+            combined_row.append(format_accuracy(parallel_ast_non_live["display_accuracy"]))
+        if eval_categories is None or "parallel_multiple" in eval_categories:
+            combined_row.append(format_accuracy(parallel_multiple_ast_non_live["display_accuracy"]))
+        
+        # Live categories
+        if eval_categories is None or any(cat in eval_categories for cat in ["live_simple", "live_multiple", "live_parallel", "live_parallel_multiple", "live_irrelevance", "live_relevance"]):
+            combined_row.append(format_accuracy(overall_accuracy_live["display_accuracy"]))
+        if eval_categories is None or "live_simple" in eval_categories:
+            combined_row.append(format_accuracy(python_simple_ast_live["display_accuracy"]))
+        if eval_categories is None or "live_multiple" in eval_categories:
+            combined_row.append(format_accuracy(python_multiple_ast_live["display_accuracy"]))
+        if eval_categories is None or "live_parallel" in eval_categories:
+            combined_row.append(format_accuracy(python_parallel_ast_live["display_accuracy"]))
+        if eval_categories is None or "live_parallel_multiple" in eval_categories:
+            combined_row.append(format_accuracy(python_parallel_multiple_ast_live["display_accuracy"]))
+        
+        # Multi-Turn categories
+        if eval_categories is None or any(cat in eval_categories for cat in ["multi_turn_base", "multi_turn_miss_func", "multi_turn_miss_param", "multi_turn_long_context"]):
+            combined_row.append(format_accuracy(overall_accuracy_multi_turn["display_accuracy"]))
+        if eval_categories is None or "multi_turn_base" in eval_categories:
+            combined_row.append(format_accuracy(multi_turn_base["display_accuracy"]))
+        if eval_categories is None or "multi_turn_miss_func" in eval_categories:
+            combined_row.append(format_accuracy(multi_turn_miss_func["display_accuracy"]))
+        if eval_categories is None or "multi_turn_miss_param" in eval_categories:
+            combined_row.append(format_accuracy(multi_turn_miss_param["display_accuracy"]))
+        if eval_categories is None or "multi_turn_long_context" in eval_categories:
+            combined_row.append(format_accuracy(multi_turn_long_context["display_accuracy"]))
+        
+        # Relevance/Irrelevance categories
+        if eval_categories is None or "live_relevance" in eval_categories:
+            combined_row.append(format_accuracy(total_relevance["display_accuracy"]))
+        if eval_categories is None or any(cat in eval_categories for cat in ["irrelevance", "live_irrelevance"]):
+            combined_row.append(format_accuracy(total_irrelevance["display_accuracy"]))
+        
+        combined_row.extend(["N/A", "N/A"])  # model_config.org, model_config.license
         data_combined.append(combined_row)
 
     # Write Non-Live Score File
@@ -435,11 +507,78 @@ def generate_leaderboard_csv(
         sort_column_index=2,
     )
 
+    # Generate dynamic headers based on eval_categories
+    def generate_multi_turn_header():
+        header = ["Rank", "Model", "Multi Turn Overall Acc"]
+        if eval_categories is None or "multi_turn_base" in eval_categories:
+            header.append("Base")
+        if eval_categories is None or "multi_turn_miss_func" in eval_categories:
+            header.append("Miss Func")
+        if eval_categories is None or "multi_turn_miss_param" in eval_categories:
+            header.append("Miss Param")
+        if eval_categories is None or "multi_turn_long_context" in eval_categories:
+            header.append("Long Context")
+        return header
+
+    def generate_overall_header():
+        header = [
+            "Rank", "Overall Acc", "Model", "Model Link",
+            "Cost ($ Per 1k Function Calls)", "Latency Mean (s)",
+            "Latency Standard Deviation (s)", "Latency 95th Percentile (s)"
+        ]
+        
+        # Non-Live categories
+        if eval_categories is None or any(cat in eval_categories for cat in ["simple", "multiple", "parallel", "parallel_multiple", "irrelevance"]):
+            header.append("Non-Live AST Acc")
+        if eval_categories is None or any(cat in eval_categories for cat in ["simple", "java", "javascript", "multiple", "parallel", "parallel_multiple"]):
+            header.append("Non-Live AST Summary")
+        if eval_categories is None or any(cat in eval_categories for cat in ["simple", "java", "javascript"]):
+            header.append("Non-Live Simple AST")
+        if eval_categories is None or "multiple" in eval_categories:
+            header.append("Non-Live Multiple AST")
+        if eval_categories is None or "parallel" in eval_categories:
+            header.append("Non-Live Parallel AST")
+        if eval_categories is None or "parallel_multiple" in eval_categories:
+            header.append("Non-Live Parallel Multiple AST")
+        
+        # Live categories
+        if eval_categories is None or any(cat in eval_categories for cat in ["live_simple", "live_multiple", "live_parallel", "live_parallel_multiple", "live_irrelevance", "live_relevance"]):
+            header.append("Live AST Acc")
+        if eval_categories is None or "live_simple" in eval_categories:
+            header.append("Live Simple AST")
+        if eval_categories is None or "live_multiple" in eval_categories:
+            header.append("Live Multiple AST")
+        if eval_categories is None or "live_parallel" in eval_categories:
+            header.append("Live Parallel AST")
+        if eval_categories is None or "live_parallel_multiple" in eval_categories:
+            header.append("Live Parallel Multiple AST")
+        
+        # Multi-Turn categories
+        if eval_categories is None or any(cat in eval_categories for cat in ["multi_turn_base", "multi_turn_miss_func", "multi_turn_miss_param", "multi_turn_long_context"]):
+            header.append("Multi Turn Acc")
+        if eval_categories is None or "multi_turn_base" in eval_categories:
+            header.append("Multi Turn Base")
+        if eval_categories is None or "multi_turn_miss_func" in eval_categories:
+            header.append("Multi Turn Miss Func")
+        if eval_categories is None or "multi_turn_miss_param" in eval_categories:
+            header.append("Multi Turn Miss Param")
+        if eval_categories is None or "multi_turn_long_context" in eval_categories:
+            header.append("Multi Turn Long Context")
+        
+        # Relevance/Irrelevance categories
+        if eval_categories is None or "live_relevance" in eval_categories:
+            header.append("Relevance Detection")
+        if eval_categories is None or any(cat in eval_categories for cat in ["irrelevance", "live_irrelevance"]):
+            header.append("Irrelevance Detection")
+        
+        header.extend(["Organization", "License"])
+        return header
+
     # Write Multi Turn Score File
     write_score_csv_file(
         data=data_multi_turn,
         file_path=output_path / "data_multi_turn.csv",
-        header=COLUMNS_MULTI_TURN,
+        header=generate_multi_turn_header(),
         sort_column_index=2,
     )
 
@@ -447,7 +586,7 @@ def generate_leaderboard_csv(
     write_score_csv_file(
         data=data_combined,
         file_path=output_path / "data_overall.csv",
-        header=COLUMNS_OVERALL,
+        header=generate_overall_header(),
         sort_column_index=1,
         no_conversion_numeric_column_index=[4, 5, 6, 7],
     )
