@@ -11,26 +11,42 @@
     - llm-leaderboard/scripts/translation/bfcl_multi_turn_count.pyを用いて、Turn数を計算
     - llm-leaderboard/scripts/translation/sort_bfcl_file.pyを用いて並び替え
     - llm-leaderboard/scripts/data_uploader/upload_dataset.pyを用いてW&Bにupload
+    - 詳細
+        - BFCL_v3_live_irrelevance.json	882問 (ランダムに30問抽出)✅✅
+            - 問題文に英語の質問が含む以下の問題を削除
+        - BFCL_v3_irrelevance.json: 240問 (ランダムに30問抽出)✅✅
+        - BFCL_v3_simple.json: 400問 (ランダムに30問抽出)✅
+        - BFCL_v3_live_multiple.json 1,053問 (ランダムに30問抽出)✅
+        - BFCL_v3_live_simple.json: 258問 (ランダムに30問抽出)✅
+        - BFCL_v3_multiple.json: 200問 (ランダムに30問抽出)✅
+        - BFCL_v3_parallel.json: 200問 (ランダムに30問抽出)✅
+        - BFCL_v3_parallel_multiple.json: 200問 (ランダムに30問抽出)✅
+            - 問題文に英語の質問が含む以下の問題を削除
+        - BFCL_v3_java.json: 30問✅✅
+        - BFCL_v3_javascript.json: 30問✅✅
+        - BFCL_v3_live_parallel_multiple.json: 24問->21問✅✅
+            - 問題文に英語以外の質問が含む以下の問題を削除
+                - live_parallel_multiple_1-1-0
+                - live_parallel_multiple_2-2-0
+                - live_parallel_multiple_3-2-1
+        - BFCL_v3_live_relevance.json: 18問✅✅
+        - BFCL_v3_live_parallel.json: 16問✅✅
+        - multi-turnの問題は3turn以下に絞り込み
+            - BFCL_v3_multi_turn_base.json: 200問✅
+            - BFCL_v3_multi_turn_long_context.json: 200問✅
+            - BFCL_v3_multi_turn_miss_func.json: 200問✅
+            - BFCL_v3_multi_turn_miss_param.json: 200問✅
+
+    
+
     - データセットはWandBのartifactsに保存 [link](https://wandb.ai/llm-leaderboard/nejumi-leaderboard4/artifacts/dataset/bfcl)
     - Nejumi Leaderboardではサンプリングをして実装
         - 基本的に各カテゴリ30問を利用。30問に満たない問題は全問
         - live_parallel_multiple, live_multiple: 問題文に英語以外の質問が含む以下の問題を削除
             - live_parallel_multiple
-                - live_parallel_multiple_1-1-0
-                - live_parallel_multiple_2-2-0
-                - live_parallel_multiple_3-2-1
+                
             - parallel_multiple
-                - live_multiple_2-1-0
-                - live_multiple_4-2-1
-                - live_multiple_6-3-1
-                - live_multiple_7-3-2
-                - live_multiple_10-4-2
-                - live_multiple_14-4-6
-                - live_multiple_16-4-8
-                - live_multiple_19-4-11
-                - live_multiple_20-4-12
-                - live_multiple_21-4-13
-                - live_multiple_22-4-14
+                
         - 上記artifactsに保存するにあたり人手での翻訳確認の品質担保のため、以下の問題は50問に絞って保存
             - live_multiple, multiple, simple, parallel_multiple
         - possible answerに日本語のオプションを追加
