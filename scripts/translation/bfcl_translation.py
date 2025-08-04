@@ -12,7 +12,8 @@ MAX_RETRIES = 3
 RETRY_DELAY = 0.5  # 秒
 
 client = AsyncOpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
+    api_key=os.getenv("OPENROUTER_API_KEY"),
+    base_url="https://openrouter.ai/api/v1",
 )
 
 # 並列数を制限するためのセマフォ
@@ -23,7 +24,7 @@ async def translate_content(content, retry_count=0):
         async with semaphore:  # セマフォを使用して並列数を制限
             print(f"翻訳中: {content[:50]}...")
             completion = await client.chat.completions.create(
-                model="gpt-4o",
+                model="qwen/qwen3-235b-a22b",
                 messages=[
                     {
                         "role": "user",
