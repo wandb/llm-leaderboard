@@ -108,20 +108,14 @@ async def process_bfcl_file(input_file, output_file):
 
 async def main():
     # Get all BFCL JSON files from the data directory
-    input_dir = "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v5/bfcl"
-    output_dir = "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v5/bfcl/translated"
+    input_dir = "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/en_new/bfcl/translated"
+    output_dir = "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/en_new/bfcl/translated_japanese"
     
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
     
     # Get list of all files to process
-    #input_files = glob.glob(os.path.join(input_dir, "BFCL_v3_*.json"))
-    input_files = [
-        "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v5/bfcl/BFCL_v3_multi_turn_base.json",
-        "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v5/bfcl/BFCL_v3_multi_turn_long_context.json",
-        "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v5/bfcl/BFCL_v3_multi_turn_miss_func.json",
-        "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v5/bfcl/BFCL_v3_multi_turn_miss_param.json",
-    ]
+    input_files = glob.glob(os.path.join(input_dir, "BFCL_v3_*.json"))
 
     # Process all JSON files
     for idx, input_file in enumerate(input_files, 1):
