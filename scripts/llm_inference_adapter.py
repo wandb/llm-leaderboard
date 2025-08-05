@@ -432,6 +432,30 @@ class AzureOpenAIResponsesClient(OpenAIResponsesClient):
         self.structured = structured
 
         self.allowed_params = {
+            'temperature', 'top_p', 'n', 'stream', 'stop', 
+            'max_tokens', 'presence_penalty', 'frequency_penalty',
+            'logit_bias', 'user', 'response_format', 'seed',
+            'tools', 'tool_choice', 'parallel_tool_calls', 'extra_body',
+        }
+        
+        self.param_mapping = {}
+
+
+# ================================ Client factory function ===========================
+
+
+class AzureOpenAIResponsesClient(OpenAIResponsesClient):
+    def __init__(self, api_key, azure_endpoint, azure_deployment, api_version, structured=False, **kwargs):
+        self.async_client = openai.AsyncAzureOpenAI(
+            api_key=api_key,
+            azure_endpoint=azure_endpoint,
+            api_version=api_version
+        )
+        self.model = azure_deployment
+        self.kwargs = kwargs
+        self.structured = structured
+
+        self.allowed_params = {
             'instructions', 'max_output_tokens', 'max_tool_calls', 'metadata',
             'parallel_tool_calls', 'previous_response_id', 'reasoning', 
             'service_tier', 'store', 'stream', 'temperature', 'text',
@@ -585,15 +609,95 @@ class AnthropicClient(BaseLLMClient):
         
         if system_message:
             params["system"] = system_message
-            
-        if max_tokens:
-            params["max_tokens"] = max_tokens
-        elif "max_tokens" not in params:
-            params["max_tokens"] = 1024
+        
+        # Anthropic純正API用のthinking対応
+        params, reasoning_content = self._configure_thinking(params, max_tokens, all_kwargs)
         
         # Anthropic APIを非同期で実行
-        response = await asyncio.to_thread(self.client.messages.create, **params)
-        return LLMResponse(content=response.content[0].text)
+        try:
+            response = await asyncio.to_thread(self.client.messages.create, **params)
+        except Exception as e:
+            # AnthropicエラーをOpenAI互換エラーに変換してLLMAsyncProcessorのbackoffに対応
+            import openai
+            import anthropic
+            
+            if isinstance(e, anthropic.APITimeoutError):
+                raise openai.APITimeoutError(f"Anthropic API timeout: {str(e)}")
+            elif isinstance(e, anthropic.RateLimitError):
+                raise openai.RateLimitError(f"Anthropic rate limit: {str(e)}")
+            elif isinstance(e, anthropic.InternalServerError):
+                raise openai.InternalServerError(f"Anthropic internal server error: {str(e)}")
+            elif isinstance(e, anthropic.APIConnectionError):
+                raise openai.APIConnectionError(f"Anthropic connection error: {str(e)}")
+            elif "timeout" in str(e).lower() or "timed out" in str(e).lower():
+                raise openai.APITimeoutError(f"Anthropic API timeout: {str(e)}")
+            elif "rate limit" in str(e).lower():
+                raise openai.RateLimitError(f"Anthropic rate limit: {str(e)}")
+            else:
+                # その他のエラーはそのまま再発生
+                raise
+        
+        # レスポンス処理（thinking対応）
+        content = ""
+        thinking_content = ""
+        
+        for block in response.content:
+            if hasattr(block, 'type'):
+                if block.type == "text":
+                    content = block.text
+                elif block.type == "thinking":
+                    thinking_content = getattr(block, 'thinking', '')
+        
+        return LLMResponse(content=content, reasoning_content=thinking_content)
+    
+    def _configure_thinking(self, params, max_tokens, all_kwargs):
+        """Anthropic純正API用のthinking設定"""
+        try:
+            # Docker環境での正しいインポートパス
+            instance = WandbConfigSingleton.get_instance()
+            cfg = instance.config
+            
+            # thinking設定を取得
+            thinking_config = getattr(cfg.model, 'thinking', None)
+            
+            if thinking_config:
+                budget_tokens = thinking_config.get('budget_tokens', 16384)
+                
+                # max_tokensを設定（回答用 + 推論用）
+                answer_tokens = max_tokens or 2048
+                total_max_tokens = answer_tokens + budget_tokens
+                
+                params["max_tokens"] = total_max_tokens
+                params["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": budget_tokens
+                }
+                
+                # Anthropic thinking有効時はtemperatureを1に設定する必要がある
+                params["temperature"] = 1.0
+                
+                print(f"Anthropic thinking configuration: total={total_max_tokens} "
+                      f"(answer={answer_tokens}, budget={budget_tokens}), temperature=1.0")
+                
+                return params, True
+            else:
+                # thinking設定がない場合は通常の処理
+                if max_tokens:
+                    params["max_tokens"] = max_tokens
+                elif "max_tokens" not in params:
+                    params["max_tokens"] = 1024
+                
+                return params, False
+                
+        except Exception as e:
+            print(f"Failed to configure Anthropic thinking: {e}")
+            # エラーの場合は通常の処理にフォールバック
+            if max_tokens:
+                params["max_tokens"] = max_tokens
+            elif "max_tokens" not in params:
+                params["max_tokens"] = 1024
+            
+            return params, False
 
 
 class AzureOpenAIClient(BaseLLMClient):
