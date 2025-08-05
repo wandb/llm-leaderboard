@@ -87,9 +87,12 @@ def evaluate():
 
     
     # generate arguments
+    # test_categoryを文字列からスペース区切りのリストに変換
+    test_category_list = bfcl_cfg['test_category'].split() if isinstance(bfcl_cfg['test_category'], str) else bfcl_cfg['test_category']
+    
     gen_args = SimpleNamespace(
         model_name=bfcl_cfg['model_name'],
-        test_category=bfcl_cfg['test_category'],
+        test_category=test_category_list,
         temperature=bfcl_cfg['temperature'],
         include_input_log=bfcl_cfg['include_input_log'],
         exclude_state_log=bfcl_cfg['exclude_state_log'],
@@ -112,9 +115,12 @@ def evaluate():
     generation_main(gen_args)
 
     # Evaluation
+    # test_categoryを文字列からスペース区切りのリストに変換（評価用）
+    test_categories_list = bfcl_cfg['test_category'].split() if isinstance(bfcl_cfg['test_category'], str) else bfcl_cfg['test_category']
+    
     _, _, _, overall_df = evaluation_main(
         model_names=[bfcl_cfg['model_name'].replace("/", "_")],
-        test_categories=bfcl_cfg['test_category'],  # This now contains only available categories
+        test_categories=test_categories_list,  # This now contains only available categories
         result_dir=bfcl_cfg['result_dir'],
         score_dir=bfcl_cfg['score_dir'],
         samples_per_category=bfcl_cfg['samples_per_category'],

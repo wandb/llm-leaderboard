@@ -3,7 +3,7 @@ wandb:
   project: 'nejumi-leaderboard4'
   #run: please set up run name in a model-base config
 
-testmode: true
+testmode: false
 inference_interval: 0 # seconds
 
 run:
@@ -148,11 +148,12 @@ mtbench:
       temperature: 0.0
 
 bfcl:
+  test_category: "java javascript live_irrelevance live_multiple live_parallel_multiple live_parallel live_relevance live_simple multi_turn_base multi_turn_miss_func multi_turn_miss_param simple multiple irrelevance parallel parallel_multiple"  # multi_turn_long_context以外のカテゴリを指
   temperature: 0.01  # 推論共通化未対応のHandler用: 移行終わったら消す
   generator_config:  # 推論共通化後のHandler用
     max_tokens: 4096
     temperature: 0.01
-  num_threads: 4
+  num_threads: 8
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:production'
 
 hallulens:

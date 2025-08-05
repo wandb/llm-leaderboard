@@ -375,6 +375,47 @@ def sort_bfcl_files_by_id():
     
     print("\nCompleted sorting all BFCL files by ID!")
 
+def sort_bfcl_v14_multi_turn_files_by_id():
+    """Sort BFCL v14 multi-turn files by ID in both problem and possible_answer directories."""
+    base_dir = "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v14/bfcl"
+    possible_answer_dir = os.path.join(base_dir, "possible_answer")
+    
+    # Multi-turn files to sort
+    multi_turn_files = [
+        "BFCL_v3_multi_turn_base.json",
+        "BFCL_v3_multi_turn_long_context.json", 
+        "BFCL_v3_multi_turn_miss_func.json",
+        "BFCL_v3_multi_turn_miss_param.json"
+    ]
+    
+    print("Sorting BFCL v14 multi-turn files by ID...")
+    
+    # Sort problem files
+    print(f"\nSorting problem files in {base_dir}:")
+    for file_name in multi_turn_files:
+        file_path = os.path.join(base_dir, file_name)
+        if os.path.exists(file_path):
+            try:
+                sort_file_by_id(file_path)
+            except Exception as e:
+                print(f"Error sorting {file_name}: {e}")
+        else:
+            print(f"File not found: {file_name}")
+    
+    # Sort possible_answer files
+    print(f"\nSorting possible_answer files in {possible_answer_dir}:")
+    for file_name in multi_turn_files:
+        file_path = os.path.join(possible_answer_dir, file_name)
+        if os.path.exists(file_path):
+            try:
+                sort_file_by_id(file_path)
+            except Exception as e:
+                print(f"Error sorting {file_name}: {e}")
+        else:
+            print(f"File not found: {file_name}")
+    
+    print("\nCompleted sorting all BFCL v14 multi-turn files by ID!")
+
 def main_multi_turn():
     # Define file paths
     base_dir = "/home/olachinkeigpu/Project/llm-leaderboard/artifacts/bfcl:v13/bfcl"
@@ -482,7 +523,7 @@ def main_java():
 
 if __name__ == "__main__":
 
-    sort_bfcl_files_by_id()
+    sort_bfcl_v14_multi_turn_files_by_id()
     
 
 
