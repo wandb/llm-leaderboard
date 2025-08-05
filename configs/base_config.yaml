@@ -154,7 +154,7 @@ bfcl:
     max_tokens: 4096
     temperature: 0.01
   num_threads: 8
-  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:v17'
+  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:production'
 
 hallulens:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/hallulens:production'
