@@ -247,13 +247,14 @@ def generate_leaderboard_csv(
         #)
 
         # Non-Live Score
-        python_simple_ast_non_live = get_category_score(value, "simple",artifacts_path)
-        python_multiple_ast_non_live = get_category_score(value, "multiple",artifacts_path)
-        python_parallel_ast_non_live = get_category_score(value, "parallel",artifacts_path)
-        python_parallel_multiple_ast_non_live = get_category_score(value, "parallel_multiple",artifacts_path)
-        java_simple_ast_non_live = get_category_score(value, "java",artifacts_path)
-        javascript_simple_ast_non_live = get_category_score(value, "javascript",artifacts_path)
-        irrelevance_non_live = get_category_score(value, "irrelevance",artifacts_path)
+        # Only get scores for categories that are in eval_categories
+        python_simple_ast_non_live = get_category_score(value, "simple",artifacts_path) if eval_categories is None or "simple" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
+        python_multiple_ast_non_live = get_category_score(value, "multiple",artifacts_path) if eval_categories is None or "multiple" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
+        python_parallel_ast_non_live = get_category_score(value, "parallel",artifacts_path) if eval_categories is None or "parallel" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
+        python_parallel_multiple_ast_non_live = get_category_score(value, "parallel_multiple",artifacts_path) if eval_categories is None or "parallel_multiple" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
+        java_simple_ast_non_live = get_category_score(value, "java",artifacts_path) if eval_categories is None or "java" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
+        javascript_simple_ast_non_live = get_category_score(value, "javascript",artifacts_path) if eval_categories is None or "javascript" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
+        irrelevance_non_live = get_category_score(value, "irrelevance",artifacts_path) if eval_categories is None or "irrelevance" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
 
         # Filter categories based on eval_categories if specified
         simple_categories = []
@@ -316,12 +317,13 @@ def generate_leaderboard_csv(
         )
 
         # Live Score
-        python_simple_ast_live = get_category_score(value, "live_simple",artifacts_path)
-        python_multiple_ast_live = get_category_score(value, "live_multiple",artifacts_path)
-        python_parallel_ast_live = get_category_score(value, "live_parallel",artifacts_path)
-        python_parallel_multiple_ast_live = get_category_score(value, "live_parallel_multiple",artifacts_path)
-        irrelevance_live = get_category_score(value, "live_irrelevance",artifacts_path)
-        relevance_live = get_category_score(value, "live_relevance",artifacts_path)
+        # Only get scores for categories that are in eval_categories
+        python_simple_ast_live = get_category_score(value, "live_simple",artifacts_path) if eval_categories is None or "live_simple" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
+        python_multiple_ast_live = get_category_score(value, "live_multiple",artifacts_path) if eval_categories is None or "live_multiple" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
+        python_parallel_ast_live = get_category_score(value, "live_parallel",artifacts_path) if eval_categories is None or "live_parallel" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
+        python_parallel_multiple_ast_live = get_category_score(value, "live_parallel_multiple",artifacts_path) if eval_categories is None or "live_parallel_multiple" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
+        irrelevance_live = get_category_score(value, "live_irrelevance",artifacts_path) if eval_categories is None or "live_irrelevance" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
+        relevance_live = get_category_score(value, "live_relevance",artifacts_path) if eval_categories is None or "live_relevance" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
         
         # Filter live categories based on eval_categories if specified
         summary_live_categories = []
@@ -371,10 +373,11 @@ def generate_leaderboard_csv(
         )
 
         # Multi-Turn Score
-        multi_turn_base = get_category_score(value, "multi_turn_base",artifacts_path)
-        multi_turn_miss_func = get_category_score(value, "multi_turn_miss_func",artifacts_path)
-        multi_turn_miss_param = get_category_score(value, "multi_turn_miss_param",artifacts_path)
-        multi_turn_long_context = get_category_score(value, "multi_turn_long_context",artifacts_path)
+        # Only get scores for categories that are in eval_categories
+        multi_turn_base = get_category_score(value, "multi_turn_base",artifacts_path) if eval_categories is None or "multi_turn_base" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
+        multi_turn_miss_func = get_category_score(value, "multi_turn_miss_func",artifacts_path) if eval_categories is None or "multi_turn_miss_func" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
+        multi_turn_miss_param = get_category_score(value, "multi_turn_miss_param",artifacts_path) if eval_categories is None or "multi_turn_miss_param" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
+        multi_turn_long_context = get_category_score(value, "multi_turn_long_context",artifacts_path) if eval_categories is None or "multi_turn_long_context" in eval_categories else {"accuracy": 0, "total_count": 0, "display_accuracy": "N/A"}
         
         # Filter multi-turn categories based on eval_categories if specified
         multi_turn_categories = []
