@@ -92,12 +92,17 @@ class LLMAsyncProcessor:
             assert isinstance(item, dict), "Each item should be a dictionary"
             # 'role'キーと'content'キーが存在することを確認
             assert "role" in item, "'role' key is missing in an item"
-            assert "content" in item, "'content' key is missing in an item"
+            assert "content" in item or "tool_calls" in item, "'content' or 'tool_calls' key is missing in an item"
             # 'role'の値が'system', 'assistant', 'user', 'tool'のいずれかであることを確認
             roles = {"system", "assistant", "user", "tool"}
             assert item["role"] in roles, f"'role' should be one of {str(roles)}"
             # 'content'の値が文字列であることを確認
-            assert isinstance(item["content"], str), "'content' should be a string"
+            if "content" in item:
+                assert isinstance(item["content"], str), "'content' should be a string"
+            if "tool_calls" in item:
+                assert isinstance(item["tool_calls"], list), "'tool_calls' should be a list"
+                for tool_call in item["tool_calls"]:
+                    assert isinstance(tool_call, dict), "'tool_call' should be a dictionary"
 
     async def _gather_tasks(self) -> List[LLMResponse]:
         """すべてのタスクを収集して実行"""

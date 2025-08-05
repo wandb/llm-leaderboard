@@ -13,6 +13,7 @@ from .constants.category_mapping import (
 from .constants.eval_config import *
 from .eval_checker.eval_runner_helper import load_file
 from .constants.model_config import MODEL_CONFIG_MAPPING
+from .model_handler.api_inference.openrouter import OpenRouterHandler
 from .model_handler.model_style import ModelStyle
 from .utils import is_multi_turn, parse_test_category_argument, sort_key
 from tqdm import tqdm
@@ -291,8 +292,9 @@ def generate_results(args, model_name, test_cases_total):
     update_mode = True
     handler = build_handler(model_name, args.temperature)
 
-    if handler.model_style == ModelStyle.OSSMODEL:
-        handler.setup_tokenizer(args.local_model_path)
+    if handler.model_style == ModelStyle.OSSMODEL or isinstance(handler, OpenRouterHandler):
+        if hasattr(handler, "setup_tokenizer"):
+            handler.setup_tokenizer(args.local_model_path)
         asyncio.run(async_generate_results(args, handler, test_cases_total))
     else:
         futures = []
