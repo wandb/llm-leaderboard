@@ -12,30 +12,30 @@
     - llm-leaderboard/scripts/translation/sort_bfcl_file.pyを用いて並び替え
     - llm-leaderboard/scripts/data_uploader/upload_dataset.pyを用いてW&Bにupload
     - 詳細
-        - BFCL_v3_live_irrelevance.json	882問 (ランダムに30問抽出)✅✅
+        - BFCL_v3_live_irrelevance.json	882問 (ランダムに30問抽出)
             - 問題文に英語の質問が含む以下の問題を削除
-        - BFCL_v3_irrelevance.json: 240問 (ランダムに30問抽出)✅✅
-        - BFCL_v3_simple.json: 400問 (ランダムに30問抽出)✅
-        - BFCL_v3_live_multiple.json 1,053問 (ランダムに30問抽出)✅
-        - BFCL_v3_live_simple.json: 258問 (ランダムに30問抽出)✅
-        - BFCL_v3_multiple.json: 200問 (ランダムに30問抽出)✅
-        - BFCL_v3_parallel.json: 200問 (ランダムに30問抽出)✅
-        - BFCL_v3_parallel_multiple.json: 200問 (ランダムに30問抽出)✅
+        - BFCL_v3_irrelevance.json: 240問 (ランダムに30問抽出)
+        - BFCL_v3_simple.json: 400問 (ランダムに30問抽出)
+        - BFCL_v3_live_multiple.json 1,053問 (ランダムに30問抽出)
+        - BFCL_v3_live_simple.json: 258問 (ランダムに30問抽出)
+        - BFCL_v3_multiple.json: 200問 (ランダムに30問抽出)
+        - BFCL_v3_parallel.json: 200問 (ランダムに30問抽出)
+        - BFCL_v3_parallel_multiple.json: 200問 (ランダムに30問抽出)
             - 問題文に英語の質問が含む以下の問題を削除
-        - BFCL_v3_java.json: 30問✅✅
-        - BFCL_v3_javascript.json: 30問✅✅
-        - BFCL_v3_live_parallel_multiple.json: 24問->21問✅✅
+        - BFCL_v3_java.json: 30問
+        - BFCL_v3_javascript.json: 30問
+        - BFCL_v3_live_parallel_multiple.json: 24問->21問
             - 問題文に英語以外の質問が含む以下の問題を削除
                 - live_parallel_multiple_1-1-0
                 - live_parallel_multiple_2-2-0
                 - live_parallel_multiple_3-2-1
-        - BFCL_v3_live_relevance.json: 18問✅✅
-        - BFCL_v3_live_parallel.json: 16問✅✅
+        - BFCL_v3_live_relevance.json: 18問
+        - BFCL_v3_live_parallel.json: 16問
         - multi-turnの問題は3turn以下に絞り込み
-            - BFCL_v3_multi_turn_base.json: 200問✅
-            - BFCL_v3_multi_turn_long_context.json: 200問✅
-            - BFCL_v3_multi_turn_miss_func.json: 200問✅
-            - BFCL_v3_multi_turn_miss_param.json: 200問✅
+            - BFCL_v3_multi_turn_base.json: 200問
+            - BFCL_v3_multi_turn_long_context.json: 200問
+            - BFCL_v3_multi_turn_miss_func.json: 200問
+            - BFCL_v3_multi_turn_miss_param.json: 200問
 
     
 
