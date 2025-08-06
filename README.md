@@ -66,7 +66,12 @@ git clone https://github.com/wandb/llm-leaderboard.git
 cd llm-leaderboard
 ```
 
-3. Set up a Python environment with `requirements.txt`
+3. Set up a Python environment
+   ```bash
+   make setup
+   ```
+   This command will install all the required packages from `requirements.txt` and ensure `vllm` is set to the correct version.
+
 
 ### Dataset Preparation
 
