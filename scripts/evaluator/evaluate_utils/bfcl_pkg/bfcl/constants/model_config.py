@@ -1194,9 +1194,9 @@ api_inference_model_map = {
 
 # Inference through local hosting
 local_inference_model_map = {
-    "united_oss_fc": ModelConfig(
-        model_name="united_oss_fc",
-        display_name="united_oss_fc", # filled as formality
+    "unified-oss-fc": ModelConfig(
+        model_name="united-oss-fc",
+        display_name="united-oss-fc", # filled as formality
         url="vllm", # filled as formality
         org="vllm", # filled as formality
         license="MIT", # filled as formality
@@ -1206,9 +1206,9 @@ local_inference_model_map = {
         is_fc_model=True,
         underscore_to_dot=True,
     ),
-    "united_oss_jsonschema": ModelConfig(
-        model_name="united_oss_jsonschema",
-        display_name="united_oss_jsonschema", # filled as formality
+    "unified-oss-jsonschema": ModelConfig(
+        model_name="unified-oss-jsonschema",
+        display_name="unified-oss-jsonschema", # filled as formality
         url="vllm", # filled as formality
         org="vllm", # filled as formality
         license="MIT", # filled as formality
