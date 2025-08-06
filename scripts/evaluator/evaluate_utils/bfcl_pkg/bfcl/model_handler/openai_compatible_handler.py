@@ -32,7 +32,7 @@ class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config
         self.model_name_huggingface = cfg.model.pretrained_model_name_or_path
-        self.generator_config = OmegaConf.to_container(cfg.bfcl.generator_config)
+        self.generator_config = OmegaConf.to_container(cfg.generator)
         self.max_tokens = self.generator_config.pop("max_tokens") # 使用済みTokenに応じて調整するためgenerator_configから取り除く
 
         # Read from env vars with fallbacks
