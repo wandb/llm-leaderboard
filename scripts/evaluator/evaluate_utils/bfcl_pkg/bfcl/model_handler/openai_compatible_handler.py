@@ -67,7 +67,7 @@ class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
         inference_data["inference_input_log"] = {"message": repr(message), "tools": tools}
 
         kwargs = {
-            "model": self.model_name_huggingface,
+            "model": self.model_name.replace("-FC", ""),
             "max_tokens": self.max_tokens,
             **self.generator_config,
         }
@@ -88,7 +88,7 @@ class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
         inference_data["inference_input_log"] = {"message": repr(message), "tools": tools}
 
         kwargs = {
-            "model": self.model_name_huggingface,
+            "model": self.model_name.replace("-FC", ""),
             "max_tokens": self.max_tokens,
             **self.generator_config,
         }

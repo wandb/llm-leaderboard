@@ -415,7 +415,7 @@ def ast_file_runner(
 
 
 #### Main runner function ####
-def runner(model_names, test_categories, result_dir, score_dir, samples_per_category=None,artifacts_path=None):
+def runner(handler,model_names, test_categories, result_dir, score_dir, samples_per_category=None,artifacts_path=None):
 
     # State udpated by each eval subtask.
     state = dict(
@@ -438,9 +438,8 @@ def runner(model_names, test_categories, result_dir, score_dir, samples_per_cate
         if model_names is not None and model_name not in model_names:
             continue
 
-        model_name_escaped = model_name.replace("_", "/")
-
-        print(f"🦍 Model: {model_name}")
+        #model_name_escaped = model_name.replace("_", "/")
+        #print(f"🦍 Model: {model_name}")
 
         # Find and process all JSON files in the subdirectory
         for model_result_json in subdir.glob("*.json"):
@@ -448,7 +447,7 @@ def runner(model_names, test_categories, result_dir, score_dir, samples_per_cate
             if test_category not in test_categories:
                 continue
 
-            handler = get_handler(model_name_escaped)
+            #handler = get_handler(model_name_escaped)
 
             # We don't evaluate the following categories in the current iteration of the benchmark
             if is_chatable(test_category) or is_sql(test_category) or is_executable(test_category):
@@ -567,7 +566,7 @@ def evaluate_task(
     return state
 
 
-def main(model_names, test_categories, result_dir, score_dir, samples_per_category=None,artifacts_path=None):
+def main(handler, model_names, test_categories, result_dir, score_dir, samples_per_category=None,artifacts_path=None):
     if result_dir is None:
         result_dir = RESULT_PATH
     else:
@@ -593,7 +592,7 @@ def main(model_names, test_categories, result_dir, score_dir, samples_per_catego
     #        model_names.append(model_name.replace("/", "_"))
 
     # Driver function to run the evaluation for all categories involved.
-    non_live_df, live_df, multi_turn_df, overall_df = runner(model_names, all_test_categories, result_dir, score_dir, samples_per_category, artifacts_path)
+    non_live_df, live_df, multi_turn_df, overall_df = runner(handler, model_names, all_test_categories, result_dir, score_dir, samples_per_category, artifacts_path)
 
     print(
         f"🏁 Evaluation completed. See {score_dir / 'data_overall.csv'} for overall evaluation results on BFCL V3."

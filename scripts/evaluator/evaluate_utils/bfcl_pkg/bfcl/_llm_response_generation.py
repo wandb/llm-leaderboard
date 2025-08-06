@@ -320,7 +320,7 @@ def generate_results(args, model_name, test_cases_total):
                         result, result_dir=args.result_dir, update_mode=True
                     )  # Always use update_mode=True to prevent duplicate entries for the same test case
                     pbar.update()
-
+    return handler
 
 def main(args):
 
@@ -363,6 +363,6 @@ def main(args):
             f"All selected test cases have been previously generated for {args.model}. No new test cases to generate."
         )
     else:
-        generate_results(args, args.model_name, test_cases_total)
+        handler = generate_results(args, args.model_name, test_cases_total)
     
-    return test_cases_total
+    return handler

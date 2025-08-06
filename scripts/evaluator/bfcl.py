@@ -112,7 +112,7 @@ def evaluate():
 
     
     # Prediction 
-    generation_main(gen_args)
+    handler = generation_main(gen_args)
 
     # Evaluation
     # test_categoryを文字列からスペース区切りのリストに変換（評価用）
@@ -124,7 +124,8 @@ def evaluate():
         result_dir=bfcl_cfg['result_dir'],
         score_dir=bfcl_cfg['score_dir'],
         samples_per_category=bfcl_cfg['samples_per_category'],
-        artifacts_path=artifact_dir
+        artifacts_path=artifact_dir,
+        handler=handler
     )
     
     # Leaderboard Table
