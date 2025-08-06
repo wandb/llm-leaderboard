@@ -60,29 +60,11 @@ class UnifiedOSSJsonSchemaHandler(OSSHandler):
         # The vLLM server will apply the chat template automatically
         inference_data["inference_input_log"] = {"messages": message}
 
-        # For chat completions, we need to estimate token count from messages
-        # This is a rough estimation
-        total_content = ""
-        for msg in message:
-            total_content += f"{msg['role']}: {msg['content']}\n"
-        
-        input_token_count = len(self.tokenizer.tokenize(total_content))
-
-        # Determine the number of tokens to request. Cap it at 4096 if the model has a larger limit.
-        if self.max_context_length < input_token_count + 2:
-            # If the prompt is already at the max length, just request 1000 token, we will get an error anyway
-            leftover_tokens_count = 1000
-        else:
-            leftover_tokens_count = min(
-                self.max_tokens,
-                self.max_context_length - input_token_count - 2,
-            )
-
         function_names = Enum('FuncNames', {func["name"]: func["name"] for func in function})
 
         kwargs = {
             "model": self.model_path_or_id,
-            "max_tokens": leftover_tokens_count,
+            "max_tokens": self._estimate_leftover_tokens_count(inference_data, fc=False),
             "timeout": 72000,  # Avoid timeout errors
             **self.generator_config,
             "response_format": FunctionCallList[function_names]
@@ -128,7 +110,9 @@ class UnifiedOSSJsonSchemaHandler(OSSHandler):
         else:
             model_responses = parsed_output.unavailable_reason
 
-        model_responses_message_for_chat_history = api_response.content
+        # Token数削減のためモデルのレスポンスがindentありの場合indentなしのJSONに変換
+        model_responses_message_for_chat_history = {
+            "role": "assistant", "content": json.dumps(json.loads(api_response.content), ensure_ascii=False)}
 
         return {
             "model_responses": model_responses,
@@ -136,16 +120,6 @@ class UnifiedOSSJsonSchemaHandler(OSSHandler):
             "input_token": api_response.prompt_tokens,
             "output_token": api_response.completion_tokens,
         }
-
-    @override
-    def _add_assistant_message_prompting(
-        self, inference_data: dict, model_response_data: dict
-    ) -> dict:
-        inference_data["message"].append(
-            {"role": "assistant", "content": model_response_data["model_responses_for_chat_history"]}
-        )
-        return inference_data
-
 
     @override
     def _add_execution_results_prompting(

@@ -356,10 +356,26 @@ class OpenAIClient:
             prompt_tokens=response.usage.prompt_tokens,
             completion_tokens=response.usage.completion_tokens
         )
+
+        def parse_arguments(arguments: str):
+            """
+            ArgumentsのJSONをパースする
+            OpenRouterなどの一部の互換実装ではValid JSONではなく空文字や最後の}がないケースがあるのでカバーする
+            """
+            if arguments is None or arguments == "":
+                return {}
+            try:
+                return json.loads(arguments)
+            except json.JSONDecodeError as e1:
+                try:
+                    return json.loads(arguments + '}')
+                except json.JSONDecodeError:
+                    raise e1
+
         if tool_calls := response.choices[0].message.tool_calls:
             llm_response.tool_calls = [ToolCall(
                 name=tool_call.function.name,
-                arguments=json.loads(tool_call.function.arguments),
+                arguments=parse_arguments(tool_call.function.arguments),
                 id=tool_call.id,
                 type=tool_call.type
             ) for tool_call in tool_calls]
