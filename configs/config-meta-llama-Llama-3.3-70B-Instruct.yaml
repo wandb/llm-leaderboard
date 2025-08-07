@@ -18,5 +18,5 @@ generator:
   parallel_tool_calls: true
   extra_body:
     provider:
-      quantizations: ["bf16"]
+#     quantizations: ["bf16"]
       allow_fallbacks: false  # フォールバック無効

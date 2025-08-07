@@ -176,7 +176,7 @@ def main():
     
     # スクリプトのディレクトリを基準にCSVファイルのパスを設定
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    csv_path = os.path.join(script_dir, "wandb_export_2025-08-05T18_31_09.836+09_00.csv")
+    csv_path = os.path.join(script_dir, "wandb_export_2025-08-07T16_11_32.221+09_00.csv")
     
     results = analyzer.analyze_csv_file(
         csv_path=csv_path,

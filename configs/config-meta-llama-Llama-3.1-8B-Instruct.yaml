@@ -1,0 +1,39 @@
+wandb:
+  run_name: meta-llama/Llama-3.1-8B-Instruct
+
+api: vllm-docker
+base_url: http://vllm:8000/v1
+batch_size: 32
+
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: meta-llama/Llama-3.1-8B-Instruct #if you use openai api, put the name of model
+  bfcl_model_id: unified-oss-jsonschema
+  size_category: Small (<10B)
+  size: 8100000000
+  release_date: 7/23/2024
+
+generator:
+  extra_body:
+    chat_template_kwargs:
+        enable_thinking: false
+  max_tokens: 35000 
+  temperature: 0.1
+  top_p: 1
+
+vllm:
+    disable_triton_mma: false
+    dtype: null
+    gpu_memory_utilization: 0.9
+    lifecycle: always_on
+    max_model_len: 35000
+    #reasoning_parser: 
+    enable_auto_tool_choice: true
+    tool_call_parser: llama3_json
+    trust_remote_code: true
+    vllm_tag: v0.8.5
+    chat-template: examples/tool_chat_template_llama3.1_json.jinja
+
+# Number of GPUs for tensor parallelism
+num_gpus: 1 

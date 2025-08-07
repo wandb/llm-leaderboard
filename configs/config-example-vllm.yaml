@@ -20,6 +20,7 @@ model:
 vllm:
   vllm_tag: latest
   lifecycle: auto
+  chat-template: # examples/tool_chat_template_llama3.1_json.jinja
   # 以下はモデルにより調整が必要な場合のみ設定。
   # disable_triton_mma: false
   # dtype: bfloat16

@@ -3,7 +3,7 @@ wandb:
   project: 'nejumi-leaderboard4'
   #run: please set up run name in a model-base config
 
-testmode: true
+testmode: false
 inference_interval: 0 # seconds
 
 run:
@@ -153,7 +153,7 @@ bfcl:
   num_threads: 2
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:en'
   generator_config:
-    max_tokens: 4096
+    max_tokens: 10240
     temperature: 0.01
     top_p: 1.0
 
