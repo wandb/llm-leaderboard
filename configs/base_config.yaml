@@ -39,25 +39,33 @@ jaster:
   message_intro: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。"
   artifacts_path: "wandb-japan/llm-leaderboard3/jaster:v6"
   dataset_dir: "jaster"
+  max_tokens: null  # null の場合は generator.max_tokens を使用
+  use_output_length_as_min: false  # true の場合、task_data["output_length"] を最小値として使用
+  use_exact_output_length: false # true の場合、task_data["output_length"] を正確な値として使用（reasoning有無に関わらず）
 
 lctg:
   artifacts_path: "wandb-japan/llm-leaderboard3/lctg:v0"
   dataset_dir: "lctg"
+  max_tokens: null  # null の場合は generator.max_tokens を使用
 
 jbbq:
   artifacts_path: 'wandb-japan/llm-leaderboard3-private/jbbq:v2'
   dataset_dir: 'jbbq'
   language: 'ja'
+  max_tokens: null  # null の場合は generator.max_tokens を使用
+  use_exact_answer_tokens: false  # true の場合、回答用に正確に指定トークン数を使用
 
 toxicity:
   artifact_path: 'wandb-japan/toxicity-dataset-private/toxicity_dataset_full:v3'
   judge_prompts_path: 'wandb-japan/toxicity-dataset-private/toxicity_judge_prompts:v1'
   max_workers: 5
   judge_model: 'gpt-4o-2024-05-13'
+  max_tokens: null  # null の場合は generator.max_tokens を使用
 
 jtruthfulqa:
   artifact_path: 'wandb-japan/llm-leaderboard3/jtruthfulqa_dataset:v1'  # JTruthfulQAデータセットのアーティファクトパス
   roberta_model_name: 'nlp-waseda/roberta_jtruthfulqa'  # 評価に使用するRoBERTaモデル名
+  max_tokens: null  # null の場合は generator.max_tokens を使用
 
 mtbench:
   temperature_override:
@@ -78,7 +86,7 @@ mtbench:
   model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
   question_begin: null 
   question_end: null 
-  max_new_token: 1024
+  max_new_token: 4096
   num_choices: 1
   num_gpus_per_model: 1
   num_gpus_total: 1
@@ -88,7 +96,7 @@ mtbench:
   judge_model: 'gpt-4o-2024-05-13'
   mode: 'single'
   baseline_model: null 
-  parallel: 80
+  parallel: 8
   first_n: null
 
 sample_dataset:

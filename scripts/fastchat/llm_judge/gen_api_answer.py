@@ -58,7 +58,10 @@ def get_api_answer(question_file, answer_file, num_worker = 1):
             try:
                 future.result()
             except Exception as e:
+                import traceback
                 print(f"Function raised an exception: {e}")
+                print(f"Exception type: {type(e).__name__}")
+                print(f"Traceback: {traceback.format_exc()}")
 
     reorg_answer_file(answer_file)
 
@@ -68,6 +71,9 @@ def get_answer(
 ):
 
     cfg = WandbConfigSingleton.get_instance().config
+    # Debug: check cfg.api type and value
+    # print(f"Debug: cfg.api = {cfg.api}, type = {type(cfg.api)}")
+    
     # cfgからtemperature_overrideを取得
     temperature_override = cfg.mtbench.temperature_override
 
@@ -89,11 +95,13 @@ def get_answer(
             conv.append_message(conv.roles[0], question["turns"][j])
             conv.append_message(conv.roles[1], None)
 
-            if cfg.api in ["vllm", "vllm-external"]:
+            api_type = cfg.get("api", cfg.api) if hasattr(cfg, "get") else cfg.api
+            
+            if api_type in ["vllm", "vllm-external"]:
                 output = chat_completion_vllm(
                     model, conv, temperature, max_tokens
                 )
-            elif cfg.api == "anthropic":
+            elif api_type == "anthropic":
                 output = chat_completion_anthropic(
                     model, conv, temperature, max_tokens
                 )
@@ -101,32 +109,37 @@ def get_answer(
                 chat_state, output = chat_completion_palm(
                     chat_state, model, conv, temperature, max_tokens
                 )
-            elif cfg.api == "cohere":
+            elif api_type == "cohere":
                 output = chat_completion_cohere(
                     model, conv, temperature, max_tokens
                 ) 
-            elif cfg.api == "google":
+            elif api_type == "google":
                 chat_state, output = chat_completion_gemini(
                     chat_state, model, conv, temperature, max_tokens
                 ) 
-            elif cfg.api == "amazon_bedrock":
+            elif api_type == "amazon_bedrock":
                 chat_state, output = chat_completion_bedrock(
                     chat_state, model, conv, temperature, max_tokens
                 ) 
-            elif cfg.api == "mistral":
+            elif api_type == "mistral":
                 chat_state, output = chat_completion_mistral(
                     chat_state, model, conv, temperature, max_tokens
                 )  
-            elif cfg.api == "upstage":
+            elif api_type == "upstage":
                 output = chat_completion_upstage(
                     model, conv, temperature, max_tokens
                 )
-            elif cfg.api == "azure-openai":
+            elif api_type == "azure-openai":
                 output = chat_completion_openai_azure(
                     model, conv, temperature, max_tokens
                 )
-            elif cfg.api == "xai":
+            elif api_type == "xai":
                 output = chat_completion_xai(
+                    model, conv, temperature, max_tokens
+                )
+            elif api_type == "openai_responses":
+                from fastchat.llm_judge.common import chat_completion_openai_responses
+                output = chat_completion_openai_responses(
                     model, conv, temperature, max_tokens
                 )
             else:

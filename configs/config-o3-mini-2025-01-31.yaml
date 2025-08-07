@@ -1,0 +1,18 @@
+wandb:
+  run_name: "openai/o3-mini-2025-01-31-high-effort" # use run_name defined above
+
+api: openai_responses
+batch_size: 8
+
+model:
+  pretrained_model_name_or_path: "o3-mini-2025-01-31" 
+  size_category: "api"
+  size: null
+  release_date: "1/31/2025"
+
+generator:
+  max_tokens: 13107
+  temperature: 1.0
+  reasoning:
+    effort: "high"
+    summary: "auto"

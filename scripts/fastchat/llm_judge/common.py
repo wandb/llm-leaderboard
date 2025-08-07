@@ -12,9 +12,11 @@ import time
 from typing import Optional
 
 import openai
+from omegaconf import OmegaConf
 import anthropic
 import cohere
 import google.generativeai as genai
+from langchain_anthropic import ChatAnthropic
 
 from fastchat.model.model_adapter import (
     get_conversation_template,
@@ -175,7 +177,10 @@ def run_judge_single(question, answer, judge, ref_answer, multi_turn=False):
     instance = WandbConfigSingleton.get_instance()
     cfg = instance.config
     api_type = cfg.toxicity.get('judge_api_type', 'openai')
-    if api_type=="azure-opanai" or "openai":
+    if api_type == "openai_responses":
+        print("Selecting API_Type (OpenAI Responses)")
+        judgment = chat_completion_openai_responses(model, conv, temperature=0, max_tokens=2048)
+    elif api_type == "azure-openai" or api_type == "openai":
         print("Selecting API_Type (OpenAI or Azure OpenAI)")
         judgment = chat_completion_azure_fallback(model, conv, temperature=0, max_tokens=2048)
     elif model in ANTHROPIC_MODEL_LIST:
@@ -278,7 +283,15 @@ def run_judge_pair(question, answer_a, answer_b, judge, ref_answer, multi_turn=F
     conv.append_message(conv.roles[0], user_prompt)
     conv.append_message(conv.roles[1], None)
 
-    if model in OPENAI_MODEL_LIST:
+    # 設定からAPIタイプを取得（デフォルトはmodel listベースの判定）
+    instance = WandbConfigSingleton.get_instance()
+    cfg = instance.config
+    api_type = cfg.toxicity.get('judge_api_type', None)
+    
+    if api_type == "openai_responses":
+        conv.set_system_message(system_prompt)
+        judgment = chat_completion_openai_responses(model, conv, temperature=0, max_tokens=2048)
+    elif api_type in ["openai", "azure-openai"] or (api_type is None and model in OPENAI_MODEL_LIST):
         conv.set_system_message(system_prompt)
         judgment = chat_completion_openai(model, conv, temperature=0, max_tokens=2048)
     elif model in ANTHROPIC_MODEL_LIST:
@@ -523,6 +536,50 @@ def chat_completion_openai(model, conv, temperature, max_tokens):
 
     return output
 
+def chat_completion_openai_responses(model, conv, temperature, max_tokens):
+    """OpenAI Responses API用のチャット完了関数"""
+    from config_singleton import WandbConfigSingleton
+    cfg = WandbConfigSingleton.get_instance().config
+    
+    output = API_ERROR_OUTPUT
+    for _ in range(API_MAX_RETRY):
+        try:
+            messages = conv.to_openai_api_messages()
+            client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+            
+            # パラメータの準備
+            create_params = {
+                "model": model,
+                "input": messages,
+                "max_output_tokens": max_tokens,
+            }
+            
+            # reasoning設定を追加
+            if "generator" in cfg and "reasoning" in cfg.generator:
+                reasoning_config = cfg.generator["reasoning"]
+                if isinstance(reasoning_config, dict):
+                    create_params["reasoning"] = reasoning_config
+            
+            # Responses APIを呼び出し
+            response = client.responses.create(**create_params)
+            
+            # レスポンスからcontentを抽出
+            content = ""
+            reasoning_content = ""
+            for output_item in response.output:
+                if output_item.type == "message":
+                    content = output_item.content[0].text
+                elif output_item.type == "reasoning" and len(output_item.summary) > 0:
+                    reasoning_content = output_item.summary[0].text
+            
+            output = content
+            break
+        except openai.OpenAIError as e:
+            print(type(e), e)
+            time.sleep(API_RETRY_SLEEP)
+
+    return output
+
 @retry(stop=stop_after_attempt(5), wait=wait_fixed(30))
 def chat_completion_vllm(model, conv, temperature, max_tokens):
     from openai import OpenAI
@@ -545,19 +602,53 @@ def chat_completion_vllm(model, conv, temperature, max_tokens):
         # LoRAが有効な場合、LoRAアダプター名をモデル名として使用
         model = lora_config.get("adapter_name", model)
 
-    print(f"Using model: {model}")
-    print(client.models.list())
-
     messages = conv.to_openai_api_messages()
-    print(messages)
-    response = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        n=1,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
-    return response.choices[0].message.content
+    
+    # 基本パラメータを準備
+    create_params = {
+        "model": model,
+        "messages": messages,
+        "n": 1,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    
+    # generatorから extra_body を取得し、パラメータに追加
+    if "generator" in cfg and "extra_body" in cfg.generator:
+        extra_body = cfg.generator["extra_body"]
+        print(f"Using extra_body: {extra_body}")
+        
+        # DictConfig を通常 dict へ
+        try:
+            extra_body_dict = OmegaConf.to_container(extra_body, resolve=True) if hasattr(extra_body, 'to_container') else extra_body
+        except Exception as e:
+            print(f"Error converting extra_body in common.py: {e}")
+            extra_body_dict = {}
+        
+        if extra_body_dict:
+            create_params["extra_body"] = extra_body_dict
+    
+    try:
+        response = client.chat.completions.create(**create_params)
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"Error in chat_completion_vllm: {type(e).__name__}: {e}")
+        print(f"Parameters used: {create_params}")
+        
+        # エラーが発生した場合、基本パラメータのみで再試行
+        if "extra_body" in create_params or "provider" in create_params or "reasoning" in create_params:
+            print("Retrying with basic parameters only...")
+            basic_params = {
+                "model": model,
+                "messages": messages,
+                "n": 1,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+            response = client.chat.completions.create(**basic_params)
+            return response.choices[0].message.content
+        else:
+            raise
 
 
 from openai import AzureOpenAI

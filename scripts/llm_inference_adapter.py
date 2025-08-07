@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass
 import json
+from omegaconf import OmegaConf
 from config_singleton import WandbConfigSingleton
 from langchain_openai import ChatOpenAI, AzureChatOpenAI
 from langchain_mistralai.chat_models import ChatMistralAI
@@ -166,20 +167,37 @@ def get_llm_inference_engine():
         )
 
     elif api_type == "vllm-external":
-        # vLLMサーバーは起動済みのものを用いるので、ここでは起動しない
-        #from vllm_server import start_vllm_server
-        #start_vllm_server()
-
-        base_url = cfg.get("base_url", "http://localhost:8000/v1") #"http://localhost:8000/v1"
-        model_name = cfg.model.pretrained_model_name_or_path
-
-        # LangChainのVLLMインテグレーションを使用
-        llm = ChatOpenAI(
-            openai_api_key=os.environ.get("VLLM_API_KEY", "EMPTY"),
-            openai_api_base=base_url,
-            model_name=model_name,
-            **cfg.generator,
-        )
+        # 新しいLLMクライアントを使用
+        from llm_clients import get_llm_inference_engine as get_new_llm_client
+        try:
+            # ConfigSingletonに設定を保存（新しいクライアントがアクセスできるように）
+            instance = WandbConfigSingleton.get_instance()
+            instance.config = cfg
+            
+            llm = get_new_llm_client()
+                
+        except Exception as e:
+            print(f"Warning: Failed to use new LLM client: {e}")
+            print("Falling back to LangChain implementation")
+            
+            # フォールバック: 元のLangChain実装
+            base_url = cfg.get("base_url", "http://localhost:8000/v1")
+            model_name = cfg.model.pretrained_model_name_or_path
+            
+            generator_config_dict = OmegaConf.to_container(cfg.generator, resolve=True)
+            extra_body_dict = generator_config_dict.pop("extra_body", {})
+            
+            llm_kwargs = {
+                "openai_api_key": os.environ.get("VLLM_API_KEY", "EMPTY"),
+                "openai_api_base": base_url,
+                "model_name": model_name,
+                **generator_config_dict,
+            }
+            
+            if extra_body_dict:
+                llm_kwargs["model_kwargs"] = {"extra_body": extra_body_dict}
+                
+            llm = ChatOpenAI(**llm_kwargs)
 
     elif api_type == "openai":
         # LangChainのOpenAIインテグレーションを使用
@@ -265,6 +283,13 @@ def get_llm_inference_engine():
             cohere_api_key=os.environ["COHERE_API_KEY"],
             **cfg.generator,
         )
+    
+    elif api_type == "openai_responses":
+        # OpenAI Responses API用の新しいクライアントを使用
+        from llm_clients import get_llm_inference_engine as get_new_llm_client
+        instance = WandbConfigSingleton.get_instance()
+        instance.config = cfg
+        llm = get_new_llm_client()
 
     else:
         raise ValueError(f"Unsupported API type: {api_type}")

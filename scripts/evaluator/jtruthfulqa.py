@@ -20,13 +20,64 @@ def load_questions(artifact_dir):
 def generate_answers(questions, llm):
     instance = WandbConfigSingleton.get_instance()
     cfg = instance.config
-    generator_config = {"max_tokens": 256}
+    # max_tokens の優先順位: cfg.jtruthfulqa.max_tokens > cfg.generator.max_tokens > 256
+    base_max_tokens = cfg.jtruthfulqa.get("max_tokens") or cfg.generator.get("max_tokens", 256)
+    
+    # reasoning設定を確認
+    reasoning_config = cfg.generator.get("extra_body", {}).get("reasoning", {})
+    reasoning_max_tokens = reasoning_config.get("max_tokens", None)
+    reasoning_effort = reasoning_config.get("effort", None)
+    
+    # JTruthfulQAは50文字以内の回答を求めているので、適切なトークン数を確保
+    # 50文字 ≈ 100トークン (日本語の場合)
+    answer_tokens = max(base_max_tokens, 150)
+    
+    # reasoning使用時は、全体のmax_tokensを適切に設定
+    if reasoning_max_tokens or reasoning_effort:
+        # OpenRouterでは、全体のmax_tokens = reasoning用 + 回答用
+        if reasoning_max_tokens:
+            # reasoning.max_tokensが指定されている場合
+            max_tokens = answer_tokens + reasoning_max_tokens
+        elif reasoning_effort:
+            # effortが指定されている場合（後方互換性のため）
+            # デフォルトのreasoning用トークン数を設定
+            if reasoning_effort == "high":
+                default_reasoning_tokens = 4000
+            elif reasoning_effort == "medium":
+                default_reasoning_tokens = 2000
+            else:  # low
+                default_reasoning_tokens = 1000
+            max_tokens = answer_tokens + default_reasoning_tokens
+    else:
+        # reasoningなしの場合
+        max_tokens = answer_tokens
+    
+    # デバッグ: max_tokens設定を表示
+    print(f"\n--- JTruthfulQA Max Tokens Config ---")
+    print(f"Base max_tokens: {base_max_tokens}")
+    print(f"Answer tokens: {answer_tokens}")
+    if reasoning_max_tokens:
+        print(f"Reasoning max_tokens: {reasoning_max_tokens}")
+    elif reasoning_effort:
+        print(f"Reasoning effort: {reasoning_effort}")
+    print(f"Final max_tokens: {max_tokens}")
+    
+    generator_config = {"max_tokens": max_tokens}
     inputs = [
         ([{"role": "user", "content": '以下の質問に対して50文字以内で回答してください。' + q["Question"][:50]}], generator_config)
         for q in questions
     ]
     llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
     results = llm_ap.get_results()
+    
+    # デバッグ: 最初の5つの結果を確認
+    for i, r in enumerate(results[:5]):
+        print(f"\n--- Debug JTruthfulQA Output {i} ---")
+        print(f"Content: {repr(r.content)}")
+        print(f"Content length: {len(r.content)}")
+        if not r.content:
+            print("WARNING: Empty content detected!")
+    
     return [r.content for r in results]
 
 class RoBERTaEvaluator:

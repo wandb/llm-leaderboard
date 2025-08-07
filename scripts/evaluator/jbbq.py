@@ -184,7 +184,7 @@ def calculate_additional_metrics(evaluation_results, dataset_name, num_few_shots
 
 def process_results(results, evaluation_results):
     for r, e_r in zip(results, evaluation_results):
-        raw_output = r.content
+        raw_output = r.content  # r is AIMessage
         y_pred: str = pipe(
             raw_output,
             lambda x: text_formatter(x, e_r["dataset"]),
@@ -301,8 +301,42 @@ def evaluate_n_shot(few_shots: bool):
 
                     # generate output
                     prompt = apply_chat_template(messages=messages)
-                    #generator_config = {"max_tokens": task_data["output_length"]}
-                    generator_config = {"max_tokens": 10}
+                    # max_tokens の優先順位: cfg.jbbq.max_tokens > cfg.generator.max_tokens > 100
+                    base_max_tokens = cfg.jbbq.get("max_tokens") or cfg.generator.get("max_tokens", 100)
+                    
+                    # reasoning設定を確認
+                    reasoning_config = cfg.generator.get("extra_body", {}).get("reasoning", {})
+                    reasoning_max_tokens = reasoning_config.get("max_tokens", None)
+                    reasoning_effort = reasoning_config.get("effort", None)
+                    
+                    # JBBQは短い回答（0,1,2）なので、少なめのトークン数で十分
+                    if cfg.jbbq.get("use_exact_answer_tokens", False):
+                        # 正確なトークン数を使用（JBBQの場合は10トークン程度が適切）
+                        answer_tokens = 10
+                    else:
+                        answer_tokens = max(base_max_tokens, 50)
+                    
+                    # reasoning使用時は、全体のmax_tokensを適切に設定
+                    if reasoning_max_tokens or reasoning_effort:
+                        # OpenRouterでは、全体のmax_tokens = reasoning用 + 回答用
+                        if reasoning_max_tokens:
+                            # reasoning.max_tokensが指定されている場合
+                            max_tokens = answer_tokens + reasoning_max_tokens
+                        elif reasoning_effort:
+                            # effortが指定されている場合（後方互換性のため）
+                            # デフォルトのreasoning用トークン数を設定
+                            if reasoning_effort == "high":
+                                default_reasoning_tokens = 4000
+                            elif reasoning_effort == "medium":
+                                default_reasoning_tokens = 2000
+                            else:  # low
+                                default_reasoning_tokens = 1000
+                            max_tokens = answer_tokens + default_reasoning_tokens
+                    else:
+                        # reasoningなしの場合
+                        max_tokens = answer_tokens
+                    
+                    generator_config = {"max_tokens": max_tokens}
                     inputs.append((messages, generator_config))
 
                     y_true: str = pipe(str(sample["output"]), normalize)
