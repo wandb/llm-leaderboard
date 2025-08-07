@@ -431,7 +431,7 @@ class OpenAIResponsesClient(BaseLLMClient):
         }
         
         if max_tokens:
-            params["max_output_tokens"] = max_tokens
+            params["max_output_tokens"] = max(max_tokens, 16)
         
         if 'text_format' in filtered_params:
             response: OpenAIParsedResponse = await self.async_client.responses.parse(**params)
@@ -891,7 +891,6 @@ class CohereClient(BaseLLMClient):
             if "timeout" in str(e).lower():
                 print("Connection timeout - check network connectivity and API status")
             raise
-
 
 
 def get_llm_inference_engine() -> BaseLLMClient:
