@@ -5,13 +5,17 @@ from ..model_style import ModelStyle
 from overrides import EnforceOverrides, final, override
 from ..openai_compatible_handler import OpenAICompatibleHandler
 from ..model_style import ModelStyle
-
+from config_singleton import WandbConfigSingleton
 
 class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
     def __init__(self, model_name, temperature) -> None:
         super().__init__(model_name, temperature)
 
-        self.model_name_huggingface = self.model_name.replace("-FC", "")
+        instance = WandbConfigSingleton.get_instance()
+        cfg = instance.config
+
+        #self.model_name_huggingface = self.model_name.replace("-FC", "")
+        self.model_name_huggingface = cfg.model.pretrained_model_name_or_path
         self.model_style = ModelStyle.OSSMODEL
 
     def setup_tokenizer(self, local_model_path: Optional[str] = None):
@@ -34,14 +38,14 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
 
             self.model_path_or_id = local_model_path
             load_kwargs = {
-                "pretrained_model_name_or_path": self.model_path_or_id,
+                "pretrained_model_name_or_path": self.model_name_huggingface,
                 "local_files_only": True,
                 "trust_remote_code": True,
             }
         else:
             self.model_path_or_id = self.model_name_huggingface
             load_kwargs = {
-                "pretrained_model_name_or_path": self.model_path_or_id,
+                "pretrained_model_name_or_path": self.model_name_huggingface,
                 "trust_remote_code": True,
             }
 
@@ -92,7 +96,7 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
         inference_data["inference_input_log"] = {"message": repr(message), "tools": tools}
 
         kwargs = {
-            "model": self.model_name.replace("-FC", ""),
+            "model": self.model_name_huggingface,
             "max_tokens": self._estimate_leftover_tokens_count(inference_data, fc=True),
             **self.generator_config,
             # "store": False, removed: because vLLM server doesn't support it
@@ -115,7 +119,7 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
         inference_data["inference_input_log"] = {"message": repr(message), "tools": tools}
 
         kwargs = {
-            "model": self.model_name.replace("-FC", ""),
+            "model": self.model_name_huggingface,
             "max_tokens": self._estimate_leftover_tokens_count(inference_data, fc=True),
             **self.generator_config,
             # "store": False, removed: because vLLM server doesn't support it
@@ -155,7 +159,7 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
         inference_data["inference_input_log"] = {"messages": message}
 
         kwargs = {
-            "model": self.model_path_or_id,
+            "model": self.model_name_huggingface,
             "max_tokens": self._estimate_leftover_tokens_count(inference_data, fc=False),
             "timeout": 72000,  # Avoid timeout errors
             **self.generator_config,
@@ -190,7 +194,7 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
         inference_data["inference_input_log"] = {"messages": message}
 
         kwargs = {
-            "model": self.model_path_or_id,
+            "model": self.model_name_huggingface,
             "max_tokens": self._estimate_leftover_tokens_count(inference_data, fc=False),
             "timeout": 72000,  # Avoid timeout errors
             **self.generator_config,

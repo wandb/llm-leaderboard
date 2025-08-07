@@ -2,18 +2,25 @@ wandb:
   run_name: "example-openai-compatible"
 
 api: "openai-compatible"
-base_url: "https://your-api-endpoint.com/v1"  # 外部APIのエンドポイント
+base_url: "https://openrouter.ai/api/v1"  # 外部APIのエンドポイント。値はOpenrouterを例としている
 batch_size: 32
 
 model:
   pretrained_model_name_or_path: "your-model-name"  # APIで使用するモデル名
-  bfcl_model_id:  # find id from "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  bfcl_model_id: OpenRouter-FC # if it doesn't work, find id from "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
   size_category: # "Small (<10B)", "Medium (10–30B)", "Large (30B+)"
   size: # parameter size
   release_date: # MM/DD/YYYY
+  base_model: # base model name such as "llama3.1", "qwen2.5"
 
 # Generator configuration
 generator:
+  max_tokens: 8192
   temperature: 0.01
   top_p: 1.0
-  max_tokens: 8192
+  parallel_tool_calls: true
+  tool_choice: auto
+  extra_body:
+    provider:
+      quantizations: ["bf16"]
+      allow_fallbacks: false

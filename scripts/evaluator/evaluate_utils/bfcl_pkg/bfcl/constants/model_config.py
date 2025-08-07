@@ -122,6 +122,18 @@ class ModelConfig:
 
 # Inference through API calls
 api_inference_model_map = {
+    "OpenRouter-FC": ModelConfig(
+        model_name="OpenRouter-FC", # update later
+        display_name="OpenRouter (FC)", # filled as formality
+        url="https://openrouter.ai/", #filled as formality
+        org="OpenRouter",
+        license="Proprietary", # filled as formality
+        model_handler=OpenRouterHandler,
+        input_price=2, # filled as formality
+        output_price=8, # filled as formality
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
     "gorilla-openfunctions-v2": ModelConfig(
         model_name="gorilla-openfunctions-v2",
         display_name="Gorilla-OpenFunctions-v2 (FC)",
@@ -1182,6 +1194,30 @@ api_inference_model_map = {
 
 # Inference through local hosting
 local_inference_model_map = {
+    "unified-oss-fc": ModelConfig(
+        model_name="united-oss-fc",
+        display_name="united-oss-fc", # filled as formality
+        url="vllm", # filled as formality
+        org="vllm", # filled as formality
+        license="MIT", # filled as formality
+        model_handler=UnifiedOSSFCHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
+    "unified-oss-jsonschema": ModelConfig(
+        model_name="unified-oss-jsonschema",
+        display_name="unified-oss-jsonschema", # filled as formality
+        url="vllm", # filled as formality
+        org="vllm", # filled as formality
+        license="MIT", # filled as formality
+        model_handler=UnifiedOSSJsonSchemaHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=False,
+        underscore_to_dot=True,
+    ),
     "deepseek-ai/DeepSeek-R1": ModelConfig(
         model_name="deepseek-ai/DeepSeek-R1",
         display_name="DeepSeek-R1 (Prompt) (Local)",
