@@ -322,7 +322,9 @@ class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
     def _add_assistant_message_prompting(
         self, inference_data: dict, model_response_data: dict
     ) -> dict:
-        inference_data["message"].append(model_response_data["model_responses_for_chat_history"])
+        inference_data["message"].append(
+            {"role": "assistant", "content": model_response_data["model_responses"]}
+        )
         return inference_data
 
     @override

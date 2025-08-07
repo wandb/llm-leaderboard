@@ -40,3 +40,13 @@ class UnifiedOSSFCHandler(OSSHandler):
             )
 
         print(f"[UnifiedOSSFCHandler] 初期化完了 - モデル: {model_name}")
+
+    @override
+    async def inference_async(self, test_entry: dict, include_input_log: bool, exclude_state_log: bool):
+        # FC model
+        if "multi_turn" in test_entry["id"]:
+            return await self.inference_multi_turn_FC_async(
+                test_entry, include_input_log, exclude_state_log
+            )
+        else:
+            return await self.inference_single_turn_FC_async(test_entry, include_input_log)
