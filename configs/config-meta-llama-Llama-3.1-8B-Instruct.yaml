@@ -15,9 +15,6 @@ model:
   release_date: 7/23/2024
 
 generator:
-  extra_body:
-    chat_template_kwargs:
-        enable_thinking: false
   max_tokens: 35000 
   temperature: 0.1
   top_p: 1

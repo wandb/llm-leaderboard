@@ -1,25 +1,25 @@
 wandb:
   entity: 'llm-leaderboard'
-  project: 'nejumi-leaderboard4'
+  project: 'nejumi-leaderboard4-dev-bfcl'
   #run: please set up run name in a model-base config
 
 testmode: false
 inference_interval: 0 # seconds
 
 run:
-  jaster: true
-  jmmlu_robustness: true # if this is set as true, jaster should set as true
-  mtbench: true
-  jbbq: true
-  toxicity: true
-  jtruthfulqa: true
-  hle: true
-  swebench: true
+  jaster: false
+  jmmlu_robustness: false # if this is set as true, jaster should set as true
+  mtbench: false
+  jbbq: false
+  toxicity: false
+  jtruthfulqa: false
+  hle: false
+  swebench: false
   bfcl: true
-  hallulens: true
-  arc_agi: true
-  m_ifeval: true
-  aggregate: true
+  hallulens: false
+  arc_agi: false
+  m_ifeval: false
+  aggregate: false
 
 model:
   artifact_path: null

@@ -15,12 +15,12 @@ model:
 
 # Generator configuration
 generator:
-  max_tokens: 8192
+  max_tokens: 12000
   temperature: 0.01
   top_p: 1.0
   parallel_tool_calls: true
   tool_choice: auto
   extra_body:
     provider:
-      quantizations: ["bf16"]
+      # quantizations: ["bf16"]
       allow_fallbacks: false
