@@ -15,11 +15,19 @@ model:
   base_model: "" # base model name such as "llama3.1", "qwen2.5"
   release_date:  # M/DD/YYYY
 
+generator:
+  extra_body:
+    chat_template_kwargs:
+        enable_thinking: false
+  max_tokens: 35000 
+  temperature: 0.1
+  top_p: 1
 
 # vLLM server configuration
 vllm:
   vllm_tag: latest
   lifecycle: auto
+  chat-template: # examples/tool_chat_template_llama3.1_json.jinja
   # 以下はモデルにより調整が必要な場合のみ設定。
   # disable_triton_mma: false
   # dtype: bfloat16

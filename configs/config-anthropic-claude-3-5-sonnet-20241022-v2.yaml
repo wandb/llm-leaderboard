@@ -3,8 +3,8 @@ wandb:
 api: amazon_bedrock
 batch_size: 32
 model:
-  pretrained_model_name_or_path: us.anthropic.claude-3-5-sonnet-20241022-v2:0 #if you use openai api, put the name of model
-  bfcl_model_id: "claude-3-5-sonnet-20241022-FC" # find id from "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  pretrained_model_name_or_path: us.anthropic.claude-3-5-sonnet-20241022-v2:0
+  bfcl_model_id: "claude-3-5-sonnet-20241022-FC"
   base_model: "unknown"
   size_category: api
   size: null
