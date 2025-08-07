@@ -847,33 +847,7 @@ class CohereClient(BaseLLMClient):
             if "timeout" in str(e).lower():
                 print("Connection timeout - check network connectivity and API status")
             raise
-    
-    async def _ainvoke_v1(self, messages, max_tokens=None, **kwargs):
-        """v1 API用の非同期実装（既存のコード）"""
-import os
-import asyncio
-from dataclasses import dataclass, field
-from abc import ABC, abstractmethod
-from typing import List, Dict, Optional, Union, Any
-import uuid
-import json
-import warnings
-import logging
-from config_singleton import WandbConfigSingleton
-from omegaconf import OmegaConf, DictConfig
-import openai
-from openai.types.responses import Response as OpenAIResponse, ParsedResponse as OpenAIParsedResponse
-from openai.types.chat import ChatCompletion as OpenAIChatCompletion
-from mistralai import Mistral
-import google.generativeai as genai
-from anthropic import Anthropic
-import cohere
-from botocore.exceptions import ClientError
-import boto3
-from botocore.config import Config
-from openai import AzureOpenAI
-import httpx
-from pydantic import BaseModel
+
 
 
 def get_llm_inference_engine() -> BaseLLMClient:
