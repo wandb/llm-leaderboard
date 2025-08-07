@@ -61,7 +61,10 @@ def load_file(file_path, sort_by_id=False):
     with open(file_path) as f:
         file = f.readlines()
         for line in file:
-            result.append(json.loads(line))
+            # Skip empty lines to avoid JSONDecodeError
+            line = line.strip()
+            if line:
+                result.append(json.loads(line))
 
     if sort_by_id:
         result.sort(key=sort_key)

@@ -1,6 +1,7 @@
 import json
 import time
 from copy import deepcopy
+from pathlib import Path
 
 from ..constants.category_mapping import VERSION_PREFIX
 from ..constants.default_prompts import (
@@ -15,6 +16,7 @@ from ..eval_checker.multi_turn_eval.multi_turn_utils import (
     is_empty_execute_response,
 )
 from ..utils import load_file, make_json_serializable, sort_key
+from ..memory_storage import BFCLMemoryStorage
 from .model_style import ModelStyle
 from overrides import final
 
@@ -1293,6 +1295,12 @@ class BaseHandler:
         # Collect and format each entry for JSON compatibility
         entries_to_write = [make_json_serializable(entry) for entry in result]
 
+        # Store results in memory to avoid JSONDecodeError during evaluation
+        memory_storage = BFCLMemoryStorage()
+        for entry in entries_to_write:
+            test_category = entry["id"].rsplit("_", 1)[0]
+            memory_storage.store_result(model_name_dir, test_category, entry)
+
         # Group entries by their `test_category` for efficient file handling
         file_entries = {}
         for entry in entries_to_write:
@@ -1302,19 +1310,22 @@ class BaseHandler:
             file_entries.setdefault(file_path, []).append(entry)
 
         for file_path, entries in file_entries.items():
-            if update_mode:
-                # Load existing entries from the file
+            test_category = entries[0]["id"].rsplit("_", 1)[0] if entries else None
+            
+            if update_mode and test_category:
+                # Load existing entries from MEMORY instead of file to avoid JSONDecodeError
                 existing_entries = {}
-                if file_path.exists():
-                    existing_entries = {
-                        entry["id"]: entry for entry in load_file(file_path)
-                    }
+                
+                # Get existing entries from memory
+                memory_entries = memory_storage.get_results(model_name_dir, test_category)
+                for mem_entry in memory_entries:
+                    existing_entries[mem_entry["id"]] = mem_entry
 
                 # Update existing entries with new data
                 for entry in entries:
                     existing_entries[entry["id"]] = entry
 
-                # Sort entries by `id` and write them back to ensure order consistency
+                # Sort entries by `id` and write them back to file (for logging only)
                 sorted_entries = sorted(existing_entries.values(), key=sort_key)
                 with open(file_path, "w") as f:
                     for entry in sorted_entries:
