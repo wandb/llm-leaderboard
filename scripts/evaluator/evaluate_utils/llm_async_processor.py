@@ -13,6 +13,13 @@ import pydantic_core
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import LLMResponse
 
+# Cohere例外をインポート（存在する場合）
+try:
+    import cohere
+    COHERE_AVAILABLE = True
+except ImportError:
+    COHERE_AVAILABLE = False
+
 
 MAX_TRIES = 50  # リトライ回数を50回に削減（100回は多すぎる）
 
@@ -56,8 +63,19 @@ class LLMAsyncProcessor:
     @error_handler
     @backoff.on_exception(
         backoff.expo, 
-        (openai.APIConnectionError, openai.APITimeoutError, openai.RateLimitError, 
-         openai.InternalServerError, pydantic_core.ValidationError, json.JSONDecodeError),
+        tuple(filter(None, [
+            # OpenAI例外
+            openai.APIConnectionError, openai.APITimeoutError, openai.RateLimitError, 
+            openai.InternalServerError, 
+            # Cohere例外（利用可能な場合）
+            getattr(cohere, 'TooManyRequestsError', None) if COHERE_AVAILABLE else None,
+            getattr(cohere, 'APIError', None) if COHERE_AVAILABLE else None,
+            getattr(cohere, 'APITimeoutError', None) if COHERE_AVAILABLE else None,
+            # その他の例外
+            pydantic_core.ValidationError, json.JSONDecodeError,
+            # 一般的なタイムアウト例外
+            TimeoutError, ConnectionError
+        ])),
         max_tries=MAX_TRIES,
         max_time=1800,  # 最大30分でタイムアウト
         jitter=backoff.full_jitter

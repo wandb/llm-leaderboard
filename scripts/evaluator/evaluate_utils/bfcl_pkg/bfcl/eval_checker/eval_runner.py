@@ -17,6 +17,7 @@ from ..eval_checker.multi_turn_eval.multi_turn_checker import (
 from ..eval_checker.multi_turn_eval.multi_turn_utils import is_empty_execute_response
 from ..constants.model_config import MODEL_CONFIG_MAPPING
 from ..utils import *
+from ..memory_storage import BFCLMemoryStorage
 from dotenv import load_dotenv
 from tqdm import tqdm
 
@@ -453,7 +454,24 @@ def runner(handler,model_names, test_categories, result_dir, score_dir, samples_
             if is_chatable(test_category) or is_sql(test_category) or is_executable(test_category):
                 continue
 
-            model_result = load_file(model_result_json, sort_by_id=False)
+            # Try to load results from memory first to avoid JSONDecodeError
+            memory_storage = BFCLMemoryStorage()
+            model_result = None
+            
+            if memory_storage.has_results(model_name, test_category):
+                print(f"📝 Loading {test_category} results from memory for {model_name}")
+                model_result = memory_storage.get_results(model_name, test_category)
+                # Sort by ID for consistency
+                model_result.sort(key=lambda x: sort_key(x))
+            else:
+                print(f"📂 Loading {test_category} results from file for {model_name}")
+                try:
+                    model_result = load_file(model_result_json, sort_by_id=False)
+                except json.JSONDecodeError as e:
+                    print(f"❌ JSONDecodeError in {model_result_json}: {e}")
+                    print(f"⚠️  Skipping {test_category} evaluation for {model_name}")
+                    continue
+            
             if samples_per_category is not None:
                 model_result = model_result[:samples_per_category]
                 # Sort by ID after sampling
