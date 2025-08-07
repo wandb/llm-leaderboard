@@ -87,6 +87,19 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
 
         return leftover_tokens_count
 
+    @override
+    async def inference_async(self, test_entry: dict, include_input_log: bool, exclude_state_log: bool):
+        """
+        公式OSSハンドラはFCモデルでもpromptingを使っているため、デフォルトはprompting側を呼び出す
+        toolsインタフェースでFCを呼び出す場合はサブクラスでオーバーライド
+        """
+        if "multi_turn" in test_entry["id"]:
+            return await self.inference_multi_turn_prompting_async(
+                test_entry, include_input_log, exclude_state_log
+            )
+        else:
+            return await self.inference_single_turn_prompting_async(test_entry, include_input_log)
+
     #### FC methods ####
 
     @override
@@ -185,26 +198,40 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
 
     @override
     async def _query_prompting_async(self, inference_data: dict):
-        # We use the OpenAI Chat Completions API
+        # We use the OpenAI Completions API
         function: list[dict] = inference_data["function"]
         message: list[dict] = inference_data["message"]
 
-        # Chat Completion API uses messages directly, no need for _format_prompt
-        # The vLLM server will apply the chat template automatically
-        inference_data["inference_input_log"] = {"messages": message}
+        formatted_prompt: str = self._format_prompt(message, function)
+        inference_data["inference_input_log"] = {"formatted_prompt": formatted_prompt}
 
-        kwargs = {
-            "model": self.model_name_huggingface,
-            "max_tokens": self._estimate_leftover_tokens_count(inference_data, fc=False),
-            "timeout": 72000,  # Avoid timeout errors
-            **self.generator_config,
-        }
+        # Tokenize the formatted prompt to get token count
+        input_token_count = len(self.tokenizer.tokenize(formatted_prompt))
+
+        # Determine the number of tokens to request. Cap it at 4096 if the model has a larger limit.
+        if self.max_context_length < input_token_count + 2:
+            # If the prompt is already at the max length, just request 1000 token, we will get an error anyway
+            leftover_tokens_count = 1000
+        else:
+            leftover_tokens_count = min(
+                self.max_tokens,
+                self.max_context_length - input_token_count - 2,
+            )
 
         extra_body = {}
         if hasattr(self, "stop_token_ids"):
             extra_body["stop_token_ids"] = self.stop_token_ids
         if hasattr(self, "skip_special_tokens"):
             extra_body["skip_special_tokens"] = self.skip_special_tokens
+
+        kwargs = {
+            "model": self.model_path_or_id,
+            "temperature": self.temperature,
+            "prompt": formatted_prompt,
+            "max_tokens": leftover_tokens_count,
+            "timeout": 72000,  # Avoid timeout errors
+            **self.generator_config,
+        }
 
         if len(extra_body) > 0:
             if "extra_body" in kwargs:
@@ -213,7 +240,18 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
                 kwargs["extra_body"] = extra_body
 
         start_time = time.time()
-        api_response = await self.llm_ap.process_single_async(message, **kwargs)
+        # 公式ハンドラを動かすための暫定対処
+        # LLMAsyncProcessorがcompletion APIに対応していないため、並列制御のためSemaphoreを取得して直接呼び出し
+        async with self.llm_ap.semaphore:
+            api_response = await self.llm_ap.llm.async_client.completions.create(**kwargs)
         end_time = time.time()
 
         return api_response, end_time - start_time
+
+    @override
+    def _parse_query_response_prompting(self, api_response: any) -> dict:
+        return {
+            "model_responses": api_response.choices[0].text,
+            "input_token": api_response.usage.prompt_tokens,
+            "output_token": api_response.usage.completion_tokens,
+        }

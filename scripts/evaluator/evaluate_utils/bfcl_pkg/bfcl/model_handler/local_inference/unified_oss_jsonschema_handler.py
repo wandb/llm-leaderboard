@@ -122,6 +122,15 @@ class UnifiedOSSJsonSchemaHandler(OSSHandler):
         }
 
     @override
+    def _add_assistant_message_prompting(
+        self, inference_data: dict, model_response_data: dict
+    ) -> dict:
+        inference_data["message"].append(
+            model_response_data["model_responses_for_chat_history"]
+        )
+        return inference_data
+
+    @override
     def _add_execution_results_prompting(
         self, inference_data: dict, execution_results: list[str], model_response_data: dict
     ) -> dict:
