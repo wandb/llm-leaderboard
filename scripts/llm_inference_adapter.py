@@ -1671,8 +1671,7 @@ class CohereClient(BaseLLMClient):
                 print(f"Using Cohere v2 client for model: {model}")
                 self.client = cohere.ClientV2(
                     api_key=api_key,
-                    timeout=timeout_config,
-                    max_retries=3
+                    timeout=timeout_config
                 )
             else:
                 print(f"Using Cohere v1 client for model: {model}")
@@ -1744,8 +1743,14 @@ class CohereClient(BaseLLMClient):
             return LLMResponse(content=content)
         except Exception as e:
             print(f"Cohere v2 API error: {type(e).__name__}: {e}")
-            if "timeout" in str(e).lower():
+            
+            # エラーの種類を記録
+            if "TooManyRequestsError" in str(type(e)) or "429" in str(e):
+                print("Rate limit exceeded - backoff decorator will handle retry")
+            elif "timeout" in str(e).lower() or "timed out" in str(e).lower():
                 print("Connection timeout - check network connectivity and API status")
+            
+            # 元の例外をそのまま再発生（backoffデコレータに処理させる）
             raise
     
     async def _ainvoke_v1(self, messages, max_tokens=None, **kwargs):
@@ -1788,9 +1793,19 @@ class CohereClient(BaseLLMClient):
             return LLMResponse(content=response.text)
         except Exception as e:
             print(f"Cohere v1 API error: {type(e).__name__}: {e}")
-            if "timeout" in str(e).lower():
+            
+            # CohereエラーをOpenAI互換エラーに変換してLLMAsyncProcessorのbackoffに対応
+            import openai
+            
+            if "TooManyRequestsError" in str(type(e)) or "429" in str(e):
+                raise openai.RateLimitError(f"Cohere rate limit exceeded: {str(e)}")
+            elif "timeout" in str(e).lower() or "timed out" in str(e).lower():
                 print("Connection timeout - check network connectivity and API status")
-            raise
+                raise openai.APITimeoutError(f"Cohere API timeout: {str(e)}")
+            elif "APIError" in str(type(e)):
+                raise openai.InternalServerError(f"Cohere API error: {str(e)}")
+            else:
+                raise
 
 
 def get_llm_inference_engine() -> BaseLLMClient:
