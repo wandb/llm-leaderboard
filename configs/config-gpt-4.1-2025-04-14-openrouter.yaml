@@ -1,0 +1,15 @@
+wandb:
+  run_name: openai/gpt-4.1
+api: openai-compatible # openai, anthropic, google,..
+base_url: https://openrouter.ai/api/v1
+batch_size: 32
+model:
+  pretrained_model_name_or_path: openai/gpt-4.1-2025-04-14 #if you use openai api, put the name of model
+  bfcl_model_id: "OpenRouter-FC" # select among "OpenRouter-FC", "unified-oss-fc", "unified-oss-jsonschema" or if it doesn't work, find id from "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  base_model: "unknown"
+  size_category: api
+  size: null
+  release_date: 4/14/2025
+
+generate:
+  parallel_tool_calls: true
