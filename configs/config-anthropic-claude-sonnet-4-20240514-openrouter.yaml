@@ -1,0 +1,15 @@
+wandb:
+  run_name: anthropic/claude-sonnet-4-20250514
+api: openai-compatible # openai, anthropic, google,..
+base_url: https://openrouter.ai/api/v1
+batch_size: 32
+model:
+  pretrained_model_name_or_path: anthropic/claude-sonnet-4
+  bfcl_model_id: OpenRouter-FC
+  base_model: "unknown"
+  size_category: api
+  size: null
+  release_date: 5/14/2025
+
+generate:
+  parallel_tool_calls: true
