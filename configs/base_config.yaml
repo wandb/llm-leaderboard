@@ -6,6 +6,29 @@ wandb:
 testmode: false
 inference_interval: 0 # seconds
 
+network:
+  http_timeout:
+    connect: 10.0
+    read: 300.0
+    write: 300.0
+    pool: 30.0
+
+# API個別の上書き（必要に応じて）
+openai:
+  http_timeout:
+    connect: 10.0
+    read: 300.0
+    write: 300.0
+    pool: 30.0
+
+# Azure OpenAI個別
+azure_openai:
+  http_timeout:
+    connect: 10.0
+    read: 300.0
+    write: 300.0
+    pool: 30.0
+
 run:
   jaster: true 
   jmmlu_robustness: true # if this is set as true, jaster should set as true

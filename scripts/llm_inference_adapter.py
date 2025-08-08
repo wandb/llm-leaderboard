@@ -61,6 +61,51 @@ def map_common_params(params, param_mapping):
     return mapped_params
 
 
+def _resolve_http_timeout_from_cfg(cfg, primary_key: str = "openai") -> httpx.Timeout:
+    """cfg から HTTP タイムアウト設定を読み出して httpx.Timeout を返す。
+
+    優先順位:
+    1. {primary_key}.http_timeout
+    2. network.http_timeout
+    3. デフォルト（connect=10.0, read=300.0, write=300.0, pool=30.0）
+    """
+    # デフォルトの緩め設定
+    default_connect = 10.0
+    default_read = 300.0
+    default_write = 300.0
+    default_pool = 30.0
+
+    timeout_cfg = None
+    try:
+        # OmegaConf.select は存在しない場合 None を返すので安全
+        timeout_cfg = OmegaConf.select(cfg, f"{primary_key}.http_timeout")
+        if timeout_cfg is None:
+            timeout_cfg = OmegaConf.select(cfg, "network.http_timeout")
+    except Exception:
+        # cfg 形式に依存せず安全にフォールバック
+        timeout_cfg = None
+
+    def _get_number(dct, key, default_value):
+        try:
+            value = dct.get(key, default_value)
+        except Exception:
+            value = default_value
+        try:
+            return float(value)
+        except Exception:
+            return default_value
+
+    if timeout_cfg is not None:
+        connect = _get_number(timeout_cfg, "connect", default_connect)
+        read = _get_number(timeout_cfg, "read", default_read)
+        write = _get_number(timeout_cfg, "write", default_write)
+        pool = _get_number(timeout_cfg, "pool", default_pool)
+    else:
+        connect, read, write, pool = default_connect, default_read, default_write, default_pool
+
+    return httpx.Timeout(connect=connect, read=read, write=write, pool=pool)
+
+
 class BaseLLMClient(ABC):
     def invoke(self, messages: List[Dict[str, str]], max_tokens: Optional[int] = None, **kwargs) -> LLMResponse:
         """同期版のinvoke（後方互換性のため）"""
@@ -218,8 +263,11 @@ class ChatBedrock(BaseLLMClient):
 
 class OpenAIClient:
     def __init__(self, api_key=None, base_url=None, model=None, **kwargs):
-        # タイムアウト設定を改善
-        timeout = httpx.Timeout(30.0, connect=10.0)
+        # YAMLから（なければデフォルトで）HTTPタイムアウトを解決
+        instance = WandbConfigSingleton.get_instance()
+        cfg = instance.config if instance else None
+        timeout = _resolve_http_timeout_from_cfg(cfg, primary_key="openai") if cfg else httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=30.0)
+
         self.async_client = openai.AsyncOpenAI(
             api_key=api_key,
             base_url=base_url,
@@ -401,9 +449,15 @@ class OpenAIResponsesClient(BaseLLMClient):
     OpenAIのResponses APIを使用するクライアント(Reasoning対応)
     """
     def __init__(self, api_key=None, base_url=None, model=None, structured=False, **kwargs):
+        # YAMLから（なければデフォルトで）HTTPタイムアウトを解決
+        instance = WandbConfigSingleton.get_instance()
+        cfg = instance.config if instance else None
+        timeout = _resolve_http_timeout_from_cfg(cfg, primary_key="openai") if cfg else httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=30.0)
+
         self.async_client = openai.AsyncOpenAI(
             api_key=api_key,
-            base_url=base_url
+            base_url=base_url,
+            timeout=timeout
         )
         self.model = model
         self.kwargs = kwargs
@@ -451,10 +505,16 @@ class OpenAIResponsesClient(BaseLLMClient):
 
 class AzureOpenAIResponsesClient(OpenAIResponsesClient):
     def __init__(self, api_key, azure_endpoint, azure_deployment, api_version, structured=False, **kwargs):
+        # YAMLから（なければデフォルトで）HTTPタイムアウトを解決
+        instance = WandbConfigSingleton.get_instance()
+        cfg = instance.config if instance else None
+        timeout = _resolve_http_timeout_from_cfg(cfg, primary_key="azure_openai") if cfg else httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=30.0)
+
         self.async_client = openai.AsyncAzureOpenAI(
             api_key=api_key,
             azure_endpoint=azure_endpoint,
-            api_version=api_version
+            api_version=api_version,
+            timeout=timeout
         )
         self.model = azure_deployment
         self.kwargs = kwargs
@@ -710,15 +770,22 @@ class AnthropicClient(BaseLLMClient):
 
 class AzureOpenAIClient(BaseLLMClient):
     def __init__(self, api_key, azure_endpoint, azure_deployment, api_version, **kwargs):
+        # YAMLから（なければデフォルトで）HTTPタイムアウトを解決
+        instance = WandbConfigSingleton.get_instance()
+        cfg = instance.config if instance else None
+        timeout = _resolve_http_timeout_from_cfg(cfg, primary_key="azure_openai") if cfg else httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=30.0)
+
         self.client = AzureOpenAI(
             api_key=api_key,
             azure_endpoint=azure_endpoint,
-            api_version=api_version
+            api_version=api_version,
+            timeout=timeout
         )
         self.async_client = openai.AsyncAzureOpenAI(
             api_key=api_key,
             azure_endpoint=azure_endpoint,
-            api_version=api_version
+            api_version=api_version,
+            timeout=timeout
         )
         self.azure_deployment = azure_deployment
         self.kwargs = kwargs
