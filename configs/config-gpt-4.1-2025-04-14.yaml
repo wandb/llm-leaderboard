@@ -1,6 +1,6 @@
 wandb:
   run_name: openai/gpt-4-1-2025-04-14
-api: openai # openai, anthropic, google,..
+api: openai_responses # openai, anthropic, google,..
 batch_size: 32
 model:
   pretrained_model_name_or_path: gpt-4.1-2025-04-14 #if you use openai api, put the name of model

@@ -1,6 +1,8 @@
 import json
 import os
 import time
+import asyncio
+import inspect
 
 from ...constants.type_mappings import GORILLA_TO_OPENAPI
 from ..base_handler import BaseHandler
@@ -17,12 +19,40 @@ from ..utils import (
 )
 from openai import OpenAI, RateLimitError
 from openai.types.responses import Response
+from config_singleton import WandbConfigSingleton
+from omegaconf import OmegaConf
 
 class OpenAIResponsesHandler(BaseHandler):
-    def __init__(self, model_name, temperature) -> None:
+    def __init__(self, model_name, temperature, llm=None, use_encrypted_reasoning=True) -> None:
         super().__init__(model_name, temperature)
         self.model_style = ModelStyle.OpenAI_Responses
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        # Load config and llm if available
+        try:
+            instance = WandbConfigSingleton.get_instance()
+            cfg = instance.config
+            self.model_name_huggingface = cfg.model.pretrained_model_name_or_path
+            self.model = cfg.model
+            self.generator_config = OmegaConf.to_container(cfg.bfcl.generator_config)
+            # Remove max_tokens to manage it separately if needed
+            self.max_tokens = self.generator_config.pop("max_tokens")
+            if llm is None:
+                llm = getattr(instance, "llm", None)
+        except Exception:
+            # Singleton not initialized; proceed without config/llm
+            self.model_name_huggingface = None
+            self.generator_config = {}
+            self.max_tokens = None
+        # Prefer an externally provided Responses client (e.g., OpenAIResponsesClient)
+        # If provided and it exposes an AsyncOpenAI via `async_client`, use that; otherwise, fall back to default OpenAI client
+        if llm is not None and hasattr(llm, "async_client") and hasattr(llm.async_client, "responses"):
+            self.client = llm.async_client  # AsyncOpenAI
+            self._delegate_model_to_client = True
+            self._client_is_async = True
+        else:
+            self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            self._delegate_model_to_client = False
+            self._client_is_async = False
+        self.use_encrypted_reasoning = use_encrypted_reasoning
 
     @staticmethod
     def _substitute_prompt_role(prompts: list[dict]) -> list[dict]:
@@ -55,7 +85,12 @@ class OpenAIResponsesHandler(BaseHandler):
     @retry_with_backoff(error_type=RateLimitError)
     def generate_with_backoff(self, **kwargs):
         start_time = time.time()
-        api_response = self.client.responses.create(**kwargs)
+        result = self.client.responses.create(**kwargs)
+        # Support both sync and async OpenAI clients transparently
+        if inspect.isawaitable(result):
+            api_response = asyncio.run(result)
+        else:
+            api_response = result
         end_time = time.time()
 
         return api_response, end_time - start_time
@@ -73,10 +108,17 @@ class OpenAIResponsesHandler(BaseHandler):
 
         kwargs = {
             "input": message,
-            "model": self.model_name.replace("-FC", ""),
             "store": False,
-            "reasoning": {"summary": "auto"},
         }
+
+        # Use include only if specified in YAML generator config
+        include_from_cfg = self.generator_config.get("include") if hasattr(self, "generator_config") else None
+        if include_from_cfg:
+            kwargs["include"] = include_from_cfg
+
+        # Only pass model if we are not delegating model selection to the provided client
+        # Responses API requires model explicitly
+        kwargs["model"] = self.model.pretrained_model_name_or_path
 
         # OpenAI reasoning models don't support temperature parameter
         if "o3" not in self.model_name and "o4-mini" not in self.model_name:
@@ -113,16 +155,25 @@ class OpenAIResponsesHandler(BaseHandler):
         model_responses = []
         tool_call_ids = []
 
-        for func_call in api_response.output:
-            if func_call.type == "function_call":
-                model_responses.append({func_call.name: func_call.arguments})
-                tool_call_ids.append(func_call.call_id)
+        # Extract tool calls and build a store=false safe history payload (function_call items only)
+        safe_history_items = []
+        for item in api_response.output:
+            if item.type == "function_call":
+                model_responses.append({item.name: item.arguments})
+                tool_call_ids.append(item.call_id)
+                safe_history_items.append(
+                    {
+                        "type": "function_call",
+                        "name": item.name,
+                        "arguments": item.arguments,
+                        "call_id": item.call_id,
+                    }
+                )
 
         if not model_responses:  # If there are no function calls
             model_responses = api_response.output_text
 
-        # OpenAI reasoning models don't show full reasoning content in the api response,
-        # but only a summary of the reasoning content.
+        # Summarize reasoning if present (for logging only)
         reasoning_content = ""
         for item in api_response.output:
             if item.type == "reasoning":
@@ -131,7 +182,7 @@ class OpenAIResponsesHandler(BaseHandler):
 
         return {
             "model_responses": model_responses,
-            "model_responses_message_for_chat_history": api_response.output,
+            "model_responses_message_for_chat_history": safe_history_items,
             "tool_call_ids": tool_call_ids,
             "reasoning_content": reasoning_content,
             "input_token": api_response.usage.input_tokens,
@@ -153,6 +204,8 @@ class OpenAIResponsesHandler(BaseHandler):
     def _add_assistant_message_FC(
         self, inference_data: dict, model_response_data: dict
     ) -> dict:
+        # With store=false, avoid pushing opaque response objects back.
+        # Only push function_call items we explicitly constructed.
         inference_data["message"].extend(
             model_response_data["model_responses_message_for_chat_history"]
         )
@@ -164,7 +217,7 @@ class OpenAIResponsesHandler(BaseHandler):
         execution_results: list[str],
         model_response_data: dict,
     ) -> dict:
-        # Add the execution results to the current round result, one at a time
+        # With store=false, return tool outputs in the Responses input shape
         for execution_result, tool_call_id in zip(
             execution_results, model_response_data["tool_call_ids"]
         ):
@@ -184,11 +237,16 @@ class OpenAIResponsesHandler(BaseHandler):
 
         kwargs = {
             "input": inference_data["message"],
-            "model": self.model_name.replace("-FC", ""),
             "store": False,
-            "include": ["reasoning.encrypted_content"],
-            "reasoning": {"summary": "auto"},
         }
+
+        # Use include only if specified in YAML generator config
+        include_from_cfg = self.generator_config.get("include") if hasattr(self, "generator_config") else None
+        if include_from_cfg:
+            kwargs["include"] = include_from_cfg
+
+        # Responses API requires model explicitly
+        kwargs["model"] = self.model.pretrained_model_name_or_path
 
         # OpenAI reasoning models don't support temperature parameter
         if "o3" not in self.model_name and "o4-mini" not in self.model_name:
