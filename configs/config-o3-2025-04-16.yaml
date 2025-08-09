@@ -19,3 +19,4 @@ generator:
   include:
     - "reasoning.encrypted_content"
   parallel_tool_calls: true
+  temparature: None
