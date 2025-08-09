@@ -4,6 +4,7 @@ import time
 from typing import Dict, List, Any, Generic, TypeVar
 from enum import Enum
 
+from config_singleton import WandbConfigSingleton
 from .base_oss_handler import OSSHandler
 from overrides import override
 from pydantic import BaseModel, Field
@@ -38,6 +39,13 @@ class UnifiedOSSJsonSchemaHandler(OSSHandler):
     
     def __init__(self, model_name, temperature) -> None:
         super().__init__(model_name, temperature)
+
+        cfg = WandbConfigSingleton.get_instance().config
+        handler_config = cfg.bfcl.handler_config.unified_oss_jsonschema
+        self.execution_result_role = handler_config.execution_result_role
+        self.execution_result_include_call_str = handler_config.execution_result_include_call_str
+        self.execution_result_include_call_id = handler_config.execution_result_include_call_id
+        self.execution_result_join_parallel_calls = handler_config.execution_result_join_parallel_calls
         print(f"[UnifiedOSSJsonSchemaHandler] 初期化完了 - モデル: {model_name}")
 
     @override
@@ -136,7 +144,37 @@ class UnifiedOSSJsonSchemaHandler(OSSHandler):
     ) -> dict:
         """
         実行結果の追加
-        標準的なtoolロールを使用（大部分のモデルで動作）
+        
+        Example:
+
+        # デフォルト
+        execution_result_include_call_str=True,
+        execution_result_include_call_id=False,
+        execution_result_join_parallel_calls=False,
+        execution_result_role="tool"
+        ```
+        {"role": "tool", "content": "[1]: tool1(arg1=1, arg2=2)\n{\"result\": \"foo\"}"},
+        {"role": "tool", "content": "[2]: tool2(arg1=1, arg2=2)\n{\"result\": \"bar\"}"},
+        ```
+
+        # Mistral系(tool_call_id必須)
+        execution_result_include_call_str=False,
+        execution_result_include_call_id=True,
+        execution_result_join_parallel_calls=False,
+        execution_result_role="tool"
+        ```
+        {"role": "tool", "content": "{\"result\": \"foo\"}", "tool_call_id": "fc_0000001"},
+        {"role": "tool", "content": "{\"result\": \"bar\"}", "tool_call_id": "fc_0000002"},
+        ```
+
+        # Gemma系(tool role不可、user/assistant交互必須)
+        execution_result_include_call_str=True,
+        execution_result_include_call_id=False,
+        execution_result_join_parallel_calls=True,
+        execution_result_role="user"
+        ```
+        {"role": "user", "content": "[1]: tool1(arg1=1, arg2=2)\n{\"result\": \"foo\"}\n\n[2]: tool2(arg1=1, arg2=2)\n{\"result\": \"bar\"}"},
+        ```
         """
         if len(execution_results) == 0:
             return inference_data
@@ -145,12 +183,36 @@ class UnifiedOSSJsonSchemaHandler(OSSHandler):
             inference_data['execution_count'] = 0
 
         decoded_calls = self.decode_execute(model_response_data["model_responses"])
+
+        contents = []
         for decoded_call, execution_result in zip(decoded_calls, execution_results):
             execution_result = '{}' if execution_result is None else execution_result
             inference_data['execution_count'] += 1
-            inference_data["message"].append({
-                "role": "tool",
-                "content": f"[{inference_data['execution_count']}]: {decoded_call}\n{execution_result}",
-            })
+            # call_idを入れない場合はメッセージの先頭にシーケンス番号を入れる
+            content = '' if self.execution_result_include_call_id else f'[{inference_data["execution_count"]}]: '
+            # Parallel call時にTool呼び出しとの対応付けのためcall strを入れる
+            if self.execution_result_include_call_str:
+                content += decoded_call + "\n"
+            # 実行結果
+            content += execution_result
+            contents.append(content)
+
+        # roleがuser/assistant交互でないと通らないモデルの場合、連続したtoolメッセージをまとめる
+        if self.execution_result_join_parallel_calls:
+            contents = ["\n\n".join(contents)]
+        
+        for content in contents:
+            msg = {
+                "role": self.execution_result_role,
+                "content": content,
+            }
+            # tool_call_idを展開できるモデルの場合はtool_call_idを追加
+            if self.execution_result_include_call_id:
+                if 'mistral' in self.model_name:
+                    # Mistralは9桁英数のバリデーションがtemplate内にある
+                    msg["tool_call_id"] = f'fc{str(inference_data["execution_count"]).ljust(7, "0")}'
+                else:
+                    msg["tool_call_id"] = f'fc_{str(inference_data["execution_count"])}'
+            inference_data["message"].append(msg)
         
         return inference_data

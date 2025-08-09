@@ -181,6 +181,18 @@ bfcl:
     max_tokens: 8096
     temperature: 0.01
     top_p: 1.0
+  handler_config:
+    unified_oss_jsonschema:
+      # ツールの実行結果メッセージにtool callの文字列 tool(arg1=1, arg2=2) を含めるかどうか
+      execution_result_include_call_str: true
+      # ツールの実行結果メッセージにtool_call_idを含めるかどうか　
+      # trueの場合 "tool_call_id"のfieldが追加される
+      # falseの場合はcontentの先頭部分に [1]: のように実行番号が追加される
+      execution_result_include_call_id: false
+      # 複数のツールが並列実行されたとき、ツールの実行結果メッセージを1つに連結するかどうか
+      execution_result_join_parallel_calls: true
+      # ツールの実行結果のrole "tool"が許可されていない場合は"user"などに変更する
+      execution_result_role: "tool"
 
 hallulens:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/hallulens:production'
