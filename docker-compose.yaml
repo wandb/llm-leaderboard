@@ -10,7 +10,7 @@ services:
     runtime: nvidia
     working_dir: /workspace
     environment:
-      - HUGGINGFACE_HUB_TOKEN=${HUGGINGFACE_HUB_TOKEN}
+      - HF_TOKEN=${HF_TOKEN:-${HUGGINFACE_HUB_TOKEN}}
       - LOCAL_MODEL_PATH=${LOCAL_MODEL_PATH}
       - EVAL_CONFIG_PATH=${EVAL_CONFIG_PATH}
       - NVIDIA_VISIBLE_DEVICES=all
