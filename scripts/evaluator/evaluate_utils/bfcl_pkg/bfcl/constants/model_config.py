@@ -1216,7 +1216,7 @@ local_inference_model_map = {
         input_price=None,
         output_price=None,
         is_fc_model=False,
-        underscore_to_dot=True,
+        underscore_to_dot=False,
     ),
     "deepseek-ai/DeepSeek-R1": ModelConfig(
         model_name="deepseek-ai/DeepSeek-R1",
