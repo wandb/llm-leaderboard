@@ -1,3 +1,5 @@
+{#- Applied parallel call fix and tool_call_id length adjustment to original template #}
+{#- https://github.com/vllm-project/vllm/blob/v0.8.5/examples/tool_chat_template_mistral_parallel.jinja #}
 {%- if messages[0]["role"] == "system" %}
     {%- set system_message = messages[0]["content"] %}
     {%- set loop_messages = messages[1:] %}

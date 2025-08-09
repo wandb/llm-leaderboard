@@ -54,7 +54,7 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
         config = AutoConfig.from_pretrained(**load_kwargs)
 
         if self.custom_chat_template is not None:
-            with open(self.custom_chat_template, "r") as f:
+            with open(os.path.join('chat_templates', self.custom_chat_template + '.jinja'), "r") as f:
                 self.tokenizer.chat_template = f.read()
 
         if hasattr(config, "max_position_embeddings"):
