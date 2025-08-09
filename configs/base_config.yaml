@@ -66,6 +66,8 @@ vllm: # vLLM server-side launch configuration
   reasoning_parser: null
   # HF repository内のリモートコードを信頼するかどうか
   trust_remote_code: false
+  # カスタムchat template(Tool Callingの修正が必要な場合等)
+  chat_template: null
   # Tool callingの自動パースの有効化
   enable_auto_tool_choice: false
   # ツール呼び出しのパーサー

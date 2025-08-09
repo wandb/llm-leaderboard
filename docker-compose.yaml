@@ -17,6 +17,7 @@ services:
     volumes:
       - ./docker-entrypoint-vllm.sh:/workspace/docker-entrypoint-vllm.sh:ro
       - ./configs:/workspace/configs:ro
+      - ./chat_templates:/workspace/chat_templates:ro
       - ~/.cache/huggingface:/root/.cache/huggingface
       - .cache/vllm:/root/.cache/vllm
       - ${LOCAL_MODEL_PATH:-/tmp/empty}:/workspace/models:ro

@@ -17,6 +17,7 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
         #self.model_name_huggingface = self.model_name.replace("-FC", "")
         self.model_name_huggingface = cfg.model.pretrained_model_name_or_path
         self.model_style = ModelStyle.OSSMODEL
+        self.custom_chat_template = cfg.vllm.chat_template
 
     def setup_tokenizer(self, local_model_path: Optional[str] = None):
         from transformers import AutoConfig, AutoTokenizer
@@ -51,6 +52,10 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
 
         self.tokenizer = AutoTokenizer.from_pretrained(**load_kwargs)
         config = AutoConfig.from_pretrained(**load_kwargs)
+
+        if self.custom_chat_template is not None:
+            with open(self.custom_chat_template, "r") as f:
+                self.tokenizer.chat_template = f.read()
 
         if hasattr(config, "max_position_embeddings"):
             self.max_context_length = config.max_position_embeddings
