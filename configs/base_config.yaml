@@ -131,6 +131,7 @@ swebench:
   max_workers: 24  # 並列実行ワーカー数
   evaluation_method: 'official'  # 'official' or 'docker' - 公式パッケージまたは独自Docker実装
   background_eval: false
+  prebuild_images: true
 
 mtbench:
   temperature_override:
