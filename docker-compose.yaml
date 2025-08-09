@@ -18,7 +18,7 @@ services:
       - ./docker-entrypoint-vllm.sh:/workspace/docker-entrypoint-vllm.sh:ro
       - ./configs:/workspace/configs:ro
       - ./chat_templates:/workspace/chat_templates:ro
-      - ~/.cache/huggingface:/root/.cache/huggingface
+      - ${HOST_HF_CACHE_PATH:-~/.cache/huggingface}:/root/.cache/huggingface
       - .cache/vllm:/root/.cache/vllm
       - ${LOCAL_MODEL_PATH:-/tmp/empty}:/workspace/models:ro
     ports:
@@ -84,7 +84,7 @@ services:
       - CODE_EXECUTION_API_KEY=${CODE_EXECUTION_API_KEY:-dify-sandbox}
     ipc: host
     volumes:
-      - ~/.cache/huggingface:/root/.cache/huggingface
+      - ${HOST_HF_CACHE_PATH:-~/.cache/huggingface}:/root/.cache/huggingface
       - ./configs:/workspace/configs:ro
       - ./chat_templates:/workspace/chat_templates:ro
       - ${LOCAL_MODEL_PATH:-/tmp/empty}:/workspace/models:ro
