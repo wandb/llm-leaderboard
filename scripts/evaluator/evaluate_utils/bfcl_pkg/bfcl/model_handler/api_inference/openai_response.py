@@ -121,7 +121,7 @@ class OpenAIResponsesHandler(BaseHandler):
         kwargs["model"] = self.model.pretrained_model_name_or_path
 
         # OpenAI reasoning models don't support temperature parameter
-        if "o3" not in self.model_name and "o4-mini" not in self.model_name:
+        if not any(x in self.model_name_huggingface for x in ["o1", "o3", "o4"]):
             kwargs["temperature"] = self.temperature
 
         if len(tools) > 0:

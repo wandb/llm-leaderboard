@@ -182,6 +182,18 @@ api_inference_model_map = {
         is_fc_model=True,
         underscore_to_dot=True,
     ),
+    "OpenAIResponsesHandler-FC": ModelConfig(
+        model_name="openairesponseshandler-fc",
+        display_name="openairesponseshandler-fc",
+        url="https://openai.com/",
+        org="OpenAI",
+        license="Proprietary",
+        model_handler=OpenAIResponsesHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
     "gpt-4.5-preview-2025-02-27": ModelConfig(
         model_name="gpt-4.5-preview-2025-02-27",
         display_name="GPT-4.5-Preview-2025-02-27 (Prompt)",

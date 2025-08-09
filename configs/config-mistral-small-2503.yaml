@@ -1,0 +1,11 @@
+wandb:
+  run_name: mistral/mistral-small-2503
+api: mistral
+batch_size: 2
+model:
+  pretrained_model_name_or_path: mistral-small-2503
+  bfcl_model_id: mistral-small-2503-FC
+  base_model: "unknown"
+  size_category: api
+  size: null
+  release_date: 06/01/2025   
