@@ -155,16 +155,14 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
 
     #### Prompting methods ####
 
-    # NOTE: _format_prompt is no longer used since we switched to Chat Completion API
-    # The vLLM server now applies the chat template automatically
-    # def _format_prompt(self, messages, function):
-    #     """
-    #     Manually apply the chat template to construct the formatted prompt.
-    #     This way, we can have full control over the final formatted prompt and is generally recommended for advanced use cases.
-    #     """
-    #     raise NotImplementedError(
-    #         "OSS Models should implement their own prompt formatting."
-    #     )
+    def _format_prompt(self, messages, function):
+        """
+        Manually apply the chat template to construct the formatted prompt.
+        This way, we can have full control over the final formatted prompt and is generally recommended for advanced use cases.
+        """
+        raise NotImplementedError(
+            "OSS Models should implement their own prompt formatting."
+        )
 
     @override
     def _query_prompting(self, inference_data: dict):

@@ -18,6 +18,7 @@ class LlamaHandler_3_1(OSSHandler):
         super().__init__(model_name, temperature)
         self.model_name_huggingface = model_name.replace("-FC", "")
 
+    @override
     def _format_prompt(self, messages, function):
         """
         "bos_token": "<|begin_of_text|>",
