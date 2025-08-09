@@ -19,7 +19,7 @@ services:
       - ./configs:/workspace/configs:ro
       - ./chat_templates:/workspace/chat_templates:ro
       - ${HOST_HF_CACHE_PATH:-~/.cache/huggingface}:/root/.cache/huggingface
-      - .cache/vllm:/root/.cache/vllm
+      - ./.cache/vllm:/root/.cache/vllm
       - ${LOCAL_MODEL_PATH:-/tmp/empty}:/workspace/models:ro
     ports:
       - "${VLLM_PORT:-8000}:8000"
