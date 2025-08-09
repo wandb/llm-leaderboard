@@ -18,6 +18,7 @@ services:
       - ./docker-entrypoint-vllm.sh:/workspace/docker-entrypoint-vllm.sh:ro
       - ./configs:/workspace/configs:ro
       - ~/.cache/huggingface:/root/.cache/huggingface
+      - .cache/vllm:/root/.cache/vllm
       - ${LOCAL_MODEL_PATH:-/tmp/empty}:/workspace/models:ro
     ports:
       - "${VLLM_PORT:-8000}:8000"
