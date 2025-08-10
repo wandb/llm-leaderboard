@@ -1,7 +1,7 @@
 wandb:
   run_name: mistral/mistral-large-2411
 api: mistral
-batch_size: 32
+batch_size: 1
 model:
   pretrained_model_name_or_path: mistral-large-2411
   bfcl_model_id: mistral-large-2411-FC

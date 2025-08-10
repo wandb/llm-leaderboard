@@ -28,9 +28,9 @@ vllm:
   # 以下はモデルにより調整が必要な場合のみ設定。
   # disable_triton_mma: false
   # dtype: bfloat16
-  # max_model_len: 8192
-  device_map: auto
-  gpu_memory_utilization: 0.80
+  max_model_len: 20000
+  # device_map: auto
+  gpu_memory_utilization: 0.90
   # reasoning_parser: deepseek_r1
   # ↓ Tool calling を有効にする場合は以下を設定。bfcl_model_idで"united_oss_fc"を利用する際は必要
   # enable_auto_tool_choice: true
