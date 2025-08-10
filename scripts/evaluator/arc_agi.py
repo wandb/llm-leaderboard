@@ -9,6 +9,7 @@ from tqdm import tqdm
 import numpy as np
 from PIL import Image
 import wandb
+import weave
 from matplotlib.colors import TABLEAU_COLORS
 
 from config_singleton import WandbConfigSingleton
@@ -219,6 +220,7 @@ def tile_to_img(expected: List[List[int]], output: Optional[List[List[int]]]) ->
     return wandb.Image(pil_image, boxes=bboxes)
 
 
+@weave.op(call_display_name=lambda _: "[ARC-AGI] " + WandbConfigSingleton.get_instance().config.wandb.run_name)
 def evaluate():
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()

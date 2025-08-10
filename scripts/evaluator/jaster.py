@@ -7,6 +7,7 @@ import pandas as pd
 from toolz import pipe
 from tqdm import tqdm
 import wandb
+import weave
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import (
@@ -349,7 +350,8 @@ def evaluate_n_shot(few_shots: bool):
                 f"jmmlu_robust_{num_few_shots}shot_leaderboard_table": leaderboard_robust_table
             }
         )
-        
+
+@weave.op(call_display_name=lambda _: "[BFCL] " + WandbConfigSingleton.get_instance().config.wandb.run_name)
 def evaluate():
     evaluate_n_shot(few_shots=False)
     evaluate_n_shot(few_shots=True)

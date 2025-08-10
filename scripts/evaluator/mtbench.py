@@ -6,6 +6,7 @@ import asyncio
 import numpy as np
 import pandas as pd
 import wandb
+import weave
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Tuple, Literal, Awaitable
 import shortuuid
@@ -536,6 +537,7 @@ async def async_evaluate():
     print("MT-Bench評価が正常に完了しました！")
     return
 
+@weave.op(call_display_name=lambda _: "[MT-Bench] " + WandbConfigSingleton.get_instance().config.wandb.run_name)
 def evaluate():
     """非同期評価関数を実行するエントリーポイント"""
     asyncio.run(async_evaluate()) 

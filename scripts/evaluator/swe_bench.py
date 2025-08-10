@@ -11,6 +11,7 @@ from functools import partial
 import multiprocessing as mp
 import pandas as pd
 import wandb
+import weave
 from tqdm import tqdm
 import subprocess
 import os
@@ -533,6 +534,7 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instan
     
     return result
 
+@weave.op(call_display_name=lambda _: "[SWE-Bench] " + WandbConfigSingleton.get_instance().config.wandb.run_name)
 def evaluate():
     """SWE-bench評価メイン関数"""
     instance = WandbConfigSingleton.get_instance()
