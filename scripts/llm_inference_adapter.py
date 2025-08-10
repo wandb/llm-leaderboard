@@ -410,12 +410,17 @@ class OpenAIClient:
         if not reasoning_content and hasattr(response.choices[0].message, 'reasoning'):
             reasoning_content = getattr(response.choices[0].message, 'reasoning', '')
 
+        # usageが返らない実装（プロキシ/一部プロバイダ）に対する安全ガード
+        usage = getattr(response, 'usage', None)
+        prompt_tokens = getattr(usage, 'prompt_tokens', None) if usage is not None else None
+        completion_tokens = getattr(usage, 'completion_tokens', None) if usage is not None else None
+
         llm_response = LLMResponse(
             content=content,
             reasoning_content=reasoning_content,
             parsed_output=parsed_output,
-            prompt_tokens=response.usage.prompt_tokens,
-            completion_tokens=response.usage.completion_tokens
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens
         )
 
         def parse_arguments(arguments: str):

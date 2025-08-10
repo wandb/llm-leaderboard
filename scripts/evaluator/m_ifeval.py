@@ -102,8 +102,17 @@ def evaluate():
         # メッセージ形式に変換
         messages = [{"role": "user", "content": prompt}]
         
-        # generator config設定
-        generator_config = {"max_tokens": 2048}
+        # generator config設定（YAMLがあれば優先。なければ既定2048）
+        gcfg = cfg.m_ifeval.get("generator_config", {}) if hasattr(cfg, 'm_ifeval') else {}
+        # 後方互換: 既存の max_completion_tokens などを取り込む
+        alias = (
+            gcfg.get("max_tokens")
+            or gcfg.get("max_new_token")
+            or gcfg.get("max_new_tokens")
+            or gcfg.get("max_output_tokens")
+            or gcfg.get("max_completion_tokens")
+        )
+        generator_config = {"max_tokens": alias if alias is not None else 2048}
         
         inputs = [messages, generator_config]
         

@@ -60,6 +60,56 @@ class LLMAsyncProcessor:
         self.inference_interval = inference_interval or cfg.inference_interval
         self.semaphore = asyncio.Semaphore(self.batch_size)
 
+    def _normalize_generation_kwargs(self, kwargs: dict) -> dict:
+        """Normalize generation parameter aliases to a common schema.
+
+        - Map alias keys like 'max_new_tokens', 'max_new_token',
+          'max_output_tokens', 'max_completion_tokens' to 'max_tokens'
+        - Do not overwrite an explicitly provided 'max_tokens'
+        - Remove alias keys once normalized to avoid leaking unknown params
+        """
+        if not isinstance(kwargs, dict):
+            return kwargs
+
+        normalized = dict(kwargs)
+
+        # If max_tokens already present, respect it
+        if "max_tokens" in normalized and normalized["max_tokens"] is not None:
+            # Clean up obvious aliases to reduce noise
+            for alias_key in ("max_new_tokens", "max_new_token", "max_output_tokens", "max_completion_tokens"):
+                if alias_key in normalized:
+                    normalized.pop(alias_key)
+            return normalized
+
+        # Resolve from aliases in priority order
+        alias_priority = (
+            "max_tokens",
+            "max_new_tokens",
+            "max_new_token",
+            "max_output_tokens",
+            "max_completion_tokens",
+        )
+
+        chosen_value = None
+        chosen_key = None
+        for key in alias_priority:
+            if key in normalized and normalized.get(key) is not None:
+                chosen_value = normalized.get(key)
+                chosen_key = key
+                break
+
+        if chosen_value is not None:
+            normalized["max_tokens"] = chosen_value
+
+        # Remove alias keys except canonical one
+        for alias_key in ("max_new_tokens", "max_new_token", "max_output_tokens", "max_completion_tokens"):
+            if alias_key in normalized:
+                # Keep the original only if it is the canonical we selected and no max_tokens was set separately
+                if alias_key != chosen_key:
+                    normalized.pop(alias_key)
+
+        return normalized
+
     @error_handler
     @backoff.on_exception(
         backoff.expo, 
@@ -85,7 +135,8 @@ class LLMAsyncProcessor:
         await asyncio.sleep(self.inference_interval)
         try:
             async with self.semaphore:
-                return await self.llm.ainvoke(messages, **kwargs)
+                normalized_kwargs = self._normalize_generation_kwargs(kwargs)
+                return await self.llm.ainvoke(messages, **normalized_kwargs)
         except openai.PermissionDeniedError as e:
             # コンテンツポリシー違反は即座に失敗させる（リトライしない）
             print(f"Content policy violation occurred: {str(e)}")
@@ -128,7 +179,15 @@ class LLMAsyncProcessor:
         for messages, _ in self.inputs:
             self._assert_messages_format(data=messages)
 
-        tasks = [self._ainvoke(messages, **kwargs) for messages, kwargs in self.inputs]
+        async def _safe_call(messages, kwargs):
+            try:
+                return await self._ainvoke(messages, **kwargs)
+            except Exception as e:
+                # 最終的に失敗した呼び出しは空レスポンスで継続
+                print(f"Final failure in LLM call: {repr(e)}. Returning empty response and continuing.")
+                return LLMResponse(content="")
+
+        tasks = [_safe_call(messages, kwargs) for messages, kwargs in self.inputs]
         return await atqdm.gather(*tasks, desc=f"Processing requests")
 
     def get_results(self) -> List[LLMResponse]:

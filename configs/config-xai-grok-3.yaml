@@ -1,5 +1,5 @@
 wandb:
-  run_name: grok-3
+  run_name: grok-3-high-effort
 api: xai # openai, anthropic, google,..
 batch_size: 8
 model:
@@ -10,3 +10,5 @@ model:
   size: null
   release_date: "2/19/2025"
 
+generator:
+  max_tokens: 128000

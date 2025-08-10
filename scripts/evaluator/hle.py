@@ -169,7 +169,18 @@ async def evaluate_async():
     llm = instance.llm
     
     # Configuration parameters
-    generator_config = cfg.hle.get("generator_config", {})
+    generator_config = dict(cfg.hle.get("generator_config", {}))
+    # 後方互換: 既存の max_completion_tokens を max_tokens として取り込む
+    if "max_tokens" not in generator_config:
+        legacy = (
+            cfg.hle.get("max_completion_tokens", None)
+            or cfg.hle.get("max_output_tokens", None)
+            or generator_config.get("max_new_token")
+            or generator_config.get("max_new_tokens")
+            or generator_config.get("max_output_tokens")
+        )
+        if legacy is not None:
+            generator_config["max_tokens"] = legacy
     judge_model = cfg.hle.judge.get("model", "o3-mini-2025-01-31")
     judge_parallel = cfg.hle.judge.get("parallel", 32)
     judge_params = cfg.hle.judge.get("params", {})

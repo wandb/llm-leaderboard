@@ -266,8 +266,17 @@ async def async_evaluate():
 
     # 1. モデル回答の生成 (修正済み関数を呼び出す)
     print(f"2. モデル回答タスクを生成中... (質問数: {len(questions)})")
-    # mtbenchのgenerator_configを取得
-    default_generator_config = cfg.mtbench.get("generator_config", {})
+    # mtbenchのgenerator_configを取得し、エイリアスを正規化
+    default_generator_config = dict(cfg.mtbench.get("generator_config", {}))
+    # 後方互換: トップレベルに max_new_token(s) / max_tokens があれば取り込む
+    top_level_alias = (
+        cfg.mtbench.get("max_tokens")
+        or cfg.mtbench.get("max_new_token")
+        or cfg.mtbench.get("max_new_tokens")
+        or cfg.mtbench.get("max_output_tokens")
+    )
+    if top_level_alias is not None and "max_tokens" not in default_generator_config:
+        default_generator_config["max_tokens"] = top_level_alias
     # mtbenchのtemperatureオーバーライド設定を取得
     temperature_overrides = cfg.mtbench.get("temperature_override", {}) 
 
