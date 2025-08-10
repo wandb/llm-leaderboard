@@ -10,14 +10,16 @@ services:
     runtime: nvidia
     working_dir: /workspace
     environment:
-      - HUGGINGFACE_HUB_TOKEN=${HUGGINGFACE_HUB_TOKEN}
+      - HF_TOKEN=${HF_TOKEN:-${HUGGINFACE_HUB_TOKEN}}
       - LOCAL_MODEL_PATH=${LOCAL_MODEL_PATH}
       - EVAL_CONFIG_PATH=${EVAL_CONFIG_PATH}
       - NVIDIA_VISIBLE_DEVICES=all
     volumes:
       - ./docker-entrypoint-vllm.sh:/workspace/docker-entrypoint-vllm.sh:ro
       - ./configs:/workspace/configs:ro
-      - ~/.cache/huggingface:/root/.cache/huggingface
+      - ./chat_templates:/workspace/chat_templates:ro
+      - ${HOST_HF_CACHE_PATH:-~/.cache/huggingface}:/root/.cache/huggingface
+      - ./.cache/vllm:/root/.cache/vllm
       - ${LOCAL_MODEL_PATH:-/tmp/empty}:/workspace/models:ro
     ports:
       - "${VLLM_PORT:-8000}:8000"
@@ -82,7 +84,7 @@ services:
       - CODE_EXECUTION_API_KEY=${CODE_EXECUTION_API_KEY:-dify-sandbox}
     ipc: host
     volumes:
-      - ~/.cache/huggingface:/root/.cache/huggingface
+      - ${HOST_HF_CACHE_PATH:-~/.cache/huggingface}:/root/.cache/huggingface
       - ./configs:/workspace/configs:ro
       - ./chat_templates:/workspace/chat_templates:ro
       - ${LOCAL_MODEL_PATH:-/tmp/empty}:/workspace/models:ro

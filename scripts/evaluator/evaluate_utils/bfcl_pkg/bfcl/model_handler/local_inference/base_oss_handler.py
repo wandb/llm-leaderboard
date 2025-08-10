@@ -17,6 +17,7 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
         #self.model_name_huggingface = self.model_name.replace("-FC", "")
         self.model_name_huggingface = cfg.model.pretrained_model_name_or_path
         self.model_style = ModelStyle.OSSMODEL
+        self.custom_chat_template = cfg.vllm.chat_template
 
     def setup_tokenizer(self, local_model_path: Optional[str] = None):
         from transformers import AutoConfig, AutoTokenizer
@@ -51,6 +52,10 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
 
         self.tokenizer = AutoTokenizer.from_pretrained(**load_kwargs)
         config = AutoConfig.from_pretrained(**load_kwargs)
+
+        if self.custom_chat_template is not None:
+            with open(os.path.join('chat_templates', self.custom_chat_template + '.jinja'), "r") as f:
+                self.tokenizer.chat_template = f.read()
 
         if hasattr(config, "max_position_embeddings"):
             self.max_context_length = config.max_position_embeddings
@@ -150,16 +155,14 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
 
     #### Prompting methods ####
 
-    # NOTE: _format_prompt is no longer used since we switched to Chat Completion API
-    # The vLLM server now applies the chat template automatically
-    # def _format_prompt(self, messages, function):
-    #     """
-    #     Manually apply the chat template to construct the formatted prompt.
-    #     This way, we can have full control over the final formatted prompt and is generally recommended for advanced use cases.
-    #     """
-    #     raise NotImplementedError(
-    #         "OSS Models should implement their own prompt formatting."
-    #     )
+    def _format_prompt(self, messages, function):
+        """
+        Manually apply the chat template to construct the formatted prompt.
+        This way, we can have full control over the final formatted prompt and is generally recommended for advanced use cases.
+        """
+        raise NotImplementedError(
+            "OSS Models should implement their own prompt formatting."
+        )
 
     @override
     def _query_prompting(self, inference_data: dict):

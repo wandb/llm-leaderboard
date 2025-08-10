@@ -82,6 +82,12 @@ if [ ! -z "$tool_call_parser" ] && [ "$tool_call_parser" != "null" ]; then
 fi
 echo "tool_call_parser: ${tool_call_parser}"
 
+chat_template=$(yq -r '.vllm.chat_template' configs/$EVAL_CONFIG_PATH)
+if [ ! -z "$chat_template" ] && [ "$chat_template" != "null" ]; then
+    vllm_args+=("--chat-template" "chat_templates/${chat_template}.jinja")
+fi
+echo "chat_template: ${chat_template}"
+
 
 disable_triton_mma=$(yq -r '.vllm.disable_triton_mma' configs/$EVAL_CONFIG_PATH)
 echo "disable_triton_mma: ${disable_triton_mma}"
