@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from typing import Any
 
 from ..base_handler import BaseHandler
 from ...constants.type_mappings import GORILLA_TO_OPENAPI
@@ -9,11 +10,15 @@ from ..utils import (
     ast_parse,
     convert_to_function_call,
     convert_to_tool,
+    default_decode_ast_prompting,
+    default_decode_execute_prompting,
     format_execution_results_prompting,
     func_doc_language_specific_pre_processing,
+    retry_with_backoff,
     system_prompt_pre_processing_chat_model,
 )
-#from mistralai.client import MistralClient
+from config_singleton import WandbConfigSingleton
+from mistralai import Mistral
 #from mistralai.models.chat_completion import ChatMessage
 #from mistralai import Mistral
 
@@ -21,11 +26,18 @@ class MistralHandler(BaseHandler):
     def __init__(self, model_name, temperature) -> None:
         super().__init__(model_name, temperature)
         self.model_style = ModelStyle.Mistral
-
-        self.client = MistralClient(api_key=os.getenv("MISTRAL_API_KEY"))
+        instance = WandbConfigSingleton.get_instance()
+        cfg = instance.config
+        
+        # 直接Mistral APIクライアントを初期化
+        from mistralai import Mistral
+        self.client = Mistral(api_key=os.environ["MISTRAL_API_KEY"])
+        
+        # 正しいモデル名を取得（pretrained_model_name_or_pathを使用）
+        self.api_model_name = cfg.model.pretrained_model_name_or_path
 
     def decode_ast(self, result, language="Python"):
-        if "FC" in self.model_name:
+        if "FC" in self.model_name or self.is_fc_model:
             decoded_output = []
             for invoked_function in result:
                 name = list(invoked_function.keys())[0]
@@ -33,51 +45,40 @@ class MistralHandler(BaseHandler):
                 decoded_output.append({name: params})
             return decoded_output
         else:
-            func = result
-            func = func.replace("\\_", "_")
-            if not func.startswith("["):
-                func = "[" + func
-            if not func.endswith("]"):
-                func = func + "]"
-            decoded_output = ast_parse(func, language)
-            return decoded_output
+            return default_decode_ast_prompting(result, language)
 
     def decode_execute(self, result):
-        if "FC" in self.model_name:
-            function_call = convert_to_function_call(result)
-            return function_call
+        if "FC" in self.model_name or self.is_fc_model:
+            return convert_to_function_call(result)
         else:
-            func = result
-            func = func.replace("\\_", "_")
-            decode_output = ast_parse(func)
-            execution_list = []
-            for function_call in decode_output:
-                for key, value in function_call.items():
-                    execution_list.append(
-                        f"{key}({','.join([f'{k}={repr(v)}' for k, v in value.items()])})"
-                    )
-            return execution_list
+            return default_decode_execute_prompting(result)
+
+    @retry_with_backoff(error_type=Exception)
+    def generate_with_backoff(self, **kwargs):
+        start_time = time.time()
+        # Mistral APIの正しい使用方法
+        api_response = self.client.chat.complete(**kwargs)
+        end_time = time.time()
+
+        return api_response, end_time - start_time
 
     #### FC methods ####
 
     def _query_FC(self, inference_data: dict):
-        message = inference_data["message"]
-        tool = inference_data["tools"]
-        inference_data["inference_input_log"] = {
-            "message": message,
-            "tools": tool,
+        message: list[dict] = inference_data["message"]
+        tools = inference_data["tools"]
+        inference_data["inference_input_log"] = {"message": repr(message), "tools": tools}
+
+        kwargs = {
+            "messages": message,
+            "model": self.api_model_name,  # 正しいAPIモデル名を使用
+            "temperature": self.temperature,
         }
 
-        start_time = time.time()
-        api_response = self.client.chat.complete(
-            model=self.model_name.replace("-FC", ""),
-            messages=message,
-            tools=tool,
-            temperature=self.temperature,
-        )
-        end_time = time.time()
+        if len(tools) > 0:
+            kwargs["tools"] = tools
 
-        return api_response, end_time - start_time
+        return self.generate_with_backoff(**kwargs)
 
     def _pre_query_processing_FC(self, inference_data: dict, test_entry: dict) -> dict:
         inference_data["message"] = []
@@ -100,22 +101,18 @@ class MistralHandler(BaseHandler):
                 {func_call.function.name: func_call.function.arguments}
                 for func_call in api_response.choices[0].message.tool_calls
             ]
-            tool_call_func_names = [
-                func_call.function.name
-                for func_call in api_response.choices[0].message.tool_calls
-            ]
             tool_call_ids = [
                 func_call.id for func_call in api_response.choices[0].message.tool_calls
             ]
         except:
             model_responses = api_response.choices[0].message.content
-            tool_call_func_names = []
             tool_call_ids = []
+
+        model_responses_message_for_chat_history = api_response.choices[0].message
 
         return {
             "model_responses": model_responses,
-            "model_responses_message_for_chat_history": api_response.choices[0].message,
-            "tool_call_func_names": tool_call_func_names,
+            "model_responses_message_for_chat_history": model_responses_message_for_chat_history,
             "tool_call_ids": tool_call_ids,
             "input_token": api_response.usage.prompt_tokens,
             "output_token": api_response.usage.completion_tokens,
@@ -142,37 +139,79 @@ class MistralHandler(BaseHandler):
         return inference_data
 
     def _add_execution_results_FC(
-        self, inference_data: dict, execution_results: list[str], model_response_data: dict
+        self,
+        inference_data: dict,
+        execution_results: list[str],
+        model_response_data: dict,
     ) -> dict:
-        for execution_result, func_name, tool_call_id in zip(
-            execution_results,
-            model_response_data["tool_call_func_names"],
-            model_response_data["tool_call_ids"],
+        # Add the execution results to the current round result, one at a time
+        for execution_result, tool_call_id in zip(
+            execution_results, model_response_data["tool_call_ids"]
         ):
             tool_message = {
                 "role": "tool",
-                "name": func_name,
                 "content": execution_result,
                 "tool_call_id": tool_call_id,
             }
             inference_data["message"].append(tool_message)
+
         return inference_data
+
+    def _add_reasoning_content_if_available_FC(
+        self, api_response: Any, response_data: dict
+    ) -> None:
+        """
+        OpenAI models don't show reasoning content in the api response,
+        but many other models that use the OpenAI interface do, such as DeepSeek and Grok.
+        This method is included here to avoid code duplication.
+
+        These models often don't take reasoning content in the chat history for next turn.
+        Thus, this method saves reasoning content to response_data (for local result file) if present in the response,
+        but does not include it in the chat history.
+        """
+        # Original assistant message object (contains `reasoning_content` on DeepSeek).
+        message = api_response.choices[0].message
+
+        # Preserve tool_call information but strip the unsupported `reasoning_content` field before inserting into chat history.
+        if getattr(message, "tool_calls", None):
+            assistant_message = {
+                "role": "assistant",
+                "content": message.content,
+                "tool_calls": [
+                    {
+                        "id": tool_call.id,
+                        "type": tool_call.type,
+                        "function": {
+                            "name": tool_call.function.name,
+                            "arguments": tool_call.function.arguments,
+                        },
+                    }
+                    for tool_call in message.tool_calls
+                ],
+            }
+            response_data["model_responses_message_for_chat_history"] = assistant_message
+
+        # If no tool_calls, we still need to strip reasoning_content.
+        elif hasattr(message, "reasoning_content"):
+            response_data["model_responses_message_for_chat_history"] = {
+                "role": "assistant",
+                "content": message.content,
+            }
+
+        # Capture the reasoning trace so it can be logged to the local result file.
+        if hasattr(message, "reasoning_content"):
+            response_data["reasoning_content"] = message.reasoning_content
 
     #### Prompting methods ####
 
     def _query_prompting(self, inference_data: dict):
-        message = inference_data["message"]
-        inference_data["inference_input_log"] = {"message": repr(message)}
+        inference_data["inference_input_log"] = {"message": repr(inference_data["message"])}
 
-        start_time = time.time()
-        api_response = self.client.chat(
-            model=self.model_name,
-            messages=message,
+        return self.generate_with_backoff(
+            messages=inference_data["message"],
+            model=self.api_model_name,
             temperature=self.temperature,
         )
-        end_time = time.time()
-
-        return api_response, end_time - start_time
 
     def _pre_query_processing_prompting(self, test_entry: dict) -> dict:
         functions: list = test_entry["function"]
@@ -225,3 +264,24 @@ class MistralHandler(BaseHandler):
         )
 
         return inference_data
+
+    def _add_reasoning_content_if_available_prompting(
+        self, api_response: Any, response_data: dict
+    ) -> None:
+        """
+        OpenAI models don't show reasoning content in the api response,
+        but many other models that use the OpenAI interface do, such as DeepSeek and Grok.
+        This method is included here to avoid code duplication.
+
+        These models often don't take reasoning content in the chat history for next turn.
+        Thus, this method saves reasoning content to response_data (for local result file) if present in the response,
+        but does not include it in the chat history.
+        """
+        message = api_response.choices[0].message
+        if hasattr(message, "reasoning_content"):
+            response_data["reasoning_content"] = message.reasoning_content
+            # Reasoning content should not be included in the chat history
+            response_data["model_responses_message_for_chat_history"] = {
+                "role": "assistant",
+                "content": str(response_data["model_responses"]),
+            }

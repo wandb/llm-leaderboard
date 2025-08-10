@@ -1,0 +1,17 @@
+wandb:
+  run_name: openai/gpt-5-mini-2025-08-07
+api: openai_responses # openai, anthropic, google,.. 
+batch_size: 32
+model:
+  pretrained_model_name_or_path: gpt-5-mini-2025-08-07 # if you use openai api, put the name of model
+  bfcl_model_id: "OpenAIResponsesHandler-FC" # not listed in SUPPORTED_MODELS.md; using Generic OpenAI Handler
+  base_model: "unknown"
+  size_category: api
+  size: null
+  release_date: 8/7/2025 # format: MM/DD/YYYY
+
+generator:
+  reasoning:
+    effort: "high"
+    summary: "auto"
+
