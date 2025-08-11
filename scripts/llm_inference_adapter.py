@@ -330,9 +330,13 @@ class OpenAIClient:
                 params["extra_body"]["reasoning"] = {"exclude": True}
         
         response = self.client.chat.completions.create(**params)
-        content = response.choices[0].message.content
+        # reasoningでtokenを使い切るとcontentがNoneになる対策
+        content = '' if response.choices[0].message.content is None else response.choices[0].message.content
+        reasoning_content = ''
         # vLLM reasoning parser output
-        reasoning_content = getattr(response.choices[0].message, 'reasoning_content', '')
+        if hasattr(response.choices[0].message, 'reasoning_content'):
+            reasoning_content = getattr(response.choices[0].message, 'reasoning_content', '')
+            content = content.lstrip('\n') # vLLM reasoning parserは</think>の後の改行を除去しないためここで除去
         # OpenRouter reasoning field support
         if not reasoning_content and hasattr(response.choices[0].message, 'reasoning'):
             reasoning_content = getattr(response.choices[0].message, 'reasoning', '')
@@ -402,10 +406,14 @@ class OpenAIClient:
             response: OpenAIChatCompletion = await self.async_client.chat.completions.create(**params)
             parsed_output = None
 
-        content = response.choices[0].message.content
+        # reasoningでtokenを使い切るとcontentがNoneになる対策
+        content = '' if response.choices[0].message.content is None else response.choices[0].message.content
+        reasoning_content = ''
         # vLLM reasoning parser output
         # https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#quickstart
-        reasoning_content = getattr(response.choices[0].message, 'reasoning_content', '')
+        if hasattr(response.choices[0].message, 'reasoning_content'):
+            reasoning_content = getattr(response.choices[0].message, 'reasoning_content', '')
+            content = content.lstrip('\n') # vLLM reasoning parserは</think>の後の改行を除去しないためここで除去
         # OpenRouter reasoning field support
         if not reasoning_content and hasattr(response.choices[0].message, 'reasoning'):
             reasoning_content = getattr(response.choices[0].message, 'reasoning', '')

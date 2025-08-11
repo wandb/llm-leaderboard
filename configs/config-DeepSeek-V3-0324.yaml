@@ -1,0 +1,20 @@
+wandb:
+  run_name: deepseek-ai/DeepSeek-V3-0324
+api: openai-compatible # vllm externally launched with multi-node
+base_url: http://vllm-server:18000/v1
+num_gpus: 16
+batch_size: 256
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: deepseek-ai/DeepSeek-V3-0324 #if you use openai api, put the name of model
+  bfcl_model_id: "unified-oss-jsonschema"
+  size_category: "Large (>30B)"
+  size: 684531386000
+  release_date: 3/24/2025
+
+vllm: # This config not used because vLLM launched manually, but for record
+  vllm_tag: v0.10.0
+  extra_args:
+    - "--tensor-parallel-size=8"
+    - "--pipeline-parallel-size=2"
+    - "--enable-expert-parallel"
