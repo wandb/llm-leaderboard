@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 import wandb
+import weave
 from tqdm.asyncio import tqdm as atqdm
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import LLMAsyncProcessor, get_openai_judge_client
@@ -221,5 +222,6 @@ async def evaluate_async():
         "toxicity_radar_table":toxicity_radar,
     })
 
+@weave.op(call_display_name=lambda _: "[Toxicity] " + WandbConfigSingleton.get_instance().config.wandb.run_name)
 def evaluate():
     asyncio.run(evaluate_async())

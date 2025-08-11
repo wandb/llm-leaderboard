@@ -7,6 +7,7 @@ from tqdm import tqdm
 import pandas as pd
 from toolz import pipe
 from dataclasses import dataclass
+import weave
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import (
@@ -372,6 +373,7 @@ def evaluate_n_shot(few_shots: bool):
         }
     )
 
+@weave.op(call_display_name=lambda _: "[JBBQ] " + WandbConfigSingleton.get_instance().config.wandb.run_name)
 def evaluate():
     #evaluate_n_shot(few_shots=False)
     evaluate_n_shot(few_shots=True)

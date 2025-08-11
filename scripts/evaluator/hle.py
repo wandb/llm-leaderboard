@@ -10,6 +10,7 @@ from tqdm.asyncio import tqdm as atqdm
 import pandas as pd
 
 import wandb
+import weave
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import LLMAsyncProcessor, get_openai_judge_client
@@ -335,5 +336,6 @@ async def evaluate_async():
         
         print(f"HLE evaluation for subset '{subset}' completed and logged to wandb")
 
+@weave.op(call_display_name=lambda _: "[HLE] " + WandbConfigSingleton.get_instance().config.wandb.run_name)
 def evaluate():
     asyncio.run(evaluate_async())
