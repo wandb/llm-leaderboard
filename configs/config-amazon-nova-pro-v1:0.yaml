@@ -1,8 +1,8 @@
 wandb:
   run_name: us.amazon.nova-pro-v1:0
 api: amazon_bedrock
-batch_size: 1
-inference_interval: 16
+batch_size: 4
+inference_interval: 2
 model:
   pretrained_model_name_or_path: us.amazon.nova-pro-v1:0
   bfcl_model_id: "nova-pro-v1.0"

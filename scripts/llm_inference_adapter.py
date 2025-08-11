@@ -132,7 +132,8 @@ class ChatBedrock(BaseLLMClient):
         
         self.bedrock_runtime = boto3.client(
             service_name="bedrock-runtime",
-            region_name=os.environ.get("AWS_DEFAULT_REGION", "us-west-1"),
+            # Prefer explicit AWS_BEDROCK_REGION, then AWS_DEFAULT_REGION, fallback to us-east-1
+            region_name=os.environ.get("AWS_BEDROCK_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1")),
             config=config,
         )
         self.model_id = cfg.model.pretrained_model_name_or_path
@@ -205,10 +206,15 @@ class ChatBedrock(BaseLLMClient):
                     body=json.dumps(body_dict),
                     modelId=self.model_id
                 )
-                response_body = json.loads(response.get("body").read())
+                # 一部プロバイダが非JSONを返す場合のフォールバック
+                try:
+                    response_body = json.loads(response.get("body").read())
+                except Exception:
+                    response_body = {"content": []}
         except ClientError as e:
             print(f"ERROR: Can't invoke '{self.model_id}'. Reason: {e}")
-            raise
+            # フォールバック空応答
+            return {"content": []}
         except Exception as e:
             print(f"ERROR: Unexpected error during invocation of '{self.model_id}'. Reason: {e}")
             # エラーの場合は空のレスポンスを返す
@@ -410,12 +416,17 @@ class OpenAIClient:
         if not reasoning_content and hasattr(response.choices[0].message, 'reasoning'):
             reasoning_content = getattr(response.choices[0].message, 'reasoning', '')
 
+        # usage が欠落する実装に対しても安全にデフォルト0で継続
+        usage = getattr(response, 'usage', None)
+        prompt_tokens = getattr(usage, 'prompt_tokens', 0) if usage is not None else 0
+        completion_tokens = getattr(usage, 'completion_tokens', 0) if usage is not None else 0
+
         llm_response = LLMResponse(
             content=content,
             reasoning_content=reasoning_content,
             parsed_output=parsed_output,
-            prompt_tokens=response.usage.prompt_tokens,
-            completion_tokens=response.usage.completion_tokens
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens
         )
 
         def parse_arguments(arguments: str):
