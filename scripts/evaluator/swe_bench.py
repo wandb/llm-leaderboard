@@ -868,40 +868,21 @@ def evaluate():
 
 def run_evaluation_proc(predictions_file, max_workers, instance_ids, samples, result_queue):
     """SWE-Bench評価実行（バックグラウンド実行用）のラッパー関数"""
-    # 進捗をリアルタイムで表示するため、標準出力のリダイレクトを削除
-    # ただし、ログのプレフィックスを追加して他のベンチマークと区別
-    import sys
-    old_stdout_write = sys.stdout.write
-    old_stderr_write = sys.stderr.write
-    
-    def prefixed_stdout_write(text):
-        if text.strip():  # 空行以外にプレフィックスを追加
-            return old_stdout_write(f"[SWE-Bench] {text}")
-        return old_stdout_write(text)
-    
-    def prefixed_stderr_write(text):
-        if text.strip():
-            return old_stderr_write(f"[SWE-Bench] {text}")
-        return old_stderr_write(text)
-    
-    # 一時的に出力関数を置き換え
-    sys.stdout.write = prefixed_stdout_write
-    sys.stderr.write = prefixed_stderr_write
-    
+    # 進捗をリアルタイムで表示（プレフィックスは print 時に追加）
     try:
+        print("[SWE-Bench] Starting evaluation...")
         result = run_swebench_evaluation(predictions_file, max_workers, instance_ids, samples)
-        print(f"[SWE-Bench] Evaluation completed. Putting result to queue...")
+        print("[SWE-Bench] Evaluation completed. Putting result to queue...")
         result_queue.put((result, ""))  # ログは既にリアルタイム出力済み
-        print(f"[SWE-Bench] Result queued successfully.")
+        print("[SWE-Bench] Result queued successfully.")
     except Exception as e:
         # 例外はメインプロセス側でraiseする
         print(f"[SWE-Bench] Exception occurred: {e}")
+        import traceback
+        traceback.print_exc()
         result_queue.put((e, ""))
-        print(f"[SWE-Bench] Exception queued.")
+        print("[SWE-Bench] Exception queued.")
     finally:
-        # 元の出力関数に戻す
-        sys.stdout.write = old_stdout_write
-        sys.stderr.write = old_stderr_write
         # プロセス側で明示終了（ゾンビ回避）
         import os
         os._exit(0)
