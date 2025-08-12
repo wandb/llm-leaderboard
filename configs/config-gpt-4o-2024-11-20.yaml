@@ -10,3 +10,25 @@ model:
   size: null
   release_date: 11/20/2024 # format: MM/DD/YYYY
 
+run:
+  jaster: false 
+  jmmlu_robustness: false # if this is set as true, jaster should set as true
+  mtbench: false
+  jbbq: false
+  toxicity: false
+  jtruthfulqa: false
+  hle: false
+  swebench: true
+  bfcl: false
+  hallulens: false
+  arc_agi: false
+  m_ifeval: false
+  aggregate: false
+
+swebench:
+  api_server:
+    enabled: true
+    endpoint: 'https://api.nejumi-swebench.org'
+
+testmode: true
+
