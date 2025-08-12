@@ -868,20 +868,39 @@ def evaluate():
 
 def run_evaluation_proc(predictions_file, max_workers, instance_ids, samples, result_queue):
     """SWE-Bench評価実行（バックグラウンド実行用）のラッパー関数"""
-    import io
-    from contextlib import redirect_stdout, redirect_stderr
-    # バックグラウンド実行時に他のベンチとログが混ざらないように標準出力をバッファリング
-    with io.StringIO() as buf, redirect_stdout(buf), redirect_stderr(buf):
-        try:
-            result = run_swebench_evaluation(predictions_file, max_workers, instance_ids, samples)
-            result_queue.put((result, buf.getvalue()))
-        except Exception as e:
-            # 例外はメインプロセス側でraiseする
-            result_queue.put((e, buf.getvalue()))
-        finally:
-            # プロセス側で明示終了（ゾンビ回避）
-            import os
-            os._exit(0)
+    # 進捗をリアルタイムで表示するため、標準出力のリダイレクトを削除
+    # ただし、ログのプレフィックスを追加して他のベンチマークと区別
+    import sys
+    old_stdout_write = sys.stdout.write
+    old_stderr_write = sys.stderr.write
+    
+    def prefixed_stdout_write(text):
+        if text.strip():  # 空行以外にプレフィックスを追加
+            return old_stdout_write(f"[SWE-Bench] {text}")
+        return old_stdout_write(text)
+    
+    def prefixed_stderr_write(text):
+        if text.strip():
+            return old_stderr_write(f"[SWE-Bench] {text}")
+        return old_stderr_write(text)
+    
+    # 一時的に出力関数を置き換え
+    sys.stdout.write = prefixed_stdout_write
+    sys.stderr.write = prefixed_stderr_write
+    
+    try:
+        result = run_swebench_evaluation(predictions_file, max_workers, instance_ids, samples)
+        result_queue.put((result, ""))  # ログは既にリアルタイム出力済み
+    except Exception as e:
+        # 例外はメインプロセス側でraiseする
+        result_queue.put((e, ""))
+    finally:
+        # 元の出力関数に戻す
+        sys.stdout.write = old_stdout_write
+        sys.stderr.write = old_stderr_write
+        # プロセス側で明示終了（ゾンビ回避）
+        import os
+        os._exit(0)
 
 def calculate_metrics(samples, results_or_queue, temp_dir):
     """SWE-Bench評価結果の集計"""
