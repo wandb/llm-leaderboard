@@ -15,6 +15,8 @@ import weave
 from tqdm import tqdm
 import subprocess
 import os
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils.llm_async_processor import LLMAsyncProcessor
@@ -373,10 +375,133 @@ def generate_predictions(samples: List[Dict], llm, generator_config, output_file
             logger.error(traceback.format_exc()) #詳細なトレースバックをログに記録
             continue # 次のサンプルへ
 
+def _api_http_json(method: str, url: str, body_obj=None, headers=None, timeout: float = 300.0):
+    data = None
+    if body_obj is not None:
+        data = json.dumps(body_obj).encode("utf-8")
+    req = Request(url=url, data=data, method=method)
+    req.add_header("Content-Type", "application/json")
+    if headers:
+        for k, v in (headers or {}).items():
+            req.add_header(k, v)
+    with urlopen(req, timeout=timeout) as resp:
+        charset = resp.headers.get_content_charset() or "utf-8"
+        text = resp.read().decode(charset)
+        return json.loads(text) if text else {}
+
+
 def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instance_ids: List[str] = None, samples: List[Dict] = None) -> Dict:
-    """公式SWE-bench評価実行（Arrow形式データセットから直接構築）"""
     from swebench.harness.run_evaluation import main as run_evaluation
-    
+    instance = WandbConfigSingleton.get_instance()
+    cfg = instance.config
+
+    api_cfg = cfg.swebench.get("api_server", {}) if hasattr(cfg, 'swebench') else {}
+    use_api = bool(api_cfg.get("enabled", False))
+
+    if use_api:
+        # Submit each instance to API server and aggregate results
+        endpoint = (api_cfg.get("endpoint") or os.getenv("SWE_API_ENDPOINT") or "http://127.0.0.1:8000").rstrip("/")
+        api_key = api_cfg.get("api_key") or os.getenv("SWE_API_KEY")
+        # Effective image namespace/tag (simplified)
+        # Priority: api_server.namespace/tag > images.namespace/tag > defaults
+        images_cfg = getattr(cfg.swebench, 'images', None)
+        ns = (
+            api_cfg.get("namespace")
+            or (images_cfg.get("namespace") if images_cfg else None)
+            or "swebench"
+        )
+        tag = (
+            api_cfg.get("tag")
+            or (images_cfg.get("tag") if images_cfg else None)
+            or "latest"
+        )
+        timeout_sec = int(api_cfg.get("timeout_sec", 1200))
+
+        headers = {"X-API-Key": api_key} if api_key else {}
+        # load predictions file
+        instances = []
+        with open(predictions_file, "r", encoding="utf-8") as f:
+            for line in f:
+                obj = json.loads(line)
+                instances.append(obj)
+
+        resolved_ids = []
+        unresolved_ids = []
+        error_ids = []
+        empty_patch_ids = []
+
+        for pred in instances:
+            iid = pred["instance_id"]
+            patch = pred.get("model_patch", "")
+            payload = {
+                "instance_id": iid,
+                "patch_diff": patch,
+                "namespace": ns,
+                "tag": tag,
+                "model_name_or_path": pred.get("model_name_or_path") or cfg.model.pretrained_model_name_or_path,
+            }
+            job = _api_http_json("POST", f"{endpoint}/v1/jobs", body_obj=payload, headers=headers, timeout=60)
+            job_id = job.get("job_id")
+
+            start = time.time()
+            status = "queued"
+            report_path = None
+            while True:
+                time.sleep(2)
+                j = _api_http_json("GET", f"{endpoint}/v1/jobs/{job_id}", headers=headers, timeout=60)
+                status = j.get("status")
+                if status in {"finished", "failed"}:
+                    res = j.get("result") or {}
+                    report_path = res.get("report_path")
+                    break
+                if time.time() - start > timeout_sec:
+                    status = "timeout"
+                    break
+
+            final_class = status
+            if status == "finished" and report_path:
+                with open(report_path, "r", encoding="utf-8") as rf:
+                    rep = json.load(rf)
+                if rep.get("error_instances") == 1 or iid in (rep.get("error_ids") or []):
+                    final_class = "error"
+                elif iid in (rep.get("resolved_ids") or []):
+                    final_class = "resolved"
+                elif iid in (rep.get("unresolved_ids") or []):
+                    final_class = "unresolved"
+                elif iid in (rep.get("empty_patch_ids") or []):
+                    final_class = "empty_patch"
+                else:
+                    final_class = "error"
+
+            if final_class == "resolved":
+                resolved_ids.append(iid)
+            elif final_class == "unresolved":
+                unresolved_ids.append(iid)
+            elif final_class == "empty_patch":
+                empty_patch_ids.append(iid)
+            else:
+                error_ids.append(iid)
+
+        total = len(instances)
+        return {
+            "total_instances": total,
+            "submitted_instances": total,
+            "completed_instances": len(resolved_ids) + len(unresolved_ids) + len(error_ids) + len(empty_patch_ids),
+            "resolved_instances": len(resolved_ids),
+            "unresolved_instances": len(unresolved_ids),
+            "empty_patch_instances": len(empty_patch_ids),
+            "error_instances": len(error_ids),
+            "completed_ids": resolved_ids + unresolved_ids + error_ids + empty_patch_ids,
+            "incomplete_ids": [],
+            "empty_patch_ids": empty_patch_ids,
+            "submitted_ids": [p["instance_id"] for p in instances],
+            "resolved_ids": resolved_ids,
+            "unresolved_ids": unresolved_ids,
+            "error_ids": error_ids,
+            "schema_version": 2,
+        }
+
+    # Fallback to local official harness
     # run_id生成
     run_id = f"nejumi_{int(time.time())}"
     
@@ -721,11 +846,11 @@ def calculate_metrics(samples, results_or_queue, temp_dir):
 
                 # イメージ存在確認（新規追加）
                 # SWE-benchのイメージ名規則に従う
-                # 設定からnamespaceを取得
+                # 設定からnamespaceを取得（後方互換を維持）
                 instance = WandbConfigSingleton.get_instance()
                 cfg = instance.config
-                private_registry = cfg.swebench.get("private_registry", None)
-                namespace = private_registry if private_registry else "swebench"
+                images_cfg = cfg.swebench.get("images", {}) if hasattr(cfg, 'swebench') else {}
+                namespace = (images_cfg.get("namespace") or "swebench")
                 
                 # "__" を "_1776_" に変換（SWE-benchの特殊な命名規則）
                 # 注: 現在のシステムでは namespace="swebench" でも変換されている

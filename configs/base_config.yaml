@@ -134,6 +134,19 @@ swebench:
   evaluation_method: 'official'  # 'official' or 'docker' - 公式パッケージまたは独自Docker実装
   background_eval: false
   prebuild_images: true
+  # APIサーバー経由で評価する場合の設定
+  api_server:
+    enabled: false
+    endpoint: 'https://api.nejumi-swebench.org'
+    api_key: null  # 環境変数 SWE_API_KEY が優先
+    # namespace/tag は上書き用途（未指定なら下の images を参照）
+    # namespace: 'swebench'
+    # tag: 'latest'
+    timeout_sec: 1200
+  # イメージ取得元
+  images:
+    namespace: 'swebench'
+    tag: 'latest'
 
 mtbench:
   generator_config:
