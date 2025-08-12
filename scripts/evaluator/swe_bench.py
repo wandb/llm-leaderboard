@@ -387,7 +387,11 @@ def _api_http_json(method: str, url: str, body_obj=None, headers=None, timeout: 
     attempt = 0
     backoff_sec = 2.0
     last_err = None
-    while attempt < 3:
+    
+    # POSTリクエストは副作用があるため、リトライしない
+    max_attempts = 1 if method == "POST" else 3
+    
+    while attempt < max_attempts:
         attempt += 1
         try:
             req = Request(url=url, data=data, method=method)
@@ -400,13 +404,13 @@ def _api_http_json(method: str, url: str, body_obj=None, headers=None, timeout: 
                 text = resp.read().decode(charset)
                 return json.loads(text) if text else {}
         except (TimeoutError, URLError, HTTPError) as e:  # network/transient
-            # 524 (Gateway Timeout) などの一時的なエラーはリトライ
+            # 524 (Gateway Timeout) などの一時的なエラーはリトライ（GETのみ）
             if isinstance(e, HTTPError) and e.code not in [524, 502, 503, 504]:
                 raise  # 回復不可能なHTTPエラーは即座に失敗
             last_err = e
-            if attempt >= 3:
+            if attempt >= max_attempts:
                 raise
-            print(f"[API] Request failed (attempt {attempt}/3): {e}. Retrying in {backoff_sec}s...")
+            print(f"[API] {method} request failed (attempt {attempt}/{max_attempts}): {e}. Retrying in {backoff_sec}s...")
             _time.sleep(backoff_sec)
             backoff_sec *= 2
     # 保険
