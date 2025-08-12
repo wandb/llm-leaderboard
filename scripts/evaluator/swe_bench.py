@@ -540,64 +540,6 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instan
             in_flight = new_in_flight
             while pending and len(in_flight) < concurrency:
                 in_flight.append(submit(pending.pop(0)))
-            iid = pred["instance_id"]
-            patch = pred.get("model_patch", "")
-            payload = {
-                "instance_id": iid,
-                "patch_diff": patch,
-                "namespace": ns,
-                "tag": tag,
-                "model_name_or_path": pred.get("model_name_or_path") or cfg.model.pretrained_model_name_or_path,
-            }
-            job = _api_http_json("POST", f"{endpoint}/v1/jobs", body_obj=payload, headers=headers, timeout=300)
-            job_id = job.get("job_id")
-
-            start = time.time()
-            status = "queued"
-            report_path = None
-            while True:
-                time.sleep(2)
-                j = _api_http_json("GET", f"{endpoint}/v1/jobs/{job_id}", headers=headers, timeout=300)
-                status = j.get("status")
-                if status in {"finished", "failed"}:
-                    res = j.get("result") or {}
-                    report_path = res.get("report_path")
-                    break
-                if time.time() - start > timeout_sec:
-                    status = "timeout"
-                    break
-
-            final_class = status
-            if status == "finished":
-                # APIからレポートを取得
-                try:
-                    rep = _api_http_json("GET", f"{endpoint}/v1/jobs/{job_id}/report", headers=headers, timeout=300)
-                    if rep.get("error_instances") == 1 or iid in (rep.get("error_ids") or []):
-                        final_class = "error"
-                    elif iid in (rep.get("resolved_ids") or []):
-                        final_class = "resolved"
-                    elif iid in (rep.get("unresolved_ids") or []):
-                        final_class = "unresolved"
-                    elif iid in (rep.get("empty_patch_ids") or []):
-                        final_class = "empty_patch"
-                    else:
-                        final_class = "error"
-                except Exception as e:
-                    logger.warning(f"Failed to get report for {iid}: {e}")
-                    final_class = "error"
-
-            if final_class == "resolved":
-                resolved_ids.append(iid)
-            elif final_class == "unresolved":
-                unresolved_ids.append(iid)
-            elif final_class == "empty_patch":
-                empty_patch_ids.append(iid)
-            else:
-                error_ids.append(iid)
-            
-            # 進捗ログ
-            if (idx + 1) % 10 == 0 or (idx + 1) == len(instances):
-                print(f"Progress: {idx + 1}/{len(instances)} jobs completed")
 
         total = len(instances)
         return {
