@@ -890,10 +890,14 @@ def run_evaluation_proc(predictions_file, max_workers, instance_ids, samples, re
     
     try:
         result = run_swebench_evaluation(predictions_file, max_workers, instance_ids, samples)
+        print(f"[SWE-Bench] Evaluation completed. Putting result to queue...")
         result_queue.put((result, ""))  # ログは既にリアルタイム出力済み
+        print(f"[SWE-Bench] Result queued successfully.")
     except Exception as e:
         # 例外はメインプロセス側でraiseする
+        print(f"[SWE-Bench] Exception occurred: {e}")
         result_queue.put((e, ""))
+        print(f"[SWE-Bench] Exception queued.")
     finally:
         # 元の出力関数に戻す
         sys.stdout.write = old_stdout_write
@@ -912,10 +916,15 @@ def calculate_metrics(samples, results_or_queue, temp_dir):
     if cfg.swebench.background_eval:
         print("Waiting for SWE-Bench evaluation result...")
         # キューから結果とログを取得しログを表示
-        results, log = results_or_queue.get(timeout=1800)
-        print(log)
-        if isinstance(results, Exception):
-            raise results
+        try:
+            results, log = results_or_queue.get(timeout=1800)
+            print(log)
+            if isinstance(results, Exception):
+                raise results
+        except Exception as e:
+            logger.error(f"Failed to get results from queue: {e}")
+            logger.error(f"Queue empty: {results_or_queue.empty()}")
+            raise RuntimeError(f"Background evaluation failed or timed out: {e}")
     else:
         results = results_or_queue
 
