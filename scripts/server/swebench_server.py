@@ -318,8 +318,14 @@ async def worker_loop():
 
 @app.on_event("startup")
 async def _startup():
-    # Start one worker
-    asyncio.create_task(worker_loop())
+    # Start N workers (env SWE_WORKERS)
+    try:
+        n_workers = int(os.environ.get("SWE_WORKERS", "1"))
+    except Exception:
+        n_workers = 1
+    n_workers = max(1, min(n_workers, 32))
+    for _ in range(n_workers):
+        asyncio.create_task(worker_loop())
 
 
 # ------------------------------
@@ -378,6 +384,22 @@ async def get_report(job_id: str):
             return json.load(f)
     except FileNotFoundError:
         raise HTTPException(404, "Report file not found on server")
+
+
+@app.get("/v1/summary", response_class=JSONResponse)
+async def summary() -> Dict[str, Any]:
+    # cluster-wide simple summary
+    return {
+        "status": "ok",
+        "workers": int(os.environ.get("SWE_WORKERS", "1")),
+        "jobs": {
+            "queued": sum(1 for j in JOB_STORE.values() if j.status == "queued"),
+            "running": sum(1 for j in JOB_STORE.values() if j.status == "running"),
+            "finished": sum(1 for j in JOB_STORE.values() if j.status == "finished"),
+            "failed": sum(1 for j in JOB_STORE.values() if j.status == "failed"),
+        },
+        "time": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+    }
 
 
 def main():

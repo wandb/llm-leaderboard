@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Dict, List
 import traceback
 from functools import partial
+import atexit
+import threading
 import multiprocessing as mp
 import pandas as pd
 import wandb
@@ -376,18 +378,37 @@ def generate_predictions(samples: List[Dict], llm, generator_config, output_file
             continue # 次のサンプルへ
 
 def _api_http_json(method: str, url: str, body_obj=None, headers=None, timeout: float = 300.0):
+    """HTTP JSON クライアント（タイムアウト/一時エラーに対してリトライ）"""
+    import time as _time
+    from urllib.error import URLError
     data = None
     if body_obj is not None:
         data = json.dumps(body_obj).encode("utf-8")
-    req = Request(url=url, data=data, method=method)
-    req.add_header("Content-Type", "application/json")
-    if headers:
-        for k, v in (headers or {}).items():
-            req.add_header(k, v)
-    with urlopen(req, timeout=timeout) as resp:
-        charset = resp.headers.get_content_charset() or "utf-8"
-        text = resp.read().decode(charset)
-        return json.loads(text) if text else {}
+    attempt = 0
+    backoff_sec = 2.0
+    last_err = None
+    while attempt < 3:
+        attempt += 1
+        try:
+            req = Request(url=url, data=data, method=method)
+            req.add_header("Content-Type", "application/json")
+            if headers:
+                for k, v in (headers or {}).items():
+                    req.add_header(k, v)
+            with urlopen(req, timeout=timeout) as resp:
+                charset = resp.headers.get_content_charset() or "utf-8"
+                text = resp.read().decode(charset)
+                return json.loads(text) if text else {}
+        except (TimeoutError, URLError) as e:  # network/transient
+            last_err = e
+            if attempt >= 3:
+                raise
+            _time.sleep(backoff_sec)
+            backoff_sec *= 2
+    # 保険
+    if last_err:
+        raise last_err
+    return {}
 
 
 def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instance_ids: List[str] = None, samples: List[Dict] = None) -> Dict:
@@ -430,7 +451,87 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instan
         error_ids = []
         empty_patch_ids = []
 
-        for pred in instances:
+        logger.info(f"Submitting {len(instances)} jobs to API server: {endpoint}")
+        print(f"Submitting {len(instances)} jobs to API server: {endpoint}")
+
+        # --- parallel submission/polling settings ---
+        concurrency = int(api_cfg.get("concurrency", 4))
+        concurrency = max(1, min(concurrency, 32))
+
+        # Simple bounded-concurrency loop
+        in_flight = []  # list of dict(job_id, iid, start)
+        pending = list(instances)
+
+        def submit(pred):
+            iid = pred["instance_id"]
+            patch = pred.get("model_patch", "")
+            payload = {
+                "instance_id": iid,
+                "patch_diff": patch,
+                "namespace": ns,
+                "tag": tag,
+                "model_name_or_path": pred.get("model_name_or_path") or cfg.model.pretrained_model_name_or_path,
+                "timeout_sec": timeout_sec,
+            }
+            job = _api_http_json("POST", f"{endpoint}/v1/jobs", body_obj=payload, headers=headers, timeout=120)
+            return {"job_id": job.get("job_id"), "iid": iid, "start": time.time()}
+
+        # prime submit
+        while pending and len(in_flight) < concurrency:
+            in_flight.append(submit(pending.pop(0)))
+
+        processed = 0
+        while in_flight:
+            time.sleep(2)
+            # poll all inflight
+            new_in_flight = []
+            for jf in in_flight:
+                job_id = jf["job_id"]
+                iid = jf["iid"]
+                try:
+                    j = _api_http_json("GET", f"{endpoint}/v1/jobs/{job_id}", headers=headers, timeout=120)
+                except Exception as e:
+                    logger.warning(f"poll failed for {iid}: {e}")
+                    new_in_flight.append(jf)
+                    continue
+                status = j.get("status")
+                if status in {"finished", "failed"}:
+                    final_class = status
+                    if status == "finished":
+                        try:
+                            rep = _api_http_json("GET", f"{endpoint}/v1/jobs/{job_id}/report", headers=headers, timeout=120)
+                            if rep.get("error_instances") == 1 or iid in (rep.get("error_ids") or []):
+                                final_class = "error"
+                            elif iid in (rep.get("resolved_ids") or []):
+                                final_class = "resolved"
+                            elif iid in (rep.get("unresolved_ids") or []):
+                                final_class = "unresolved"
+                            elif iid in (rep.get("empty_patch_ids") or []):
+                                final_class = "empty_patch"
+                            else:
+                                final_class = "error"
+                        except Exception as e:
+                            logger.warning(f"Failed to get report for {iid}: {e}")
+                            final_class = "error"
+
+                    if final_class == "resolved":
+                        resolved_ids.append(iid)
+                    elif final_class == "unresolved":
+                        unresolved_ids.append(iid)
+                    elif final_class == "empty_patch":
+                        empty_patch_ids.append(iid)
+                    else:
+                        error_ids.append(iid)
+
+                    processed += 1
+                    if processed % 10 == 0 or processed == len(instances):
+                        print(f"Progress: {processed}/{len(instances)} jobs completed")
+                else:
+                    new_in_flight.append(jf)
+
+            in_flight = new_in_flight
+            while pending and len(in_flight) < concurrency:
+                in_flight.append(submit(pending.pop(0)))
             iid = pred["instance_id"]
             patch = pred.get("model_patch", "")
             payload = {
@@ -440,7 +541,7 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instan
                 "tag": tag,
                 "model_name_or_path": pred.get("model_name_or_path") or cfg.model.pretrained_model_name_or_path,
             }
-            job = _api_http_json("POST", f"{endpoint}/v1/jobs", body_obj=payload, headers=headers, timeout=60)
+            job = _api_http_json("POST", f"{endpoint}/v1/jobs", body_obj=payload, headers=headers, timeout=300)
             job_id = job.get("job_id")
 
             start = time.time()
@@ -448,7 +549,7 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instan
             report_path = None
             while True:
                 time.sleep(2)
-                j = _api_http_json("GET", f"{endpoint}/v1/jobs/{job_id}", headers=headers, timeout=60)
+                j = _api_http_json("GET", f"{endpoint}/v1/jobs/{job_id}", headers=headers, timeout=300)
                 status = j.get("status")
                 if status in {"finished", "failed"}:
                     res = j.get("result") or {}
@@ -459,18 +560,22 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instan
                     break
 
             final_class = status
-            if status == "finished" and report_path:
-                with open(report_path, "r", encoding="utf-8") as rf:
-                    rep = json.load(rf)
-                if rep.get("error_instances") == 1 or iid in (rep.get("error_ids") or []):
-                    final_class = "error"
-                elif iid in (rep.get("resolved_ids") or []):
-                    final_class = "resolved"
-                elif iid in (rep.get("unresolved_ids") or []):
-                    final_class = "unresolved"
-                elif iid in (rep.get("empty_patch_ids") or []):
-                    final_class = "empty_patch"
-                else:
+            if status == "finished":
+                # APIからレポートを取得
+                try:
+                    rep = _api_http_json("GET", f"{endpoint}/v1/jobs/{job_id}/report", headers=headers, timeout=120)
+                    if rep.get("error_instances") == 1 or iid in (rep.get("error_ids") or []):
+                        final_class = "error"
+                    elif iid in (rep.get("resolved_ids") or []):
+                        final_class = "resolved"
+                    elif iid in (rep.get("unresolved_ids") or []):
+                        final_class = "unresolved"
+                    elif iid in (rep.get("empty_patch_ids") or []):
+                        final_class = "empty_patch"
+                    else:
+                        final_class = "error"
+                except Exception as e:
+                    logger.warning(f"Failed to get report for {iid}: {e}")
                     final_class = "error"
 
             if final_class == "resolved":
@@ -481,6 +586,10 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instan
                 empty_patch_ids.append(iid)
             else:
                 error_ids.append(iid)
+            
+            # 進捗ログ
+            if (idx + 1) % 10 == 0 or (idx + 1) == len(instances):
+                print(f"Progress: {idx + 1}/{len(instances)} jobs completed")
 
         total = len(instances)
         return {
@@ -513,7 +622,6 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instan
         
         # 一時的な評価用データセットを作成
         import tempfile
-        import json
         
         temp_dir = Path(tempfile.mkdtemp(prefix="swebench_eval_"))
         eval_dataset_file = temp_dir / "eval_dataset.jsonl"
@@ -729,22 +837,33 @@ def evaluate():
         instance_ids = [sample["instance_id"] for sample in samples]
 
         if cfg.swebench.background_eval:
+            # 非ブロッキング: バックグラウンドで投入〜集計〜W&B記録を完遂
             result_queue = mp.Queue(1)
             eval_process = mp.get_context("fork").Process(
                 target=run_evaluation_proc,
                 args=(predictions_file, max_workers, instance_ids, samples, result_queue)
             )
             eval_process.start()
-            print("SWE-Bench evaluation started in background process. Metrics will be calculated later.")
-            # 後で実行できるmetrics集計関数を返す
-            return partial(calculate_metrics, samples, result_queue, temp_dir)
+
+            def _bg_consumer():
+                try:
+                    calculate_metrics(samples, result_queue, temp_dir)
+                except Exception as e:
+                    logger.error(f"Background SWE-Bench metrics failed: {e}")
+
+            # スレッドで非同期に回収し、プロセスは自動終了
+            t = threading.Thread(target=_bg_consumer, daemon=True)
+            t.start()
+            atexit.register(lambda: t.join(timeout=3600))
+            print("SWE-Bench evaluation started in background. Metrics will be logged when finished.")
+            return  # 非ブロッキングで即戻る
         else:
             results = run_swebench_evaluation(predictions_file, max_workers, instance_ids, samples)
             return calculate_metrics(samples, results, temp_dir)
     except Exception as e:
         logger.error(f"Evaluation failed: {e}")
         logger.error(traceback.format_exc()) # エラー発生時にトレースバックを出力
-        # raise # デバッグ中は再raiseしない方がファイル確認しやすい場合もある
+        raise  # エラーを再発生させて上位で処理させる
 
 def run_evaluation_proc(predictions_file, max_workers, instance_ids, samples, result_queue):
     """SWE-Bench評価実行（バックグラウンド実行用）のラッパー関数"""
@@ -758,6 +877,10 @@ def run_evaluation_proc(predictions_file, max_workers, instance_ids, samples, re
         except Exception as e:
             # 例外はメインプロセス側でraiseする
             result_queue.put((e, buf.getvalue()))
+        finally:
+            # プロセス側で明示終了（ゾンビ回避）
+            import os
+            os._exit(0)
 
 def calculate_metrics(samples, results_or_queue, temp_dir):
     """SWE-Bench評価結果の集計"""
@@ -809,6 +932,7 @@ def calculate_metrics(samples, results_or_queue, temp_dir):
             run.log({"swebench_results": results})
         
         # -------- per-instance table (inputs / outputs / status) --------
+        print("Logging per-instance output table to WandB...")
         try:
             # 予測 JSONL を読み込み
             predictions_map = {}
@@ -901,10 +1025,11 @@ def calculate_metrics(samples, results_or_queue, temp_dir):
 
             instance_df = pd.DataFrame(table_rows)
             run.log({"swebench_output_table": wandb.Table(dataframe=instance_df)})
+            print("Per-instance table logged to WandB.")
         except Exception as e:
             logger.warning(f"Failed to log per-instance table: {e}")
         
-        print("SWE-Bench evaluation completed!")
+        print("SWE-Bench evaluation completed and logged!")
         
     except Exception as e:
         logger.error(f"Evaluation failed: {e}")
