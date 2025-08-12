@@ -850,14 +850,12 @@ class CohereClient(BaseLLMClient):
                 self.client = cohere.ClientV2(
                     api_key=api_key,
                     timeout=timeout_config,
-                    max_retries=3
                 )
             else:
                 print(f"Using Cohere v1 client for model: {model}")
                 self.client = cohere.Client(
                     api_key=api_key,
                     timeout=timeout_config,
-                    max_retries=3
                 )
         except Exception as e:
             print(f"Failed to initialize Cohere client: {e}")
