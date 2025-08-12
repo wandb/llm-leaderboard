@@ -150,8 +150,8 @@ if cfg.run.bfcl:
 if cfg.run.swebench:
     if cfg.swebench.background_eval:
         # 評価プロセスの実行時間が長いため、他のベンチと並行でバックグラウンド実行する
-        # 非ブロッキングのため戻り値は使用しない
-        swe_bench.evaluate()
+        # evaluate() が None を返す実装/コールバックを返す実装の両方に対応
+        swebench_postprocess = swe_bench.evaluate()
     else:
         swe_bench.evaluate()
 
@@ -220,8 +220,14 @@ if cfg.run.jaster:
             # llmインスタンスは同じものを使い続ける
             pass
 
-# 背景実行時は swe_bench.evaluate() 内で非同期に集計・ログ記録が行われるため、
-# ここでの後処理呼び出しは不要
+if cfg.run.swebench and cfg.swebench.background_eval:
+    # evaluate() がコールバックを返す場合のみ実行（None 互換）
+    try:
+        if callable(swebench_postprocess):
+            swebench_postprocess()
+    except NameError:
+        # 変数未定義（呼び出し側コードパスで生成されない）の場合も無視
+        pass
 
 # Aggregation
 if cfg.run.aggregate:
