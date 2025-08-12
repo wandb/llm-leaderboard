@@ -837,7 +837,7 @@ def evaluate():
         instance_ids = [sample["instance_id"] for sample in samples]
 
         if cfg.swebench.background_eval:
-            # 非ブロッキング: バックグラウンドで投入〜集計〜W&B記録を完遂
+            # バックグラウンドで評価プロセスを起動し、完了時に集計するコールバックを返す
             result_queue = mp.Queue(1)
             eval_process = mp.get_context("fork").Process(
                 target=run_evaluation_proc,
@@ -845,18 +845,19 @@ def evaluate():
             )
             eval_process.start()
 
-            def _bg_consumer():
+            print("SWE-Bench evaluation started in background process. You can continue other benchmarks.")
+
+            # 呼び出し側が終了前に明示的に結果集計できるようコールバックを返す
+            def wait_and_log_metrics():
                 try:
                     calculate_metrics(samples, result_queue, temp_dir)
-                except Exception as e:
-                    logger.error(f"Background SWE-Bench metrics failed: {e}")
+                finally:
+                    try:
+                        eval_process.join(timeout=5)
+                    except Exception:
+                        pass
 
-            # スレッドで非同期に回収し、プロセスは自動終了
-            t = threading.Thread(target=_bg_consumer, daemon=True)
-            t.start()
-            atexit.register(lambda: t.join(timeout=3600))
-            print("SWE-Bench evaluation started in background. Metrics will be logged when finished.")
-            return  # 非ブロッキングで即戻る
+            return wait_and_log_metrics
         else:
             results = run_swebench_evaluation(predictions_file, max_workers, instance_ids, samples)
             return calculate_metrics(samples, results, temp_dir)

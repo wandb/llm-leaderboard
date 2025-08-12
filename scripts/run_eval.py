@@ -150,7 +150,7 @@ if cfg.run.bfcl:
 if cfg.run.swebench:
     if cfg.swebench.background_eval:
         # 評価プロセスの実行時間が長いため、他のベンチと並行でバックグラウンド実行する
-        # evaluate() が None を返す実装/コールバックを返す実装の両方に対応
+        # evaluate() はコールバック（wait_and_log_metrics）を返す実装に統一
         swebench_postprocess = swe_bench.evaluate()
     else:
         swe_bench.evaluate()
@@ -221,13 +221,9 @@ if cfg.run.jaster:
             pass
 
 if cfg.run.swebench and cfg.swebench.background_eval:
-    # evaluate() がコールバックを返す場合のみ実行（None 互換）
-    try:
-        if callable(swebench_postprocess):
-            swebench_postprocess()
-    except NameError:
-        # 変数未定義（呼び出し側コードパスで生成されない）の場合も無視
-        pass
+    # SWE-Bench評価完了を待ってから集計・W&Bロギングを確実に実施
+    if callable(swebench_postprocess):
+        swebench_postprocess()
 
 # Aggregation
 if cfg.run.aggregate:
