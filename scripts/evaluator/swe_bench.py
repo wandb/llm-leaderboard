@@ -473,7 +473,7 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instan
                 "model_name_or_path": pred.get("model_name_or_path") or cfg.model.pretrained_model_name_or_path,
                 "timeout_sec": timeout_sec,
             }
-            job = _api_http_json("POST", f"{endpoint}/v1/jobs", body_obj=payload, headers=headers, timeout=120)
+            job = _api_http_json("POST", f"{endpoint}/v1/jobs", body_obj=payload, headers=headers, timeout=300)
             return {"job_id": job.get("job_id"), "iid": iid, "start": time.time()}
 
         # prime submit
@@ -489,7 +489,7 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instan
                 job_id = jf["job_id"]
                 iid = jf["iid"]
                 try:
-                    j = _api_http_json("GET", f"{endpoint}/v1/jobs/{job_id}", headers=headers, timeout=120)
+                    j = _api_http_json("GET", f"{endpoint}/v1/jobs/{job_id}", headers=headers, timeout=300)
                 except Exception as e:
                     logger.warning(f"poll failed for {iid}: {e}")
                     new_in_flight.append(jf)
@@ -499,7 +499,7 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instan
                     final_class = status
                     if status == "finished":
                         try:
-                            rep = _api_http_json("GET", f"{endpoint}/v1/jobs/{job_id}/report", headers=headers, timeout=120)
+                            rep = _api_http_json("GET", f"{endpoint}/v1/jobs/{job_id}/report", headers=headers, timeout=300)
                             if rep.get("error_instances") == 1 or iid in (rep.get("error_ids") or []):
                                 final_class = "error"
                             elif iid in (rep.get("resolved_ids") or []):
@@ -563,7 +563,7 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instan
             if status == "finished":
                 # APIからレポートを取得
                 try:
-                    rep = _api_http_json("GET", f"{endpoint}/v1/jobs/{job_id}/report", headers=headers, timeout=120)
+                    rep = _api_http_json("GET", f"{endpoint}/v1/jobs/{job_id}/report", headers=headers, timeout=300)
                     if rep.get("error_instances") == 1 or iid in (rep.get("error_ids") or []):
                         final_class = "error"
                     elif iid in (rep.get("resolved_ids") or []):
