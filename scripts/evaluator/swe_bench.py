@@ -399,10 +399,14 @@ def _api_http_json(method: str, url: str, body_obj=None, headers=None, timeout: 
                 charset = resp.headers.get_content_charset() or "utf-8"
                 text = resp.read().decode(charset)
                 return json.loads(text) if text else {}
-        except (TimeoutError, URLError) as e:  # network/transient
+        except (TimeoutError, URLError, HTTPError) as e:  # network/transient
+            # 524 (Gateway Timeout) などの一時的なエラーはリトライ
+            if isinstance(e, HTTPError) and e.code not in [524, 502, 503, 504]:
+                raise  # 回復不可能なHTTPエラーは即座に失敗
             last_err = e
             if attempt >= 3:
                 raise
+            print(f"[API] Request failed (attempt {attempt}/3): {e}. Retrying in {backoff_sec}s...")
             _time.sleep(backoff_sec)
             backoff_sec *= 2
     # 保険
@@ -899,8 +903,11 @@ def calculate_metrics(samples, results_or_queue, temp_dir):
         # キューから結果とログを取得しログを表示
         try:
             results, log = results_or_queue.get(timeout=1800)
-            print(log)
+            print(f"Got result from queue. Type: {type(results)}")
+            if log:
+                print(f"Background process log:\n{log}")
             if isinstance(results, Exception):
+                logger.error(f"Background evaluation failed with exception: {results}")
                 raise results
         except Exception as e:
             logger.error(f"Failed to get results from queue: {e}")
