@@ -294,14 +294,19 @@ except Exception:
 
 
 async def worker_loop():
+    """並列実行用のワーカー。
+    注意: 評価処理は同期関数なので、イベントループをブロックしないようスレッドにオフロードする。
+    """
     while True:
         job_id = await JOB_QUEUE.get()
         job = JOB_STORE.get(job_id)
         if not job:
+            JOB_QUEUE.task_done()
             continue
         job.status = "running"
         try:
-            res = _run_single_evaluation(job)
+            # ブロッキングな評価処理をスレッドにオフロード
+            res = await asyncio.to_thread(_run_single_evaluation, job)
             job.result = res
             job.status = "finished"
             job.finished_at = time.time()

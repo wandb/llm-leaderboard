@@ -463,7 +463,13 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instan
         print(f"Submitting {len(instances)} jobs to API server: {endpoint}")
 
         # --- parallel submission/polling settings ---
-        concurrency = int(api_cfg.get("concurrency", 4))
+        # 4コア環境では過負荷を避けるため、CPU数に基づく安全な既定値
+        try:
+            cpu_count = os.cpu_count() or 4
+        except Exception:
+            cpu_count = 4
+        default_concurrency = max(1, min(int(cpu_count * 0.75), 8))
+        concurrency = int(api_cfg.get("concurrency", default_concurrency))
         concurrency = max(1, min(concurrency, 32))
 
         # Simple bounded-concurrency loop
