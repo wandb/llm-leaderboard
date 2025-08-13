@@ -794,8 +794,9 @@ def evaluate():
 
         if cfg.swebench.background_eval:
             # バックグラウンドで評価プロセスを起動し、完了時に集計するコールバックを返す
-            result_queue = mp.Queue(1)
-            eval_process = mp.get_context("fork").Process(
+            ctx = mp.get_context("fork")
+            result_queue = ctx.Queue(1)
+            eval_process = ctx.Process(
                 target=run_evaluation_proc,
                 args=(predictions_file, max_workers, instance_ids, samples, result_queue)
             )
@@ -839,9 +840,12 @@ def run_evaluation_proc(predictions_file, max_workers, instance_ids, samples, re
         result_queue.put((e, ""))
         print("[SWE-Bench] Exception queued.")
     finally:
-        # プロセス側で明示終了（ゾンビ回避）
-        import os
-        os._exit(0)
+        # Queueを確実にフラッシュしてから自然終了
+        try:
+            result_queue.close()
+            result_queue.join_thread()
+        except Exception:
+            pass
 
 def calculate_metrics(samples, results_or_queue, temp_dir):
     """SWE-Bench評価結果の集計"""
