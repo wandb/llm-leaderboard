@@ -7,6 +7,7 @@ import uuid
 import json
 import warnings
 import logging
+import re
 from config_singleton import WandbConfigSingleton
 from omegaconf import OmegaConf, DictConfig
 import openai
@@ -398,13 +399,41 @@ class OpenAIClient:
             elif all_kwargs["include_reasoning"] is False:
                 params["extra_body"]["reasoning"] = {"exclude": True}
 
-        # Structured output
-        if "response_format" in params:
-            response: OpenAIChatCompletion = await self.async_client.beta.chat.completions.parse(**params)
-            parsed_output = response.choices[0].message.parsed
-        else:
-            response: OpenAIChatCompletion = await self.async_client.chat.completions.create(**params)
-            parsed_output = None
+        try:
+            # Structured output
+            if "response_format" in params:
+                response: OpenAIChatCompletion = await self.async_client.beta.chat.completions.parse(**params)
+                parsed_output = response.choices[0].message.parsed
+            else:
+                response: OpenAIChatCompletion = await self.async_client.chat.completions.create(**params)
+                parsed_output = None
+        except openai.BadRequestError as e:
+            # リクエスト時点でpromt+max_tokensがコンテキスト長を超える場合、max_tokensを調整してmax_context_lengthギリギリまで可能な範囲で生成する
+            # (OpenAI, vLLMのエラーメッセージに対応)
+            if match := re.search("maximum context length is ([0-9]+) tokens. However, you requested [0-9]+ tokens \(([0-9]+) in the messages, ([0-9]+) in the completion\)", e.message):
+                max_context_length = int(match.group(1))
+                prompt_tokens = int(match.group(2))
+                completion_tokens = int(match.group(3))
+                shrinked_completion_tokens = max_context_length - prompt_tokens
+                if shrinked_completion_tokens > 0:
+                    # トークン数が残っている場合はリトライ
+                    warnings.warn(
+                        f"Shrinking max_tokens {completion_tokens} -> {shrinked_completion_tokens}"
+                        f"(max_context_length:{max_context_length}, prompt_tokens:{prompt_tokens}, max_output_tokens:{completion_tokens})"
+                    )
+                    params["max_tokens"] = shrinked_completion_tokens
+                    if "response_format" in params:
+                        response: OpenAIChatCompletion = await self.async_client.beta.chat.completions.parse(**params)
+                        parsed_output = response.choices[0].message.parsed
+                    else:
+                        response: OpenAIChatCompletion = await self.async_client.chat.completions.create(**params)
+                        parsed_output = None
+                else:
+                    # promptでトークン数を使い切っている場合はエラー
+                    raise e
+            else:
+                # Token長以外のBadRequestの場合はそのままエラー
+                raise e
 
         # reasoningでtokenを使い切るとcontentがNoneになる対策
         content = '' if response.choices[0].message.content is None else response.choices[0].message.content
