@@ -1,30 +1,30 @@
 wandb:
-  run_name: "Qwen/QwQ-32B" # use run_name defined above
+  run_name: "Qwen/Qwen3-14B" # use run_name defined above
 
 api: vllm-docker
-num_gpus: 4
+num_gpus: 2
 batch_size: 256 # vllmは256, apiは32を推奨
 
 model:
   use_wandb_artifacts: false
-  pretrained_model_name_or_path: "Qwen/QwQ-32B" #if you use openai api, put the name of model
-  bfcl_model_id: "unified-oss-fc"
-  size_category: "Large (30B+)"
-  size: 32763876352
+  pretrained_model_name_or_path: "Qwen/Qwen3-14B" #if you use openai api, put the name of model
+  bfcl_model_id: "Qwen/Qwen3-14B-FC"
+  size_category: "Medium (10–30B)"
+  size: 14768307200
   release_date: "3/6/2025"
 
 vllm:
-  vllm_tag: v0.10.0
-  reasoning_parser: deepseek_r1
-  enable_auto_tool_choice: true
-  chat_template: Qwen/QwQ-32B # fix tool_calls history bug
-  tool_call_parser: hermes
+  vllm_tag: v0.10.1
+  reasoning_parser: qwen3
 
 generator:
   max_tokens: 32768
   temperature: 0.6
   top_p: 0.95
   tool_choice: none # BFCL以外でtool callが呼ばれてcontentがNoneになる対策
+  extra_body:
+    chat_template_kwargs:
+      enable_thinking: true
 
 jaster:
   override_max_tokens: 32768
