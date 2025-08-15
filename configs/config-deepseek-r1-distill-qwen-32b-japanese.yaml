@@ -1,5 +1,5 @@
 wandb:
-  run_name: "Qwen/QwQ-32B" # use run_name defined above
+  run_name: "cyberagent/DeepSeek-R1-Distill-Qwen-32B-Japanese" # use run_name defined above
 
 api: vllm-docker
 num_gpus: 4
@@ -7,24 +7,20 @@ batch_size: 256 # vllmは256, apiは32を推奨
 
 model:
   use_wandb_artifacts: false
-  pretrained_model_name_or_path: "Qwen/QwQ-32B" #if you use openai api, put the name of model
-  bfcl_model_id: "unified-oss-fc"
+  pretrained_model_name_or_path: "cyberagent/DeepSeek-R1-Distill-Qwen-32B-Japanese" #if you use openai api, put the name of model
+  bfcl_model_id: "deepseek-ai/DeepSeek-R1"
   size_category: "Large (30B+)"
   size: 32763876352
-  release_date: "3/6/2025"
+  release_date: "1/27/2025"
 
 vllm:
-  vllm_tag: v0.10.0
+  vllm_tag: v0.10.1
   reasoning_parser: deepseek_r1
-  enable_auto_tool_choice: true
-  chat_template: Qwen/QwQ-32B # fix tool_calls history bug
-  tool_call_parser: hermes
 
 generator:
   max_tokens: 32768
   temperature: 0.6
   top_p: 0.95
-  tool_choice: none # BFCL以外でtool callが呼ばれてcontentがNoneになる対策
 
 jaster:
   override_max_tokens: 32768

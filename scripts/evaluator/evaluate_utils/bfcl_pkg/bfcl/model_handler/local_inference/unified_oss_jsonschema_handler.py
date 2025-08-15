@@ -105,6 +105,12 @@ class UnifiedOSSJsonSchemaHandler(OSSHandler):
             system_prompt_template=JSONSCHEMA_SYSTEM_PROMPT,
         )
 
+        # system roleが許可されていないので、最初のuser messageにsystem messageを結合
+        if re.search("[Gg]emma-?2", self.model_name_huggingface):
+            system_message = test_entry["question"][0].pop(0)
+            assert test_entry["question"][0][0]["role"] == "user"
+            test_entry["question"][0][0]["content"] = system_message["content"] + "\n\n" + test_entry["question"][0][0]["content"]
+
         return {"message": [], "function": functions}
 
     @override

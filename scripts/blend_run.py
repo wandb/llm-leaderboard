@@ -55,12 +55,50 @@ def process_task(
             f"jmmlu_robust_{num_few_shots}shot_output_table_dev",
             f"jmmlu_robust_{num_few_shots}shot_output_table",
             f"jmmlu_robust_{num_few_shots}shot_leaderboard_table",
+            f"jhumaneval_output_table",
+            f"jhumaneval_output_table_dev",
+            f"jhumaneval_leaderboard_table",
         ]
     elif dataset == "jtruthfulqa":
         table_names = [
             "jtruthfulqa_output_table",
             "jtruthfulqa_radar_table",
             "jtruthfulqa_leaderboard_table",
+        ]
+    elif dataset == "swebench":
+        table_names = [
+            "swebench_leaderboard_table",
+            "swebench_output_table",
+        ]
+    elif dataset == "bfcl":
+        table_names = [
+            "bfcl_leaderboard_table",
+            "bfcl_output_table",
+            "bfcl_radar_table",
+        ]
+    elif dataset == "hle":
+        table_names = [
+            "hle_test_leaderboard_table",
+            "hle_test_output_table",
+            "hle_dev_leaderboard_table",
+            "hle_dev_output_table",
+        ]
+    elif dataset == "hallulens":
+        table_names = [
+            "hallulens_leaderboard_table",
+            "hallulens_output_table",
+            "hallulens_output_table_dev",
+        ]
+    elif dataset == "m_ifeval":
+        table_names = [
+            "m_ifeval_leaderboard_table",
+            "m_ifeval_output_table",
+        ]
+    elif dataset == "arc_agi":
+        table_names = [
+            "arc_agi_leaderboard_table",
+            "arc_agi_1_output_table",
+            "arc_agi_2_output_table",
         ]
     else:
         raise ValueError(f"Invalid dataset name: {dataset}")
@@ -92,6 +130,18 @@ def process_task(
             elif dataset == "jmmlu":
                 new_cols = [f"{col}_{dataset}_robust_{num_few_shots}shot" for col in output_table.columns]
             elif dataset == "jtruthfulqa":
+                new_cols = [f"{col}_{dataset}" for col in output_table.columns]
+            elif dataset == "swebench":
+                new_cols = [f"{col}_{dataset}" for col in output_table.columns]
+            elif dataset == "bfcl":
+                new_cols = [f"{col}_{dataset}" for col in output_table.columns]
+            elif dataset == "hle":
+                new_cols = [f"{col}_{dataset}" for col in output_table.columns]
+            elif dataset == "hallulens":
+                new_cols = [f"{col}_{dataset}" for col in output_table.columns]
+            elif dataset == "m_ifeval":
+                new_cols = [f"{col}_{dataset}" for col in output_table.columns]
+            elif dataset == "arc_agi":
                 new_cols = [f"{col}_{dataset}" for col in output_table.columns]
             else:
                 raise ValueError(f"Invalid dataset name: {dataset}")
