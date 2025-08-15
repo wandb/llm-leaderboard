@@ -35,6 +35,18 @@ class BaseHandler:
         self.temperature = temperature
         self.is_fc_model = False  # Whether the model is a function calling model
 
+    def _build_fallback_model_response(self) -> dict:
+        """
+        Build a safe fallback response when provider returns unexpected payloads
+        such as missing usage fields or non-JSON content, so that evaluation can
+        proceed without aborting the whole run.
+        """
+        return {
+            "model_responses": "",
+            "input_token": 0,
+            "output_token": 0,
+        }
+
     def inference(self, test_entry: dict, include_input_log: bool, exclude_state_log: bool):
         # This method is used to retrive model response for each model.
 
