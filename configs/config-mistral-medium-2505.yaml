@@ -1,7 +1,7 @@
 wandb:
   run_name: mistral/mistral-medium-2505
 api: mistral
-batch_size: 32
+batch_size: 2
 model:
   pretrained_model_name_or_path: mistral-medium-2505
   bfcl_model_id: mistral-medium-2505-FC

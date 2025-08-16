@@ -4,7 +4,7 @@ wandb:
   #run: please set up run name in a model-base config
 
 testmode: false
-inference_interval: 10 # seconds
+inference_interval: 15 # seconds
 
 network:
   http_timeout:
@@ -30,16 +30,17 @@ azure_openai:
     pool: 30.0
 
 run:
-  jaster: true 
-  jmmlu_robustness: true # if this is set as true, jaster should set as true
+  bfcl: true
+  swebench: true
   mtbench: true
   jbbq: true
   toxicity: true
   jtruthfulqa: true
   hle: true
-  swebench: true
-  bfcl: true
   hallulens: true
+  jaster: true 
+  jmmlu_robustness: true # if this is set as true, jaster should set as true  
+  
   arc_agi: true
   m_ifeval: true
   aggregate: true
@@ -111,7 +112,7 @@ toxicity:
   artifact_path: 'llm-leaderboard/nejumi-leaderboard4-private/toxicity_dataset_full:production'
   judge_prompts_path: 'llm-leaderboard/nejumi-leaderboard4-private/toxicity_judge_prompts:production'
   generator_config:
-    max_tokens: 256
+    max_tokens: 1024
     temperature: 0.0
     top_p: 1.0
   judge:
@@ -136,6 +137,9 @@ swebench:
   prebuild_images: true
 
 mtbench:
+  generator_config:
+    max_tokens: 1024
+    temperature: 0.7
   temperature_override:
     writing: 0.7
     roleplay: 0.7
@@ -164,7 +168,7 @@ mtbench:
   judge_model: 'gpt-4o-2024-05-13'
   mode: 'single'
   baseline_model: null 
-  parallel: 1
+  parallel: 4
   first_n: null
   judge:
     model: 'gpt-4.1-2025-04-14'
@@ -176,10 +180,10 @@ mtbench:
 bfcl:
   test_category: "java javascript live_irrelevance live_multiple live_relevance live_simple multi_turn_base multi_turn_miss_func multi_turn_miss_param simple multiple irrelevance"  # multi_turn_long_context以外のカテゴリを指定
   temperature: 0.01  # 推論共通化未対応のHandler用
-  num_threads: 2
+  num_threads: 4
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:production'
   generator_config:
-    max_tokens: 8096
+    max_tokens: 8192
     temperature: 0.01
     top_p: 1.0
   handler_config:
@@ -209,8 +213,9 @@ hallulens:
 hle:
   artifact_path: 'llm-leaderboard/nejumi-leaderboard4/hle-ja:production'
   dataset_name: 'hle-ja.jsonl'
-  max_completion_tokens: 4096
   max_samples: 10
+  generator_config:
+    max_tokens: 4096
   judge:
     model: "o3-mini-2025-01-31"
     parallel: 32
@@ -229,3 +234,7 @@ m_ifeval:
 sample_dataset:
   artifacts_path: "your artifact path here"
   # add necessary configration here
+
+rerun:
+  rerun: true
+  run_id: llm-leaderboard/nejumi-leaderboard4/f5qqry7d

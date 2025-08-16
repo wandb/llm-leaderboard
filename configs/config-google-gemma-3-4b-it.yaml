@@ -28,7 +28,7 @@ vllm:
   # 以下はモデルにより調整が必要な場合のみ設定。
   # disable_triton_mma: false
   # dtype: bfloat16
-  max_model_len: 20000
+  max_model_len: 320000
   # device_map: auto
   gpu_memory_utilization: 0.90
   # reasoning_parser: deepseek_r1

@@ -4,7 +4,7 @@ wandb:
 api: "vllm-docker"  # 最もシンプルな指定（推奨）
 # base_urlは自動的に "http://vllm:8000/v1" が設定されます
 
-batch_size: 32
+batch_size: 4
 
 model:
   use_wandb_artifacts: false
@@ -31,7 +31,7 @@ vllm:
   # 以下はモデルにより調整が必要な場合のみ設定。
   # disable_triton_mma: false
   # dtype: bfloat16
-  max_model_len: 20000
+  max_model_len: 24000
   # device_map: auto
   gpu_memory_utilization: 0.9
   # reasoning_parser: deepseek_r1

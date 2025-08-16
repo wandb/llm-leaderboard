@@ -16,7 +16,8 @@ model:
   release_date: 3/12/2025
 
 generator:
-  max_tokens: 32000 
+  # vLLM側の最大文脈長(20000)に収まるよう縮小
+  max_tokens: 1024 
   temperature: 0.1
   top_p: 1
 
@@ -28,7 +29,7 @@ vllm:
   # 以下はモデルにより調整が必要な場合のみ設定。
   # disable_triton_mma: false
   # dtype: bfloat16
-  max_model_len: 20000
+  max_model_len: 12000
   # device_map: auto
   gpu_memory_utilization: 0.90
   # reasoning_parser: deepseek_r1
