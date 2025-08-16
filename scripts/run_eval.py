@@ -1,4 +1,5 @@
 import wandb
+import logging
 from pathlib import Path
 from argparse import ArgumentParser
 from omegaconf import OmegaConf
@@ -27,6 +28,9 @@ from evaluator import (
 )
 from utils import paginate_choices
 import weave
+
+# Suppress noisy Gemini SDK warnings about non-text parts
+logging.getLogger("google_genai.types").setLevel(logging.ERROR)
 
 # Set config path
 config_dir = Path("configs")
