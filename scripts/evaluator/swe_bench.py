@@ -8,12 +8,17 @@ from pathlib import Path
 from typing import Dict, List
 import traceback
 from functools import partial
+import atexit
+import threading
 import multiprocessing as mp
 import pandas as pd
 import wandb
+import weave
 from tqdm import tqdm
 import subprocess
 import os
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils.llm_async_processor import LLMAsyncProcessor
@@ -372,10 +377,196 @@ def generate_predictions(samples: List[Dict], llm, generator_config, output_file
             logger.error(traceback.format_exc()) #詳細なトレースバックをログに記録
             continue # 次のサンプルへ
 
-def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instance_ids: List[str] = None, samples: List[Dict] = None) -> Dict:
-    """公式SWE-bench評価実行（Arrow形式データセットから直接構築）"""
-    from swebench.harness.run_evaluation import main as run_evaluation
+def _api_http_json(method: str, url: str, body_obj=None, headers=None, timeout: float = 300.0):
+    """HTTP JSON クライアント（タイムアウト/一時エラーに対してリトライ）"""
+    import time as _time
+    from urllib.error import URLError
+    data = None
+    if body_obj is not None:
+        data = json.dumps(body_obj).encode("utf-8")
+    attempt = 0
+    backoff_sec = 2.0
+    last_err = None
     
+    # POSTリクエストは副作用があるため、リトライしない
+    max_attempts = 1 if method == "POST" else 3
+    
+    while attempt < max_attempts:
+        attempt += 1
+        try:
+            req = Request(url=url, data=data, method=method)
+            req.add_header("Content-Type", "application/json")
+            if headers:
+                for k, v in (headers or {}).items():
+                    req.add_header(k, v)
+            with urlopen(req, timeout=timeout) as resp:
+                charset = resp.headers.get_content_charset() or "utf-8"
+                text = resp.read().decode(charset)
+                return json.loads(text) if text else {}
+        except (TimeoutError, URLError, HTTPError) as e:  # network/transient
+            # 524 (Gateway Timeout) などの一時的なエラーはリトライ（GETのみ）
+            if isinstance(e, HTTPError) and e.code not in [524, 502, 503, 504]:
+                raise  # 回復不可能なHTTPエラーは即座に失敗
+            last_err = e
+            if attempt >= max_attempts:
+                raise
+            print(f"[API] {method} request failed (attempt {attempt}/{max_attempts}): {e}. Retrying in {backoff_sec}s...")
+            _time.sleep(backoff_sec)
+            backoff_sec *= 2
+    # 保険
+    if last_err:
+        raise last_err
+    return {}
+
+
+def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instance_ids: List[str] = None, samples: List[Dict] = None) -> Dict:
+    from swebench.harness.run_evaluation import main as run_evaluation
+    instance = WandbConfigSingleton.get_instance()
+    cfg = instance.config
+
+    api_cfg = cfg.swebench.get("api_server", {}) if hasattr(cfg, 'swebench') else {}
+    use_api = bool(api_cfg.get("enabled", False))
+
+    if use_api:
+        # Submit each instance to API server and aggregate results
+        endpoint = (api_cfg.get("endpoint") or os.getenv("SWE_API_ENDPOINT") or "http://127.0.0.1:8000").rstrip("/")
+        api_key = api_cfg.get("api_key") or os.getenv("SWE_API_KEY")
+        # Effective image namespace/tag (simplified)
+        # Priority: api_server.namespace/tag > images.namespace/tag > defaults
+        images_cfg = getattr(cfg.swebench, 'images', None)
+        ns = (
+            api_cfg.get("namespace")
+            or (images_cfg.get("namespace") if images_cfg else None)
+            or "swebench"
+        )
+        tag = (
+            api_cfg.get("tag")
+            or (images_cfg.get("tag") if images_cfg else None)
+            or "latest"
+        )
+        timeout_sec = int(api_cfg.get("timeout_sec", 1200))
+
+        headers = {"X-API-Key": api_key} if api_key else {}
+        # load predictions file
+        instances = []
+        with open(predictions_file, "r", encoding="utf-8") as f:
+            for line in f:
+                obj = json.loads(line)
+                instances.append(obj)
+
+        resolved_ids = []
+        unresolved_ids = []
+        error_ids = []
+        empty_patch_ids = []
+
+        logger.info(f"Submitting {len(instances)} jobs to API server: {endpoint}")
+        print(f"Submitting {len(instances)} jobs to API server: {endpoint}")
+
+        # --- parallel submission/polling settings ---
+        # 4コア環境では過負荷を避けるため、CPU数に基づく安全な既定値
+        try:
+            cpu_count = os.cpu_count() or 4
+        except Exception:
+            cpu_count = 4
+        default_concurrency = max(1, min(int(cpu_count * 0.75), 8))
+        concurrency = int(api_cfg.get("concurrency", default_concurrency))
+        concurrency = max(1, min(concurrency, 32))
+
+        # Simple bounded-concurrency loop
+        in_flight = []  # list of dict(job_id, iid, start)
+        pending = list(instances)
+
+        def submit(pred):
+            iid = pred["instance_id"]
+            patch = pred.get("model_patch", "")
+            payload = {
+                "instance_id": iid,
+                "patch_diff": patch,
+                "namespace": ns,
+                "tag": tag,
+                "model_name_or_path": pred.get("model_name_or_path") or cfg.model.pretrained_model_name_or_path,
+                "timeout_sec": timeout_sec,
+            }
+            job = _api_http_json("POST", f"{endpoint}/v1/jobs", body_obj=payload, headers=headers, timeout=300)
+            return {"job_id": job.get("job_id"), "iid": iid, "start": time.time()}
+
+        # prime submit
+        while pending and len(in_flight) < concurrency:
+            in_flight.append(submit(pending.pop(0)))
+
+        processed = 0
+        while in_flight:
+            time.sleep(2)
+            # poll all inflight
+            new_in_flight = []
+            for jf in in_flight:
+                job_id = jf["job_id"]
+                iid = jf["iid"]
+                try:
+                    j = _api_http_json("GET", f"{endpoint}/v1/jobs/{job_id}", headers=headers, timeout=300)
+                except Exception as e:
+                    logger.warning(f"poll failed for {iid}: {e}")
+                    new_in_flight.append(jf)
+                    continue
+                status = j.get("status")
+                if status in {"finished", "failed"}:
+                    final_class = status
+                    if status == "finished":
+                        try:
+                            rep = _api_http_json("GET", f"{endpoint}/v1/jobs/{job_id}/report", headers=headers, timeout=300)
+                            if rep.get("error_instances") == 1 or iid in (rep.get("error_ids") or []):
+                                final_class = "error"
+                            elif iid in (rep.get("resolved_ids") or []):
+                                final_class = "resolved"
+                            elif iid in (rep.get("unresolved_ids") or []):
+                                final_class = "unresolved"
+                            elif iid in (rep.get("empty_patch_ids") or []):
+                                final_class = "empty_patch"
+                            else:
+                                final_class = "error"
+                        except Exception as e:
+                            logger.warning(f"Failed to get report for {iid}: {e}")
+                            final_class = "error"
+
+                    if final_class == "resolved":
+                        resolved_ids.append(iid)
+                    elif final_class == "unresolved":
+                        unresolved_ids.append(iid)
+                    elif final_class == "empty_patch":
+                        empty_patch_ids.append(iid)
+                    else:
+                        error_ids.append(iid)
+
+                    processed += 1
+                    if processed % 10 == 0 or processed == len(instances):
+                        print(f"Progress: {processed}/{len(instances)} jobs completed")
+                else:
+                    new_in_flight.append(jf)
+
+            in_flight = new_in_flight
+            while pending and len(in_flight) < concurrency:
+                in_flight.append(submit(pending.pop(0)))
+
+        total = len(instances)
+        return {
+            "total_instances": total,
+            "submitted_instances": total,
+            "completed_instances": len(resolved_ids) + len(unresolved_ids) + len(error_ids) + len(empty_patch_ids),
+            "resolved_instances": len(resolved_ids),
+            "unresolved_instances": len(unresolved_ids),
+            "empty_patch_instances": len(empty_patch_ids),
+            "error_instances": len(error_ids),
+            "completed_ids": resolved_ids + unresolved_ids + error_ids + empty_patch_ids,
+            "incomplete_ids": [],
+            "empty_patch_ids": empty_patch_ids,
+            "submitted_ids": [p["instance_id"] for p in instances],
+            "resolved_ids": resolved_ids,
+            "unresolved_ids": unresolved_ids,
+            "error_ids": error_ids,
+            "schema_version": 2,
+        }
+
+    # Fallback to local official harness
     # run_id生成
     run_id = f"nejumi_{int(time.time())}"
     
@@ -387,7 +578,6 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instan
         
         # 一時的な評価用データセットを作成
         import tempfile
-        import json
         
         temp_dir = Path(tempfile.mkdtemp(prefix="swebench_eval_"))
         eval_dataset_file = temp_dir / "eval_dataset.jsonl"
@@ -533,6 +723,7 @@ def run_swebench_evaluation(predictions_file: Path, max_workers: int = 4, instan
     
     return result
 
+@weave.op(call_display_name=lambda _: "[SWE-Bench] " + WandbConfigSingleton.get_instance().config.wandb.run_name)
 def evaluate():
     """SWE-bench評価メイン関数"""
     instance = WandbConfigSingleton.get_instance()
@@ -602,35 +793,59 @@ def evaluate():
         instance_ids = [sample["instance_id"] for sample in samples]
 
         if cfg.swebench.background_eval:
-            result_queue = mp.Queue(1)
-            eval_process = mp.get_context("fork").Process(
+            # バックグラウンドで評価プロセスを起動し、完了時に集計するコールバックを返す
+            ctx = mp.get_context("fork")
+            result_queue = ctx.Queue(1)
+            eval_process = ctx.Process(
                 target=run_evaluation_proc,
                 args=(predictions_file, max_workers, instance_ids, samples, result_queue)
             )
             eval_process.start()
-            print("SWE-Bench evaluation started in background process. Metrics will be calculated later.")
-            # 後で実行できるmetrics集計関数を返す
-            return partial(calculate_metrics, samples, result_queue, temp_dir)
+
+            print("SWE-Bench evaluation started in background process. You can continue other benchmarks.")
+
+            # 呼び出し側が終了前に明示的に結果集計できるようコールバックを返す
+            def wait_and_log_metrics():
+                try:
+                    calculate_metrics(samples, result_queue, temp_dir)
+                finally:
+                    try:
+                        eval_process.join(timeout=5)
+                    except Exception:
+                        pass
+
+            return wait_and_log_metrics
         else:
             results = run_swebench_evaluation(predictions_file, max_workers, instance_ids, samples)
             return calculate_metrics(samples, results, temp_dir)
     except Exception as e:
         logger.error(f"Evaluation failed: {e}")
         logger.error(traceback.format_exc()) # エラー発生時にトレースバックを出力
-        # raise # デバッグ中は再raiseしない方がファイル確認しやすい場合もある
+        raise  # エラーを再発生させて上位で処理させる
 
 def run_evaluation_proc(predictions_file, max_workers, instance_ids, samples, result_queue):
     """SWE-Bench評価実行（バックグラウンド実行用）のラッパー関数"""
-    import io
-    from contextlib import redirect_stdout, redirect_stderr
-    # バックグラウンド実行時に他のベンチとログが混ざらないように標準出力をバッファリング
-    with io.StringIO() as buf, redirect_stdout(buf), redirect_stderr(buf):
+    # 進捗をリアルタイムで表示（プレフィックスは print 時に追加）
+    try:
+        print("[SWE-Bench] Starting evaluation...")
+        result = run_swebench_evaluation(predictions_file, max_workers, instance_ids, samples)
+        print("[SWE-Bench] Evaluation completed. Putting result to queue...")
+        result_queue.put((result, ""))  # ログは既にリアルタイム出力済み
+        print("[SWE-Bench] Result queued successfully.")
+    except Exception as e:
+        # 例外はメインプロセス側でraiseする
+        print(f"[SWE-Bench] Exception occurred: {e}")
+        import traceback
+        traceback.print_exc()
+        result_queue.put((e, ""))
+        print("[SWE-Bench] Exception queued.")
+    finally:
+        # Queueを確実にフラッシュしてから自然終了
         try:
-            result = run_swebench_evaluation(predictions_file, max_workers, instance_ids, samples)
-            result_queue.put((result, buf.getvalue()))
-        except Exception as e:
-            # 例外はメインプロセス側でraiseする
-            result_queue.put((e, buf.getvalue()))
+            result_queue.close()
+            result_queue.join_thread()
+        except Exception:
+            pass
 
 def calculate_metrics(samples, results_or_queue, temp_dir):
     """SWE-Bench評価結果の集計"""
@@ -642,10 +857,18 @@ def calculate_metrics(samples, results_or_queue, temp_dir):
     if cfg.swebench.background_eval:
         print("Waiting for SWE-Bench evaluation result...")
         # キューから結果とログを取得しログを表示
-        results, log = results_or_queue.get(timeout=1800)
-        print(log)
-        if isinstance(results, Exception):
-            raise results
+        try:
+            results, log = results_or_queue.get(timeout=1800)
+            print(f"Got result from queue. Type: {type(results)}")
+            if log:
+                print(f"Background process log:\n{log}")
+            if isinstance(results, Exception):
+                logger.error(f"Background evaluation failed with exception: {results}")
+                raise results
+        except Exception as e:
+            logger.error(f"Failed to get results from queue: {e}")
+            logger.error(f"Queue empty: {results_or_queue.empty()}")
+            raise RuntimeError(f"Background evaluation failed or timed out: {e}")
     else:
         results = results_or_queue
 
@@ -682,6 +905,7 @@ def calculate_metrics(samples, results_or_queue, temp_dir):
             run.log({"swebench_results": results})
         
         # -------- per-instance table (inputs / outputs / status) --------
+        print("Logging per-instance output table to WandB...")
         try:
             # 予測 JSONL を読み込み
             predictions_map = {}
@@ -719,11 +943,11 @@ def calculate_metrics(samples, results_or_queue, temp_dir):
 
                 # イメージ存在確認（新規追加）
                 # SWE-benchのイメージ名規則に従う
-                # 設定からnamespaceを取得
+                # 設定からnamespaceを取得（後方互換を維持）
                 instance = WandbConfigSingleton.get_instance()
                 cfg = instance.config
-                private_registry = cfg.swebench.get("private_registry", None)
-                namespace = private_registry if private_registry else "swebench"
+                images_cfg = cfg.swebench.get("images", {}) if hasattr(cfg, 'swebench') else {}
+                namespace = (images_cfg.get("namespace") or "swebench")
                 
                 # "__" を "_1776_" に変換（SWE-benchの特殊な命名規則）
                 # 注: 現在のシステムでは namespace="swebench" でも変換されている
@@ -774,10 +998,11 @@ def calculate_metrics(samples, results_or_queue, temp_dir):
 
             instance_df = pd.DataFrame(table_rows)
             run.log({"swebench_output_table": wandb.Table(dataframe=instance_df)})
+            print("Per-instance table logged to WandB.")
         except Exception as e:
             logger.warning(f"Failed to log per-instance table: {e}")
         
-        print("SWE-Bench evaluation completed!")
+        print("SWE-Bench evaluation completed and logged!")
         
     except Exception as e:
         logger.error(f"Evaluation failed: {e}")

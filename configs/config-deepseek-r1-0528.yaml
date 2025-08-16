@@ -1,0 +1,88 @@
+wandb:
+  run_name: deepseek-ai/DeepSeek-R1-0528
+api: openai-compatible # vllm externally launched with multi-node
+base_url: http://vllm-server:18000/v1
+num_gpus: 16
+batch_size: 64 # avoid kv cache eviction on 16xH100 for HLE,ARC-AGI
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: deepseek-ai/DeepSeek-R1-0528
+  bfcl_model_id: "deepseek-ai/DeepSeek-R1-0528"
+  size_category: "Large (30B+)"
+  size: 684531386000
+  release_date: 5/28/2025
+
+vllm: # This config not used because vLLM launched manually, but for record
+  vllm_tag: v0.10.1
+  lifecycle: always_on
+  gpu_memory_utilization: 0.95
+  reasoning_parser: deepseek_r1
+  extra_args:
+    - "--tensor-parallel-size=8"
+    - "--pipeline-parallel-size=2"
+    - "--enable-expert-parallel"
+
+generator:
+  max_tokens: 57344
+  temperature: 0.6
+  top_p: 0.95
+
+jaster:
+  override_max_tokens: 57344
+
+jbbq:
+  generator_config:
+    max_tokens: 57344
+    temperature: 0.6
+    top_p: 0.95
+
+toxicity:
+  generator_config:
+    max_tokens: 57344
+    temperature: 0.6
+    top_p: 0.95
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 57344
+    temperature: 0.6
+    top_p: 0.95
+
+swebench:
+  max_tokens: 57344
+
+mtbench:
+  generator_config:
+    max_tokens: 57344
+    temperature: 0.6
+    top_p: 0.95
+  temperature_override:
+    writing: 0.6
+    roleplay: 0.6
+    extraction: 0.6
+    math: 0.6
+    coding: 0.6
+    reasoning: 0.6
+    stem: 0.6
+    humanities: 0.6
+
+bfcl:
+  generator_config:
+    max_tokens: 57344
+    temperature: 0.6
+    top_p: 0.95
+
+hallulens:
+  generator_config:
+    max_tokens: 57344
+    temperature: 0.6
+    top_p: 0.95
+
+hle:
+  generator_config:
+    max_tokens: 57344
+    temperature: 0.6
+    top_p: 0.95
+
+arc_agi:
+  max_output_tokens: 57344

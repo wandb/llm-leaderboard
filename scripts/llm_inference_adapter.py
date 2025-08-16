@@ -7,6 +7,7 @@ import uuid
 import json
 import warnings
 import logging
+import re
 from config_singleton import WandbConfigSingleton
 from omegaconf import OmegaConf, DictConfig
 import openai
@@ -132,7 +133,8 @@ class ChatBedrock(BaseLLMClient):
         
         self.bedrock_runtime = boto3.client(
             service_name="bedrock-runtime",
-            region_name=os.environ.get("AWS_DEFAULT_REGION", "us-west-1"),
+            # Prefer explicit AWS_BEDROCK_REGION, then AWS_DEFAULT_REGION, fallback to us-east-1
+            region_name=os.environ.get("AWS_BEDROCK_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1")),
             config=config,
         )
         self.model_id = cfg.model.pretrained_model_name_or_path
@@ -205,10 +207,15 @@ class ChatBedrock(BaseLLMClient):
                     body=json.dumps(body_dict),
                     modelId=self.model_id
                 )
-                response_body = json.loads(response.get("body").read())
+                # 一部プロバイダが非JSONを返す場合のフォールバック
+                try:
+                    response_body = json.loads(response.get("body").read())
+                except Exception:
+                    response_body = {"content": []}
         except ClientError as e:
             print(f"ERROR: Can't invoke '{self.model_id}'. Reason: {e}")
-            raise
+            # フォールバック空応答
+            return {"content": []}
         except Exception as e:
             print(f"ERROR: Unexpected error during invocation of '{self.model_id}'. Reason: {e}")
             # エラーの場合は空のレスポンスを返す
@@ -330,9 +337,13 @@ class OpenAIClient:
                 params["extra_body"]["reasoning"] = {"exclude": True}
         
         response = self.client.chat.completions.create(**params)
-        content = response.choices[0].message.content
+        # reasoningでtokenを使い切るとcontentがNoneになる対策
+        content = '' if response.choices[0].message.content is None else response.choices[0].message.content
+        reasoning_content = ''
         # vLLM reasoning parser output
-        reasoning_content = getattr(response.choices[0].message, 'reasoning_content', '')
+        if hasattr(response.choices[0].message, 'reasoning_content'):
+            reasoning_content = getattr(response.choices[0].message, 'reasoning_content', '')
+            content = content.lstrip('\n') # vLLM reasoning parserは</think>の後の改行を除去しないためここで除去
         # OpenRouter reasoning field support
         if not reasoning_content and hasattr(response.choices[0].message, 'reasoning'):
             reasoning_content = getattr(response.choices[0].message, 'reasoning', '')
@@ -394,28 +405,65 @@ class OpenAIClient:
             elif all_kwargs["include_reasoning"] is False:
                 params["extra_body"]["reasoning"] = {"exclude": True}
 
-        # Structured output
-        if "response_format" in params:
-            response: OpenAIChatCompletion = await self.async_client.beta.chat.completions.parse(**params)
-            parsed_output = response.choices[0].message.parsed
-        else:
-            response: OpenAIChatCompletion = await self.async_client.chat.completions.create(**params)
-            parsed_output = None
+        try:
+            # Structured output
+            if "response_format" in params:
+                response: OpenAIChatCompletion = await self.async_client.beta.chat.completions.parse(**params)
+                parsed_output = response.choices[0].message.parsed
+            else:
+                response: OpenAIChatCompletion = await self.async_client.chat.completions.create(**params)
+                parsed_output = None
+        except openai.BadRequestError as e:
+            # リクエスト時点でpromt+max_tokensがコンテキスト長を超える場合、max_tokensを調整してmax_context_lengthギリギリまで可能な範囲で生成する
+            # (OpenAI, vLLMのエラーメッセージに対応)
+            if match := re.search("maximum context length is ([0-9]+) tokens. However, you requested [0-9]+ tokens \(([0-9]+) in the messages, ([0-9]+) in the completion\)", e.message):
+                max_context_length = int(match.group(1))
+                prompt_tokens = int(match.group(2))
+                completion_tokens = int(match.group(3))
+                shrinked_completion_tokens = max_context_length - prompt_tokens
+                if shrinked_completion_tokens > 0:
+                    # トークン数が残っている場合はリトライ
+                    warnings.warn(
+                        f"Shrinking max_tokens {completion_tokens} -> {shrinked_completion_tokens}"
+                        f"(max_context_length:{max_context_length}, prompt_tokens:{prompt_tokens}, max_output_tokens:{completion_tokens})"
+                    )
+                    params["max_tokens"] = shrinked_completion_tokens
+                    if "response_format" in params:
+                        response: OpenAIChatCompletion = await self.async_client.beta.chat.completions.parse(**params)
+                        parsed_output = response.choices[0].message.parsed
+                    else:
+                        response: OpenAIChatCompletion = await self.async_client.chat.completions.create(**params)
+                        parsed_output = None
+                else:
+                    # promptでトークン数を使い切っている場合はエラー
+                    raise e
+            else:
+                # Token長以外のBadRequestの場合はそのままエラー
+                raise e
 
-        content = response.choices[0].message.content
+        # reasoningでtokenを使い切るとcontentがNoneになる対策
+        content = '' if response.choices[0].message.content is None else response.choices[0].message.content
+        reasoning_content = ''
         # vLLM reasoning parser output
         # https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#quickstart
-        reasoning_content = getattr(response.choices[0].message, 'reasoning_content', '')
+        if hasattr(response.choices[0].message, 'reasoning_content'):
+            reasoning_content = getattr(response.choices[0].message, 'reasoning_content', '')
+            content = content.lstrip('\n') # vLLM reasoning parserは</think>の後の改行を除去しないためここで除去
         # OpenRouter reasoning field support
         if not reasoning_content and hasattr(response.choices[0].message, 'reasoning'):
             reasoning_content = getattr(response.choices[0].message, 'reasoning', '')
+
+        # usage が欠落する実装に対しても安全にデフォルト0で継続
+        usage = getattr(response, 'usage', None)
+        prompt_tokens = getattr(usage, 'prompt_tokens', 0) if usage is not None else 0
+        completion_tokens = getattr(usage, 'completion_tokens', 0) if usage is not None else 0
 
         llm_response = LLMResponse(
             content=content,
             reasoning_content=reasoning_content,
             parsed_output=parsed_output,
-            prompt_tokens=response.usage.prompt_tokens,
-            completion_tokens=response.usage.completion_tokens
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens
         )
 
         def parse_arguments(arguments: str):
@@ -839,14 +887,12 @@ class CohereClient(BaseLLMClient):
                 self.client = cohere.ClientV2(
                     api_key=api_key,
                     timeout=timeout_config,
-                    max_retries=3
                 )
             else:
                 print(f"Using Cohere v1 client for model: {model}")
                 self.client = cohere.Client(
                     api_key=api_key,
                     timeout=timeout_config,
-                    max_retries=3
                 )
         except Exception as e:
             print(f"Failed to initialize Cohere client: {e}")

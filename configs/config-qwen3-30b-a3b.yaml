@@ -1,5 +1,5 @@
 wandb:
-  run_name: "Qwen/Qwen3-14B" # use run_name defined above
+  run_name: "Qwen/Qwen3-30B-A3B" # use run_name defined above
 
 api: vllm-docker
 num_gpus: 2
@@ -7,10 +7,10 @@ batch_size: 256 # vllmは256, apiは32を推奨
 
 model:
   use_wandb_artifacts: false
-  pretrained_model_name_or_path: "Qwen/Qwen3-14B" #if you use openai api, put the name of model
-  bfcl_model_id: "Qwen/Qwen3-14B-FC"
-  size_category: "Medium (10–30B)"
-  size: 14768307200
+  pretrained_model_name_or_path: "Qwen/Qwen3-30B-A3B" #if you use openai api, put the name of model
+  bfcl_model_id: "Qwen/Qwen3-30B-A3B-FC"
+  size_category: "Large (30B+)"
+  size: 30532122624
   release_date: "3/6/2025"
 
 vllm:

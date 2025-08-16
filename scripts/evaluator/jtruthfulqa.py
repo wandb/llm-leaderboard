@@ -1,5 +1,6 @@
 import json
 import wandb
+import weave
 import pandas as pd
 import torch
 from tqdm import tqdm
@@ -45,6 +46,7 @@ class RoBERTaEvaluator:
         probabilities = torch.nn.functional.softmax(outputs.logits, dim=-1)
         return probabilities[0][1].item()
 
+@weave.op(call_display_name=lambda _: "[JTruthfulQA] " + WandbConfigSingleton.get_instance().config.wandb.run_name)
 def evaluate():
     instance = WandbConfigSingleton.get_instance()
     run = instance.run

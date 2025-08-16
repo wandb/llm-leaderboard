@@ -1,10 +1,15 @@
+import os
+if os.environ.get("NEJUMI_MAIN_STARTED") == "1":
+    print("Duplicate invocation detected; skipping.")
+    raise SystemExit(0)
+os.environ["NEJUMI_MAIN_STARTED"] = "1"
+
 import wandb
 import logging
 from pathlib import Path
 from argparse import ArgumentParser
 from omegaconf import OmegaConf
 import questionary
-import os
 
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
@@ -89,17 +94,24 @@ if wandb_api_key:
 else:
     print("Warning: WANDB_API_KEY not found in environment variables")
 
-# W&B setup and artifact handling
+"""Safeguard W&B init in multi-run environments"""
+wandb_run = os.environ.get("WANDB_RUN_ID")
 try:
-    wandb.login()
-    run = wandb.init(
-        entity=cfg_dict["wandb"]["entity"],
-        project=cfg_dict["wandb"]["project"],
-        name=cfg_dict["wandb"]["run_name"],
-        config=cfg_dict,
-        job_type="evaluation",
-    )
-    weave.init(cfg_dict["wandb"]["entity"]+"/"+cfg_dict["wandb"]["project"])
+    if os.environ.get("NEJUMI_WANDB_INIT_DONE") == "1":
+        print("W&B already initialized; reusing existing run context.")
+        run = wandb.run  # may be None if not active
+    else:
+        wandb.login()
+        run = wandb.init(
+            entity=cfg_dict["wandb"]["entity"],
+            project=cfg_dict["wandb"]["project"],
+            name=cfg_dict["wandb"]["run_name"],
+            config=cfg_dict,
+            job_type="evaluation",
+            resume="allow" if wandb_run else None,
+        )
+        os.environ["NEJUMI_WANDB_INIT_DONE"] = "1"
+        weave.init(cfg_dict["wandb"]["entity"]+"/"+cfg_dict["wandb"]["project"])
 except Exception as e:
     print(f"Warning: Failed to initialize Wandb: {e}")
     print("Continuing without Wandb logging...")
@@ -154,6 +166,7 @@ if cfg.run.bfcl:
 if cfg.run.swebench:
     if cfg.swebench.background_eval:
         # 評価プロセスの実行時間が長いため、他のベンチと並行でバックグラウンド実行する
+        # evaluate() はコールバック（wait_and_log_metrics）を返す実装に統一
         swebench_postprocess = swe_bench.evaluate()
     else:
         swe_bench.evaluate()
@@ -224,8 +237,11 @@ if cfg.run.jaster:
             pass
 
 if cfg.run.swebench and cfg.swebench.background_eval:
-    # SWE-Benchをバックグラウンド実行した場合は評価結果の集計を実施
-    swebench_postprocess()
+    # SWE-Bench評価完了を待ってから集計・W&Bロギングを確実に実施
+    if callable(swebench_postprocess):
+        swebench_postprocess()
+    else:
+        print("SWE-Bench background eval returned no callback; skipping explicit wait.")
 
 # Aggregation
 if cfg.run.aggregate:

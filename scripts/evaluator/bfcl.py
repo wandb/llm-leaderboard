@@ -7,6 +7,7 @@ import json
 import os
 from typing import Dict, List, Optional, Tuple, Any
 import wandb
+import weave
 import pandas as pd
 from pathlib import Path
 import datetime
@@ -54,6 +55,7 @@ def merge_config(default_config: Dict[str, Any], config: Dict[str, Any]) -> Dict
                 merged[key] = value
     return merged
 
+@weave.op(call_display_name=lambda _: "[BFCL] " + WandbConfigSingleton.get_instance().config.wandb.run_name)
 def evaluate():
     """BFCLの評価を実行する"""
     print("BFCLの評価を開始します")

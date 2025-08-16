@@ -22,7 +22,8 @@ class NovaHandler(BaseHandler):
         self.is_fc_model = True
         self.client = boto3.client(
             service_name="bedrock-runtime",
-            region_name="us-east-1",  # Currently only available in us-east-1
+            # Prefer explicit AWS_BEDROCK_REGION, then AWS_DEFAULT_REGION, fallback to us-east-1
+            region_name=os.getenv("AWS_BEDROCK_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1")),
             aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
             aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
         )
@@ -105,11 +106,13 @@ class NovaHandler(BaseHandler):
         return inference_data
 
     def _parse_query_response_FC(self, api_response: any) -> dict:
-        model_responses_message_for_chat_history = api_response["output"]["message"]
+        # Defensive parsing to tolerate missing fields from provider
+        model_responses_message_for_chat_history = api_response.get("output", {}).get("message")
+        stop_reason = api_response.get("stopReason")
 
-        if api_response["stopReason"] == "tool_use":
-            model_responses = []
-            tool_call_ids = []
+        if stop_reason == "tool_use" and model_responses_message_for_chat_history:
+            model_responses: list = []
+            tool_call_ids: list = []
             """
             Note: Not every response will have a toolUse, so we skip any content that does not have a toolUse
             Example API response:
@@ -130,7 +133,7 @@ class NovaHandler(BaseHandler):
                 }
             },
             """
-            for func_call in api_response["output"]["message"]["content"]:
+            for func_call in (model_responses_message_for_chat_history.get("content") or []):
                 if "toolUse" not in func_call:
                     continue
 
@@ -141,15 +144,20 @@ class NovaHandler(BaseHandler):
                 tool_call_ids.append(func_call["toolUseId"])
 
         else:
-            model_responses = api_response["output"]["message"]["content"][0]["text"]
+            try:
+                model_responses = (
+                    (model_responses_message_for_chat_history or {}).get("content", [{}])[0].get("text", "")
+                )
+            except Exception:
+                model_responses = ""
             tool_call_ids = []
 
         return {
             "model_responses": model_responses,
             "model_responses_message_for_chat_history": model_responses_message_for_chat_history,
             "tool_call_ids": tool_call_ids,
-            "input_token": api_response["usage"]["inputTokens"],
-            "output_token": api_response["usage"]["outputTokens"],
+            "input_token": api_response.get("usage", {}).get("inputTokens", 0),
+            "output_token": api_response.get("usage", {}).get("outputTokens", 0),
         }
 
     def add_first_turn_message_FC(

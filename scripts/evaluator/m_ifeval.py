@@ -6,6 +6,7 @@ import pandas as pd
 from toolz import pipe
 from tqdm import tqdm
 import wandb
+import weave
 import sys
 import os
 
@@ -62,6 +63,7 @@ def evaluate_m_ifeval(input_data, output_data):
     
     return instruction_correct / instruction_total
 
+@weave.op(call_display_name=lambda _: "[M-IFEval] " + WandbConfigSingleton.get_instance().config.wandb.run_name)
 def evaluate():
     """M-IFEval評価のためのresponse生成"""
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration

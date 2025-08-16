@@ -10,3 +10,8 @@ model:
   size: null
   release_date: 11/20/2024 # format: MM/DD/YYYY
 
+swebench:
+  background_eval: true
+  api_server:
+    enabled: true
+    endpoint: 'https://api.nejumi-swebench.org'

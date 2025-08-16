@@ -1,45 +1,87 @@
 wandb:
-  run_name: "Qwen/Qwen3-32B" # name of model
+  run_name: "Qwen/Qwen3-32B" # use run_name defined above
 
-api: "vllm-docker"  # 最もシンプルな指定（推奨）
-# base_urlは自動的に "http://vllm:8000/v1" が設定されます
-
-batch_size: 32
+api: vllm-docker
+num_gpus: 4
+batch_size: 256 # vllmは256, apiは32を推奨
 
 model:
   use_wandb_artifacts: false
-  pretrained_model_name_or_path: "Qwen/Qwen3-32B" # huggingface model name
-  bfcl_model_id: "Qwen/Qwen3-32B-FC" # select "united_oss_fc" or "united_oss_jsonschema". If it doesn't work, find id from "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
-  size: 32000000000 # parameter size
-  size_category: "Large (30B+)" # "Small (<10B)", "Medium (10–30B)", "Large (30B+)"
-  base_model: "Qwen3" # base model name such as "llama3.1", "qwen2.5"
-  release_date:  # 4/29/2025
+  pretrained_model_name_or_path: "Qwen/Qwen3-32B" #if you use openai api, put the name of model
+  bfcl_model_id: "Qwen/Qwen3-32B-FC"
+  size_category: "Large (30B+)"
+  size: 32762123264
+  release_date: "3/6/2025"
+
+vllm:
+  vllm_tag: v0.10.0
+  reasoning_parser: qwen3
 
 generator:
+  max_tokens: 32768
+  temperature: 0.6
+  top_p: 0.95
+  tool_choice: none # BFCL以外でtool callが呼ばれてcontentがNoneになる対策
   extra_body:
     chat_template_kwargs:
-        enable_thinking: false
-  max_tokens: 24000 
-  temperature: 0.1
-  top_p: 1
+      enable_thinking: true
 
-# vLLM server configuration
-vllm:
-  vllm_tag: latest
-  lifecycle: auto
-  # chat-template: # examples/tool_chat_template_llama3.1_json.jinja
-  # 以下はモデルにより調整が必要な場合のみ設定。
-  # disable_triton_mma: false
-  # dtype: bfloat16
-  # max_model_len: 8192
-  # device_map: auto
-  gpu_memory_utilization: 0.8
-  # reasoning_parser: deepseek_r1
-  # ↓ Tool calling を有効にする場合は以下を設定。bfcl_model_idで"united_oss_fc"を利用する際は必要
-  # enable_auto_tool_choice: true
-  # tool_call_parser: hermes # variable can be found in https://docs.vllm.ai/en/v0.7.3/features/tool_calling.html#automatic-function-calling
-  # trust_remote_code: false
+jaster:
+  override_max_tokens: 32768
 
-# Number of GPUs for tensor parallelism
-num_gpus: 1 
+jbbq:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.6
+    top_p: 0.95
 
+toxicity:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.6
+    top_p: 0.95
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.6
+    top_p: 0.95
+
+swebench:
+  max_tokens: 32768
+
+mtbench:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.6
+    top_p: 0.95
+  temperature_override:
+    writing: 0.6
+    roleplay: 0.6
+    extraction: 0.6
+    math: 0.6
+    coding: 0.6
+    reasoning: 0.6
+    stem: 0.6
+    humanities: 0.6
+
+bfcl:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.6
+    top_p: 0.95
+
+hallulens:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.6
+    top_p: 0.95
+
+hle:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.6
+    top_p: 0.95
+
+arc_agi:
+  max_output_tokens: 32768
