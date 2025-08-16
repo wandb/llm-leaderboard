@@ -276,7 +276,9 @@ def evaluate():
                                     flat_list.extend(item)
                                 else:
                                     flat_list.append(item)
-                            return max(flat_list) if flat_list else 0
+                            # Filter out None values and ensure all items are numeric
+                            numeric_list = [x for x in flat_list if x is not None and isinstance(x, (int, float))]
+                            return max(numeric_list) if numeric_list else 0
                         elif isinstance(token_data, (int, float)):
                             return token_data
                         else:
