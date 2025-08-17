@@ -612,7 +612,7 @@ google-crc32c==1.7.1 \
     # via
     #   google-cloud-storage
     #   google-resumable-media
-google-genai==1.20.0 \
+google-genai==1.30.0 \
     --hash=sha256:ccd61d6ebcb14f5c778b817b8010e3955ae4f6ddfeaabf65f42f6d5e3e5a8125 \
     --hash=sha256:dccca78f765233844b1bd4f1f7a2237d9a76fe6038cf9aa72c0cd991e3c107b5
     # via google-cloud-aiplatform

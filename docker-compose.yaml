@@ -71,6 +71,7 @@ services:
       - PYTHONPATH=${PYTHONPATH}
       - JUMANPP_COMMAND=${JUMANPP_COMMAND:-/usr/local/bin/jumanpp}
       - WEAVE_PRINT_CALL_LINK=${WEAVE_PRINT_CALL_LINK:-false}
+      #- WANDB_RUN_ID=${WANDB_RUN_ID}
 
       # Docker in Docker settings for SWE-bench
       - DOCKER_HOST=unix:///var/run/docker.sock
@@ -89,6 +90,7 @@ services:
     volumes:
       - ${HOST_HF_CACHE_PATH:-~/.cache/huggingface}:/root/.cache/huggingface
       - ./configs:/workspace/configs:ro
+      - ./blend_run_configs:/workspace/blend_run_configs:ro
       - ./chat_templates:/workspace/chat_templates:ro
       - ${LOCAL_MODEL_PATH:-/tmp/empty}:/workspace/models:ro
       

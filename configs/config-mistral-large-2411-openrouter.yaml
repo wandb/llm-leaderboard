@@ -1,0 +1,15 @@
+wandb:
+  run_name: mistral/mistral-large-2411
+api: openai-compatible # openai, anthropic, google,..
+base_url: https://openrouter.ai/api/v1
+batch_size: 32
+model:
+  pretrained_model_name_or_path: mistralai/mistral-large-2411
+  bfcl_model_id: OpenRouter-FC
+  base_model: null
+  size_category: api
+  size: null
+  release_date: 11/24/2024 
+
+generate:
+  parallel_tool_calls: true

@@ -30,19 +30,20 @@ azure_openai:
     pool: 30.0
 
 run:
-  jaster: true 
-  jmmlu_robustness: true # if this is set as true, jaster should set as true
+  bfcl: true
+  swebench: true
   mtbench: true
-  jbbq: true
+  jbbq: true 
   toxicity: true
   jtruthfulqa: true
   hle: true
-  swebench: true
-  bfcl: true
   hallulens: true
   arc_agi: true
   m_ifeval: true
+  jaster: true
+  jmmlu_robustness: true # if this is set as true, jaster should set as true  
   aggregate: true
+  
 
 model:
   artifact_path: null
