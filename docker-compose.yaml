@@ -48,6 +48,7 @@ services:
       - UPSTAGE_API_KEY=${UPSTAGE_API_KEY}
       - XAI_API_KEY=${XAI_API_KEY}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - HF_TOKEN=${HF_TOKEN:-${HUGGINFACE_HUB_TOKEN}}
       
       # VLLM Configuration
       - VLLM_ENDPOINT=vllm
@@ -93,6 +94,7 @@ services:
       - ./blend_run_configs:/workspace/blend_run_configs:ro
       - ./chat_templates:/workspace/chat_templates:ro
       - ${LOCAL_MODEL_PATH:-/tmp/empty}:/workspace/models:ro
+      - ./blend_run_configs:/workspace/blend_run_configs:ro
       
       # Docker socket mount for SWE-bench evaluation
       - /var/run/docker.sock:/var/run/docker.sock
