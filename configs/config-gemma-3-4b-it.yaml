@@ -1,17 +1,18 @@
 wandb:
-  run_name: google/gemma-3-12b-it
+  run_name: google/gemma-3-4b-it
 api: vllm
+num_gpus: 2
 batch_size: 256
 model:
   use_wandb_artifacts: false
-  pretrained_model_name_or_path: google/gemma-3-12b-it #if you use openai api, put the name of model
+  pretrained_model_name_or_path: google/gemma-3-4b-it #if you use openai api, put the name of model
   bfcl_model_id: "unified-oss-jsonschema" # 公式gemmaハンドラより精度が高い
   size_category: "Medium (10–30B)"
-  size: 12187325040
+  size: 4300079472
   release_date: 3/12/2025
 
 vllm:
-  vllm_tag: v0.8.5
+  vllm_tag: v0.10.1
 
 bfcl:
   handler_config:

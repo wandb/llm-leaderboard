@@ -1,0 +1,17 @@
+wandb:
+  run_name: "tokyotech-llm/Llama-3.1-Swallow-8B-Instruct-v0.5" # use run_name defined above
+
+api: vllm-docker
+num_gpus: 2
+batch_size: 256 # vllmは256, apiは32を推奨
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "tokyotech-llm/Llama-3.1-Swallow-8B-Instruct-v0.5" #if you use openai api, put the name of model
+  bfcl_model_id: "unified-oss-jsonschema"
+  size_category: "Small (<10B)"
+  size: 8030261248
+  release_date: "6/25/2025"
+
+vllm:
+  vllm_tag: v0.10.1
