@@ -6,6 +6,7 @@ from typing import Any, TypeAlias
 import pandas as pd
 from pydantic import BaseModel
 from tqdm.asyncio import tqdm as atqdm
+import weave
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import LLMAsyncProcessor, get_openai_judge_client
@@ -191,5 +192,6 @@ async def evaluate_async():
                 }
             )
 
+@weave.op(call_display_name=lambda _: "[Hallulens] " + WandbConfigSingleton.get_instance().config.wandb.run_name)
 def evaluate():
     asyncio.run(evaluate_async())

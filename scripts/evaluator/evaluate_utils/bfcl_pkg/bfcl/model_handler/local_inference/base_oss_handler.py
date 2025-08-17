@@ -6,6 +6,7 @@ from overrides import EnforceOverrides, final, override
 from ..openai_compatible_handler import OpenAICompatibleHandler
 from ..model_style import ModelStyle
 from config_singleton import WandbConfigSingleton
+import weave
 
 class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
     def __init__(self, model_name, temperature) -> None:
@@ -245,11 +246,16 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
         start_time = time.time()
         # 公式ハンドラを動かすための暫定対処
         # LLMAsyncProcessorがcompletion APIに対応していないため、並列制御のためSemaphoreを取得して直接呼び出し
-        async with self.llm_ap.semaphore:
-            api_response = await self.llm_ap.llm.async_client.completions.create(**kwargs)
+        api_response = await self._openai_completion_async(**kwargs)
         end_time = time.time()
 
         return api_response, end_time - start_time
+
+    @weave.op()
+    async def _openai_completion_async(self, **kwargs):
+        """completions APIがWeaveで自動パッチされないため、ラップ用の関数"""
+        async with self.llm_ap.semaphore:
+            return await self.llm_ap.llm.async_client.completions.create(**kwargs)
 
     @override
     def _parse_query_response_prompting(self, api_response: any) -> dict:
