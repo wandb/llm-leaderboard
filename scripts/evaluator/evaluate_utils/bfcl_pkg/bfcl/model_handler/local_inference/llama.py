@@ -1,6 +1,9 @@
 from .base_oss_handler import OSSHandler
 from overrides import override
-
+from ..utils import (
+    default_decode_ast_prompting,
+    default_decode_execute_prompting,
+)
 
 class LlamaHandler(OSSHandler):
     """
@@ -20,6 +23,14 @@ class LlamaHandler(OSSHandler):
     def __init__(self, model_name, temperature) -> None:
         super().__init__(model_name, temperature)
         self.model_name_huggingface = model_name.replace("-FC", "")
+
+    @override
+    def decode_ast(self, result, language="Python"):
+        return default_decode_ast_prompting(result, language)
+
+    @override
+    def decode_execute(self, result):
+        return default_decode_execute_prompting(result)
 
     @override
     def _format_prompt(self, messages, function):
