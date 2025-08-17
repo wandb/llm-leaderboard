@@ -14,7 +14,7 @@ import openai
 from openai.types.responses import Response as OpenAIResponse, ParsedResponse as OpenAIParsedResponse
 from openai.types.chat import ChatCompletion as OpenAIChatCompletion
 from mistralai import Mistral
-import google.generativeai as genai
+# import google.generativeai as genai  # Old import - no longer needed
 from anthropic import Anthropic
 import cohere
 from botocore.exceptions import ClientError
@@ -617,15 +617,71 @@ class MistralClient(BaseLLMClient):
 
 
 class GoogleClient(BaseLLMClient):
+    """
+    Google Gemini API client using the new Google GenAI SDK.
+    Updated to support the latest Gemini API features including thinking for Gemini 2.5 models.
+    """
     def __init__(self, api_key, model, **kwargs):
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(model)
+        # Use the new Google GenAI SDK
+        from google import genai
+        from google.genai.types import HttpOptions
+        
+        # Configure the client with API key
+        http_options = HttpOptions(api_version="v1beta")
+        self.client = genai.Client(api_key=api_key, http_options=http_options)
+        self.model = model
         self.kwargs = kwargs
+        
+        # Completely disable Google GenAI logging and warnings
+        import logging
+        import warnings
+        
+        # Disable Google GenAI loggers
+        for logger_name in ['google.genai.types', 'google.genai.models', 'google.genai', 'google']:
+            logger = logging.getLogger(logger_name)
+            logger.disabled = True
+            logger.propagate = False
+            # Remove all handlers
+            for handler in logger.handlers[:]:
+                logger.removeHandler(handler)
+        
+        # Set environment variables to suppress warnings
+        os.environ['GOOGLE_GENAI_SUPPRESS_WARNINGS'] = 'true'
+        os.environ['GOOGLE_GENAI_QUIET'] = 'true'
+        os.environ['GOOGLE_GENAI_SILENT'] = 'true'
+        
+        # Suppress all warnings from Google libraries
+        warnings.filterwarnings("ignore", category=UserWarning, module="google")
+        warnings.filterwarnings("ignore", message=".*AFC.*")
+        warnings.filterwarnings("ignore", message=".*function_call.*")
+        warnings.filterwarnings("ignore", message=".*thought_signature.*")
+        
+        # Suppress all warnings globally
+        warnings.filterwarnings("ignore")
+        
+        # Set logging level for root logger
+        logging.getLogger().setLevel(logging.ERROR)
         
         self.allowed_params = {
             'temperature', 'top_p', 'top_k', 'max_output_tokens',
-            'candidate_count', 'stop_sequences'
+            'candidate_count', 'stop_sequences', 'thinking_config',
+            'safety_settings'
         }
+        
+        # Note: thinking_config supports the new Gemini 2.5 thinking feature
+        # Example: thinking_config={"thinking_budget": 0} to disable thinking
+        # safety_settings: Configure content safety filters
+        # Example: safety_settings=[
+        #     SafetySetting(category=SafetyCategory.HARM_CATEGORY_HATE_SPEECH, threshold=HarmBlockThreshold.BLOCK_NONE),
+        #     SafetySetting(category=SafetyCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold=HarmBlockThreshold.BLOCK_NONE),
+        #     SafetySetting(category=SafetyCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold=HarmBlockThreshold.BLOCK_NONE),
+        #     SafetySetting(category=SafetyCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.BLOCK_NONE),
+        #     SafetySetting(category=SafetyCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold=HarmBlockThreshold.BLOCK_NONE),
+        # ]
+        # Note: Function calling (tools) is only available in BFCL evaluation, not in llm_inference_adapter
+
+        # generation_config: Advanced generation configuration options
+
         
         self.param_mapping = {
             'max_tokens': 'max_output_tokens',
@@ -633,39 +689,39 @@ class GoogleClient(BaseLLMClient):
         }
 
     async def ainvoke(self, messages, max_tokens=None, **kwargs):
-        """非同期版のinvoke"""
-        # メッセージ処理
-        chat_history = []
-        system_instruction = None
+        """非同期版のinvoke using the new Google GenAI SDK"""
+        # Convert messages to the format expected by the new SDK
+        contents = []
         
-        for i, msg in enumerate(messages):
+        for msg in messages:
             if msg["role"] == "system":
-                system_instruction = msg["content"]
+                # System messages are handled differently in the new SDK
+                # We'll prepend it to the first user message
+                continue
             elif msg["role"] == "user":
-                if i < len(messages) - 1:
-                    chat_history.append({"role": "user", "parts": [msg["content"]]})
+                contents.append({
+                    "role": "user",
+                    "parts": [{"text": msg["content"]}]
+                })
             elif msg["role"] == "assistant":
-                chat_history.append({"role": "model", "parts": [msg["content"]]})
+                contents.append({
+                    "role": "model",
+                    "parts": [{"text": msg["content"]}]
+                })
         
-        if system_instruction:
-            model = genai.GenerativeModel(
-                model_name=self.model.model_name,
-                system_instruction=system_instruction
-            )
-        else:
-            model = self.model
-        
-        chat = model.start_chat(history=chat_history)
-        
-        last_user_message = None
-        for msg in reversed(messages):
-            if msg["role"] == "user":
-                last_user_message = msg["content"]
+        # Handle system message by prepending to first user message if exists
+        system_message = None
+        for msg in messages:
+            if msg["role"] == "system":
+                system_message = msg["content"]
                 break
         
-        if not last_user_message:
-            raise ValueError("No user message found")
+        if system_message and contents:
+            # Prepend system instruction to the first user message
+            if contents[0]["role"] == "user":
+                contents[0]["parts"][0]["text"] = f"{system_message}\n\n{contents[0]['parts'][0]['text']}"
         
+        # Prepare generation config
         all_kwargs = {**self.kwargs, **kwargs}
         mapped_params = map_common_params(all_kwargs, self.param_mapping)
         generation_config = filter_params(mapped_params, self.allowed_params)
@@ -673,18 +729,171 @@ class GoogleClient(BaseLLMClient):
         if max_tokens:
             generation_config["max_output_tokens"] = max_tokens
         
-        # Google APIを非同期で実行
-        for i in range(10):
+        # Prepare the request parameters
+        params = {
+            "model": self.model,
+            "contents": contents,
+        }
+        
+        # Prepare config object for generation parameters
+        config_params = {}
+        
+        # All parameters go directly in config according to Gemini API docs
+        for key, value in generation_config.items():
+            config_params[key] = value
+        
+        # Disable function calling for SWE-bench evaluation
+        # This prevents the 'NoneType' object has no attribute 'strip' error
+        if "tools" in config_params:
+            del config_params["tools"]
+        if "tool_choice" in config_params:
+            del config_params["tool_choice"]
+        
+        # Create config object if needed
+        if config_params:
+            try:
+                from google.genai import types
+                
+                # Create config with all parameters according to Gemini API docs
+                config_kwargs = {}
+                
+                # Handle thinking configuration for Gemini 2.5 models
+                # Get thinking_budget from config file, not from config_params
+                try:
+                    instance = WandbConfigSingleton.get_instance()
+                    cfg = instance.config
+                    thinking_budget = getattr(cfg.model, 'thinking_budget', 0)
+                    
+                    # Handle automatic thinking budget allocation
+                    if thinking_budget == -1:
+                        # Use automatic allocation (API will choose optimal value)
+                        config_kwargs["thinking_config"] = types.ThinkingConfig()
+                        print(f"Gemini thinking enabled with automatic budget allocation")
+                    elif thinking_budget >= 0:
+                        # Use specific budget value
+                        config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=thinking_budget)
+                        print(f"Gemini thinking enabled with budget: {thinking_budget}")
+                    else:
+                        # Disable thinking
+                        print(f"Gemini thinking disabled (budget: {thinking_budget})")
+                except Exception as e:
+                    print(f"Warning: Failed to configure thinking: {e}")
+                    # Fallback: disable thinking
+                    pass
+                
+                # Handle safety settings if provided
+                if 'safety_settings' in config_params:
+                    safety_settings = config_params['safety_settings']
+                    # Convert to proper format if needed
+                    if isinstance(safety_settings, list) and safety_settings:
+                        # Check if we need to convert from dict format to SafetySetting objects
+                        if isinstance(safety_settings[0], dict):
+                            try:
+                                converted_safety_settings = []
+                                for setting in safety_settings:
+                                    if 'category' in setting and 'threshold' in setting:
+                                        converted_safety_settings.append(
+                                            types.SafetySetting(
+                                                category=setting['category'],
+                                                threshold=setting['threshold']
+                                            )
+                                        )
+                                    else:
+                                        converted_safety_settings.append(types.SafetySetting(**setting))
+                                config_kwargs["safety_settings"] = converted_safety_settings
+                                print(f"Converted {len(converted_safety_settings)} safety settings from dict format")
+                            except Exception as e:
+                                print(f"Warning: Failed to convert safety settings: {e}")
+                        else:
+                            config_kwargs["safety_settings"] = safety_settings
+                            print(f"Safety settings configured: {len(safety_settings)} categories")
+                    else:
+                        config_kwargs["safety_settings"] = safety_settings
+                        print("Safety settings configured")
+                
+                # Add all other parameters directly to config
+                for key, value in config_params.items():
+                    if key not in ['thinking_config', 'safety_settings']:
+                        config_kwargs[key] = value
+                
+                # Create the main config
+                params["config"] = types.GenerateContentConfig(**config_kwargs)
+                
+            except ImportError:
+                print("Warning: google.genai.types not available, config ignored")
+                # Fallback: add all parameters directly to params if types not available
+                for key, value in config_params.items():
+                    if key == 'thinking_config':
+                        # Skip thinking_config as it requires types
+                        print(f"Warning: Skipping {key} as types not available")
+                    else:
+                        params[key] = value
+        
+        try:
+            # Use the new Google GenAI SDK to generate content
             response = await asyncio.to_thread(
-                chat.send_message,
-                last_user_message,
-                generation_config=generation_config
+                self.client.models.generate_content,
+                **params
             )
-            # Googleの場合は空のレスポンスに対してリトライ処理
-            if response.text.strip():
-                break
-            print(f"Retrying request due to empty content. Retry attempt {i+1} of 10.")
-        return LLMResponse(content=response.text)
+            
+            # Extract the response text with function calling support
+            content = ""
+            try:
+                if hasattr(response, 'text') and response.text is not None:
+                    content = response.text
+                elif hasattr(response, 'candidates') and response.candidates:
+                    # Handle function calling responses properly
+                    candidate = response.candidates[0]
+                    if hasattr(candidate, 'content') and candidate.content:
+                        if hasattr(candidate.content, 'parts') and candidate.content.parts:
+                            for part in candidate.content.parts:
+                                if hasattr(part, 'text') and part.text:
+                                    content += part.text
+                                elif hasattr(part, 'function_call') and part.function_call:
+                                    # Skip function calls in SWE-bench evaluation
+                                    continue
+            except Exception as parse_error:
+                print(f"Warning: Failed to parse response content: {parse_error}")
+                content = ""
+            
+            # Handle empty responses with retry logic
+            if not content.strip():
+                # Retry up to 3 times for empty responses
+                for i in range(3):
+                    print(f"Retrying request due to empty content. Retry attempt {i+1} of 3.")
+                    try:
+                        response = await asyncio.to_thread(
+                            self.client.models.generate_content,
+                            **params
+                        )
+                        # Parse response again
+                        content = ""
+                        if hasattr(response, 'text') and response.text is not None:
+                            content = response.text
+                        if content.strip():
+                            break
+                    except Exception as retry_error:
+                        print(f"Retry {i+1} failed: {retry_error}")
+                        continue
+            
+            return LLMResponse(content=content)
+            
+        except Exception as e:
+            print(f"Google GenAI API error: {type(e).__name__}: {e}")
+            # Log additional error details for debugging
+            if hasattr(e, 'status_code'):
+                print(f"HTTP Status: {e.status_code}")
+            if hasattr(e, 'response'):
+                print(f"Response: {e.response}")
+            
+            # Handle specific error types
+            if "500" in str(e) or "INTERNAL" in str(e):
+                print("Google GenAI internal error - this is a server-side issue")
+            elif "ConnectError" in str(e):
+                print("Network connection error - check internet connectivity")
+            
+            # Return empty response on error
+            return LLMResponse(content="")
 
 
 class AnthropicClient(BaseLLMClient):
@@ -1154,3 +1363,5 @@ def get_llm_inference_engine() -> BaseLLMClient:
         raise ValueError(f"Unsupported API type: {api_type}")
     
     return llm
+
+

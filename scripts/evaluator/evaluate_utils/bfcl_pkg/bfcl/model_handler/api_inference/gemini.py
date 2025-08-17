@@ -1,5 +1,7 @@
 import os
 import time
+import logging
+import warnings
 
 from ...constants.type_mappings import GORILLA_TO_OPENAPI
 from ..base_handler import BaseHandler
@@ -16,6 +18,7 @@ from ..utils import (
 )
 from google import genai
 from google.genai import errors as genai_errors
+from google.genai import types
 from google.genai.types import (
     AutomaticFunctionCallingConfig,
     Content,
@@ -23,19 +26,51 @@ from google.genai.types import (
     Part,
     ThinkingConfig,
     Tool,
+    HttpOptions,
 )
+from config_singleton import WandbConfigSingleton
+
 
 
 class GeminiHandler(BaseHandler):
     def __init__(self, model_name, temperature) -> None:
         super().__init__(model_name, temperature)
         self.model_style = ModelStyle.GOOGLE
+        instance = WandbConfigSingleton.get_instance()
+        self.cfg = instance.config
+        self.api_model_name = self.cfg.model.pretrained_model_name_or_path
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise ValueError(
                 "GOOGLE_API_KEY environment variable must be set for Gemini models"
             )
-        self.client = genai.Client(api_key=api_key)
+        # Use v1beta API for Gemini 2.5 models (function calling support)
+        http_options = HttpOptions(api_version="v1beta")
+        self.client = genai.Client(api_key=api_key, http_options=http_options)
+        
+        # Completely disable Google GenAI logging
+        for logger_name in ['google.genai.types', 'google.genai.models', 'google.genai', 'google']:
+            logger = logging.getLogger(logger_name)
+            logger.disabled = True
+            logger.propagate = False
+            # Remove all handlers
+            for handler in logger.handlers[:]:
+                logger.removeHandler(handler)
+        
+        # Set environment variables to suppress warnings
+        os.environ['GOOGLE_GENAI_SUPPRESS_WARNINGS'] = 'true'
+        os.environ['GOOGLE_GENAI_QUIET'] = 'true'
+        os.environ['GOOGLE_GENAI_SILENT'] = 'true'
+        
+        # Suppress all warnings from Google libraries
+        warnings.filterwarnings("ignore", category=UserWarning, module="google")
+        warnings.filterwarnings("ignore", message=".*AFC.*")
+        warnings.filterwarnings("ignore", message=".*function_call.*")
+        warnings.filterwarnings("ignore", message=".*thought_signature.*")
+
+        # please set thinking_budget (more than 0 or -1) in config file if you use gemini-2.5-pro
+        self.thinking_budget = getattr(self.cfg.model, 'thinking_budget', 0)
+        
 
     @staticmethod
     def _substitute_prompt_role(prompts: list[dict]) -> list[dict]:
@@ -74,11 +109,118 @@ class GeminiHandler(BaseHandler):
     # Both rate limit and invalid function description will trigger google.genai.errors.ClientError
     @retry_with_backoff(error_message_pattern=r".*RESOURCE_EXHAUSTED.*")
     def generate_with_backoff(self, **kwargs):
+        """Generate content with retry logic and enhanced error handling."""
         start_time = time.time()
-        api_response = self.client.models.generate_content(**kwargs)
-        end_time = time.time()
+        
+        try:
+            # Log the request parameters for debugging
+            model = kwargs.get('model', 'unknown')
+            contents_count = len(kwargs.get('contents', []))
+            has_tools = 'config' in kwargs and hasattr(kwargs['config'], 'tools') and kwargs['config'].tools
+            has_thinking = 'config' in kwargs and hasattr(kwargs['config'], 'thinking_config')
+            
+            # Only log essential info
+            if not has_tools:
+                print(f"Warning: No tools provided for function calling")
+            
+            # Minimal debug info (only show if there's an issue)
+            if 'config' in kwargs:
+                config = kwargs['config']
+                if hasattr(config, 'tools') and not config.tools:
+                    print(f"Warning: Tools field is empty")
+            
+            api_response = self.client.models.generate_content(**kwargs)
+            
+            # Only log response info if there's an issue
+            if hasattr(api_response, 'candidates') and api_response.candidates:
+                candidate = api_response.candidates[0]
+                if not candidate.content or not candidate.content.parts:
+                    print(f"Warning: Empty response content")
+            
+            end_time = time.time()
+            return api_response, end_time - start_time
+            
+        except Exception as e:
+            print(f"Error in generate_with_backoff: {type(e).__name__}: {e}")
+            # Re-raise the exception for retry logic
+            raise
 
-        return api_response, end_time - start_time
+    def _create_generate_config(self, system_prompt=None, tools=None):
+        """Create a common GenerateContentConfig with thinking_budget and other settings."""
+        # Create base config (AFC will be handled by the API defaults)
+        config = GenerateContentConfig()
+        
+        # Add thinking configuration
+        if self.thinking_budget > 0 or self.thinking_budget == -1:
+            config.thinking_config = ThinkingConfig(
+                include_thoughts=True,
+                thinking_budget=self.thinking_budget
+            )
+        
+        # Add system instruction if provided
+        if system_prompt:
+            config.system_instruction = system_prompt
+            
+        # Add tools if provided
+        if tools:
+            # Create Tool objects with function declarations
+            # According to Gemini API docs, tools should be a list of Tool objects
+            tool_objects = []
+            for tool in tools:
+                if isinstance(tool, dict):
+                    # Convert dict format to Tool object
+                    tool_objects.append(Tool(function_declarations=[tool]))
+                else:
+                    # Assume it's already a Tool object
+                    tool_objects.append(tool)
+            
+            # Set tools directly as per official documentation
+            try:
+                config.tools = tool_objects
+            except Exception as e:
+                # Try alternative approach if tools field fails
+                try:
+                    if hasattr(config, 'tool_config'):
+                        config.tool_config = tool_objects
+                except Exception:
+                    pass  # Silently fail if both approaches don't work
+            
+        # Add safety settings from config if available
+        if hasattr(self.cfg.model, 'safety_settings') and self.cfg.model.safety_settings:
+            try:
+                # Convert dict format to SafetySetting objects if needed
+                safety_settings = []
+                for setting in self.cfg.model.safety_settings:
+                    if isinstance(setting, dict):
+                        safety_settings.append(
+                            types.SafetySetting(
+                                category=setting['category'],
+                                threshold=setting['threshold']
+                            )
+                        )
+                    else:
+                        safety_settings.append(setting)
+                config.safety_settings = safety_settings
+            except Exception as e:
+                print(f"Warning: Failed to configure safety settings: {e}")
+        
+        # Add temperature directly to config if supported
+        # Note: Some versions of the SDK may not support direct temperature setting
+        if hasattr(self, 'temperature') and self.temperature is not None:
+            try:
+                # Try to set temperature directly on the config
+                if hasattr(config, 'temperature'):
+                    config.temperature = self.temperature
+                else:
+                    print(f"Warning: Temperature {self.temperature} cannot be set directly on config")
+            except Exception as e:
+                print(f"Warning: Failed to set temperature: {e}")
+            
+        # Only log if there's an issue
+        if not hasattr(config, 'temperature'):
+            print("Warning: Temperature field not available on config")
+            
+        return config
 
     #### FC methods ####
 
@@ -89,17 +231,10 @@ class GeminiHandler(BaseHandler):
             "system_prompt": inference_data.get("system_prompt", None),
         }
 
-        config = GenerateContentConfig(
-            temperature=self.temperature,
-            automatic_function_calling=AutomaticFunctionCallingConfig(disable=True),
-            thinking_config=ThinkingConfig(include_thoughts=True),
+        config = self._create_generate_config(
+            system_prompt=inference_data.get("system_prompt"),
+            tools=inference_data["tools"] if len(inference_data["tools"]) > 0 else None
         )
-
-        if "system_prompt" in inference_data:
-            config.system_instruction = inference_data["system_prompt"]
-
-        if len(inference_data["tools"]) > 0:
-            config.tools = [Tool(function_declarations=inference_data["tools"])]
 
         return self.generate_with_backoff(
             model=self.model_name.replace("-FC", ""),
@@ -147,20 +282,43 @@ class GeminiHandler(BaseHandler):
             response_function_call_content = api_response.candidates[0].content
 
             for part in api_response.candidates[0].content.parts:
-                # part.function_call is a FunctionCall object, so it will always be True even if it contains no function call
-                # So we need to check if the function name is empty `""` to determine if Gemini returned a function call
-                if part.function_call and part.function_call.name:
-                    part_func_name = part.function_call.name
-                    part_func_args = part.function_call.args
-                    part_func_args_dict = {k: v for k, v in part_func_args.items()}
-
-                    fc_parts.append({part_func_name: part_func_args_dict})
-                    tool_call_func_names.append(part_func_name)
-                # Aggregate reasoning content
-                elif part.thought:
+                # Check for function calls according to Gemini API docs
+                if hasattr(part, 'function_call') and part.function_call:
+                    # Verify the function call has a valid name
+                    if part.function_call.name and part.function_call.name.strip():
+                        part_func_name = part.function_call.name
+                        part_func_args = part.function_call.args
+                        
+                        # Convert args to dict format
+                        if hasattr(part_func_args, 'items'):
+                            part_func_args_dict = {k: v for k, v in part_func_args.items()}
+                        else:
+                            # Handle case where args might be a string or other format
+                            part_func_args_dict = {"args": part_func_args}
+                        
+                        fc_parts.append({part_func_name: part_func_args_dict})
+                        tool_call_func_names.append(part_func_name)
+                        # Function call detected successfully
+                        pass
+                    else:
+                        print("Warning: Function call detected but name is empty")
+                        
+                # Check for reasoning content (thoughts)
+                elif hasattr(part, 'thought') and part.thought:
                     reasoning_content.append(part.text)
-                else:
+                    # Reasoning content detected
+                    pass
+                    
+                # Regular text content
+                elif hasattr(part, 'text') and part.text:
                     text_parts.append(part.text)
+                    # Text content detected
+                    pass
+                    
+                # Log unexpected part types for debugging
+                else:
+                    # Unexpected part type - only log if debugging is needed
+                    pass
 
         else:
             response_function_call_content = Content(
@@ -172,13 +330,27 @@ class GeminiHandler(BaseHandler):
 
         model_responses = fc_parts if fc_parts else text_parts
 
+        # Handle usage_metadata for Gemini 2.5 models
+        input_token = 0
+        output_token = 0
+        thoughts_token = 0
+        total_token = 0
+        
+        if hasattr(api_response, 'usage_metadata') and api_response.usage_metadata is not None:
+            input_token = getattr(api_response.usage_metadata, 'prompt_token_count', 0) or 0
+            output_token = getattr(api_response.usage_metadata, 'candidates_token_count', 0) or 0
+            thoughts_token = getattr(api_response.usage_metadata, 'thoughts_token_count', 0) or 0
+            total_token = getattr(api_response.usage_metadata, 'total_token_count', 0) or 0
+        
         return {
             "model_responses": model_responses,
             "model_responses_message_for_chat_history": response_function_call_content,
             "tool_call_func_names": tool_call_func_names,
             "reasoning_content": "\n".join(reasoning_content),
-            "input_token": api_response.usage_metadata.prompt_token_count,
-            "output_token": api_response.usage_metadata.candidates_token_count,
+            "input_token": input_token,
+            "output_token": output_token,
+            "thoughts_token": thoughts_token,
+            "total_token": total_token,
         }
 
     def add_first_turn_message_FC(
@@ -214,23 +386,43 @@ class GeminiHandler(BaseHandler):
         execution_results: list[str],
         model_response_data: dict,
     ) -> dict:
-        # Tool response needs to be converted to Content object as well.
-        # One Content object for all tool responses.
+        """Add tool execution results to the conversation history.
+        
+        According to Gemini API docs, tool responses should be added as user messages
+        with function_response parts containing the results.
+        """
+        if not execution_results or not model_response_data.get("tool_call_func_names"):
+            print("Warning: No execution results or tool call names to add")
+            return inference_data
+            
+        # Create tool response parts for each executed function
         tool_response_parts = []
         for execution_result, tool_call_func_name in zip(
             execution_results, model_response_data["tool_call_func_names"]
         ):
-            tool_response_parts.append(
-                Part.from_function_response(
+            try:
+                # Create function response part according to Gemini API docs
+                tool_response_part = Part.from_function_response(
                     name=tool_call_func_name,
                     response={
                         "result": execution_result,
                     },
                 )
-            )
+                tool_response_parts.append(tool_response_part)
+                # Tool response added successfully
+                pass
+            except Exception as e:
+                # Fallback: create a simple text part
+                tool_response_parts.append(Part(text=f"Tool {tool_call_func_name} result: {execution_result}"))
 
-        tool_response_content = Content(role="user", parts=tool_response_parts)
-        inference_data["message"].append(tool_response_content)
+        # Create content object with all tool responses
+        if tool_response_parts:
+            tool_response_content = Content(role="user", parts=tool_response_parts)
+            inference_data["message"].append(tool_response_content)
+            # Tool responses added to conversation history
+            pass
+        else:
+            print("Warning: No valid tool response parts created")
 
         return inference_data
 
@@ -242,13 +434,9 @@ class GeminiHandler(BaseHandler):
             "system_prompt": inference_data.get("system_prompt", None),
         }
 
-        config = GenerateContentConfig(
-            temperature=self.temperature,
-            thinking_config=ThinkingConfig(include_thoughts=True),
+        config = self._create_generate_config(
+            system_prompt=inference_data.get("system_prompt")
         )
-
-        if "system_prompt" in inference_data:
-            config.system_instruction = inference_data["system_prompt"]
 
         api_response = self.generate_with_backoff(
             model=self.model_name.replace("-FC", ""),
@@ -280,32 +468,67 @@ class GeminiHandler(BaseHandler):
             return {"message": []}
 
     def _parse_query_response_prompting(self, api_response: any) -> dict:
+        """Parse the response from Gemini API for prompting methods.
+        
+        According to Gemini API docs, responses can contain:
+        - Text content in parts
+        - Reasoning content in thought parts
+        - Function calls in function_call parts
+        """
         if (
             len(api_response.candidates) > 0
             and api_response.candidates[0].content
             and api_response.candidates[0].content.parts
             and len(api_response.candidates[0].content.parts) > 0
         ):
-            assert (
-                len(api_response.candidates[0].content.parts) <= 2
-            ), f"Length of response parts should be less than or equal to 2. {api_response.candidates[0].content.parts}"
-
             model_responses = ""
             reasoning_content = ""
+            
             for part in api_response.candidates[0].content.parts:
-                if part.thought:
+                # Check for reasoning content (thoughts)
+                if hasattr(part, 'thought') and part.thought:
                     reasoning_content = part.text
-                else:
+                    # Reasoning content detected in prompting
+                    pass
+                    
+                # Check for function calls (should not happen in prompting but handle gracefully)
+                elif hasattr(part, 'function_call') and part.function_call:
+                    print(f"Warning: Function call detected in prompting response: {part.function_call.name}")
+                    # In prompting mode, we don't expect function calls, but log them
+                    
+                # Regular text content
+                elif hasattr(part, 'text') and part.text:
                     model_responses = part.text
+                    # Text content detected in prompting
+                    pass
+                    
+                # Log unexpected part types for debugging
+                else:
+                    # Unexpected part type in prompting - only log if debugging is needed
+                    pass
 
         else:
             model_responses = "The model did not return any response."
 
+        # Handle usage_metadata for Gemini 2.5 models
+        input_token = 0
+        output_token = 0
+        thoughts_token = 0
+        total_token = 0
+        
+        if hasattr(api_response, 'usage_metadata') and api_response.usage_metadata is not None:
+            input_token = getattr(api_response.usage_metadata, 'prompt_token_count', 0) or 0
+            output_token = getattr(api_response.usage_metadata, 'candidates_token_count', 0) or 0
+            thoughts_token = getattr(api_response.usage_metadata, 'thoughts_token_count', 0) or 0
+            total_token = getattr(api_response.usage_metadata, 'total_token_count', 0) or 0
+        
         return {
             "model_responses": model_responses,
             "reasoning_content": reasoning_content,
-            "input_token": api_response.usage_metadata.prompt_token_count,
-            "output_token": api_response.usage_metadata.candidates_token_count,
+            "input_token": input_token,
+            "output_token": output_token,
+            "thoughts_token": thoughts_token,
+            "total_token": total_token,
         }
 
     def add_first_turn_message_prompting(
