@@ -4,7 +4,7 @@ wandb:
   #run: please set up run name in a model-base config
 
 testmode: false
-inference_interval: 15 # seconds
+inference_interval: 0 # seconds
 
 network:
   http_timeout:
@@ -33,17 +33,17 @@ run:
   bfcl: true
   swebench: true
   mtbench: true
-  jbbq: true
+  jbbq: true 
   toxicity: true
   jtruthfulqa: true
   hle: true
   hallulens: true
-  jaster: true 
-  jmmlu_robustness: true # if this is set as true, jaster should set as true  
-  
   arc_agi: true
   m_ifeval: true
+  jaster: true
+  jmmlu_robustness: true # if this is set as true, jaster should set as true  
   aggregate: true
+  
 
 model:
   artifact_path: null
@@ -117,7 +117,7 @@ toxicity:
     top_p: 1.0
   judge:
     model: 'gpt-4.1-2025-04-14'
-    parallel: 4
+    parallel: 32
     params: {} # Currently using OpenAI's default
 
 jtruthfulqa:
@@ -131,7 +131,7 @@ swebench:
   dataset_dir: 'swebench_verified_official'
   max_samples: 80  # 全500件は時間がかかるため制限（フルセットの場合は500を指定）
   max_tokens: 2048  # SWE-Benchのパッチ生成に必要なトークン数
-  max_workers: 2  # 並列実行ワーカー数
+  max_workers: 24  # 並列実行ワーカー数
   evaluation_method: 'official'  # 'official' or 'docker' - 公式パッケージまたは独自Docker実装
   background_eval: false
   prebuild_images: true
@@ -169,23 +169,10 @@ mtbench:
   judge_prompt_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_prompt:production' 
   bench_name: 'japanese_mt_bench'
   model_id: null # cannot use '<', '>', ':', ''', '/', '\\', '|', '?', '*', '.'
-  question_begin: null 
-  question_end: null 
-  max_new_token: 1024
-  num_choices: 1
-  num_gpus_per_model: 1
-  num_gpus_total: 1
-  max_gpu_memory: null
-  dtype: float16 # None or float32 or float16 or bfloat16
-  # for gen_judgment
-  judge_model: 'gpt-4o-2024-05-13'
-  mode: 'single'
-  baseline_model: null 
-  parallel: 4
   first_n: null
   judge:
     model: 'gpt-4.1-2025-04-14'
-    parallel: 2
+    parallel: 32
     params:
       max_tokens: 2048
       temperature: 0.0
@@ -193,10 +180,10 @@ mtbench:
 bfcl:
   test_category: "java javascript live_irrelevance live_multiple live_relevance live_simple multi_turn_base multi_turn_miss_func multi_turn_miss_param simple multiple irrelevance"  # multi_turn_long_context以外のカテゴリを指定
   temperature: 0.01  # 推論共通化未対応のHandler用
-  num_threads: 4
+  num_threads: 2
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:production'
   generator_config:
-    max_tokens: 8192
+    max_tokens: 8096
     temperature: 0.01
     top_p: 1.0
   handler_config:
@@ -247,7 +234,3 @@ m_ifeval:
 sample_dataset:
   artifacts_path: "your artifact path here"
   # add necessary configration here
-
-rerun:
-  rerun: true
-  run_id: llm-leaderboard/nejumi-leaderboard4/f5qqry7d
