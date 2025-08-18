@@ -1,0 +1,21 @@
+wandb:
+  run_name: "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8" # use run_name defined above
+
+api: vllm-docker
+num_gpus: 8
+batch_size: 32 # vllmは256, apiは32を推奨
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8" #if you use openai api, put the name of model
+  bfcl_model_id: "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8-FC"
+  size_category: "Large (30B+)"
+  size: 401649841664
+  release_date: "4/5/2025"
+
+vllm:
+  vllm_tag: v0.10.1
+  max_model_len: 131072 # OOM対策
+  extra_args:
+    - "--enable-expert-parallel"
+    - "--no-enable-prefix-caching" # Prefix Cachingを使うとBFCLでvLLMが落ちる
