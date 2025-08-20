@@ -523,6 +523,13 @@ class OpenAIResponsesClient(BaseLLMClient):
     async def ainvoke(self, messages, max_tokens=None, **kwargs):
         """非同期版のinvoke"""
         all_kwargs = {**self.kwargs, **kwargs}
+        # generator.extra_body.reasoning をトップレベルreasoningに昇格
+        try:
+            extra_body = all_kwargs.get('extra_body')
+            if extra_body and isinstance(extra_body, dict) and 'reasoning' in extra_body:
+                all_kwargs['reasoning'] = extra_body['reasoning']
+        except Exception:
+            pass
         mapped_params = map_common_params(all_kwargs, self.param_mapping)
         filtered_params = filter_params(mapped_params, self.allowed_params)
         
@@ -543,12 +550,42 @@ class OpenAIResponsesClient(BaseLLMClient):
             parsed_output = None
 
         content, reasoning_content = "", ""
+        collected_tool_calls: List[ToolCall] = []
         for output in response.output:
             if output.type == "message":
-                content = output.content[0].text
-            elif output.type == "reasoning" and len(output.summary) > 0: # reasoning contentは長さ0の場合がある
-                reasoning_content = output.summary[0].text
-        return LLMResponse(content=content, reasoning_content=reasoning_content, parsed_output=parsed_output)
+                # Restore previous behavior: take the first text part of the message
+                try:
+                    if output.content and output.content[0].text:
+                        content = output.content[0].text
+                except Exception:
+                    pass
+            elif output.type == "reasoning" and len(getattr(output, "summary", [])) > 0:
+                # Restore previous behavior: take one summary text if present
+                try:
+                    reasoning_content = output.summary[0].text
+                except Exception:
+                    pass
+            elif output.type == "function_call":
+                # Responses API function calling item
+                try:
+                    name = getattr(output, "name", None)
+                    arguments_raw = getattr(output, "arguments", None)
+                    call_id = getattr(output, "call_id", None)
+                    parsed_args = {}
+                    if isinstance(arguments_raw, str) and len(arguments_raw) > 0:
+                        try:
+                            parsed_args = json.loads(arguments_raw)
+                        except json.JSONDecodeError:
+                            # Try to recover from missing closing brace
+                            try:
+                                parsed_args = json.loads(arguments_raw + "}")
+                            except Exception:
+                                parsed_args = {"_raw": arguments_raw}
+                    collected_tool_calls.append(ToolCall(name=name or "", arguments=parsed_args, id=str(call_id) if call_id else str(uuid.uuid4()), type="function"))
+                except Exception:
+                    pass
+
+        return LLMResponse(content=content, reasoning_content=reasoning_content, parsed_output=parsed_output, tool_calls=collected_tool_calls if collected_tool_calls else None)
 
 
 class AzureOpenAIResponsesClient(OpenAIResponsesClient):

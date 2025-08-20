@@ -166,7 +166,21 @@ async def evaluate_async():
 
     # Create model answers
     generator_config = cfg.toxicity.generator_config
-    llm_ap = LLMAsyncProcessor(llm=llm)
+    # YAMLで切替可能: cfg.toxicity.error_handling.request_failure.mode: soft|hard / cfg.toxicity.soft_fail_on_error
+    soft_fail = False
+    try:
+        mode = cfg.toxicity.get("error_handling", {}).get("request_failure", {}).get("mode", None)
+        if mode is not None:
+            soft_fail = str(mode).lower() == "soft"
+    except Exception:
+        pass
+    try:
+        sfoe = cfg.toxicity.get("soft_fail_on_error", None)
+        if sfoe is not None:
+            soft_fail = bool(sfoe)
+    except Exception:
+        pass
+    llm_ap = LLMAsyncProcessor(llm=llm, soft_fail_on_error=soft_fail)
     async def generate_answer(q):
         try:
             messages = [{"role": "user", "content": q["user_prompt"]}]

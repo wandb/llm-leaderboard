@@ -380,7 +380,21 @@ async def async_evaluate():
     judge_parallel = cfg.mtbench.judge.parallel
     judge_params = cfg.mtbench.judge.params
     client = get_openai_judge_client(judge_model_name, text_format=JudgeSingle)
-    judge_llm_ap = LLMAsyncProcessor(llm=client, batch_size=judge_parallel, inference_interval=0.)
+    # YAML切替: cfg.mtbench.error_handling.request_failure.mode / cfg.mtbench.soft_fail_on_error（Judge側）
+    soft_fail_judge = False
+    try:
+        mode = cfg.mtbench.get("error_handling", {}).get("request_failure", {}).get("mode", None)
+        if mode is not None:
+            soft_fail_judge = str(mode).lower() == "soft"
+    except Exception:
+        pass
+    try:
+        sfoe = cfg.mtbench.get("soft_fail_on_error", None)
+        if sfoe is not None:
+            soft_fail_judge = bool(sfoe)
+    except Exception:
+        pass
+    judge_llm_ap = LLMAsyncProcessor(llm=client, batch_size=judge_parallel, inference_interval=0., soft_fail_on_error=soft_fail_judge)
 
     # LLMAsyncProcessor に渡す inputs を作成
     async def wait_answer_and_judge(match, judge_llm_ap, generate_answer_task):

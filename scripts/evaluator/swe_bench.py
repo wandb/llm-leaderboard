@@ -310,12 +310,81 @@ def generate_predictions(samples: List[Dict], llm, generator_config, output_file
     all_inputs = []
     sample_data = []
     
+    # Read fc_enabled from cfg
+    instance = WandbConfigSingleton.get_instance()
+    cfg = instance.config
+    fc_enabled = bool(getattr(cfg.swebench, 'fc_enabled', False)) if hasattr(cfg, 'swebench') else False
+
+    # Predefine tool schema if FC enabled
+    submit_patch_tool = None
+    system_prefix = None
+    if fc_enabled:
+        # Choose tool schema based on API family (Responses vs Chat Completions)
+        api_type = getattr(cfg, 'api', 'openai')
+        if api_type == 'openai_responses':
+            # OpenAI Responses API: tools have top-level name/parameters
+            submit_patch_tool = [
+                {
+                    "type": "function",
+                    "name": "submit_patch",
+                    "description": "Submit the unified diff (patch) that fixes the bug.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "patch": {
+                                "type": "string",
+                                "description": "Unified diff string (use ```diff or <patch> ... </patch>)."
+                            }
+                        },
+                        "required": ["patch"]
+                    }
+                }
+            ]
+        else:
+            # Chat Completions style
+            submit_patch_tool = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "submit_patch",
+                        "description": "Submit the unified diff (patch) that fixes the bug.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "patch": {
+                                    "type": "string",
+                                    "description": "Unified diff string (use ```diff or <patch> ... </patch>)."
+                                }
+                            },
+                            "required": ["patch"]
+                        }
+                    }
+                }
+            ]
+        system_prefix = "You are a software engineer. Produce ONLY the unified diff and return it via the function call 'submit_patch'. Do not include explanations."
+
     for sample in samples:
         instance_id = sample["instance_id"]
         prompt = build_prompt(sample)
-        messages = [{"role": "user", "content": prompt}]
+        if fc_enabled and system_prefix:
+            messages = [
+                {"role": "system", "content": system_prefix},
+                {"role": "user", "content": prompt}
+            ]
+        else:
+            messages = [{"role": "user", "content": prompt}]
         
-        all_inputs.append([messages, generator_config])
+        # Inject tools/tool_choice when FC is enabled
+        if fc_enabled and submit_patch_tool is not None:
+            api_type = getattr(cfg, 'api', 'openai')
+            if api_type == 'openai_responses':
+                tool_choice = {"type": "function", "name": "submit_patch"}
+            else:
+                tool_choice = {"type": "function", "function": {"name": "submit_patch"}}
+            fc_kwargs = {**generator_config, "tools": submit_patch_tool, "tool_choice": tool_choice}
+            all_inputs.append([messages, fc_kwargs])
+        else:
+            all_inputs.append([messages, generator_config])
         sample_data.append({
             "instance_id": instance_id,
             "sample": sample
@@ -337,7 +406,19 @@ def generate_predictions(samples: List[Dict], llm, generator_config, output_file
                 logger.error(f"No response for {instance_id}")
                 continue
                 
+            # Prefer function call output when FC enabled
             raw_output = response.content if hasattr(response, 'content') else str(response)
+            if fc_enabled and hasattr(response, 'tool_calls') and response.tool_calls:
+                # Find submit_patch call
+                for tc in response.tool_calls:
+                    try:
+                        if getattr(tc, 'name', '') == 'submit_patch' and isinstance(tc.arguments, dict):
+                            candidate = tc.arguments.get('patch')
+                            if isinstance(candidate, str) and candidate.strip():
+                                raw_output = candidate
+                                break
+                    except Exception:
+                        continue
             
             logger.debug(f"LLM raw output (first 300 chars): {raw_output[:300].replace(chr(10),' ')}")
             extracted_patch_str = extract_diff(raw_output)

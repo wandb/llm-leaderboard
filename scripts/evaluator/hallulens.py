@@ -102,7 +102,21 @@ async def evaluate_async():
                 ]
 
             # === Inference === #
-            llm_ap = LLMAsyncProcessor(llm=llm)
+            # YAML切替: cfg.hallulens.error_handling.request_failure.mode / cfg.hallulens.soft_fail_on_error
+            soft_fail = False
+            try:
+                mode = cfg[task_name].get("error_handling", {}).get("request_failure", {}).get("mode", None)
+                if mode is not None:
+                    soft_fail = str(mode).lower() == "soft"
+            except Exception:
+                pass
+            try:
+                sfoe = cfg[task_name].get("soft_fail_on_error", None)
+                if sfoe is not None:
+                    soft_fail = bool(sfoe)
+            except Exception:
+                pass
+            llm_ap = LLMAsyncProcessor(llm=llm, soft_fail_on_error=soft_fail)
             async def generate_answer(sample):
                 messages = [{"role": "user", "content": sample["prompt"]}]
                 result = await llm_ap.process_single_async(messages, **generator_config)
