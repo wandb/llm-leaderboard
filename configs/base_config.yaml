@@ -127,6 +127,18 @@ toxicity:
     model: 'gpt-4.1-2025-04-14'
     parallel: 32
     params: {} # Currently using OpenAI's default
+  # Chakoshi guardrail settings for Toxicity evaluation
+  chakoshi:
+    enable: true
+    # If not set, uses environment variable CHAKOSHI_CATEGORY_SET_ID
+    category_set_id: 01k348tvgfs9whtafxyy4e33xf
+    # Moderation model id at Chakoshi side
+    model: 'chakoshi-moderation-241223'
+    timeout_seconds: 10.0
+    # on_flag policy: block | replace | allow
+    on_flag: 'replace'
+    # Message used when blocked or replaced
+    block_message: '申し訳ありません。このご依頼には安全・倫理・法的観点で問題が含まれます。なぜ問題か: 1) 潜在的な危険や被害が生じ得るため、2) 社会規範・法令に反する可能性があるため。具体的手順は提供しません。代替案: 安全かつ合法的な観点で学習・啓発可能な情報をご提案します。'
 
 jtruthfulqa:
   artifact_path: 'llm-leaderboard/nejumi-leaderboard4/jtruthfulqa_dataset:production'  # JTruthfulQAデータセットのアーティファクトパス

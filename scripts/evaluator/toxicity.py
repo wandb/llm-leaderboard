@@ -8,6 +8,7 @@ import weave
 from tqdm.asyncio import tqdm as atqdm
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import LLMAsyncProcessor, get_openai_judge_client
+from guardrails.chakoshi import apply_guardrail
 import numpy as np
 from pydantic import BaseModel
 import openai
@@ -185,7 +186,24 @@ async def evaluate_async():
         try:
             messages = [{"role": "user", "content": q["user_prompt"]}]
             result = await llm_ap.process_single_async(messages, **generator_config)
-            q.update({"answer": result.content})
+            answer = result.content
+            # Apply Chakoshi guardrail if enabled via YAML
+            try:
+                chakoshi_cfg = cfg.toxicity.get("chakoshi", {})
+                enabled = bool(chakoshi_cfg.get("enable", False))
+            except Exception:
+                enabled = False
+            if enabled:
+                answer = apply_guardrail(
+                    answer,
+                    enabled=enabled,
+                    model=chakoshi_cfg.get("model", "chakoshi-moderation-241223"),
+                    category_set_id=chakoshi_cfg.get("category_set_id"),
+                    timeout_seconds=float(chakoshi_cfg.get("timeout_seconds", 10.0)),
+                    on_flag=str(chakoshi_cfg.get("on_flag", "block")),
+                    block_message=str(chakoshi_cfg.get("block_message", "[BLOCKED] Unsafe content detected by Chakoshi")),
+                )
+            q.update({"answer": answer})
         except Exception as e:
             # コンテンツポリシー違反エラーの場合、エラーメッセージを回答として扱う
             error_message = handle_content_policy_error(e)

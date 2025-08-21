@@ -39,6 +39,9 @@ services:
       # Required API keys - set these in your .env file
       - WANDB_API_KEY=${WANDB_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Chakoshi moderation
+      - CHAKOSHI_API_KEY=${CHAKOSHI_API_KEY}
+      - CHAKOSHI_CATEGORY_SET_ID=${CHAKOSHI_CATEGORY_SET_ID}
 
       # Other API Keys (optional - set as needed)
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
@@ -69,7 +72,7 @@ services:
 
       # Other settings
       - LANG=${LANG:-ja_JP.UTF-8}
-      - PYTHONPATH=${PYTHONPATH}
+      - PYTHONPATH=${PYTHONPATH:-/workspace}
       - JUMANPP_COMMAND=${JUMANPP_COMMAND:-/usr/local/bin/jumanpp}
       - WEAVE_PRINT_CALL_LINK=${WEAVE_PRINT_CALL_LINK:-false}
       #- WANDB_RUN_ID=${WANDB_RUN_ID}
