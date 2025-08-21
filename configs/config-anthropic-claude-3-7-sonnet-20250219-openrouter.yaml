@@ -2,7 +2,10 @@ wandb:
   run_name: anthropic/claude-3.7-sonnet-20250219
 api: openai-compatible # openai, anthropic, google,..
 base_url: https://openrouter.ai/api/v1
-batch_size: 32
+batch_size: 6
+network:
+  http_timeout:
+    read: 600.0
 model:
   pretrained_model_name_or_path: anthropic/claude-3.7-sonnet
   bfcl_model_id: OpenRouter-FC
@@ -13,3 +16,48 @@ model:
 
 generate:
   parallel_tool_calls: true
+
+generator:
+  max_tokens: 180000
+  extra_body:
+    reasoning:
+      effort: high
+
+jaster:
+  override_max_tokens: 180000
+
+jbbq:
+  generator_config:
+    max_tokens: 180000
+
+toxicity:
+  generator_config:
+    max_tokens: 180000
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 180000
+
+swebench:
+  max_tokens: 180000
+
+mtbench:
+  max_new_token: 180000
+
+bfcl:
+  generator_config:
+    max_tokens: 180000
+
+hallulens:
+  generator_config:
+    max_tokens: 180000
+
+hle:
+  max_completion_tokens: 180000
+
+arc_agi:
+  max_output_tokens: 180000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 180000

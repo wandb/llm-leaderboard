@@ -51,6 +51,7 @@ class LLMAsyncProcessor:
         inputs: Inputs = [],
         batch_size: Optional[int] = None,
         inference_interval: Optional[float] = None,
+        soft_fail_on_error: Optional[bool] = None,
     ):
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config
@@ -59,6 +60,14 @@ class LLMAsyncProcessor:
         self.batch_size = batch_size or cfg.get("batch_size", 256)
         self.inference_interval = inference_interval or cfg.inference_interval
         self.semaphore = asyncio.Semaphore(self.batch_size)
+        # デフォルトはハードフェイル（従来挙動）。設定がある場合のみ上書き可能。
+        try:
+            # cfg.error_handling.request_failure.mode == "soft" であればソフトフェイル
+            mode = getattr(cfg, "error_handling", {}).get("request_failure", {}).get("mode", "hard")
+            default_soft = (mode == "soft")
+        except Exception:
+            default_soft = False
+        self.soft_fail_on_error = default_soft if soft_fail_on_error is None else bool(soft_fail_on_error)
 
     @error_handler
     @backoff.on_exception(
@@ -128,8 +137,21 @@ class LLMAsyncProcessor:
         for messages, _ in self.inputs:
             self._assert_messages_format(data=messages)
 
-        tasks = [self._ainvoke(messages, **kwargs) for messages, kwargs in self.inputs]
-        return await atqdm.gather(*tasks, desc=f"Processing requests")
+        if self.soft_fail_on_error:
+            async def _invoke_with_catch(messages: Messages, **kwargs) -> LLMResponse:
+                """各リクエスト恒久失敗時に空レスポンスで継続（ソフトフェイル）"""
+                try:
+                    return await self._ainvoke(messages, **kwargs)
+                except Exception as e:
+                    print(f"Request failed permanently: {type(e).__name__}: {str(e)}")
+                    return LLMResponse(content="", reasoning_content="")
+
+            tasks = [_invoke_with_catch(messages, **kwargs) for messages, kwargs in self.inputs]
+            return await atqdm.gather(*tasks, desc=f"Processing requests")
+        else:
+            # 従来挙動（ハードフェイル）。例外はそのまま伝播して全体を停止。
+            tasks = [self._ainvoke(messages, **kwargs) for messages, kwargs in self.inputs]
+            return await atqdm.gather(*tasks, desc=f"Processing requests")
 
     def get_results(self) -> List[LLMResponse]:
         """結果を取得（同期的なエントリーポイント）"""

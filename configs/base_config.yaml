@@ -6,6 +6,14 @@ wandb:
 testmode: false
 inference_interval: 0 # seconds
 
+# Global error handling policy (can be overridden per-benchmark)
+error_handling:
+  request_failure:
+    # mode: hard | soft
+    # - hard: any permanent request failure aborts the batch (default; previous behavior)
+    # - soft: permanent failures yield empty responses and continue (ARC-AGI uses this by default)
+    mode: hard
+
 network:
   http_timeout:
     connect: 10.0
@@ -135,6 +143,9 @@ swebench:
   evaluation_method: 'official'  # 'official' or 'docker' - 公式パッケージまたは独自Docker実装
   background_eval: false
   prebuild_images: true
+  # Enable function calling (submit_patch) to force unified diff output from the model
+  # Backward compatible default is false
+  fc_enabled: false
   # APIサーバー経由で評価する場合の設定
   api_server:
     enabled: false
@@ -230,6 +241,8 @@ arc_agi:
 m_ifeval:
   artifacts_path: "llm-leaderboard/nejumi-leaderboard4/m_ifeval:production"
   dataset_dir: "ja_input_data.jsonl"
+  generator_config:
+    max_tokens: 2048
 
 sample_dataset:
   artifacts_path: "your artifact path here"

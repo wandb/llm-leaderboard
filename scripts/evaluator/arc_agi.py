@@ -270,7 +270,25 @@ def evaluate():
                         break
 
         # Run inference in parallel
-        llm_ap = LLMAsyncProcessor(llm=llm, inputs=all_inputs)
+        # YAMLで切替可能: cfg.arc_agi.error_handling.request_failure.mode: soft|hard
+        # 互換: cfg.arc_agi.soft_fail_on_error: true|false
+        # デフォルト（ARC-AGIのみ）: soft
+        soft_fail = True
+        try:
+            mode = getattr(cfg.arc_agi, "error_handling").get("request_failure", {}).get("mode", None)
+            if mode is not None:
+                soft_fail = str(mode).lower() == "soft"
+        except Exception:
+            pass
+        try:
+            # boolean が直接指定されていれば優先
+            sfoe = cfg.arc_agi.get("soft_fail_on_error", None)
+            if sfoe is not None:
+                soft_fail = bool(sfoe)
+        except Exception:
+            pass
+
+        llm_ap = LLMAsyncProcessor(llm=llm, inputs=all_inputs, soft_fail_on_error=soft_fail)
         results = llm_ap.get_results()
 
         # Evaluation

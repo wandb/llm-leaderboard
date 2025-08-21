@@ -37,11 +37,25 @@ class OpenAIResponsesHandler(BaseHandler):
             self.max_tokens = self.generator_config.pop("max_tokens")
             if llm is None:
                 llm = getattr(instance, "llm", None)
+            # Responses APIのreasoningはトップレベルに渡す必要があるため、
+            # generator.extra_body.reasoning を昇格して保持しておく
+            try:
+                gen_cfg = getattr(cfg, "generator", {})
+                extra_body = gen_cfg.get("extra_body", {}) if isinstance(gen_cfg, dict) else {}
+                reasoning = extra_body.get("reasoning") if isinstance(extra_body, dict) else None
+                if reasoning is not None:
+                    # OmegaConf -> Python dict への変換に対応
+                    self.reasoning_param = OmegaConf.to_container(reasoning) if hasattr(OmegaConf, "to_container") else reasoning
+                else:
+                    self.reasoning_param = None
+            except Exception:
+                self.reasoning_param = None
         except Exception:
             # Singleton not initialized; proceed without config/llm
             self.model_name_huggingface = None
             self.generator_config = {}
             self.max_tokens = None
+            self.reasoning_param = None
         # Prefer an externally provided Responses client (e.g., OpenAIResponsesClient)
         # If provided and it exposes an AsyncOpenAI via `async_client`, use that; otherwise, fall back to default OpenAI client
         if llm is not None and hasattr(llm, "async_client") and hasattr(llm.async_client, "responses"):
@@ -53,6 +67,15 @@ class OpenAIResponsesHandler(BaseHandler):
             self._delegate_model_to_client = False
             self._client_is_async = False
         self.use_encrypted_reasoning = use_encrypted_reasoning
+
+    def _supports_temperature(self) -> bool:
+        """Responses APIでtemperatureが許可されるモデルかどうかを判定する。
+        OpenAIの推論(Reasoning)系モデルはtemperatureを受け付けないためここで除外する。
+        現状: o1*, o3*, o4*, gpt-5* は非対応。
+        """
+        name = (self.model_name_huggingface or self.model_name or "").lower()
+        unsupported_markers = ["o1", "o3", "o4", "gpt-5"]
+        return not any(marker in name for marker in unsupported_markers)
 
     @staticmethod
     def _substitute_prompt_role(prompts: list[dict]) -> list[dict]:
@@ -120,8 +143,12 @@ class OpenAIResponsesHandler(BaseHandler):
         # Responses API requires model explicitly
         kwargs["model"] = self.model.pretrained_model_name_or_path
 
-        # OpenAI reasoning models don't support temperature parameter
-        if not any(x in self.model_name_huggingface for x in ["o1", "o3", "o4"]):
+        # Reasoningの有効化（存在する場合のみ）
+        if getattr(self, "reasoning_param", None) is not None:
+            kwargs["reasoning"] = self.reasoning_param
+
+        # OpenAI reasoning系モデルではtemperatureは未対応
+        if self._supports_temperature():
             kwargs["temperature"] = self.temperature
 
         if len(tools) > 0:
@@ -248,8 +275,12 @@ class OpenAIResponsesHandler(BaseHandler):
         # Responses API requires model explicitly
         kwargs["model"] = self.model.pretrained_model_name_or_path
 
-        # OpenAI reasoning models don't support temperature parameter
-        if "o3" not in self.model_name and "o4-mini" not in self.model_name:
+        # Reasoningの有効化（存在する場合のみ）
+        if getattr(self, "reasoning_param", None) is not None:
+            kwargs["reasoning"] = self.reasoning_param
+
+        # OpenAI reasoning系モデルではtemperatureは未対応
+        if self._supports_temperature():
             kwargs["temperature"] = self.temperature
 
         return self.generate_with_backoff(**kwargs)
