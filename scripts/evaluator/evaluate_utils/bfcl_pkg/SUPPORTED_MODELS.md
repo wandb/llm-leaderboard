@@ -14,8 +14,19 @@ Below is a comprehensive table of models supported for running leaderboard evalu
 
 For model names containing `{...}`, multiple versions are available. For example, `meta-llama/Llama-3.1-{8B,70B}-Instruct` means we support both models: `meta-llama/Llama-3.1-8B-Instruct` and `meta-llama/Llama-3.1-70B-Instruct`.
 
+## 🚀 Nejumi Leaderboard Unified OSS Handlers
+
+**Special handlers designed for the Nejumi Leaderboard to provide seamless support for any Open Source Software (OSS) model:**
+
+- **`unified-oss-fc`**: Use this handler when your OSS model supports Function Calling (FC) capabilities. This handler automatically detects and utilizes the model's native function calling features.
+- **`unified-oss-jsonschema`**: Use this handler when your OSS model doesn't support Function Calling. It uses JSON Schema prompt formatting to enable function calling through structured prompts.
+
+These unified handlers eliminate the need to configure individual model-specific handlers, making it extremely convenient to evaluate any OSS model with the BFCL framework.
+
 | Base Model                                     | Type             | Provider       | Model ID on BFCL                                            |
 | ---------------------------------------------- | ---------------- | -------------- | ----------------------------------------------------------- |
+| **🚀 Unified OSS FC Handler (Nejumi Leaderboard)** | **Function Calling** | **Self-hosted 💻** | **unified-oss-fc**                                           |
+| **🚀 Unified OSS JSON Schema Handler (Nejumi Leaderboard)** | **Prompt**          | **Self-hosted 💻** | **unified-oss-jsonschema**                                   |                                          |
 | Amazon-Nova-Lite-v1:0                          | Function Calling | AWS            | nova-lite-v1.0                                              |
 | Amazon-Nova-Micro-v1:0                         | Function Calling | AWS            | nova-micro-v1.0                                             |
 | Amazon-Nova-Pro-v1:0                           | Function Calling | AWS            | nova-pro-v1.0                                               |
@@ -40,7 +51,13 @@ For model names containing `{...}`, multiple versions are available. For example
 | DBRX-Instruct                                  | Prompt           | Databricks     | databricks-dbrx-instruct                                    |
 | DeepSeek-R1                                    | Prompt           | DeepSeek       | DeepSeek-R1                                                 |
 | DeepSeek-R1                                    | Prompt           | Self-hosted 💻 | deepseek-ai/DeepSeek-R1                                     |
+| DeepSeek-R1-0528                               | Function Calling | DeepSeek       | DeepSeek-R1-0528-FC                                         |
+| DeepSeek-R1-0528                               | Prompt           | DeepSeek       | DeepSeek-R1-0528                                            |
+| DeepSeek-R1-0528                               | Prompt           | Self-hosted 💻 | deepseek-ai/DeepSeek-R1-0528                                |
 | DeepSeek-V3                                    | Function Calling | DeepSeek       | DeepSeek-V3-FC                                              |
+| DeepSeek-V3-0324                               | Function Calling | DeepSeek       | DeepSeek-V3-0324-FC                                         |
+| DeepSeek-V3-0324                               | Prompt           | Self-hosted 💻 | deepseek-ai/DeepSeek-V3-0324                                |
+| DeepSeek-V3.1                                  | Function Calling | DeepSeek       | DeepSeek-V3.1-FC                                            |
 | Falcon3-{1B,3B,7B,10B}-Instruct                | Function Calling | Self-hosted 💻 | tiiuae/Falcon3-{1B,3B,7B,10B}-Instruct                      |
 | FireFunction-v2                                | Function Calling | Fireworks AI   | firefunction-v2-FC                                          |
 | Functionary-{Small,Medium}-v3.1                | Function Calling | MeetKai        | meetkai/functionary-{small,medium}-v3.1-FC                  |
@@ -49,6 +66,12 @@ For model names containing `{...}`, multiple versions are available. For example
 | Gemini-2.0-Flash-Lite-001                      | Function Calling | Google         | gemini-2.0-flash-lite-001-FC                                |
 | Gemini-2.0-Flash-Lite-001                      | Prompt           | Google         | gemini-2.0-flash-lite-001                                   |
 | Gemini-2.0-Flash-Thinking-Exp-01-21            | Prompt           | Google         | gemini-2.0-flash-thinking-exp-01-21                         |
+| Gemini-2.5-Flash                               | Function Calling | Google         | gemini-2.5-flash-FC                                         |
+| Gemini-2.5-Flash                               | Prompt           | Google         | gemini-2.5-flash                                            |
+| Gemini-2.5-Flash-Lite-Preview-06-17            | Function Calling | Google         | gemini-2.5-flash-lite-preview-06-17-FC                      |
+| Gemini-2.5-Flash-Lite-Preview-06-17            | Prompt           | Google         | gemini-2.5-flash-lite-preview-06-17                         |
+| Gemini-2.5-Pro                                 | Function Calling | Google         | gemini-2.5-pro-FC                                           |
+| Gemini-2.5-Pro                                 | Prompt           | Google         | gemini-2.5-pro                                              |
 | Gemini (Generic Handler)                       | Function Calling | Google         | gemini-FC                                                   |
 | Gemini-2.5-Pro-Exp-05-06                       | Function Calling | Google         | gemini-2.5-pro-preview-05-06-FC                                 |
 | Gemini-2.5-Pro-Exp-05-06                       | Prompt           | Google         | gemini-2.5-pro-preview-05-06                                    |
@@ -69,6 +92,7 @@ For model names containing `{...}`, multiple versions are available. For example
 | GPT-4o-mini-2024-07-18                         | Function Calling | OpenAI         | gpt-4o-mini-2024-07-18-FC                                   |
 | GPT-4o-mini-2024-07-18                         | Prompt           | OpenAI         | gpt-4o-mini-2024-07-18                                      |
 | OpenAI (Generic Handler)                       | Function Calling | OpenAI         | OpenAI-FC                                                   |
+| OpenRouter (Generic Handler)                   | Function Calling | OpenRouter     | OpenRouter-FC                                               |
 | Granite-20b-FunctionCalling                    | Function Calling | Self-hosted 💻 | ibm-granite/granite-20b-functioncalling                     |
 | Grok-3-beta                                    | Function Calling | xAI            | grok-3-beta-FC                                              |
 | Grok-3-beta                                    | Prompt           | xAI            | grok-3-beta                                                 |
@@ -94,25 +118,38 @@ For model names containing `{...}`, multiple versions are available. For example
 | mistral-large-2411                             | Prompt           | Mistral AI     | mistral-large-2411                                          |
 | Mistral-small-2503                             | Function Calling | Mistral AI     | mistral-small-2503-FC                                       |
 | Mistral-Small-2503                             | Prompt           | Mistral AI     | mistral-small-2503                                          |
+| Mistral-medium-2505                            | Function Calling | Mistral AI     | mistral-medium-2505-FC                                      |
+| Mistral-medium-2505                            | Prompt           | Mistral AI     | mistral-medium-2505                                         |
 | Mistral (Generic Handler)                      | Function Calling | Mistral AI     | mistral-FC                                                  |
 | Nemotron-4-340b-instruct                       | Prompt           | Nvidia         | nvidia/nemotron-4-340b-instruct                             |
 | Nexusflow-Raven-v2                             | Function Calling | Nexusflow      | Nexusflow-Raven-v2                                          |
 | o1-2024-12-17                                  | Function Calling | OpenAI         | o1-2024-12-17-FC                                            |
 | o1-2024-12-17                                  | Prompt           | OpenAI         | o1-2024-12-17                                               |
+| o3-2025-04-16                                  | Function Calling | OpenAI         | o3-2025-04-16-FC                                            |
+| o3-2025-04-16                                  | Prompt           | OpenAI         | o3-2025-04-16                                               |
 | o3-mini-2025-01-31                             | Function Calling | OpenAI         | o3-mini-2025-01-31-FC                                       |
 | o3-mini-2025-01-31                             | Prompt           | OpenAI         | o3-mini-2025-01-31                                          |
+| o4-mini-2025-04-16                             | Function Calling | OpenAI         | o4-mini-2025-04-16-FC                                       |
+| o4-mini-2025-04-16                             | Prompt           | OpenAI         | o4-mini-2025-04-16                                          |
 | Open-Mistral-Nemo-2407                         | Prompt           | Mistral AI     | open-mistral-nemo-2407                                      |
 | Open-Mistral-Nemo-2407                         | Function Calling | Mistral AI     | open-mistral-nemo-2407-FC                                   |
 | palmyra-x-004                                  | Function Calling | Writer         | palmyra-x-004                                               |
 | phi-4                                          | Prompt           | Self-hosted 💻 | microsoft/phi-4                                             |
 | Phi-4-mini-instruct                            | Prompt           | Self-hosted 💻 | microsoft/Phi-4-mini-instruct                               |
 | Phi-4-mini-instruct                            | Function Calling | Self-hosted 💻 | microsoft/Phi-4-mini-instruct-FC                            |
+| phronetic-ai/RZN-T                             | Prompt           | Self-hosted 💻 | phronetic-ai/RZN-T                                          |
 | Qwen3-{0.6B,1.7B,4B,8B,14B,32B}                | Prompt           | Self-hosted 💻 | Qwen/Qwen3-{0.6B,1.7B,4B,8B,14B,32B}                        |
 | Qwen3-{0.6B,1.7B,4B,8B,14B,32B}                | Function Calling | Self-hosted 💻 | Qwen/Qwen3-{0.6B,1.7B,4B,8B,14B,32B}-FC                     |
 | Qwen3-{30B-A3B,235B-A22B}                      | Prompt           | Self-hosted 💻 | Qwen/Qwen3-{30B-A3B,235B-A22B}                              |
 | Qwen3-{30B-A3B,235B-A22B}                      | Function Calling | Self-hosted 💻 | Qwen/Qwen3-{30B-A3B,235B-A22B}-FC                           |
 | QwQ-32B                                        | Function Calling | Novita AI      | qwen/qwq-32b-FC-novita                                      |
 | QwQ-32B                                        | Prompt           | Novita AI      | qwen/qwq-32b-novita                                         |
+| Qwen3-{0.6B,1.7B,4B,8B,14B,32B} (API)         | Function Calling | Qwen           | qwen3-{0.6b,1.7b,4b,8b,14b,32b}-FC                         |
+| Qwen3-{0.6B,1.7B,4B,8B,14B,32B} (API)         | Prompt           | Qwen           | qwen3-{0.6b,1.7b,4b,8b,14b,32b}                            |
+| Qwen3-{30B-A3B,235B-A22B} (API)               | Function Calling | Qwen           | qwen3-{30b-a3b,235b-a22b}-FC                               |
+| Qwen3-{30B-A3B,235B-A22B} (API)               | Prompt           | Qwen           | qwen3-{30b-a3b,235b-a22b}                                  |
+| QwQ-32B (API)                                  | Function Calling | Qwen           | qwq-32b-FC                                                 |
+| QwQ-32B (API)                                  | Prompt           | Qwen           | qwq-32b                                                    |
 | Sky-T1-32B-Preview                             | Prompt           | Self-hosted 💻 | NovaSky-AI/Sky-T1-32B-Preview                               |
 | Snowflake/snowflake-arctic-instruct            | Prompt           | Snowflake      | snowflake/arctic                                            |
 | ThinkAgent-1B                                  | Function Calling | Self-hosted 💻 | ThinkAgents/ThinkAgent-1B                                   |
@@ -127,8 +164,6 @@ For model names containing `{...}`, multiple versions are available. For example
 | Upstage (Generic Handler)                      | Function Calling | Upstage        | upstage-FC                                                  |
 | PLaMo-2.0-Prime                                | Function Calling | Preferred AI   | PLaMo-2.0-Prime-FC                                         |
 | PLaMo-2.0-Prime                                | Prompt           | Preferred AI   | PLaMo-2.0-Prime                                            |
-
-| **🆕 Generic OSS Handler (Nejumi Leaderboard)** | **Auto-Detect**     | **Self-hosted 💻** | **oss_handler**                                              |
 
 ---
 
