@@ -33,6 +33,13 @@ from evaluator import (
 from utils import paginate_choices
 import weave
 
+# プログレストラッカーとバリデーション機能をインポート
+from evaluator.evaluate_utils.progress_tracker import (
+    initialize_progress_tracker, start_benchmark_tracking, 
+    complete_benchmark_tracking, finish_progress_tracking
+)
+from evaluator.evaluate_utils.validation_helpers import validate_all_benchmarks
+
 # Set config path
 config_dir = Path("configs")
 base_cfg_name = "base_config.yaml"
@@ -129,6 +136,75 @@ else:
     # Wandbが利用できない場合の代替設定
     cfg = OmegaConf.create(cfg_dict)
 
+# 有効なベンチマークリストを取得
+enabled_benchmarks = []
+benchmark_map = {
+    'bfcl': 'bfcl',
+    'swebench': 'swebench', 
+    'mtbench': 'mtbench',
+    'jbbq': 'jbbq',
+    'toxicity': 'toxicity',
+    'jtruthfulqa': 'jtruthfulqa',
+    'hle': 'hle',
+    'hallulens': 'hallulens',
+    'arc_agi': 'arc_agi',
+    'm_ifeval': 'm_ifeval',
+    'jaster': 'jaster'
+}
+
+for bench_key, bench_name in benchmark_map.items():
+    if getattr(cfg.run, bench_key, False):
+        enabled_benchmarks.append(bench_name)
+
+# グローバルトークンバリデーション実行
+print("\n" + "="*80)
+print("🔍 GLOBAL TOKEN ALLOCATION VALIDATION")
+print("="*80)
+try:
+    validation_results = validate_all_benchmarks(cfg)
+    
+    has_warnings = False
+    has_errors = False
+    
+    for benchmark, (is_valid, message) in validation_results.items():
+        if benchmark in enabled_benchmarks:  # 有効なベンチマークのみチェック
+            if not is_valid:
+                if "❌" in message:
+                    has_errors = True
+                else:
+                    has_warnings = True
+            print(message)
+    
+    print("="*80)
+    
+    if has_errors:
+        print("\n❌ CRITICAL: Some benchmarks have insufficient output tokens!")
+        print("   This will likely cause empty responses and unfairly low scores.")
+        response = input("\nContinue anyway? (y/N): ").strip().lower()
+        if response not in ['y', 'yes']:
+            print("Evaluation aborted by user.")
+            if run:
+                run.finish()
+            exit(1)
+    elif has_warnings:
+        print("\n⚠️  WARNING: Some benchmarks have suboptimal token allocation.")
+        response = input("\nContinue? (Y/n): ").strip().lower()
+        if response in ['n', 'no']:
+            print("Evaluation aborted by user.")
+            if run:
+                run.finish()
+            exit(1)
+    else:
+        print("\n✅ All token allocations look good!")
+        
+except Exception as e:
+    print(f"⚠️  Token validation failed: {e}")
+    print("Proceeding with evaluation...")
+
+# プログレストラッカーを初期化
+tracker = initialize_progress_tracker(enabled_benchmarks)
+tracker.start_tracking()
+
 # vLLMコンテナの起動処理を追加
 # Start vLLM container if needed (for vllm/vllm-docker API types)
 # # Start vLLM container if needed
@@ -156,53 +232,75 @@ if run:
 
 # BFCL
 if cfg.run.bfcl:
+    start_benchmark_tracking('bfcl')
     bfcl.evaluate()
+    complete_benchmark_tracking('bfcl')
 
 # SWE-Bench Verified evaluation
 if cfg.run.swebench:
+    start_benchmark_tracking('swebench')
     if cfg.swebench.background_eval:
         # 評価プロセスの実行時間が長いため、他のベンチと並行でバックグラウンド実行する
         # evaluate() はコールバック（wait_and_log_metrics）を返す実装に統一
         swebench_postprocess = swe_bench.evaluate()
     else:
         swe_bench.evaluate()
+    complete_benchmark_tracking('swebench')
 
 # mt-bench evaluation
 if cfg.run.mtbench:
+    start_benchmark_tracking('mtbench')
     mtbench.evaluate()
+    complete_benchmark_tracking('mtbench')
 
 # jbbq
 if cfg.run.jbbq:
+    start_benchmark_tracking('jbbq')
     jbbq.evaluate()
+    complete_benchmark_tracking('jbbq')
 
 # toxicity
 if cfg.run.toxicity:
+    start_benchmark_tracking('toxicity')
     toxicity.evaluate()
+    complete_benchmark_tracking('toxicity')
 
 # JTruthfulQA
 if cfg.run.jtruthfulqa:
+    start_benchmark_tracking('jtruthfulqa')
     jtruthfulqa.evaluate()
+    complete_benchmark_tracking('jtruthfulqa')
 
 # hle
 if cfg.run.hle:
+    start_benchmark_tracking('hle')
     hle.evaluate()
+    complete_benchmark_tracking('hle')
 
 # HalluLens
 if cfg.run.hallulens:
+    start_benchmark_tracking('hallulens')
     hallulens.evaluate()
+    complete_benchmark_tracking('hallulens')
 
 # ARC-AGI
 if cfg.run.arc_agi:
+    start_benchmark_tracking('arc_agi')
     arc_agi.evaluate()
+    complete_benchmark_tracking('arc_agi')
 
 # M-IFEval
 if cfg.run.m_ifeval:
+    start_benchmark_tracking('m_ifeval')
     m_ifeval.evaluate()
+    complete_benchmark_tracking('m_ifeval')
 
 # Evaluation phase
 if cfg.run.jaster:
+    start_benchmark_tracking('jaster')
     # llm-jp-eval evaluation
     jaster.evaluate()
+    complete_benchmark_tracking('jaster')
 
     #### open weight model base evaluation
     # 1. evaluation for translation task in jaster with comet
@@ -242,6 +340,9 @@ if cfg.run.swebench and cfg.swebench.background_eval:
 # Aggregation
 if cfg.run.aggregate:
     aggregate.evaluate()
+
+# プログレストラッキング終了
+finish_progress_tracking()
 
 # 評価完了後、vLLMコンテナを停止
 if cfg.api in ["vllm", "vllm-docker"]:

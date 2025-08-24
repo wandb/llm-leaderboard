@@ -1,0 +1,22 @@
+wandb:
+  run_name: "plamo-2.0-prime: function-calling-evaluation"
+
+# PLaMo API is OpenAI compatible
+# Environment variable: OPENAI_COMPATIBLE_API_KEY should be set to your PLAMO_API_KEY
+api: openai-compatible
+base_url: "https://api.platform.preferredai.jp/v1"
+batch_size: 32
+
+model:
+  pretrained_model_name_or_path: "plamo-2.0-prime"  # API model name
+  bfcl_model_id: "PLaMo-2.0-Prime-FC"  # Custom BFCL model ID for function calling mode
+  base_model: "unknown"
+  size_category: api
+  size: null
+  release_date: "05/22/2025"  # Approximate release date
+
+# Generator configuration - Minimal parameters for PLaMo compatibility
+generator:
+  max_tokens: 4096  # PLaMo max output tokens
+  temperature: 0.1   # PLaMo default
+  top_p: 0.9         # PLaMo default
