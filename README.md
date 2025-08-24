@@ -25,6 +25,7 @@ Our evaluation framework incorporates a diverse set of metrics to provide a holi
 | ^   | Toxicity || LINE Yahoo Reliability Evaluation Benchmark | This dataset is not publicly available due to its sensitive content.| <TBU> |
 | ^   | Bias | JBBQ (2shot) | | JBBQ needs to be downloaded from [JBBQ github repository](https://github.com/ynklab/JBBQ_data?tab=readme-ov-file). |
 | ^   | Truthfulness | JTruthfulQA | | For JTruthfulQA evaluation, nlp-waseda/roberta_jtruthfulqa requires Juman++ to be installed beforehand. You can install it by running the script/install_jumanpp.sh script. |
+| ^   | Hallucination Resistance | Hallulens refusal_test | | Evaluates model's ability to refuse generating hallucinated information when prompted with non-existent entities. |
 | ^   | Robustness | Test multiple patterns against JMMLU (W&B original) (0shot, 2shot)<br>- Standard method<br>- Choices are symbols<br>- Select anything but the correct answer | | |
 
 
@@ -82,6 +83,7 @@ In Nejumi Leadeboard3, the following dataset are used.
 4. [JBBQ](https://github.com/ynklab/JBBQ_data?tab=readme-ov-file) (Creative Commons Attribution 4.0 International License.)
 5. LINE Yahoo Inappropriate Speech Evaluation Dataset (not publically available)
 6. [JTruthfulQA](https://github.com/nlp-waseda/JTruthfulQA) (Creative Commons Attribution 4.0 International License.)
+7. [Hallulens](https://github.com/facebookresearch/HalluLens) (CC-BY-NC license)
 
 
 
@@ -163,6 +165,17 @@ Below, you will find a detailed description of the variables utilized in the `ba
     - `baseline_model`: Model used for comparison. Leave as null for default behavior.
     - `parallel`: Number of parallel threads to use.
     - `first_n`: Number of generated responses to use for comparison. Leave as null for default behavior.
+
+- **hallulens:** Settings for the Hallulens evaluation.
+    - `artifacts_path`: URL of the WandB Artifact for the Hallulens dataset.
+    - `generator_config`: Generation configuration for Hallulens evaluation.
+        - `max_tokens`: Maximum number of tokens to generate. Default is 256.
+        - `temperature`: Temperature for sampling. Default is 0.0.
+        - `top_p`: Top-p sampling. Default is 1.0.
+    - `judge`: Configuration for judging the generated responses.
+        - `model`: Model used for judging. Default is `gpt-4.1-2025-04-14`.
+        - `parallel`: Number of parallel threads to use. Default is 32.
+        - `params`: Additional parameters for the judge model.
 
 ### Model configuration
 After setting up the base-configuration file, the next step is to set up a configuration file for model under `configs/`.
