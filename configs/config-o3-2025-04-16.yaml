@@ -1,5 +1,5 @@
 wandb:
-  run_name: openai/o3-2025-04-16
+  run_name: "openai/o3-2025-04-16: high-effort"
 api: openai_responses # openai, anthropic, google,..
 batch_size: 32
 model:
@@ -10,13 +10,51 @@ model:
   size: null
   release_date: 4/16/2025 # format: MM/DD/YYYY
 
-generator:
-  # temperature は外す（o3 は非対応）
-  max_output_tokens: 800000  
-  reasoning:
-    effort: "high"          # "low" | "medium" | "high"
-    summary: "auto"        
-  include:
-    - "reasoning.encrypted_content"
+
+generator: # LLM client default configuration: to be overridden by each benchmark
+  max_tokens: 100000
   parallel_tool_calls: true
-  temparature: None
+  extra_body:
+    reasoning:
+      effort: high
+
+jaster:
+  override_max_tokens: 100000 # if null, use value defined in task dataset files
+
+jbbq:
+  generator_config:
+    max_tokens: 100000
+
+toxicity:
+  generator_config:
+    max_tokens: 100000
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 100000
+
+swebench:
+  max_tokens: 100000
+
+mtbench:
+  generator_config:
+    max_tokens: 100000
+
+bfcl:
+  generator_config:
+    max_tokens: 100000
+
+hallulens:
+  generator_config:
+    max_tokens: 100000
+
+hle:
+  generator_config:
+    max_tokens: 100000
+
+arc_agi:
+  max_output_tokens: 100000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 100000

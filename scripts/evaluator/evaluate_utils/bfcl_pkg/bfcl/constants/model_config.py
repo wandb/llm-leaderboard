@@ -25,6 +25,8 @@ from ..model_handler.api_inference.openai_completion import (
 )
 from ..model_handler.api_inference.openai_response import OpenAIResponsesHandler
 from ..model_handler.api_inference.openrouter import OpenRouterHandler
+from ..model_handler.api_inference.plamo import PLaMoAPIHandler
+from ..model_handler.openai_compatible_handler import OpenAICompatibleHandler
 from ..model_handler.api_inference.qwen import (
     QwenAgentNoThinkHandler,
     QwenAgentThinkHandler,
@@ -174,6 +176,18 @@ api_inference_model_map = {
         model_name="DeepSeek-V3-0324",
         display_name="DeepSeek-V3-0324 (FC)",
         url="https://api-docs.deepseek.com/news/news250325",
+        org="DeepSeek",
+        license="DeepSeek License",
+        model_handler=DeepSeekAPIHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
+    "DeepSeek-V3.1-FC": ModelConfig(
+        model_name="DeepSeek-V3.1",
+        display_name="DeepSeek-V3.1 (FC)",
+        url="https://api-docs.deepseek.com/",
         org="DeepSeek",
         license="DeepSeek License",
         model_handler=DeepSeekAPIHandler,
@@ -1198,6 +1212,30 @@ api_inference_model_map = {
         license="MIT",
         model_handler=LingAPIHandler,
         input_price=None,
+        output_price=None,
+        is_fc_model=False,
+        underscore_to_dot=False,
+    ),
+    "PLaMo-2.0-Prime-FC": ModelConfig(
+        model_name="PLaMo-2.0-Prime-FC",
+        display_name="PLaMo-2.0-Prime (FC)",
+        url="https://api.platform.preferredai.jp/docs",
+        org="Preferred AI",
+        license="Proprietary",
+        model_handler=PLaMoAPIHandler,
+        input_price=None,  # Add pricing information if available
+        output_price=None,
+        is_fc_model=True,
+        underscore_to_dot=False,
+    ),
+    "PLaMo-2.0-Prime": ModelConfig(
+        model_name="PLaMo-2.0-Prime",
+        display_name="PLaMo-2.0-Prime (Prompt)",
+        url="https://api.platform.preferredai.jp/docs",
+        org="Preferred AI",
+        license="Proprietary",
+        model_handler=PLaMoAPIHandler,
+        input_price=None,  # Add pricing information if available
         output_price=None,
         is_fc_model=False,
         underscore_to_dot=False,

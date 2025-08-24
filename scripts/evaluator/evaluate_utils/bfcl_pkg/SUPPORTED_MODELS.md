@@ -125,6 +125,8 @@ For model names containing `{...}`, multiple versions are available. For example
 | xLAM-2-70b-fc-r                                | Function Calling | Self-hosted 💻 | Salesforce/Llama-xLAM-2-70b-fc-r                            |
 | xLAM-2-8b-fc-r                                 | Function Calling | Self-hosted 💻 | Salesforce/Llama-xLAM-2-8b-fc-r                             |
 | Upstage (Generic Handler)                      | Function Calling | Upstage        | upstage-FC                                                  |
+| PLaMo-2.0-Prime                                | Function Calling | Preferred AI   | PLaMo-2.0-Prime-FC                                         |
+| PLaMo-2.0-Prime                                | Prompt           | Preferred AI   | PLaMo-2.0-Prime                                            |
 
 | **🆕 Generic OSS Handler (Nejumi Leaderboard)** | **Auto-Detect**     | **Self-hosted 💻** | **oss_handler**                                              |
 
