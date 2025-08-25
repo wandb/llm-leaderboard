@@ -1,0 +1,17 @@
+wandb:
+  run_name: meta-llama/Llama-3.1-8B-Instruct
+api: vllm
+batch_size: 256
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: meta-llama/Llama-3.1-8B-Instruct #if you use openai api, put the name of model
+  bfcl_model_id: "meta-llama/Llama-3.1-8B-Instruct" # プロンプトモードのほうが精度が高い
+  size_category: "Small (<10B)"
+  size: 8030261248
+  release_date: 11/11/2024
+
+vllm: # vLLM server-side launch configuration
+  vllm_tag: v0.8.5
+  # unified-oss-fcで動かす場合はchat_templateの修正が必要
+  # https://docs.vllm.ai/en/stable/features/tool_calling.html#llama-models-llama3_json
+  # chat_template: meta-llama/Llama-3.1-8B-Instruct

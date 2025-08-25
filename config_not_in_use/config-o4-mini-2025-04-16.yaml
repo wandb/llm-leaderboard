@@ -1,0 +1,74 @@
+wandb:
+  run_name: "openai/o4-mini-2025-04-16" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai_responses", "openai_chat", "anthoropic", "google", "cohere", "vllm"
+api: openai_responses
+batch_size: 2 # vllmは256, apiは32を推奨
+# inference_interval: 1 # seconds
+
+model:
+  pretrained_model_name_or_path: "o4-mini-2025-04-16" #if you use openai api, put the name of model
+  size_category: "api"
+  size: null
+  release_date: "4/16/2025"
+
+generator:
+  max_tokens: 131072
+  temperature: 1.0
+  reasoning:
+    effort: "low"
+    summary: "auto"
+
+jaster:
+  override_max_tokens: 131072
+
+jbbq:
+  generator_config:
+    max_tokens: 131072
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 131072
+
+swebench:
+  max_tokens: 131072
+
+mtbench:
+  max_new_token: 131072
+  temperature_override:
+    writing: 1.0
+    roleplay: 1.0
+    extraction: 1.0
+    math: 1.0
+    coding: 1.0
+    reasoning: 1.0
+    stem: 1.0
+    humanities: 1.0
+
+hallulens:
+  generator_config:
+    max_tokens: 131072
+    temperature: 1.0
+    top_p: 1.0
+
+hle:
+  max_completion_tokens: 131072
+
+arc_agi_2:
+  max_output_tokens: 131072
+
+testmode: true
+run:
+  jaster: true
+  jmmlu_robustness: true # if this is set as true, jaster should set as true
+  mtbench: true
+  jbbq: true
+  toxicity: true
+  jtruthfulqa: true
+  hle: true
+  swebench: true
+  bfcl: false
+  hallulens: true
+  arc_agi_2: true
+  aggregate: false

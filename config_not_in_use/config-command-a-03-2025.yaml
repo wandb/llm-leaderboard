@@ -1,0 +1,15 @@
+wandb:
+  run_name: "cohere/command-a-03-2025" # use run_name defined above
+
+# if you don't use api, please set "api" as "false"
+# if you use api, please select from "openai", "anthropic", "google", "cohere", "vllm", "mistral", "bedrock"
+api: "cohere"
+batch_size: 32 # vllmは256, apiは32を推奨
+# inference_interval: 1 # seconds
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "command-a-03-2025" #if you use openai api, put the name of model
+  bfcl_model_id: "command-a-03-2025-FC"
+  size_category: "api"
+  size: null
+  release_date: "3/13/2025"

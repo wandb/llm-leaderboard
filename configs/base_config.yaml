@@ -1,34 +1,92 @@
 wandb:
-  entity: "wandb-japan"
-  project: "llm-leaderboard3"
+  entity: 'llm-leaderboard'
+  project: 'nejumi-leaderboard4'
   #run: please set up run name in a model-base config
-
-github_version: v3.0.0 #for recording
 
 testmode: false
 inference_interval: 0 # seconds
 
+# Global error handling policy (can be overridden per-benchmark)
+error_handling:
+  request_failure:
+    # mode: hard | soft
+    # - hard: any permanent request failure aborts the batch (default; previous behavior)
+    # - soft: permanent failures yield empty responses and continue (ARC-AGI uses this by default)
+    mode: hard
+
+network:
+  http_timeout:
+    connect: 10.0
+    read: 300.0
+    write: 300.0
+    pool: 30.0
+
+# API個別の上書き（必要に応じて）
+openai:
+  http_timeout:
+    connect: 10.0
+    read: 300.0
+    write: 300.0
+    pool: 30.0
+
+# Azure OpenAI個別
+azure_openai:
+  http_timeout:
+    connect: 10.0
+    read: 300.0
+    write: 300.0
+    pool: 30.0
+
 run:
-  jaster: true
-  jmmlu_robustness: true # if this is set as true, jaster should set as true
+  bfcl: true
+  swebench: true
   mtbench: true
-  jbbq: true
-  lctg: true
+  jbbq: true 
   toxicity: true
   jtruthfulqa: true
+  hle: true
+  hallulens: true
+  arc_agi: true
+  m_ifeval: true
+  jaster: true
+  jmmlu_robustness: true # if this is set as true, jaster should set as true  
   aggregate: true
+  
 
 model:
   artifact_path: null
-  max_model_len: 3000
-  chat_template: null
-  dtype: 'float16'
-  trust_remote_code: true
-  device_map: "auto"
-  load_in_8bit: false
-  load_in_4bit: false
 
-generator:
+vllm: # vLLM server-side launch configuration
+  # vLLM docker image tag (default). Override in each model config with `vllm_tag:` or `vllm_docker_image:`
+  vllm_tag: latest
+  # Volta/Turing など Ampere 未満の GPU で vLLM が Triton MMA カーネルを使ってクラッシュする場合に true に設定
+  disable_triton_mma: false
+  # vLLMコンテナのライフサイクル管理: auto | always_on | stop_restart
+  lifecycle: auto
+  # モデルのデータ型 null の場合はモデル内config.jsonのデフォルト値を使用
+  dtype: null
+  # モデルの最大トークン数 null の場合はモデル内config.jsonのデフォルト値を使用
+  max_model_len: null
+  # モデルのデバイスマップ
+  device_map: null
+  # GPUメモリ使用率制限
+  gpu_memory_utilization: null
+  # Reasoningモデル用のParser設定
+  reasoning_parser: null
+  # HF repository内のリモートコードを信頼するかどうか
+  trust_remote_code: false
+  # カスタムchat template(Tool Callingの修正が必要な場合等)
+  chat_template: null
+  # Tool callingの自動パースの有効化
+  enable_auto_tool_choice: false
+  # ツール呼び出しのパーサー
+  tool_call_parser: null
+  # 追加のvLLMコマンドライン引数
+  # extra_args:
+  #   - '--override_generation_config={"temperature":0.6,"top_p":0.95}' # do not include space
+  extra_args: []
+
+generator: # LLM client default configuration: to be overridden by each benchmark
   top_p: 1.0
   temperature: 0.1
   max_tokens: 128
@@ -36,30 +94,76 @@ generator:
 num_few_shots: 2
 
 jaster:
-  message_intro: "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。"
-  artifacts_path: "wandb-japan/llm-leaderboard3/jaster:v6"
-  dataset_dir: "jaster"
-
-lctg:
-  artifacts_path: "wandb-japan/llm-leaderboard3/lctg:v0"
-  dataset_dir: "lctg"
+  message_intro: '以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。'
+  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/jaster:production'
+  dataset_dir: 'jaster'
+  jhumaneval:
+    # Dify Sandbox configuration for secure code execution
+    dify_sandbox:
+      endpoint: 'http://dify-sandbox:8194'  # Sandbox service endpoint
+      api_key: 'dify-sandbox'               # API key for authentication
+      connect_timeout: 10.0                 # Connection timeout in seconds
+      read_timeout: 60.0                    # Read timeout in seconds  
+      write_timeout: 60.0                   # Write timeout in seconds
+      enable_network: true                  # Enable network access in sandbox
+      worker_timeout: 15                    # Worker process timeout in seconds
+  override_max_tokens: null # if null, use value defined in task dataset files
 
 jbbq:
-  artifacts_path: 'wandb-japan/llm-leaderboard3-private/jbbq:v2'
+  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4-private/jbbq:production'
   dataset_dir: 'jbbq'
   language: 'ja'
+  generator_config:
+    max_tokens: 10
 
 toxicity:
-  artifact_path: 'wandb-japan/toxicity-dataset-private/toxicity_dataset_full:v3'
-  judge_prompts_path: 'wandb-japan/toxicity-dataset-private/toxicity_judge_prompts:v1'
-  max_workers: 5
-  judge_model: 'gpt-4o-2024-05-13'
+  artifact_path: 'llm-leaderboard/nejumi-leaderboard4-private/toxicity_dataset_full:production'
+  judge_prompts_path: 'llm-leaderboard/nejumi-leaderboard4-private/toxicity_judge_prompts:production'
+  generator_config:
+    max_tokens: 1024
+    temperature: 0.0
+    top_p: 1.0
+  judge:
+    model: 'gpt-4.1-2025-04-14'
+    parallel: 32
+    params: {} # Currently using OpenAI's default
 
 jtruthfulqa:
-  artifact_path: 'wandb-japan/llm-leaderboard3/jtruthfulqa_dataset:v1'  # JTruthfulQAデータセットのアーティファクトパス
+  artifact_path: 'llm-leaderboard/nejumi-leaderboard4/jtruthfulqa_dataset:production'  # JTruthfulQAデータセットのアーティファクトパス
   roberta_model_name: 'nlp-waseda/roberta_jtruthfulqa'  # 評価に使用するRoBERTaモデル名
+  generator_config:
+    max_tokens: 256
+
+swebench:
+  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/swebench_verified_official:production'  # SWE-Bench Verifiedデータセットのアーティファクトパス
+  dataset_dir: 'swebench_verified_official'
+  max_samples: 80  # 全500件は時間がかかるため制限（フルセットの場合は500を指定）
+  max_tokens: 2048  # SWE-Benchのパッチ生成に必要なトークン数
+  max_workers: 24  # 並列実行ワーカー数
+  evaluation_method: 'official'  # 'official' or 'docker' - 公式パッケージまたは独自Docker実装
+  background_eval: false
+  prebuild_images: true
+  # Enable function calling (submit_patch) to force unified diff output from the model
+  # Backward compatible default is false
+  fc_enabled: false
+  # APIサーバー経由で評価する場合の設定
+  api_server:
+    enabled: false
+    endpoint: 'https://api.nejumi-swebench.org'
+    api_key: null  # 環境変数 SWE_API_KEY が優先
+    # namespace/tag は上書き用途（未指定なら下の images を参照）
+    # namespace: 'swebench'
+    # tag: 'latest'
+    timeout_sec: 1200
+  # イメージ取得元
+  images:
+    namespace: 'swebench'
+    tag: 'latest'
 
 mtbench:
+  generator_config:
+    max_tokens: 1024
+    temperature: 0.7
   temperature_override:
     writing: 0.7
     roleplay: 0.7
@@ -68,28 +172,77 @@ mtbench:
     coding: 0.0
     reasoning: 0.0
     stem: 0.1
-    humanities": 0.1
-  question_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_question:v4' # if testmode is true, small dataset will be used
-  question_artifacts_path_test: 'wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v5'
-  referenceanswer_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v2' # if testmode is true, small dataset will be used
-  referenceanswer_artifacts_path_test: 'wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v2'
-  judge_prompt_artifacts_path: 'wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1' 
+    humanities: 0.1
+  question_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_question:production' # if testmode is true, small dataset will be used
+  question_artifacts_path_test: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_question_small_for_test:production'
+  referenceanswer_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_referenceanswer:production' # if testmode is true, small dataset will be used
+  referenceanswer_artifacts_path_test: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_referenceanswer_small_for_test:production'
+  judge_prompt_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_prompt:production' 
   bench_name: 'japanese_mt_bench'
-  model_id: null # cannot use '<', '>', ':', '"', '/', '\\', '|', '?', '*', '.'
-  question_begin: null 
-  question_end: null 
-  max_new_token: 1024
-  num_choices: 1
-  num_gpus_per_model: 1
-  num_gpus_total: 1
-  max_gpu_memory: null
-  dtype: bfloat16 # None or float32 or float16 or bfloat16
-  # for gen_judgment
-  judge_model: 'gpt-4o-2024-05-13'
-  mode: 'single'
-  baseline_model: null 
-  parallel: 80
+  model_id: null # cannot use '<', '>', ':', ''', '/', '\\', '|', '?', '*', '.'
   first_n: null
+  judge:
+    model: 'gpt-4.1-2025-04-14'
+    parallel: 32
+    params:
+      max_tokens: 2048
+      temperature: 0.0
+
+bfcl:
+  test_category: "java javascript live_irrelevance live_multiple live_relevance live_simple multi_turn_base multi_turn_miss_func multi_turn_miss_param simple multiple irrelevance"  # multi_turn_long_context以外のカテゴリを指定
+  temperature: 0.01  # 推論共通化未対応のHandler用
+  num_threads: 2
+  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/bfcl:production'
+  generator_config:
+    max_tokens: 8096
+    temperature: 0.01
+    top_p: 1.0
+  handler_config:
+    unified_oss_jsonschema:
+      # ツールの実行結果メッセージにtool callの文字列 tool(arg1=1, arg2=2) を含めるかどうか
+      execution_result_include_call_str: true
+      # ツールの実行結果メッセージにtool_call_idを含めるかどうか　
+      # trueの場合 "tool_call_id"のfieldが追加される
+      # falseの場合はcontentの先頭部分に [1]: のように実行番号が追加される
+      execution_result_include_call_id: false
+      # 複数のツールが並列実行されたとき、ツールの実行結果メッセージを1つに連結するかどうか
+      execution_result_join_parallel_calls: true
+      # ツールの実行結果のrole "tool"が許可されていない場合は"user"などに変更する
+      execution_result_role: "tool"
+
+hallulens:
+  artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/hallulens:production'
+  generator_config:
+    max_tokens: 256
+    temperature: 0.0
+    top_p: 1.0
+  judge:
+    model: 'gpt-4.1-2025-04-14'
+    parallel: 32
+    params: {} # Currently using OpenAI's default
+
+hle:
+  artifact_path: 'llm-leaderboard/nejumi-leaderboard4/hle-ja:production'
+  dataset_name: 'hle-ja.jsonl'
+  max_samples: 10
+  generator_config:
+    max_tokens: 4096
+  judge:
+    model: "o3-mini-2025-01-31"
+    parallel: 32
+    params: {} # Currently using OpenAI's default
+
+arc_agi:
+  arc_agi_1_artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-1_public-eval_50:production"
+  arc_agi_2_artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval_50:production"
+  max_output_tokens: 4096
+  num_attempts: 2
+
+m_ifeval:
+  artifacts_path: "llm-leaderboard/nejumi-leaderboard4/m_ifeval:production"
+  dataset_dir: "ja_input_data.jsonl"
+  generator_config:
+    max_tokens: 2048
 
 sample_dataset:
   artifacts_path: "your artifact path here"

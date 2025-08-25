@@ -1,0 +1,12 @@
+wandb:
+  run_name: "cohere/command-a-03-2025"
+api: "cohere"
+batch_size: 8          # Cohere APIレート制限対策：32→2に大幅削減
+inference_interval: 2  # 20秒間隔でレート制限回避
+model:
+  pretrained_model_name_or_path: "command-a-03-2025" #if you use openai api, put the name of model
+  bfcl_model_id: "command-a-03-2025-FC"  # find id from "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  base_model: "unknown"
+  size_category: api
+  size: 111000000000
+  release_date: "3/13/2025"

@@ -1,0 +1,14 @@
+wandb:
+  run_name: "example-openai-compatible"
+
+api: "openai-compatible"
+base_url: "https://your-api-endpoint.com/v1"  # 外部APIのエンドポイント
+
+model:
+  pretrained_model_name_or_path: "your-model-name"  # APIで使用するモデル名
+
+# Generator configuration
+generator:
+  temperature: 0.1
+  top_p: 1.0
+  max_tokens: 256 

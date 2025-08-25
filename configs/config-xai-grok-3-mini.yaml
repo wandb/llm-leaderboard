@@ -1,0 +1,57 @@
+wandb:
+  run_name: grok-3-mini
+api: "openai-compatible"
+base_url: "https://openrouter.ai/api/v1"
+batch_size: 8
+model:
+  pretrained_model_name_or_path: x-ai/grok-3-mini #if you use openai api, put the name of model
+  bfcl_model_id: OpenRouter-FC  # find id from "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  base_model: unknown
+  size_category: api
+  size: null
+  release_date: "5/19/2025"
+
+generator:
+  max_tokens: 100000
+  extra_body:
+    reasoning:
+      effort: high
+
+jaster:
+  override_max_tokens: 100000
+
+jbbq:
+  generator_config:
+    max_tokens: 100000
+
+toxicity:
+  generator_config:
+    max_tokens: 100000
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 100000
+
+swebench:
+  max_tokens: 100000
+
+mtbench:
+  max_new_token: 100000
+
+bfcl:
+  generator_config:
+    max_tokens: 100000
+
+hallulens:
+  generator_config:
+    max_tokens: 100000
+
+hle:
+  max_completion_tokens: 100000
+
+arc_agi:
+  max_output_tokens: 100000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 100000

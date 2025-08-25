@@ -1,0 +1,87 @@
+wandb:
+  run_name: "Qwen/Qwen3-235B-A22B" # use run_name defined above
+
+api: vllm-docker
+num_gpus: 8
+batch_size: 256 # vllmは256, apiは32を推奨
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "Qwen/Qwen3-235B-A22B" #if you use openai api, put the name of model
+  bfcl_model_id: "Qwen/Qwen3-235B-A22B-FC"
+  size_category: "Large (30B+)"
+  size: 235093634560
+  release_date: "3/6/2025"
+
+vllm:
+  vllm_tag: v0.10.1
+  reasoning_parser: qwen3
+
+generator:
+  max_tokens: 32768
+  temperature: 0.6
+  top_p: 0.95
+  tool_choice: none # BFCL以外でtool callが呼ばれてcontentがNoneになる対策
+  extra_body:
+    chat_template_kwargs:
+      enable_thinking: true
+
+jaster:
+  override_max_tokens: 32768
+
+jbbq:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.6
+    top_p: 0.95
+
+toxicity:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.6
+    top_p: 0.95
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.6
+    top_p: 0.95
+
+swebench:
+  max_tokens: 32768
+
+mtbench:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.6
+    top_p: 0.95
+  temperature_override:
+    writing: 0.6
+    roleplay: 0.6
+    extraction: 0.6
+    math: 0.6
+    coding: 0.6
+    reasoning: 0.6
+    stem: 0.6
+    humanities: 0.6
+
+bfcl:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.6
+    top_p: 0.95
+
+hallulens:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.6
+    top_p: 0.95
+
+hle:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.6
+    top_p: 0.95
+
+arc_agi:
+  max_output_tokens: 32768

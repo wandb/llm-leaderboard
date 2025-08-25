@@ -1,0 +1,19 @@
+wandb:
+  run_name: mistralai/Ministral-8B-Instruct-2410
+api: vllm
+batch_size: 256
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: mistralai/Ministral-8B-Instruct-2410 #if you use openai api, put the name of model
+  bfcl_model_id: "unified-oss-fc" # 公式ハンドラよりスコア高い
+  size_category: "Small (<10B)"
+  size: 16039616512
+  release_date: 10/16/2024
+
+vllm: # vLLM server-side launch configuration
+  vllm_tag: v0.8.5
+  # templateの修正が必要
+  # https://docs.vllm.ai/en/stable/features/tool_calling.html#mistral-models-mistral
+  chat_template: mistralai/Ministral-8B-Instruct-2410
+  enable_auto_tool_choice: true
+  tool_call_parser: mistral

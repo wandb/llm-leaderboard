@@ -1,0 +1,23 @@
+wandb:
+  run_name: google/gemma-3-4b-it
+api: vllm
+num_gpus: 2
+batch_size: 256
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: google/gemma-3-4b-it #if you use openai api, put the name of model
+  bfcl_model_id: "unified-oss-jsonschema" # 公式gemmaハンドラより精度が高い
+  size_category: "Medium (10–30B)"
+  size: 4300079472
+  release_date: 3/12/2025
+
+vllm:
+  vllm_tag: v0.10.1
+
+bfcl:
+  handler_config:
+    unified_oss_jsonschema:
+      execution_result_role: "user"
+      execution_result_include_call_str: true
+      execution_result_include_call_id: false
+      execution_result_join_parallel_calls: true

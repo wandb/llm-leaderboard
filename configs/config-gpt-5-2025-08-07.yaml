@@ -1,0 +1,60 @@
+wandb:
+  run_name: openai/gpt-5-2025-08-07
+api: openai_responses # openai, anthropic, google,.. 
+batch_size: 32
+model:
+  pretrained_model_name_or_path: gpt-5-2025-08-07 # if you use openai api, put the name of model
+  bfcl_model_id: "OpenAIResponsesHandler-FC" # not listed in SUPPORTED_MODELS.md; using Generic OpenAI Handler
+  base_model: "unknown"
+  size_category: api
+  size: null
+  release_date: 8/7/2025 # format: MM/DD/YYYY
+
+
+generator: # LLM client default configuration: to be overridden by each benchmark
+  max_tokens: 128000
+  extra_body:
+    reasoning:
+      effort: high
+
+jaster:
+  override_max_tokens: 128000 # if null, use value defined in task dataset files
+
+jbbq:
+  generator_config:
+    max_tokens: 128000
+
+toxicity:
+  generator_config:
+    max_tokens: 128000
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 128000
+
+swebench:
+  max_tokens: 128000
+  fc_enabled: true
+
+mtbench:
+  generator_config:
+    max_tokens: 128000
+
+bfcl:
+  generator_config:
+    max_tokens: 128000
+
+hallulens:
+  generator_config:
+    max_tokens: 128000
+
+hle:
+  generator_config:
+    max_tokens: 128000
+
+arc_agi:
+  max_output_tokens: 128000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 128000

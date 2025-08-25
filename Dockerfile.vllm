@@ -1,0 +1,26 @@
+# vLLMの公式イメージをベースとして使用
+ARG VLLM_VERSION=latest
+FROM vllm/vllm-openai:${VLLM_VERSION}
+
+# rootユーザーに切り替えてシステムパッケージをインストール
+USER root
+
+# yqの依存関係であるjqをインストール
+# --no-install-recommendsで余計なパッケージを削減し、キャッシュを削除してイメージサイズを最適化
+RUN apt-get update -yqq && \
+    apt-get install -yqq --no-install-recommends jq && \
+    rm -rf /var/lib/apt/lists/*
+
+# Pythonパッケージのyqをインストール
+RUN pip install --no-cache-dir -q yq
+
+# エントリポイントスクリプトをコンテナにコピーし、実行権限を付与
+COPY docker-entrypoint-vllm.sh /workspace/docker-entrypoint-vllm.sh
+RUN chmod +x /workspace/docker-entrypoint-vllm.sh
+
+# デフォルトの作業ディレクトリを設定
+WORKDIR /workspace
+
+# コンテナのデフォルトユーザーに戻す（vllmイメージがデフォルトユーザーを設定している場合に備える）
+# USER vllm
+# (vllmイメージはrootで実行されるため、この行はコメントアウトのまま)

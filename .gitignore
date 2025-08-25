@@ -1,4 +1,4 @@
-# Byte-compiled / optimized / DLL files
+１# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
@@ -7,6 +7,7 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+myenv/
 .Python
 build/
 develop-eggs/
@@ -82,6 +83,10 @@ celerybeat-schedule
 *.sage.py
 
 # Environments
+.env
+*.env
+*.env.*
+.env.backup*
 .venv
 env/
 venv/
@@ -118,3 +123,10 @@ fastchat/llm_judge/data/japanese_mt_bench
 
 # vllm
 *.pid
+
+#BFCL outputs
+BFCL*.json
+scripts/evaluator/evaluate_utils/bfcl_pkg/score/
+scripts/evaluator/evaluate_utils/bfcl_pkg/result/
+scripts/evaluator/evaluate_utils/bfcl_pkg/data/
+scripts/evaluator/evaluate_utils/bfcl_pkg/data_jp/

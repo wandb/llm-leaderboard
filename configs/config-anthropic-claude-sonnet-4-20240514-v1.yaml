@@ -1,0 +1,11 @@
+wandb:
+  run_name: anthropic.claude-sonnet-4-20250514-v1:0
+api: amazon_bedrock
+batch_size: 32
+model:
+  pretrained_model_name_or_path: us.anthropic.claude-sonnet-4-20250514-v1:0
+  bfcl_model_id: "claude-sonnet-4-20250514-FC"
+  base_model: "unknown"
+  size_category: api
+  size: null
+  release_date: 5/14/2025

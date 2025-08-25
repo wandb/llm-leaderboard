@@ -30,8 +30,8 @@ parser.add_argument(
     required=True
 )
 parser.add_argument(
-    "-v",
-    "--dataset_version",
+    "-m",
+    "--memo",
     type=str,
     required=True
 )
@@ -40,6 +40,6 @@ args = parser.parse_args()
 with wandb.init(entity=args.entity, project=args.project, job_type="upload_data") as run:
     dataset_artifact = wandb.Artifact(name=args.dataset_name,
                                     type="dataset", 
-                                    metadata={"version":args.dataset_version})
+                                    metadata={"memo":args.memo})
     dataset_artifact.add_dir(args.dataset_folder,name=args.dataset_name)
     run.log_artifact(dataset_artifact)

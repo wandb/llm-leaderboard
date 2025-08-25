@@ -1,0 +1,25 @@
+wandb:
+  run_name: "tokyotech-llm/Gemma-2-Llama-Swallow-9b-it-v0.1" # use run_name defined above
+
+api: vllm-docker
+num_gpus: 1
+batch_size: 256 # vllmは256, apiは32を推奨
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "tokyotech-llm/Gemma-2-Llama-Swallow-9b-it-v0.1" #if you use openai api, put the name of model
+  bfcl_model_id: "unified-oss-jsonschema"
+  size_category: "Small (<10B)"
+  size: 9241705984
+  release_date: "5/19/2025"
+
+vllm:
+  vllm_tag: v0.10.1
+
+bfcl:
+  handler_config:
+    unified_oss_jsonschema:
+      execution_result_role: "user"
+      execution_result_include_call_str: false
+      execution_result_include_call_id: false
+      execution_result_join_parallel_calls: true
