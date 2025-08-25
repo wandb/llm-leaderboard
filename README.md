@@ -4,6 +4,7 @@
 This repository is for the Nejumi Leaderboard 4, a comprehensive evaluation platform for large language models. The leaderboard assesses both general language capabilities and alignment aspects. For detailed information about the leaderboard, please visit [Nejumi Leaderboard](https://wandb.ai/wandb-japan/llm-leaderboard4/reports/Nejumi-LLM-4--Vmlldzo5NTI0MDI0) website.
 
 ## Evaluation Metrics
+
 Our evaluation framework incorporates a diverse set of metrics to provide a holistic assessment of model performance.
 
 | Main Category | Category | Subcategory | Benchmarks | Details | Weight (within GLP) |
@@ -25,6 +26,7 @@ Our evaluation framework incorporates a diverse set of metrics to provide a holi
 | ^ | Safety | Toxicity | Toxicity | Fairness, social norms, prohibited behavior, violation categories | 1 |
 | ^ | Bias | Bias | JBBQ | Japanese bias benchmark (1 - avg_abs_bias_score) | 1 |
 | ^ | Truthfulness | Truthfulness | JTruthfulQA, HalluLens | Factuality assessment, hallucination suppression (refusal rate) | 1 |
+| ^   | Hallucination Resistance | Hallulens refusal_test | | Evaluates model's ability to refuse generating hallucinated information when prompted with non-existent entities. |
 | ^ | Robustness | Robustness | JMMLU Robust | Consistency and robustness under varied question formats | 1 |
 
 
@@ -102,8 +104,6 @@ In Nejumi Leadeboard4, the following dataset are used.
 9. [HLE-JA](https://huggingface.co/datasets/Hitachi-AIN/HLE-JA) (Apache 2.0 license)
 10. [ARC-AGI-2](https://github.com/google-deepmind/arc-agi) (CC-BY-SA-4.0 license)
 11. [M-IFEval](https://github.com/google-deepmind/instruction-following-eval) (Apache 2.0 license)
-
-
 
 ### Configuration
 
@@ -212,6 +212,16 @@ The `configs/base_config.yaml` file contains the shared settings. Create per-mod
 - **m_ifeval:** Settings for the M-IFEval dataset.
     - `artifacts_path`: URL of the WandB Artifact for the M-IFEval dataset.
 
+- **hallulens:** Settings for the Hallulens evaluation.
+    - `artifacts_path`: URL of the WandB Artifact for the Hallulens dataset.
+    - `generator_config`: Generation configuration for Hallulens evaluation.
+        - `max_tokens`: Maximum number of tokens to generate. Default is 256.
+        - `temperature`: Temperature for sampling. Default is 0.0.
+        - `top_p`: Top-p sampling. Default is 1.0.
+    - `judge`: Configuration for judging the generated responses.
+        - `model`: Model used for judging. Default is `gpt-4.1-2025-04-14`.
+        - `parallel`: Number of parallel threads to use. Default is 32.
+        - `params`: Additional parameters for the judge model.
 
 ### Model configuration
 After setting up the base-configuration file, the next step is to set up a configuration file for model under `configs/`.
