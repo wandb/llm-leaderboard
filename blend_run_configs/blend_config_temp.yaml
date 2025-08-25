@@ -1,0 +1,32 @@
+run_chain: true # If you want to reuse past evaluation results in a new run, please set it to true.
+
+num_few_shots: 2
+
+old_runs: # Please specify the tasks you want to carry over from past runs. Multiple runs are permissible.
+  - run_path: llm-leaderboard/nejumi-leaderboard4/rrub5wf9
+    dataset: # The list of tasks to take over. Please comment out tasks that do not need to be taken over.
+      - mtbench
+      - jbbq
+      - toxicity
+      #- jaster
+      - jtruthfulqa
+      - swebench
+      - bfcl
+      - hle
+      - hallulens
+      #- m_ifeval
+      - arc_agi
+  # - run_path: "your/WANDB/run_path"
+  #   dataset: # The list of tasks to take over. Please comment out tasks that do not need to be taken over.
+  #     - mtbench
+  #     - jbbq
+  #     - lctg
+  #     - toxicity
+  #     - jaster
+  #     - jtruthfulqa
+  #     - swebench
+  #     - bfcl
+  #     - hle
+  #     - hallulens
+  #     - m_ifeval
+  #     - arc_agi
