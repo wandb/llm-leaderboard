@@ -1,0 +1,17 @@
+wandb:
+  run_name: "elyza/ELYZA-Shortcut-1.0-Qwen-32B" # use run_name defined above
+
+api: vllm-docker
+num_gpus: 2
+batch_size: 256 # vllmは256, apiは32を推奨
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "elyza/ELYZA-Shortcut-1.0-Qwen-32B" #if you use openai api, put the name of model
+  bfcl_model_id: "unified-oss-jsonschema"
+  size_category: "Large (30B+)"
+  size: 32763876352
+  release_date: "5/1/2025"
+
+vllm:
+  vllm_tag: v0.10.1

@@ -1,0 +1,17 @@
+wandb:
+  run_name: "rinna/qwen2.5-bakeneko-32b-instruct-v2" # use run_name defined above
+
+api: vllm-docker
+num_gpus: 2
+batch_size: 256 # vllmは256, apiは32を推奨
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "rinna/qwen2.5-bakeneko-32b-instruct-v2" #if you use openai api, put the name of model
+  bfcl_model_id: "unified-oss-jsonschema"
+  size_category: "Large (30B+)"
+  size: 32763876352
+  release_date: "2/13/2025"
+
+vllm:
+  vllm_tag: v0.10.1
