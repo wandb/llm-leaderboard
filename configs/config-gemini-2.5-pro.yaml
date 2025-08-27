@@ -1,7 +1,8 @@
 wandb:
   run_name: google/gemini-2.5-pro
 api: google # openai, anthropic, google,..
-batch_size: 32
+batch_size: 4
+inference_interval: 2
 model:
   pretrained_model_name_or_path: gemini-2.5-pro #if you use openai api, put the name of model
   bfcl_model_id: "gemini-2.5-pro-FC" # find id from "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
@@ -9,7 +10,7 @@ model:
   size_category: api
   size: null
   release_date: 6/17/2025
-  thinking_budget: -1  # Pro models support thinking with budget 128-32768
+  thinking_budget: 32768
   safety_settings:
     - category: "HARM_CATEGORY_HATE_SPEECH"
       threshold: "BLOCK_NONE"
@@ -21,3 +22,47 @@ model:
       threshold: "BLOCK_NONE"
     - category: "HARM_CATEGORY_CIVIC_INTEGRITY"
       threshold: "BLOCK_NONE"
+
+generator: # LLM client default configuration: to be overridden by each benchmark
+  max_tokens: 65000
+
+jaster:
+  override_max_tokens: 65000 # if null, use value defined in task dataset files
+
+jbbq:
+  generator_config:
+    max_tokens: 65000
+
+toxicity:
+  generator_config:
+    max_tokens: 65000
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 65000
+
+swebench:
+  max_tokens: 65000
+
+mtbench:
+  generator_config:
+    max_tokens: 65000
+
+bfcl:
+  generator_config:
+    max_tokens: 65000
+
+hallulens:
+  generator_config:
+    max_tokens: 65000
+
+hle:
+  generator_config:
+    max_tokens: 65000
+
+arc_agi:
+  max_output_tokens: 65000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 65000

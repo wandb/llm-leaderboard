@@ -1,4 +1,5 @@
 import json
+import re
 import time
 from pathlib import Path
 import numpy as np
@@ -221,15 +222,38 @@ def evaluate_n_shot(few_shots: bool):
         
         if evaluation_result["metrics"] in ["code_exec_sandbox", "pylint_check"]: #jhumaneval
             # These metrics expect lists of predictions and ground truths
-            # Extract code from the response using CODE_OUTPUT_JP pattern
+            # 1) Try Japanese code fence
             extracted_code = extract_answer_with_pattern(
-                                    raw_output, 
-                                    AnswerPatternId.CODE_OUTPUT_JP,
-                                    None
-                                )
-            
-            y_pred = normalize(extracted_code).strip()
-            
+                raw_output,
+                AnswerPatternId.CODE_OUTPUT_JP,
+                None,
+            )
+            # 2) Fallback to English code fence
+            if not extracted_code.strip():
+                extracted_code = extract_answer_with_pattern(
+                    raw_output,
+                    AnswerPatternId.CODE_OUTPUT_EN,
+                    None,
+                )
+            # 3) Fallback to generic code fence via custom regex (first fenced block)
+            if not extracted_code.strip():
+                extracted_code = extract_answer_with_pattern(
+                    raw_output,
+                    AnswerPatternId.CUSTOM,
+                    r"```(?:\w+)?\s*\n?([\s\S]*?)\n?```",
+                )
+            # 4) Fallback to function definition onwards if present (no fence)
+            if not extracted_code.strip():
+                m = re.search(r"(?s)(def\s+[A-Za-z_][A-Za-z0-9_]*\s*\(.*?\):[\s\S]*?)$", raw_output)
+                if m:
+                    extracted_code = m.group(1)
+            # 5) Last resort: use raw output as-is
+            if not extracted_code.strip():
+                extracted_code = raw_output
+
+            # Do NOT normalize code to avoid accidental character conversions
+            y_pred = extracted_code.strip()
+
             y_preds = [y_pred]
             y_trues = [evaluation_result["expected_output"]]
             score = metrics_func(y_preds, y_trues)
