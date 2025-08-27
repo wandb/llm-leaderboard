@@ -1,13 +1,22 @@
 # Nejumi Leaderboard 4
+
+<p align="center">
+  <img src="docs/topimage.png" alt="Topimage" width=800"/>
+</p>
+
 ## Overview
 
-This repository is for the Nejumi Leaderboard 4, a comprehensive evaluation platform for large language models. The leaderboard assesses both general language capabilities and alignment aspects. For detailed information about the leaderboard, please visit [Nejumi Leaderboard](https://wandb.ai/wandb-japan/llm-leaderboard4/reports/Nejumi-LLM-4--Vmlldzo5NTI0MDI0) website.
+This repository is for the Nejumi Leaderboard 4, a comprehensive evaluation platform for large language models. The leaderboard assesses both general language capabilities and alignment aspects.
 
-## Evaluation Metrics
+- Leaderboard: [Nejumi Leaderboard](https://wandb.ai/wandb-japan/llm-leaderboard4/reports/Nejumi-LLM-4--Vmlldzo5NTI0MDI0)
+- Blog: [Release of Nejumi Leaderboard 4! Background of the update and evaluation criteria - Japanese](https://note.com/wandb_jp/n/ncfd9d23221b3)
+
+
+## Evaluation benchmarks and Taxonomy
 
 Our evaluation framework incorporates a diverse set of metrics to provide a holistic assessment of model performance.
 
-| Main Category | Category | Subcategory | Benchmarks | Details | Weight (within GLP) |
+| Main Category | Category | Subcategory | Benchmarks | Details | Weight for Total Score AVG |
 |---------------|----------|-------------|------------|---------|----------------------|
 | General Language Performance (GLP) | Applied Language Skills | Expression | MT-bench (roleplay, writing, humanities) | Roleplay, writing, humanities | 1 |
 | ^ | Applied Language Skills | Translation | Jaster (ALT e-to-j, ALT j-to-e) | JA↔EN translation (averaged over 0-shot and few-shot) | 1 |
@@ -26,19 +35,92 @@ Our evaluation framework incorporates a diverse set of metrics to provide a holi
 | ^ | Safety | Toxicity | Toxicity | Fairness, social norms, prohibited behavior, violation categories | 1 |
 | ^ | Bias | Bias | JBBQ | Japanese bias benchmark (1 - avg_abs_bias_score) | 1 |
 | ^ | Truthfulness | Truthfulness | JTruthfulQA, HalluLens | Factuality assessment, hallucination suppression (refusal rate) | 1 |
-| ^   | Hallucination Resistance | Hallulens refusal_test | | Evaluates model's ability to refuse generating hallucinated information when prompted with non-existent entities. |
+| ^   | Hallucination Resistance |Hallucination Resistance | Hallulens refusal_test |  Evaluates model's ability to refuse generating hallucinated information when prompted with non-existent entities. |1 |
 | ^ | Robustness | Robustness | JMMLU Robust | Consistency and robustness under varied question formats | 1 |
 
 
-- metrics with (0, 2-shot) are averaged across both settings.
-- Metrics marked with an asterisk (*) evaluate control capabilities.
-- For MT-bench, [StabilityAI's MT-Bench JP](https://github.com/Stability-AI/FastChat/tree/jp-stable) is used with GPT-4o-2024-05-13 as the model to evaluate.
-- vLLM is leveraged for efficient inference.
-- **Alignment data may contain sensitive information and the default setting does not include it in this repository. If you want to evaluate your models agains Alinghment data, please check each dataset instruction carefully**
+1. jaster(jaster_nejumi_v1)
+    - original source: [llm-jp/llm-jp-eval commit 3d68754](https://github.com/llm-jp/llm-jp-eval/tree/nejumi3-data)(Apache-2.0 license)
+    - W&B artifact dataset path: [llm-leaderboard/nejumi-leaderboard4/jaster:production](https://wandb.ai/llm-leaderboard/nejumi-leaderboard4/artifacts/dataset/jaster)
+    - The results of 0, 2-shot are averaged
+    - The dataset is the same, but inference and evaluation methods have slight differences to align with Nejumi4's overall design. The fundamental evaluation approach remains unchanged.
+2. MT-bench(mtbench_nejumi_v1)
+    - source: [swallow-evaluation MTbench commit a0b7319](https://github.com/swallow-llm/swallow-evaluation/blob/main/fastchat/fastchat/llm_judge/data/japanese_mt_bench/reference_answer/gpt-4o-2024-08-06.jsonl)
+(Apache-2.0 license)
+    - W&B artifact dataset paths:
+        - Questions: [llm-leaderboard/nejumi-leaderboard4/mtbench_ja_question:production](https://wandb.ai/llm-leaderboard/nejumi-leaderboard4/artifacts/dataset/mtbench_ja_question)
+        - Reference answers: [llm-leaderboard/nejumi-leaderboard4/mtbench_ja_referenceanswer:production](https://wandb.ai/llm-leaderboard/nejumi-leaderboard4/artifacts/dataset/mtbench_ja_referenceanswer)
+    - Evaluation is conducted using the above file from swallow-evaluation
+    - While inference and basic evaluation methods are the same, the code is not perfectly identical, hence designated as mtbench_nejumi_v1
+3. JBBQ(jbbq_nejumi_v1)
+    - source: [JBBQ](https://github.com/ynklab/JBBQ_data?tab=readme-ov-file) (Creative Commons Attribution 4.0 International License.)
+    - W&B artifact dataset path: [llm-leaderboard/nejumi-leaderboard4-private/jbbq:production](https://wandb.ai/llm-leaderboard/nejumi-leaderboard4-private/artifacts/dataset/jbbq)
+    - While the dataset is the same, evaluation scripts are originally created by Nejumi following the paper, hence designated as jbbq_nejumi_v1
+4. LINE Yahoo Inappropriate Speech Evaluation Dataset (Toxicity)
+    - source: Provided by LINE Yahoo (not publicly available)
+    - W&B artifact dataset paths:
+        - Dataset: [llm-leaderboard/nejumi-leaderboard4-private/toxicity_dataset_full:production](https://wandb.ai/llm-leaderboard/nejumi-leaderboard4-private/artifacts/dataset/toxicity_dataset_full)
+    - As this is not publicly available, please contact W&B if you wish to be evaluated
+5. JTruthfulQA
+    - source:[JTruthfulQA commit d71c110](https://github.com/nlp-waseda/JTruthfulQA) (Creative Commons Attribution 4.0 International License.)
+    - W&B artifact dataset path: [llm-leaderboard/nejumi-leaderboard4/jtruthfulqa_dataset:production](https://wandb.ai/llm-leaderboard/nejumi-leaderboard4/artifacts/dataset/jtruthfulqa_dataset)
+    - The dataset is the same, but inference and evaluation methods have slight differences to align with Nejumi4's overall design. The fundamental evaluation approach remains unchanged.
+6. SWE-bench(SWE-bench-verified_ja_nejumi_v1)
+    - source: [SWE-bench](https://www.swebench.com/) (Apache 2.0 license)
+    - W&B artifact dataset path: [llm-leaderboard/nejumi-leaderboard4/swebench_verified_official:production](https://wandb.ai/llm-leaderboard/nejumi-leaderboard4/artifacts/dataset/swebench_verified_official)
+    - Used 80 samples under 7,000 tokens extracted from the Japanese-localized dataset created for this project
+    - Detailed explanations: ([EN](docs/README_swebench.md) / [JP](docs/README_swebench_ja.md) )
+7. BFCL(BFCL_ja_nejumi_v1)
+    - source: [BFCL](https://github.com/salesforce/CoT-Benmarking-Tool) (BSD 3-Clause "New" or "Revised" License)
+    - W&B artifact dataset path: [llm-leaderboard/nejumi-leaderboard4/bfcl:production](https://wandb.ai/llm-leaderboard/nejumi-leaderboard4/artifacts/dataset/bfcl)
+    - Adopted BFCL v3 localized into Japanese
+    - Parallel problems are excluded as some models do not support parallel processing
+    - Multi-turn problems are limited to 3 turns or fewer for small-scale model evaluation
+    - Categories with 30 or more questions are randomly sampled to 30, totaling 348 questions
+    - Built handlers to simplify OSS model evaluation
+    - Detailed explanations: ([EN](docs/README_bfcl.md) / [JP](docs/README_bfcl_ja.md) )
+8. HalluLens (HalluLens_ja_nejumi_v1)
+    - source: [HalluLens](https://github.com/idea-research/HalluLens) (MIT license)
+    - W&B artifact dataset path: [llm-leaderboard/nejumi-leaderboard4/hallulens:production](https://wandb.ai/llm-leaderboard/nejumi-leaderboard4/artifacts/dataset/hallulens)
+    - PreciseWikiQA and LongWiki: Only NonExistentRefusal is adopted as they evaluate the same faithfulness as JTruthfulQA
+    - NonExistentRefusal - MixedEntities: Adoption postponed due to the presence of some real entities
+    - NonExistentRefusal - GeneratedEntities: After confirming through Google search that entities do not exist, 110 questions were randomly extracted
+9. Humanity's Last Exam (HLE_ja_nejumi_v1)
+    - source: [HLE-JA](https://huggingface.co/datasets/Hitachi-AIN/HLE-JA) (Apache 2.0 license)
+    - W&B artifact dataset path: [llm-leaderboard/nejumi-leaderboard4/hle-ja:production](https://wandb.ai/llm-leaderboard/nejumi-leaderboard4/artifacts/dataset/hle-ja)
+    - Used 194 samples under 7,000 tokens extracted from the Japanese-localized dataset created for this project
+    - Multimodal problems are excluded to measure language performance
+10. ARC-AGI, ARC-AGI-2 (ARC-AGI_ja_nejumi_v1 / ARC-AGI-2_ja_nejumi_v1)
+    - source: 
+        - [ARC-AGI](https://github.com/fchollet/ARC-AGI commit 3990304) (Apache 2.0 license)
+        - [ARC-AGI-2](https://github.com/arcprize/ARC-AGI-2 commit f3283f7) (Apache 2.0 license)
+    - W&B artifact dataset paths:
+        - ARC-AGI-1: [llm-leaderboard/nejumi-leaderboard4/arc-agi-1_public-eval_50:production](https://wandb.ai/llm-leaderboard/nejumi-leaderboard4/artifacts/dataset/arc-agi-1_public-eval_50)
+        - ARC-AGI-2: [llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval_50:production](https://wandb.ai/llm-leaderboard/nejumi-leaderboard4/artifacts/dataset/arc-agi-2_public-eval_50)
+    - System prompts are localized into Japanese, while tasks use original numerical data
+    - 50 samples were selected based on OpenAI o3(medium) evaluation results to achieve similar accuracy rates
+    - Limited to tasks with input+output grid elements ≤2000 for small-scale model evaluation
+11. M-IFEval(M-IFEval_nejumi_v1)
+    - source: [M-IFEval](https://github.com/google-deepmind/instruction-following-eval commit 10b874d) (Apache 2.0 license)
+    - W&B artifact dataset path: [llm-leaderboard/nejumi-leaderboard4/m_ifeval:production](https://wandb.ai/llm-leaderboard/nejumi-leaderboard4/artifacts/dataset/m_ifeval)
+    - The dataset is the same, but inference and evaluation methods have slight differences to align with Nejumi4's overall design. The fundamental evaluation approach remains unchanged.
+12. Jaster_Control
+    - Nejumi's original calculation of whether responses follow the specified format (numbers, alphabets, etc.)
+    - Calculates response format adherence rate based on evaluation items in jaster that can automatically evaluate response formats
+    - Numerical answers: mawps, mgsm → Check if answers contain only numbers
+    - Multiple choice: jmmlu, mmlu_prox_ja → Check if answers are A, B, C, D choices
+    - Binary values: jcola, commonsensemoralja → Check if answers are 0 or 1
+    - Entailment relations: jnli, jsick → Check if format is entailment/contradiction/neutral
+13. JMMLU_Robust
+    - As pointed out in "When Benchmarks are Targets: Revealing the Sensitivity of Large Language Model Leaderboards", accuracy rates differ depending on how questions are asked, even for essentially the same problems. Nejumi Leaderboard evaluates response consistency by testing JMMLU with multiple patterns (standard method, symbolic choices, selecting non-correct answers). For each sample, 1 point is awarded if all three values match, 0.5 points if two values match, and 0 points if all three responses differ.
 
-## Implementation Guide
+## How to run evaluation
 
-### Environment Setup
+### 📊 Evaluation Process Overview
+
+
+### 🏗️ Step 1: Environment Setup
+
 1. Clone the repository
 ```bash
 git clone https://github.com/wandb/llm-leaderboard.git
@@ -46,6 +128,10 @@ cd llm-leaderboard
 ```
 
 2. Create a `.env` file in the repository root
+
+<details>
+<summary>Click to view .env file template</summary>
+
 ```
 WANDB_API_KEY=
 OPENAI_API_KEY=
@@ -80,36 +166,33 @@ AWS_DEFAULT_REGION=
 SWE_API_KEY=
 ```
 
+</details>
+
 3. (First time only) Create Docker network
 ```bash
 docker network create llm-stack-network || true
 ```
 
-### Dataset Preparation
+### 📦 Step 2: Dataset Preparation
 
-For detailed instructions on dataset preparation and caveate, please refer to [scripts/data_uploader/README.md](./scripts/data_uploader/README.md).
+If you are using W&B multi-tenant SaaS, no dataset preparation is required. If you are using W&B dedicated cloud or on-premise, please re-upload the datasets.
+For detailed instructions on dataset preparation and caveats, please refer to [scripts/data_uploader/README.md](./scripts/data_uploader/README.md).
 
-In Nejumi Leadeboard4, the following dataset are used.
 
-**Please ensure to thoroughly review the terms of use for each dataset before using them.**
+### ⚙️ Step 3: Configuration
 
-1. [jaster](https://github.com/llm-jp/llm-jp-eval/tree/nejumi3-data)(Apache-2.0 license)
-2. [MT-Bench-JA](https://github.com/Stability-AI/FastChat/tree/jp-stable) (Apache-2.0 license)
-3. [JBBQ](https://github.com/ynklab/JBBQ_data?tab=readme-ov-file) (Creative Commons Attribution 4.0 International License.)
-4. LINE Yahoo Inappropriate Speech Evaluation Dataset (not publically available)
-5. [JTruthfulQA](https://github.com/nlp-waseda/JTruthfulQA) (Creative Commons Attribution 4.0 International License.)
-6. [SWE-bench](https://www.swebench.com/) (Apache 2.0 license)
-7. [BFCL](https://github.com/salesforce/CoT-Benmarking-Tool) (BSD 3-Clause "New" or "Revised" License)
-8. [HalluLens](https://github.com/idea-research/HalluLens) (MIT license)
-9. [HLE-JA](https://huggingface.co/datasets/Hitachi-AIN/HLE-JA) (Apache 2.0 license)
-10. [ARC-AGI-2](https://github.com/google-deepmind/arc-agi) (CC-BY-SA-4.0 license)
-11. [M-IFEval](https://github.com/google-deepmind/instruction-following-eval) (Apache 2.0 license)
+#### 📋 Configuration Overview
+The evaluation system uses a two-layer configuration:
+1. **Base Config** (`configs/base_config.yaml`) - Shared settings for all evaluations
+2. **Model Config** (`configs/config-your-model.yaml`) - Your specific model settings
 
-### Configuration
+#### 3.1 📝 Base Configuration Review
+Update `base_config.yaml` if needed.
 
-#### Base configuration
+<details>
+<summary>Click to view base configuration details</summary>
 
-The `configs/base_config.yaml` file contains the shared settings. Create per-model YAMLs under `configs/` that override only the necessary parts. Below are key sections used in this repository (names and placement reflect the actual file structure):
+The `configs/base_config.yaml` file contains the shared settings. Create per-model YAMLs under `configs/` that override only the necessary parts. Key sections include:
 
 - **wandb:** Information used for Weights & Biases (W&B) support.
     - `entity`: Name of the W&B Entity.
@@ -223,6 +306,22 @@ The `configs/base_config.yaml` file contains the shared settings. Create per-mod
         - `parallel`: Number of parallel threads to use. Default is 32.
         - `params`: Additional parameters for the judge model.
 
+</details>
+
+#### 3.2 🤖 Model Configuration Creation
+
+Create a model-specific YAML file under `configs/`. For examples, see existing files in the `configs/` directory:
+- **API Models**: `config-gpt-4o-2024-11-20.yaml`, `config-example-api.yaml`  
+- **vLLM Models**: `config-llama-3.2-3b-instruct.yaml`, `config-example-vllm.yaml`
+
+**Chat Template for vLLM Models:**
+For vLLM models, you may need to create a chat template file:
+1. Create `chat_templates/model_id.jinja` based on the model's tokenizer_config.json or model documentation
+2. Test with: `python3 scripts/test_chat_template.py -m <model_id> -c <chat_template>`
+
+<details>
+<summary>Click to view detailed configuration options</summary>
+
 ### Model configuration
 After setting up the base-configuration file, the next step is to set up a configuration file for model under `configs/`.
 #### API Model Configurations
@@ -251,12 +350,12 @@ This framework also supports evaluating models using VLLM. You need to create a 
 - **model:** Information about the model.
     - `artifacts_path`: When loading a model from wandb artifacts, it is necessary to include a description. If not, there is no need to write it. Example notation: wandb-japan/llm-leaderboard/llm-jp-13b-instruct-lora-jaster-v1.0:v0   
     - `pretrained_model_name_or_path`: Name of the VLLM model.
-    - `bfcl_model_name`: Please select from scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md. Since adding new models can be complex, Nejumi Leaderboard provides an `oss_handler` for easier integration. If it is difficult to create a dedicated handler for each model, please use the `oss_handler` as a default option.
-    - `chat_template`: Path to the chat template file (if needed).
-    - `size_category`: Specify model size category. In Nejumi Leaderboard, the category is defined as "10B<", "10B<= <30B", "<=30B" and "api".
+    - `bfcl_model_id`: See [BFCL doc EN](docs/README_bfcl.md) / [BFCL doc JP](docs/README_bfcl_ja.md)
+    - `size_category`: Specify model size category. Use one of: "Small (<10B)", "Medium (10–30B)", "Large (30B+)", or "api".
     - `size`: Model size (parameter).
     - `release_date`: Model release date (MM/DD/YYYY).
     - `max_model_len`: Maximum token length of the input (if needed).
+    - `chat_template`: Path to the chat template file (if needed).
 
 #### VLLM Configuration
 When using vLLM models, you can add additional vLLM-specific configurations:
@@ -272,23 +371,15 @@ vllm:
     - --trust-remote-code
 ```
 
-#### Create Chat template (needed for models except for API)
-1. create chat_templates/model_id.jinja
-If the chat_template is specified in the tokenizer_config.json of the evaluation model, create a .jinja file with that configuration.
-If chat_template is not specified in tokenizer_config.json, refer to the model card or other relevant documentation to create a chat_template and document it in a .jinja file.
+</details>
 
-2. test chat_templates
-If you want to check the output of the chat_templates, you can use the following script:
-```bash
-python3 scripts/test_chat_template.py -m <model_id> -c <chat_template>
-```
-If the model ID and chat_template are the same, you can omit -c <chat_template>.
+---
 
+### 🚀 Step 4: Running Evaluation
 
-## Evaluation Execution
 Once you prepare the dataset and the configuration files, you can run the evaluation process.
 
-### Using Docker Compose
+#### Using Docker Compose
 
 Basic flow (requires `.env` and a model YAML under `configs/`):
 
@@ -308,18 +399,20 @@ The script does the following automatically:
 - If the target is a **vLLM** model, starts the vLLM container and waits for readiness
 - Runs `scripts/run_eval.py -c <your YAML>` inside the evaluation container
 
-### Manual Execution (Advanced / Optional)
+#### Manual Execution (Advanced / Optional)
 
 Use only if you want to run directly without `run_with_compose.sh`.
 - **-c (config):** `python3 scripts/run_eval.py -c config-gpt-4o-2024-05-13.yaml`
 - **-s (select-config):** `python3 scripts/run_eval.py -s`
 
-### SWE-Bench and API Server Docs
+#### Detailed information for settings of SWE-Bench and BFCL
 
 For SWE‑Bench evaluation details and the remote evaluation API server, see:
+- [SWE-bench doc EN](docs/README_swebench.md) / [SWE-bench doc JP](docs/README_swebench_ja.md)
+- [SWE-bench api server doc](scripts/evaluator/evaluate_utils/swebench_pkg/swebench_api_server.md) (API server runbook)
 
-- `docs/README_swebench_ja.md` (dataset creation, prompts, patch rules)
-- `scripts/evaluator/evaluate_utils/swebench_pkg/swebench_api_server.md` (API server runbook)
+For BFCL evaluation details, see:
+- [BFCL doc EN](docs/README_bfcl.md) / [BFCL doc JP](docs/README_bfcl_ja.md)
 
 ### Troubleshooting
 
