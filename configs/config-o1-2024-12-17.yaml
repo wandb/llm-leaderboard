@@ -16,3 +16,44 @@ generator:
     summary: "auto"
   temparature: None
 
+jaster:
+  override_max_tokens: 90000 # if null, use value defined in task dataset files
+
+jbbq:
+  generator_config:
+    max_tokens: 90000
+
+toxicity:
+  generator_config:
+    max_tokens: 90000
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 90000
+
+swebench:
+  max_tokens: 90000
+  fc_enabled: true
+
+mtbench:
+  generator_config:
+    max_tokens: 90000
+
+bfcl:
+  generator_config:
+    max_tokens: 90000
+
+hallulens:
+  generator_config:
+    max_tokens: 90000
+
+hle:
+  generator_config:
+    max_tokens: 90000
+
+arc_agi:
+  max_output_tokens: 90000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 90000
