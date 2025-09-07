@@ -499,25 +499,29 @@ def calculate_alt_scores(cfg, leaderboard_dict, jaster_control_0shot, jaster_con
     
     # 真実性（HalluLensを含む）
     truthfulness_scores = []
+    truthfulness_dict = {}
+    
     if jtruthfulqa is not None:
-        truthfulness_scores.append(jtruthfulqa["overall_score"][0])
+        jtruthfulqa_score = jtruthfulqa["overall_score"][0]
+        truthfulness_scores.append(jtruthfulqa_score)
+        truthfulness_dict["jtruthfulqa_overall_score"] = jtruthfulqa_score
+    
     if additional_flags.get('hallulens', False) and hallulens_result is not None:
-        if "refusal_rate" in hallulens_result.columns:
-            truthfulness_scores.append(hallulens_result["refusal_rate"][0])
+        if "hallucination_resistance" in hallulens_result.columns:
+            hallulens_score = hallulens_result["hallucination_resistance"][0]
+            truthfulness_scores.append(hallulens_score)
+            truthfulness_dict["hallulens_hallucination_resistance"] = hallulens_score
             create_subcategory_table(run, cfg, "hallulens", {
-                "AVG": hallulens_result["refusal_rate"][0],
-                "refusal_rate": hallulens_result["refusal_rate"][0],
+                "AVG": hallulens_score,
+                "hallucination_resistance": hallulens_score,
             })
     
     leaderboard_dict["ALT_真実性"] = (
         np.mean(truthfulness_scores) if truthfulness_scores 
-        else jtruthfulqa["overall_score"][0] if jtruthfulqa is not None 
         else float('nan')
     )
-    create_subcategory_table(run, cfg, "truthfulness", {
-        "AVG": leaderboard_dict["ALT_真実性"],
-        "jtruthfulqa_overall_score": jtruthfulqa["overall_score"][0] if jtruthfulqa is not None else float('nan'),
-    })
+    truthfulness_dict["AVG"] = leaderboard_dict["ALT_真実性"]
+    create_subcategory_table(run, cfg, "truthfulness", truthfulness_dict)
     
     # 堅牢性
     if jmmlu_robust_fewshots is not None and "robust_score" in jmmlu_robust_fewshots.columns:
