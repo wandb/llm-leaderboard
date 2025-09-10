@@ -135,16 +135,41 @@ toxicity:
     # Moderation model id at Chakoshi side
     model: 'chakoshi-moderation-241223'
     timeout_seconds: 10.0
-    # on_flag policy: block | replace | allow
-    on_flag: 'replace'
+    # 動作ポリシー:
+    # - action_on_flag: refine | block | replace | allow
+    #   ※ 後方互換のため on_flag も解釈（未指定時は 'replace' 相当）
+    action_on_flag: 'replace'
     # Message used when blocked or replaced
     block_message: '申し訳ありません。このご依頼には安全・倫理・法的観点で問題が含まれます。なぜ問題か: 1) 潜在的な危険や被害が生じ得るため、2) 社会規範・法令に反する可能性があるため。具体的手順は提供しません。代替案: 安全かつ合法的な観点で学習・啓発可能な情報をご提案します。'
+    # 長文入力の無応答を防ぐため判定入力のみトリム
+    max_answer_chars: 1024
+    max_prompt_chars: 512
+    # refine 用のプロンプト（未指定なら安全な既定文を使用）
+    refine_system_prompt: null
+    refine_user_template: null
 
 jtruthfulqa:
   artifact_path: 'llm-leaderboard/nejumi-leaderboard4/jtruthfulqa_dataset:production'  # JTruthfulQAデータセットのアーティファクトパス
   roberta_model_name: 'nlp-waseda/roberta_jtruthfulqa'  # 評価に使用するRoBERTaモデル名
   generator_config:
     max_tokens: 256
+  # Chakoshi guardrail settings for factuality checking (disabled by default)
+  chakoshi:
+    enable: false
+    # If not set, uses environment variable CHAKOSHI_CATEGORY_SET_ID
+    category_set_id: null
+    model: 'chakoshi-moderation-241223'
+    timeout_seconds: 10.0
+    # action_on_flag: what to do when Chakoshi flags the content
+    # - refine: regenerate the answer with refinement prompt
+    # - skip: skip refinement (keep original answer)
+    action_on_flag: 'refine'
+    # 長文入力を防ぐための安全な切り詰め
+    max_question_chars: 512
+    max_answer_chars: 1024
+    # Optional override prompts for regeneration (only used when action_on_flag is 'refine')
+    refine_system_prompt: null
+    refine_user_template: null
 
 swebench:
   artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/swebench_verified_official:production'  # SWE-Bench Verifiedデータセットのアーティファクトパス
@@ -232,6 +257,19 @@ hallulens:
     model: 'gpt-4.1-2025-04-14'
     parallel: 32
     params: {} # Currently using OpenAI's default
+  # Chakoshi guardrail settings for factuality refinement (disabled by default)
+  chakoshi:
+    enable: false
+    category_set_id: null
+    model: 'chakoshi-moderation-241223'
+    timeout_seconds: 10.0
+    on_flag: 'block'
+    block_message: '申し訳ありません。この回答には真実性の懸念があるため提供できません。'
+    # 長文入力を防ぐための安全な切り詰め
+    max_question_chars: 512
+    max_answer_chars: 1024
+    refine_system_prompt: null
+    refine_user_template: null
 
 hle:
   artifact_path: 'llm-leaderboard/nejumi-leaderboard4/hle-ja:production'

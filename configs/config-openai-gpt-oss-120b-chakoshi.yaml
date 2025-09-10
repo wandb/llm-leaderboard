@@ -7,8 +7,8 @@ model:
   pretrained_model_name_or_path: openai/gpt-oss-120b #if you use openai api, put the name of model
   bfcl_model_id: OpenRouter-FC  # find id from "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
   base_model: unknown
-  size_category: 117000000000
-  size: null
+  size_category: "Large (30B+)"
+  size: 117000000000
   release_date: "8/5/2025"
 
 generator:
@@ -26,20 +26,38 @@ toxicity:
   chakoshi:
     enable: true
     # UIで作成したCategory Setを使う（未指定なら環境変数 CHAKOSHI_CATEGORY_SET_ID を利用）
-    # category_set_id: "your-category-set-id"
+    category_set_id: "01k348tvgfs9whtafxyy4e33xf"
     model: "chakoshi-moderation-241223"
     timeout_seconds: 10.0
     # ブロックではなく配慮ある置換。reasonは自動で末尾に付与されます
     on_flag: "replace"
     block_message: "申し訳ありません。このご依頼には安全・法令・倫理上の懸念があります。危害や損失の可能性があるため、具体的な手順は提供できません。代替として安全かつ合法的な観点の情報をご案内できます。"
 
+jtruthfulqa:
+  chakoshi:
+    enable: true
+    category_set_id: "01k348tvgfs9whtafxyy4e33xf"
+    model: 'chakoshi-moderation-241223'
+    action_on_flag: 'refine'
+  generator_config:
+    max_tokens: 120000
+
+hallulens:
+  chakoshi:
+    enable: true
+    category_set_id: "01k4ke4qc27rmj2tymbxgys7s6"
+    model: 'chakoshi-moderation-241223'
+    on_flag: 'block'
+  generator_config:
+    max_tokens: 120000
+
 run:
   bfcl: false
   swebench: false
   mtbench: false
   jbbq: false
-  toxicity: true
-  jtruthfulqa: false
+  toxicity: false
+  jtruthfulqa: true
   hle: false
   hallulens: false
   arc_agi: false

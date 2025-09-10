@@ -10,6 +10,7 @@ import weave
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import LLMAsyncProcessor, get_openai_judge_client
+from guardrails.chakoshi import judge_text
 
 Samples: TypeAlias = list[dict[str, Any]]
 
@@ -120,7 +121,55 @@ async def evaluate_async():
             async def generate_answer(sample):
                 messages = [{"role": "user", "content": sample["prompt"]}]
                 result = await llm_ap.process_single_async(messages, **generator_config)
-                sample.update({"answer": result.content})
+                answer = result.content
+
+                # Chakoshi連携（toxicityと同様のガードレール適用: block/replace/allow）
+                try:
+                    chakoshi_cfg = cfg[task_name].get("chakoshi", {})
+                    enabled = bool(chakoshi_cfg.get("enable", False))
+                except Exception:
+                    enabled = False
+
+                if enabled:
+                    # 回答単体ではなく「プロンプト＋回答」を審査対象にする（長文は安全に切り詰め）
+                    try:
+                        max_prompt_chars = int(chakoshi_cfg.get("max_prompt_chars", 512))
+                    except Exception:
+                        max_prompt_chars = 512
+                    try:
+                        max_answer_chars = int(chakoshi_cfg.get("max_answer_chars", 4096))
+                    except Exception:
+                        max_answer_chars = 4096
+
+                    prompt_text = str(sample.get('prompt', ''))
+                    answer_text = str(answer if answer is not None else '')
+                    if len(prompt_text) > max_prompt_chars:
+                        prompt_text = prompt_text[:max_prompt_chars]
+                    if len(answer_text) > max_answer_chars:
+                        answer_text = answer_text[:max_answer_chars]
+
+                    concat_text = f"【プロンプト】{prompt_text}\n【回答】{answer_text}"
+                    try:
+                        jr = judge_text(
+                            concat_text,
+                            model=chakoshi_cfg.get("model", "chakoshi-moderation-241223"),
+                            category_set_id=chakoshi_cfg.get("category_set_id"),
+                            timeout_seconds=float(chakoshi_cfg.get("timeout_seconds", 10.0)),
+                        )
+                    except Exception:
+                        jr = {"flagged": False}
+
+                    if jr.get("flagged"):
+                        reason = jr.get("reason")
+                        block_message = str(
+                            chakoshi_cfg.get(
+                                "block_message",
+                                "申し訳ありません。この回答には真実性の懸念があるため提供できません。",
+                            )
+                        )
+                        answer = f"{block_message} ({reason})" if reason else block_message
+
+                sample.update({"answer": answer})
                 return sample
             generate_answer_tasks = [asyncio.create_task(generate_answer(sample)) for sample in samples]
             generate_answer_results = asyncio.create_task( # Judgeと並列で行うためにここではawaitしない
