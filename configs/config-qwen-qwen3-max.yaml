@@ -1,0 +1,12 @@
+wandb:
+  run_name: Qwen/Qwen3-Max-Preview
+api: openai-compatible # openai, anthropic, google,..
+base_url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+batch_size: 4
+model:
+  pretrained_model_name_or_path: qwen3-max-preview #if you use openai api, put the name of model
+  bfcl_model_id: "qwen3-max-preview-FC" # find id from "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  base_model: "unknown"
+  size_category: api
+  size: null
+  release_date: 9/5/2025

@@ -289,4 +289,20 @@ class QwenAgentNoThinkHandler(QwenAPIHandler):
             stream_options={
                 "include_usage": True
             },
+        )
+
+
+class QwenIntlAPIHandler(QwenAPIHandler):
+    """
+    Qwen API handler for international DashScope API.
+    This handler uses the international endpoint for Qwen3-Max-Preview and other models.
+    Uses OPENAI_COMPATIBLE_API_KEY environment variable for API authentication.
+    """
+
+    def __init__(self, model_name, temperature) -> None:
+        super().__init__(model_name, temperature)
+        # Override the client to use international endpoint and correct API key
+        self.client = OpenAI(
+            base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+            api_key=os.getenv("OPENAI_COMPATIBLE_API_KEY"),  # Use OPENAI_COMPATIBLE_API_KEY for openai-compatible API
         ) 
