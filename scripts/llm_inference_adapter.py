@@ -336,7 +336,23 @@ class OpenAIClient:
             elif all_kwargs["include_reasoning"] is False:
                 params["extra_body"]["reasoning"] = {"exclude": True}
         
-        response = self.client.chat.completions.create(**params)
+        try:
+            response = self.client.chat.completions.create(**params)
+        except openai.BadRequestError as e:
+            # DashScopeのコンテンツフィルタリングエラーに対する処理
+            if "data_inspection_failed" in str(e) or "inappropriate content" in str(e).lower():
+                warnings.warn(f"Content filtering detected by DashScope API: {e}")
+                # コンテンツフィルタリングエラーの場合、空のレスポンスを返して処理を継続
+                return LLMResponse(
+                    content="[Content filtered by API provider]",
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    reasoning_content=""
+                )
+            else:
+                # その他のBadRequestErrorはそのまま再発生
+                raise e
+        
         # reasoningでtokenを使い切るとcontentがNoneになる対策
         content = '' if response.choices[0].message.content is None else response.choices[0].message.content
         reasoning_content = ''
@@ -414,6 +430,18 @@ class OpenAIClient:
                 response: OpenAIChatCompletion = await self.async_client.chat.completions.create(**params)
                 parsed_output = None
         except openai.BadRequestError as e:
+            # DashScopeのコンテンツフィルタリングエラーに対する処理
+            if "data_inspection_failed" in str(e) or "inappropriate content" in str(e).lower():
+                warnings.warn(f"Content filtering detected by DashScope API: {e}")
+                # コンテンツフィルタリングエラーの場合、空のレスポンスを返して処理を継続
+                return LLMResponse(
+                    content="[Content filtered by API provider]",
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    reasoning_content="",
+                    parsed_output=None
+                )
+            
             # リクエスト時点でpromt+max_tokensがコンテキスト長を超える場合、max_tokensを調整してmax_context_lengthギリギリまで可能な範囲で生成する
             # (OpenAI, vLLMのエラーメッセージに対応)
             if match := re.search("maximum context length is ([0-9]+) tokens. However, you requested [0-9]+ tokens \(([0-9]+) in the messages, ([0-9]+) in the completion\)", e.message):

@@ -31,6 +31,7 @@ from ..model_handler.api_inference.qwen import (
     QwenAgentNoThinkHandler,
     QwenAgentThinkHandler,
     QwenAPIHandler,
+    QwenIntlAPIHandler,
 )
 from ..model_handler.api_inference.upstage import UpstageHandler
 from ..model_handler.api_inference.writer import WriterHandler
@@ -2184,6 +2185,30 @@ third_party_inference_model_map = {
         output_price=None,
         is_fc_model=True,
         underscore_to_dot=True,
+    ),
+    "qwen3-max-preview-FC": ModelConfig(
+        model_name="qwen3-max-preview-FC",
+        display_name="Qwen3-Max-Preview (FC)",
+        url="https://help.aliyun.com/zh/model-studio/developer-reference/qwen-api",
+        org="Qwen",
+        license="Proprietary",
+        model_handler=QwenIntlAPIHandler,
+        input_price=60,  # Based on Alibaba Cloud Model Studio pricing
+        output_price=180,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
+    "qwen3-max-preview": ModelConfig(
+        model_name="qwen3-max-preview",
+        display_name="Qwen3-Max-Preview (Prompt)",
+        url="https://help.aliyun.com/zh/model-studio/developer-reference/qwen-api",
+        org="Qwen",
+        license="Proprietary",
+        model_handler=QwenIntlAPIHandler,
+        input_price=60,  # Based on Alibaba Cloud Model Studio pricing
+        output_price=180,
+        is_fc_model=False,
+        underscore_to_dot=False,
     ),
     # "katanemo/Arch-Agent-1.5B": ModelConfig(
     #     model_name="katanemo/Arch-Agent-1.5B",

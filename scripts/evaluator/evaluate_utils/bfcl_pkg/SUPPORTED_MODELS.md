@@ -150,6 +150,8 @@ These unified handlers eliminate the need to configure individual model-specific
 | Qwen3-{30B-A3B,235B-A22B} (API)               | Prompt           | Qwen           | qwen3-{30b-a3b,235b-a22b}                                  |
 | QwQ-32B (API)                                  | Function Calling | Qwen           | qwq-32b-FC                                                 |
 | QwQ-32B (API)                                  | Prompt           | Qwen           | qwq-32b                                                    |
+| Qwen3-Max-Preview                              | Function Calling | Qwen           | qwen3-max-preview-FC                                       |
+| Qwen3-Max-Preview                              | Prompt           | Qwen           | qwen3-max-preview                                          |
 | Sky-T1-32B-Preview                             | Prompt           | Self-hosted 💻 | NovaSky-AI/Sky-T1-32B-Preview                               |
 | Snowflake/snowflake-arctic-instruct            | Prompt           | Snowflake      | snowflake/arctic                                            |
 | ThinkAgent-1B                                  | Function Calling | Self-hosted 💻 | ThinkAgents/ThinkAgent-1B                                   |
