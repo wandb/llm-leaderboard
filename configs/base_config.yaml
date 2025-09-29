@@ -1,6 +1,6 @@
 wandb:
   entity: 'llm-leaderboard'
-  project: 'nejumi-leaderboard4'
+  project: 'nejumi-leaderboard-4-upstage'
   #run: please set up run name in a model-base config
 
 testmode: false

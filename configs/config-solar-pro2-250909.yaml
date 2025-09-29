@@ -1,0 +1,21 @@
+wandb:
+  run_name: upstage/solar-pro2-250909
+
+api: upstage
+batch_size: 32
+testmode: true  # Run lightweight test with small number of questions
+
+model:
+  pretrained_model_name_or_path: solar-pro2
+  bfcl_model_id: "upstage-FC"  # Generic Upstage handler for function calling
+  base_model: "solar-pro2"
+  size_category: api
+  size: null
+  release_date: 09/09/2025  # Update with actual release date
+
+# Optional: Enable SWE-bench remote evaluation if needed
+swebench:
+  background_eval: true
+  api_server:
+    enabled: true
+    endpoint: 'https://api.nejumi-swebench.org'
