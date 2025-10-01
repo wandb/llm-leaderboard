@@ -12,6 +12,12 @@ model:
   size_category: api
   size: null
   release_date: 09/09/2025
+generator:
+  #max_tokens: 131072
+  temperature: 1.0
+  # reasoning:
+  #   effort: "high"
+  #   summary: "auto"
 # Optional: Enable SWE-bench remote evaluation if needed
 swebench:
   background_eval: true
