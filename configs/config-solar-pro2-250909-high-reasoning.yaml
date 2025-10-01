@@ -1,0 +1,24 @@
+wandb:
+  run_name: upstage/solar-pro2-250909-high-reasoning
+  project: 'nejumi-leaderboard-4-upstage'
+
+api: upstage
+batch_size: 32
+testmode: true  # Run lightweight test with small number of questions
+inference_interval: 0.1  # 100ms delay between API calls to prevent rate limiting
+
+model:
+  pretrained_model_name_or_path: solar-pro2
+  bfcl_model_id: "solar-pro2"  
+  base_model: "unknown"
+  size_category: api
+  size: null
+  release_date: 09/09/2025
+
+generator:
+  reasoning_effort: "high"
+
+# BFCL-specific generator configuration (used by UpstageHandler)
+bfcl:
+  generator_config:
+    reasoning_effort: "high"

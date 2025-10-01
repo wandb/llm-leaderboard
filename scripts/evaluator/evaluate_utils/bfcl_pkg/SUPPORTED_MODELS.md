@@ -163,7 +163,7 @@ These unified handlers eliminate the need to configure individual model-specific
 | xLAM-2-3b-fc-r                                 | Function Calling | Self-hosted 💻 | Salesforce/xLAM-2-3b-fc-r                                   |
 | xLAM-2-70b-fc-r                                | Function Calling | Self-hosted 💻 | Salesforce/Llama-xLAM-2-70b-fc-r                            |
 | xLAM-2-8b-fc-r                                 | Function Calling | Self-hosted 💻 | Salesforce/Llama-xLAM-2-8b-fc-r                             |
-| Upstage (Generic Handler)                      | Function Calling | Upstage        | upstage-FC                                                  |
+| Upstage (Generic Handler)                      | Prompt           | Upstage        | solar-pro2                                         |
 | PLaMo-2.0-Prime                                | Function Calling | Preferred AI   | PLaMo-2.0-Prime-FC                                         |
 | PLaMo-2.0-Prime                                | Prompt           | Preferred AI   | PLaMo-2.0-Prime                                            |
 
