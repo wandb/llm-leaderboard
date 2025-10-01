@@ -1,5 +1,5 @@
 wandb:
-  run_name: upstage/solar-pro2-250909-high-reasoning
+  run_name: upstage/solar-pro2-250909-minimal-reasoning
 
 api: upstage
 batch_size: 32
@@ -14,13 +14,13 @@ model:
   release_date: 09/09/2025
 
 generator:
-  reasoning_effort: "high"
+  reasoning_effort: "minimal"
 
 # BFCL-specific generator configuration (used by UpstageHandler)
 bfcl:
   generator_config:
     temperature: 1.0
-    reasoning_effort: "high"
+    reasoning_effort: "minimal"
 
 # Optional: Enable SWE-bench remote evaluation if needed
 swebench:
