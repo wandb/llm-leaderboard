@@ -20,12 +20,4 @@ generator:
 # BFCL-specific generator configuration (used by UpstageHandler)
 bfcl:
   generator_config:
-    temperature: 1.0
     reasoning_effort: "minimal"
-
-# Optional: Enable SWE-bench remote evaluation if needed
-swebench:
-  background_eval: true
-  api_server:
-    enabled: true
-    endpoint: 'https://api.nejumi-swebench.org'

@@ -24,7 +24,6 @@ from overrides import EnforceOverrides, final, override
 class UpstageHandler(BaseHandler):
     def __init__(self, model_name, temperature) -> None:
         super().__init__(model_name, temperature)
-        print(f"🔍 DEBUG: UpstageHandler initialized with model_name='{model_name}', temperature={temperature}, is_fc_model={getattr(self, 'is_fc_model', 'NOT_SET')}")
         self.model_style = ModelStyle.OpenAI_Completions  # Upstage uses OpenAI-compatible API
         
         #Get Configuration from yaml files (base + model)
@@ -32,10 +31,6 @@ class UpstageHandler(BaseHandler):
         cfg = instance.config
         self.generator_config = OmegaConf.to_container(cfg.bfcl.generator_config)
         self.max_tokens = self.generator_config.pop("max_tokens")
-        
-        # Debug: Print all generator_config values
-        print(f"🔍 DEBUG: generator_config = {self.generator_config}")
-        print(f"🔍 DEBUG: max_tokens = {self.max_tokens}")
         
         self.client = OpenAI(
             api_key=os.getenv("UPSTAGE_API_KEY"),
@@ -191,6 +186,7 @@ class UpstageHandler(BaseHandler):
         Call the model API in prompting mode to get the response asynchronously.
         Return the response object that can be used to feed into the decode method.
         """
+        print("🔍 DEBUG: Not Implemented - Calling _query_prompting_async() method.")
         raise NotImplementedError
 
     @override
@@ -204,7 +200,7 @@ class UpstageHandler(BaseHandler):
             test_entry["question"][0], functions, test_category
         )
 
-        return {"message": []}
+        return {"message": [], "function": functions}
 
     @override
     def _parse_query_response_prompting(self, api_response: any) -> dict:
