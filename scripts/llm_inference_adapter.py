@@ -1401,6 +1401,12 @@ def get_llm_inference_engine() -> BaseLLMClient:
         )
     
     elif api_type == "upstage":
+        print(f"🔍 DEBUG: Upstage LLM client config:")
+        print(f"🔍 DEBUG: base_url = https://api.upstage.ai/v1/")
+        print(f"🔍 DEBUG: model = {cfg.model.pretrained_model_name_or_path}")
+        print(f"🔍 DEBUG: cfg.generator = {dict(cfg.generator)}")
+        print(f"🔍 DEBUG: inference_interval = {cfg.inference_interval}")
+        
         llm = OpenAIClient(
             api_key=os.environ["UPSTAGE_API_KEY"],
             base_url="https://api.upstage.ai/v1/",
