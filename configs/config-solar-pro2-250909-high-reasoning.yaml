@@ -1,5 +1,6 @@
 wandb:
   run_name: upstage/solar-pro2-250909-high-reasoning
+  project: 'nejumi-leaderboard-4-upstage'
 
 api: upstage
 batch_size: 32
