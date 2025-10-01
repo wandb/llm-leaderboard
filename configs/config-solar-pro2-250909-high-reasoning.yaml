@@ -4,6 +4,7 @@ wandb:
 api: upstage
 batch_size: 32
 testmode: true  # Run lightweight test with small number of questions
+inference_interval: 0.1  # 100ms delay between API calls to prevent rate limiting
 
 model:
   pretrained_model_name_or_path: solar-pro2
