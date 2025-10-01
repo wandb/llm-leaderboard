@@ -13,12 +13,14 @@ model:
   size: null
   release_date: 09/09/2025
 
+generator:
+  reasoning_effort: "high"
 # BFCL-specific generator configuration (used by UpstageHandler)
 bfcl:
   generator_config:
     #max_tokens: 131072
     temperature: 1.0
-    reasoning_effort: "high"
+    #reasoning_effort: "high"
     # reasoning:
     #   effort: "high"
     #   summary: "auto"
