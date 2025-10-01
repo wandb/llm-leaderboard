@@ -16,6 +16,9 @@ from ..utils import (
     system_prompt_pre_processing_chat_model,
 )
 from openai import OpenAI, RateLimitError
+from config_singleton import WandbConfigSingleton
+from omegaconf import OmegaConf
+from overrides import EnforceOverrides, final, override
 
 
 class UpstageHandler(BaseHandler):
@@ -23,11 +26,23 @@ class UpstageHandler(BaseHandler):
         super().__init__(model_name, temperature)
         print(f"🔍 DEBUG: UpstageHandler initialized with model_name='{model_name}', temperature={temperature}, is_fc_model={getattr(self, 'is_fc_model', 'NOT_SET')}")
         self.model_style = ModelStyle.OpenAI_Completions  # Upstage uses OpenAI-compatible API
+        
+        #Get Configuration from yaml files (base + model)
+        instance = WandbConfigSingleton.get_instance()
+        cfg = instance.config
+        self.generator_config = OmegaConf.to_container(cfg.bfcl.generator_config)
+        self.max_tokens = self.generator_config.pop("max_tokens")
+        
+        # Debug: Print all generator_config values
+        print(f"🔍 DEBUG: generator_config = {self.generator_config}")
+        print(f"🔍 DEBUG: max_tokens = {self.max_tokens}")
+        
         self.client = OpenAI(
             api_key=os.getenv("UPSTAGE_API_KEY"),
             base_url="https://api.upstage.ai/v1"
         )
 
+    @override
     def decode_ast(self, result, language="Python"):
         if "FC" in self.model_name or self.is_fc_model:
             decoded_output = []
@@ -38,7 +53,8 @@ class UpstageHandler(BaseHandler):
             return decoded_output
         else:
             return default_decode_ast_prompting(result, language)
-
+    
+    @override
     def decode_execute(self, result):
         if "FC" in self.model_name or self.is_fc_model:
             return convert_to_function_call(result)
@@ -155,16 +171,29 @@ class UpstageHandler(BaseHandler):
 
     #### Prompting methods ####
 
+    @override
     def _query_prompting(self, inference_data: dict):
         inference_data["inference_input_log"] = {"message": repr(inference_data["message"])}
 
         # Upstage Solar models support temperature parameter
-        return self.generate_with_backoff(
-            messages=inference_data["message"],
-            model=self.model_name,
-            temperature=self.temperature,
-        )
+        kwargs = {
+            "messages": inference_data["message"],
+            "model": self.model_name,
+            "max_tokens": self.max_tokens,
+            **self.generator_config,  # This spreads temperature and other params from YAML
+        }
+        
+        return self.generate_with_backoff(**kwargs)
 
+    @override
+    async def _query_prompting_async(self, inference_data: dict):
+        """
+        Call the model API in prompting mode to get the response asynchronously.
+        Return the response object that can be used to feed into the decode method.
+        """
+        raise NotImplementedError
+
+    @override
     def _pre_query_processing_prompting(self, test_entry: dict) -> dict:
         functions: list = test_entry["function"]
         test_category: str = test_entry["id"].rsplit("_", 1)[0]
@@ -177,6 +206,7 @@ class UpstageHandler(BaseHandler):
 
         return {"message": []}
 
+    @override
     def _parse_query_response_prompting(self, api_response: any) -> dict:
         return {
             "model_responses": api_response.choices[0].message.content,
@@ -185,18 +215,21 @@ class UpstageHandler(BaseHandler):
             "output_token": api_response.usage.completion_tokens,
         }
 
+    @override
     def add_first_turn_message_prompting(
         self, inference_data: dict, first_turn_message: list[dict]
     ) -> dict:
         inference_data["message"].extend(first_turn_message)
         return inference_data
 
+    @override
     def _add_next_turn_user_message_prompting(
         self, inference_data: dict, user_message: list[dict]
     ) -> dict:
         inference_data["message"].extend(user_message)
         return inference_data
 
+    @override
     def _add_assistant_message_prompting(
         self, inference_data: dict, model_response_data: dict
     ) -> dict:
@@ -205,6 +238,7 @@ class UpstageHandler(BaseHandler):
         )
         return inference_data
 
+    @override
     def _add_execution_results_prompting(
         self, inference_data: dict, execution_results: list[str], model_response_data: dict
     ) -> dict:
