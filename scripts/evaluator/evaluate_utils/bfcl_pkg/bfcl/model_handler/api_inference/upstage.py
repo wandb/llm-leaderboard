@@ -22,7 +22,7 @@ class UpstageHandler(BaseHandler):
     def __init__(self, model_name, temperature) -> None:
         super().__init__(model_name, temperature)
         print(f"🔍 DEBUG: UpstageHandler initialized with model_name='{model_name}', is_fc_model={getattr(self, 'is_fc_model', 'NOT_SET')}")
-        self.model_style = ModelStyle.OpenAI  # Upstage uses OpenAI-compatible API
+        self.model_style = ModelStyle.OpenAI_Completions  # Upstage uses OpenAI-compatible API
         self.client = OpenAI(
             api_key=os.getenv("UPSTAGE_API_KEY"),
             base_url="https://api.upstage.ai/v1"
