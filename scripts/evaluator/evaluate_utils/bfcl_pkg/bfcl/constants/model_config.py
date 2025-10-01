@@ -1241,9 +1241,9 @@ api_inference_model_map = {
         is_fc_model=False,
         underscore_to_dot=False,
     ),
-    "Solar-Pro2": ModelConfig(
-        model_name="Solar-Pro2",
-        display_name="Solar-Pro2 (Prompt)",
+    "solar-pro2": ModelConfig(
+        model_name="solar-pro2",
+        display_name="solar-pro2 (Prompt)",
         url="https://console.upstage.ai/api/chat",
         org="Upstage",
         license="Proprietary",
