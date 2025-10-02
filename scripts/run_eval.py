@@ -83,6 +83,13 @@ custom_cfg = OmegaConf.merge(base_cfg, custom_cfg)
 cfg_dict = OmegaConf.to_container(custom_cfg, resolve=True)
 assert isinstance(cfg_dict, dict), "instance.config must be a DictConfig"
 
+# DEBUG: Print the entire configuration
+import json
+print("=" * 80)
+print("DEBUG: Full cfg_dict contents:")
+print(json.dumps(cfg_dict, indent=2, default=str))
+print("=" * 80)
+
 # 環境変数からAPIキーを取得
 def get_api_key_from_env(service_name):
     """環境変数からAPIキーを取得"""
