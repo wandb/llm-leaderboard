@@ -11,10 +11,10 @@ inference_interval: 0.1  # 100ms delay between API calls to prevent rate limitin
 run:
   bfcl: false
   swebench: false
-  mtbench: true
+  mtbench: false
   jbbq: false
   toxicity: false
-  jtruthfulqa: false
+  jtruthfulqa: true
   hle: false
   hallulens: false
   arc_agi: false
