@@ -111,6 +111,13 @@ try:
         print("W&B already initialized; reusing existing run context.")
         run = wandb.run  # may be None if not active
     else:
+        print("DEBUG: About to call wandb.init()")
+        print(f"  entity: '{cfg_dict['wandb']['entity']}'")
+        print(f"  project: '{cfg_dict['wandb']['project']}'") 
+        print(f"  name: '{cfg_dict['wandb']['run_name']}'")
+        print(f"  config type: {type(cfg_dict)}")
+        print(f"  wandb_run: {wandb_run}")
+        
         wandb.login()
         run = wandb.init(
             entity=cfg_dict["wandb"]["entity"],
