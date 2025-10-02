@@ -84,11 +84,11 @@ cfg_dict = OmegaConf.to_container(custom_cfg, resolve=True)
 assert isinstance(cfg_dict, dict), "instance.config must be a DictConfig"
 
 # DEBUG: Print the entire configuration
-import json
-print("=" * 80)
-print("DEBUG: Full cfg_dict contents:")
-print(json.dumps(cfg_dict, indent=2, default=str))
-print("=" * 80)
+# import json
+# print("=" * 80)
+# print("DEBUG: Full cfg_dict contents:")
+# print(json.dumps(cfg_dict, indent=2, default=str))
+# print("=" * 80)
 
 # 環境変数からAPIキーを取得
 def get_api_key_from_env(service_name):
@@ -111,12 +111,12 @@ try:
         print("W&B already initialized; reusing existing run context.")
         run = wandb.run  # may be None if not active
     else:
-        print("DEBUG: About to call wandb.init()")
-        print(f"  entity: '{cfg_dict['wandb']['entity']}'")
-        print(f"  project: '{cfg_dict['wandb']['project']}'") 
-        print(f"  name: '{cfg_dict['wandb']['run_name']}'")
-        print(f"  config type: {type(cfg_dict)}")
-        print(f"  wandb_run: {wandb_run}")
+        # print("DEBUG: About to call wandb.init()")
+        # print(f"  entity: '{cfg_dict['wandb']['entity']}'")
+        # print(f"  project: '{cfg_dict['wandb']['project']}'") 
+        # print(f"  name: '{cfg_dict['wandb']['run_name']}'")
+        # print(f"  config type: {type(cfg_dict)}")
+        # print(f"  wandb_run: {wandb_run}")
         
         wandb.login()
         run = wandb.init(
