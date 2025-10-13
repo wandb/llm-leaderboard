@@ -7,21 +7,10 @@ batch_size: 32
 testmode: true  # Run lightweight test with small number of questions
 inference_interval: 0.1  # 100ms delay between API calls to prevent rate limiting
 
-# Override run configuration to only test MTBENCH
+#Override run configuration to not test swebench
+#REMOVE this override once test is done
 run:
-  bfcl: false
   swebench: false
-  mtbench: false
-  jbbq: false
-  toxicity: false
-  jtruthfulqa: true
-  hle: false
-  hallulens: false
-  arc_agi: false
-  m_ifeval: false
-  jaster: false
-  jmmlu_robustness: false
-  aggregate: false
 
 model:
   pretrained_model_name_or_path: solar-pro2
