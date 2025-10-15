@@ -10,7 +10,19 @@ inference_interval: 0.1  # 100ms delay between API calls to prevent rate limitin
 #Override run configuration to not test swebench
 #REMOVE this override once test is done
 run:
-  swebench: false
+  bfcl: false
+  swebench: true
+  mtbench: true
+  jbbq: false
+  toxicity: true
+  jtruthfulqa: false
+  hle: false
+  hallulens: false
+  arc_agi: false
+  m_ifeval: false
+  jaster: false
+  jmmlu_robustness: false
+  aggregate: false
 
 model:
   pretrained_model_name_or_path: solar-pro2
@@ -27,3 +39,6 @@ generator:
 bfcl:
   generator_config:
     reasoning_effort: "minimal"
+
+swebench:
+  evaluation_method: 'docker'
