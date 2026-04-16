@@ -279,19 +279,27 @@ def calculate_glp_scores(cfg, leaderboard_dict, jaster_0shot, jaster_fewshots, m
         general_knowledge_dict["stem_mtbench"] = mtbench["stem"][0]
     create_subcategory_table(run, cfg, "general_knowledge", general_knowledge_dict)
     
-    # 専門的知識（JMMLU, JMMLU-Pro(mmlu_prox_ja), HLE）
+    # 専門的知識（JMMLU, JMMLU-Pro(mmlu_prox_ja), TMMLU+, HLE）
     expert_knowledge_scores = []
     expert_knowledge_dict = {}
-    
-    if "jmmlu" in jaster_0shot.columns:
+
+    # TMMLU+ (Traditional Chinese)
+    if jaster_0shot is not None and "tmmluplus" in jaster_0shot.columns:
+        tmmluplus_score = (jaster_0shot["tmmluplus"][0] + jaster_fewshots["tmmluplus"][0]) / 2
+        expert_knowledge_scores.append(tmmluplus_score)
+        expert_knowledge_dict["tmmluplus_0shot"] = jaster_0shot["tmmluplus"][0]
+        expert_knowledge_dict["tmmluplus_fewshot"] = jaster_fewshots["tmmluplus"][0]
+        expert_knowledge_dict["tmmluplus_avg"] = tmmluplus_score
+
+    if jaster_0shot is not None and "jmmlu" in jaster_0shot.columns:
         jmmlu_score = (jaster_0shot["jmmlu"][0] + jaster_fewshots["jmmlu"][0]) / 2
         expert_knowledge_scores.append(jmmlu_score)
         expert_knowledge_dict["jmmlu_0shot"] = jaster_0shot["jmmlu"][0]
         expert_knowledge_dict["jmmlu_fewshot"] = jaster_fewshots["jmmlu"][0]
         expert_knowledge_dict["jmmlu_avg"] = jmmlu_score
-    
+
     # JMMLU-Pro (mmlu_prox_ja)の追加
-    if "mmlu_prox_ja" in jaster_0shot.columns:
+    if jaster_0shot is not None and "mmlu_prox_ja" in jaster_0shot.columns:
         mmlu_prox_ja_score = (jaster_0shot["mmlu_prox_ja"][0] + jaster_fewshots["mmlu_prox_ja"][0]) / 2
         expert_knowledge_scores.append(mmlu_prox_ja_score)
         expert_knowledge_dict["mmlu_prox_ja_0shot"] = jaster_0shot["mmlu_prox_ja"][0]

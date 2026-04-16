@@ -271,6 +271,7 @@ task_to_sub_category = {
     "jmmlu": "GLP_expert_knowledge",
     "mmlu_prox_ja": "GLP_expert_knowledge",
     "hle": "GLP_expert_knowledge",
+    "tmmluplus": "GLP_expert_knowledge",
     
     # 基礎的言語性能
     "jnli": "GLP_semantic_analysis",
@@ -370,4 +371,5 @@ controllability_dict = {
     "mawps": is_all_digit,
     "mgsm": is_all_digit,
     "niilc": no_check,
+    "tmmluplus": is_one_of_ABCD,
 }

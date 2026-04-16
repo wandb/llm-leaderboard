@@ -55,32 +55,12 @@ def evaluate_n_shot(few_shots: bool):
         raise FileNotFoundError(f"dataset_dir not found: {dataset_dir}")
 
     tasks = [
-        "aio",
-        "alt-e-to-j",
-        "alt-j-to-e",
-        "commonsensemoralja",
-        "jamp",
-        "janli",
-        "jblimp",
-        "jcola-in-domain",
-        "jcola-out-of-domain",
-        "jcommonsenseqa",
-        "jemhopqa",
+        "tmmluplus",
         "jhumaneval",
-        "jnli",
-        "jmmlu",
-        "jsem",
-        "jsick",
-        "jsquad",
-        "kuci",
-        "mawps",
-        "mgsm",
-        "niilc",
-        "mmlu_prox_ja"
     ]
 
-    if cfg.run.jmmlu_robustness and few_shots:
-        tasks.extend(["jmmlu_IncorrectChoice", "jmmlu_SymbolChoice"])
+    if cfg.run.get("tmmluplus_robustness", False) and few_shots:
+        tasks.extend(["tmmluplus_IncorrectChoice", "tmmluplus_SymbolChoice"])
     
     # jhumaneval is 0-shot only
     if few_shots and "jhumaneval" in tasks:
@@ -146,7 +126,10 @@ def evaluate_n_shot(few_shots: bool):
                 messages.append({"role": "user", "content": sample["input"]})
 
                 # instruction message
-                message_intro = "以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。リクエストを適切に完了するための回答を記述してください。"
+                message_intro = cfg.get("jaster", {}).get(
+                    "message_intro",
+                    "以下是一項任務的說明，附帶的輸入提供了更多上下文。請撰寫適當的回答以完成該任務。"
+                )
                 
                 instruction = "\n".join(
                     [message_intro, task_data["instruction"]]
