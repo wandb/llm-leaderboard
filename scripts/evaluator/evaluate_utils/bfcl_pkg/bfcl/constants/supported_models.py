@@ -103,7 +103,7 @@ SUPPORTED_MODELS = [
     "qwq-32b-FC",
     "qwq-32b",
     "xiaoming-14B",
-    "upstage-FC",
+    "solar-pro2",
     "deepseek-ai/DeepSeek-R1",
     "google/gemma-3-1b-it",
     "google/gemma-3-4b-it",

@@ -1241,6 +1241,18 @@ api_inference_model_map = {
         is_fc_model=False,
         underscore_to_dot=False,
     ),
+    "solar-pro2": ModelConfig(
+        model_name="solar-pro2",
+        display_name="solar-pro2 (Prompt)",
+        url="https://console.upstage.ai/api/chat",
+        org="Upstage",
+        license="Proprietary",
+        model_handler=UpstageHandler,
+        input_price=None,  # Add pricing information if available
+        output_price=None,
+        is_fc_model=False,
+        underscore_to_dot=False,
+    ),
 }
 
 # Inference through local hosting

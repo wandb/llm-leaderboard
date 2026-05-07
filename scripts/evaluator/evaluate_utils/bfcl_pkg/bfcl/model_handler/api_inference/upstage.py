@@ -16,17 +16,28 @@ from ..utils import (
     system_prompt_pre_processing_chat_model,
 )
 from openai import OpenAI, RateLimitError
+from config_singleton import WandbConfigSingleton
+from omegaconf import OmegaConf
+from overrides import EnforceOverrides, final, override
 
 
 class UpstageHandler(BaseHandler):
     def __init__(self, model_name, temperature) -> None:
         super().__init__(model_name, temperature)
-        self.model_style = ModelStyle.OpenAI  # Upstage uses OpenAI-compatible API
+        self.model_style = ModelStyle.OpenAI_Completions  # Upstage uses OpenAI-compatible API
+        
+        #Get Configuration from yaml files (base + model)
+        instance = WandbConfigSingleton.get_instance()
+        cfg = instance.config
+        self.generator_config = OmegaConf.to_container(cfg.bfcl.generator_config)
+        self.max_tokens = self.generator_config.pop("max_tokens")
+        
         self.client = OpenAI(
             api_key=os.getenv("UPSTAGE_API_KEY"),
             base_url="https://api.upstage.ai/v1"
         )
 
+    @override
     def decode_ast(self, result, language="Python"):
         if "FC" in self.model_name or self.is_fc_model:
             decoded_output = []
@@ -37,7 +48,8 @@ class UpstageHandler(BaseHandler):
             return decoded_output
         else:
             return default_decode_ast_prompting(result, language)
-
+    
+    @override
     def decode_execute(self, result):
         if "FC" in self.model_name or self.is_fc_model:
             return convert_to_function_call(result)
@@ -54,116 +66,130 @@ class UpstageHandler(BaseHandler):
 
     #### FC methods ####
 
-    def _query_FC(self, inference_data: dict):
-        message: list[dict] = inference_data["message"]
-        tools = inference_data["tools"]
-        inference_data["inference_input_log"] = {"message": repr(message), "tools": tools}
+    # def _query_FC(self, inference_data: dict):
+    #     message: list[dict] = inference_data["message"]
+    #     tools = inference_data["tools"]
+    #     inference_data["inference_input_log"] = {"message": repr(message), "tools": tools}
 
-        if len(tools) > 0:
-            # Upstage Solar models support temperature parameter
-            return self.generate_with_backoff(
-                messages=message,
-                model=self.model_name.replace("-FC", ""),
-                temperature=self.temperature,
-                tools=tools,
-                tool_choice="auto"  # Upstage supports tool_choice parameter
-            )
-        else:
-            return self.generate_with_backoff(
-                messages=message,
-                model=self.model_name.replace("-FC", ""),
-                temperature=self.temperature,
-            )
+    #     if len(tools) > 0:
+    #         # Upstage Solar models support temperature parameter
+    #         return self.generate_with_backoff(
+    #             messages=message,
+    #             model=self.model_name.replace("-FC", ""),
+    #             temperature=self.temperature,
+    #             tools=tools,
+    #             tool_choice="auto"  # Upstage supports tool_choice parameter
+    #         )
+    #     else:
+    #         return self.generate_with_backoff(
+    #             messages=message,
+    #             model=self.model_name.replace("-FC", ""),
+    #             temperature=self.temperature,
+    #         )
 
-    def _pre_query_processing_FC(self, inference_data: dict, test_entry: dict) -> dict:
-        inference_data["message"] = []
-        return inference_data
+    # def _pre_query_processing_FC(self, inference_data: dict, test_entry: dict) -> dict:
+    #     inference_data["message"] = []
+    #     return inference_data
 
-    def _compile_tools(self, inference_data: dict, test_entry: dict) -> dict:
-        functions: list = test_entry["function"]
-        test_category: str = test_entry["id"].rsplit("_", 1)[0]
+    # def _compile_tools(self, inference_data: dict, test_entry: dict) -> dict:
+    #     functions: list = test_entry["function"]
+    #     test_category: str = test_entry["id"].rsplit("_", 1)[0]
 
-        functions = func_doc_language_specific_pre_processing(functions, test_category)
-        tools = convert_to_tool(functions, GORILLA_TO_OPENAPI, self.model_style)
+    #     functions = func_doc_language_specific_pre_processing(functions, test_category)
+    #     tools = convert_to_tool(functions, GORILLA_TO_OPENAPI, self.model_style)
 
-        inference_data["tools"] = tools
+    #     inference_data["tools"] = tools
 
-        return inference_data
+    #     return inference_data
 
-    def _parse_query_response_FC(self, api_response: any) -> dict:
-        try:
-            model_responses = [
-                {func_call.function.name: func_call.function.arguments}
-                for func_call in api_response.choices[0].message.tool_calls
-            ]
-            tool_call_ids = [
-                func_call.id for func_call in api_response.choices[0].message.tool_calls
-            ]
-        except:
-            model_responses = api_response.choices[0].message.content
-            tool_call_ids = []
+    # def _parse_query_response_FC(self, api_response: any) -> dict:
+    #     try:
+    #         model_responses = [
+    #             {func_call.function.name: func_call.function.arguments}
+    #             for func_call in api_response.choices[0].message.tool_calls
+    #         ]
+    #         tool_call_ids = [
+    #             func_call.id for func_call in api_response.choices[0].message.tool_calls
+    #         ]
+    #     except:
+    #         model_responses = api_response.choices[0].message.content
+    #         tool_call_ids = []
 
-        model_responses_message_for_chat_history = api_response.choices[0].message
+    #     model_responses_message_for_chat_history = api_response.choices[0].message
 
-        return {
-            "model_responses": model_responses,
-            "model_responses_message_for_chat_history": model_responses_message_for_chat_history,
-            "tool_call_ids": tool_call_ids,
-            "input_token": api_response.usage.prompt_tokens,
-            "output_token": api_response.usage.completion_tokens,
-        }
+    #     return {
+    #         "model_responses": model_responses,
+    #         "model_responses_message_for_chat_history": model_responses_message_for_chat_history,
+    #         "tool_call_ids": tool_call_ids,
+    #         "input_token": api_response.usage.prompt_tokens,
+    #         "output_token": api_response.usage.completion_tokens,
+    #     }
 
-    def add_first_turn_message_FC(
-        self, inference_data: dict, first_turn_message: list[dict]
-    ) -> dict:
-        inference_data["message"].extend(first_turn_message)
-        return inference_data
+    # def add_first_turn_message_FC(
+    #     self, inference_data: dict, first_turn_message: list[dict]
+    # ) -> dict:
+    #     inference_data["message"].extend(first_turn_message)
+    #     return inference_data
 
-    def _add_next_turn_user_message_FC(
-        self, inference_data: dict, user_message: list[dict]
-    ) -> dict:
-        inference_data["message"].extend(user_message)
-        return inference_data
+    # def _add_next_turn_user_message_FC(
+    #     self, inference_data: dict, user_message: list[dict]
+    # ) -> dict:
+    #     inference_data["message"].extend(user_message)
+    #     return inference_data
 
-    def _add_assistant_message_FC(
-        self, inference_data: dict, model_response_data: dict
-    ) -> dict:
-        inference_data["message"].append(
-            model_response_data["model_responses_message_for_chat_history"]
-        )
-        return inference_data
+    # def _add_assistant_message_FC(
+    #     self, inference_data: dict, model_response_data: dict
+    # ) -> dict:
+    #     inference_data["message"].append(
+    #         model_response_data["model_responses_message_for_chat_history"]
+    #     )
+    #     return inference_data
 
-    def _add_execution_results_FC(
-        self,
-        inference_data: dict,
-        execution_results: list[str],
-        model_response_data: dict,
-    ) -> dict:
-        # Add the execution results to the current round result, one at a time
-        for execution_result, tool_call_id in zip(
-            execution_results, model_response_data["tool_call_ids"]
-        ):
-            tool_message = {
-                "role": "tool",
-                "content": execution_result,
-                "tool_call_id": tool_call_id,
-            }
-            inference_data["message"].append(tool_message)
+    # def _add_execution_results_FC(
+    #     self,
+    #     inference_data: dict,
+    #     execution_results: list[str],
+    #     model_response_data: dict,
+    # ) -> dict:
+    #     # Add the execution results to the current round result, one at a time
+    #     for execution_result, tool_call_id in zip(
+    #         execution_results, model_response_data["tool_call_ids"]
+    #     ):
+    #         tool_message = {
+    #             "role": "tool",
+    #             "content": execution_result,
+    #             "tool_call_id": tool_call_id,
+    #         }
+    #         inference_data["message"].append(tool_message)
 
-        return inference_data
+    #     return inference_data
 
     #### Prompting methods ####
 
+    @override
     def _query_prompting(self, inference_data: dict):
         inference_data["inference_input_log"] = {"message": repr(inference_data["message"])}
 
         # Upstage Solar models support temperature parameter
-        return self.generate_with_backoff(
-            messages=inference_data["message"],
-            model=self.model_name,
-            temperature=self.temperature,
-        )
+        kwargs = {
+            "messages": inference_data["message"],
+            "model": self.model_name,
+            "max_tokens": self.max_tokens,
+            **self.generator_config,  # This spreads temperature and other params from YAML
+        }
+        
+        return self.generate_with_backoff(**kwargs)
 
+    @override
+    async def _query_prompting_async(self, inference_data: dict):
+        """
+        Call the model API in prompting mode to get the response asynchronously.
+        Return the response object that can be used to feed into the decode method.
+        """
+        print("🔍 DEBUG: Not Implemented - Calling _query_prompting_async() method.")
+        raise NotImplementedError
+
+    @override
     def _pre_query_processing_prompting(self, test_entry: dict) -> dict:
         functions: list = test_entry["function"]
         test_category: str = test_entry["id"].rsplit("_", 1)[0]
@@ -174,8 +200,9 @@ class UpstageHandler(BaseHandler):
             test_entry["question"][0], functions, test_category
         )
 
-        return {"message": []}
+        return {"message": [], "function": functions}
 
+    @override
     def _parse_query_response_prompting(self, api_response: any) -> dict:
         return {
             "model_responses": api_response.choices[0].message.content,
@@ -184,18 +211,21 @@ class UpstageHandler(BaseHandler):
             "output_token": api_response.usage.completion_tokens,
         }
 
+    @override
     def add_first_turn_message_prompting(
         self, inference_data: dict, first_turn_message: list[dict]
     ) -> dict:
         inference_data["message"].extend(first_turn_message)
         return inference_data
 
+    @override
     def _add_next_turn_user_message_prompting(
         self, inference_data: dict, user_message: list[dict]
     ) -> dict:
         inference_data["message"].extend(user_message)
         return inference_data
 
+    @override
     def _add_assistant_message_prompting(
         self, inference_data: dict, model_response_data: dict
     ) -> dict:
@@ -204,6 +234,7 @@ class UpstageHandler(BaseHandler):
         )
         return inference_data
 
+    @override
     def _add_execution_results_prompting(
         self, inference_data: dict, execution_results: list[str], model_response_data: dict
     ) -> dict:

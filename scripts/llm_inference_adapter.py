@@ -1400,10 +1400,10 @@ def get_llm_inference_engine() -> BaseLLMClient:
             **cfg.generator,
         )
     
-    elif api_type == "upstage":
+    elif api_type == "upstage":   
         llm = OpenAIClient(
             api_key=os.environ["UPSTAGE_API_KEY"],
-            base_url="https://api.upstage.ai/v1/solar",
+            base_url="https://api.upstage.ai/v1/",
             model=cfg.model.pretrained_model_name_or_path,
             **cfg.generator,
         )
