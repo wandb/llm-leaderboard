@@ -1,0 +1,33 @@
+[project]
+name = "copy-leaderboard"
+version = "0.1.0"
+description = "Tool to copy W&B Nejumi Leaderboard to your own W&B environment"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "wandb[workspaces]>=0.19.0",
+    "pyyaml>=6.0",
+    "polars>=1.0.0",
+    "tqdm>=4.66.0",
+    "click>=8.1.0",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.14.0",
+]
+
+[project.scripts]
+copy-leaderboard = "copy_leaderboard:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.14.0",
+]

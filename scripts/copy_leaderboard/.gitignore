@@ -1,0 +1,15 @@
+# Virtual environment
+.venv/
+
+# Downloaded artifacts
+artifacts/
+
+# W&B run data
+wandb/
+
+# State files
+.last_sync.txt
+
+# Python cache
+__pycache__/
+*.pyc

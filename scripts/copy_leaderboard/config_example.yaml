@@ -1,0 +1,50 @@
+# Test Configuration for Copy Leaderboard
+# Uses the test W&B environment
+
+# Source configuration (Nejumi Leaderboard)
+source:
+  base_url: "https://api.wandb.ai"
+  entity: "llm-leaderboard"
+  project: "nejumi-leaderboard4"
+  private_project: "nejumi-leaderboard4-private"
+  report_url: "https://wandb.ai/llm-leaderboard/nejumi-leaderboard4/reports/Nejumi-LLM-4--VmlldzoxMzc1OTk1MA"
+  run_tag: "leaderboard"
+
+# ============================================================
+# ★★★ REQUIRED: Configure your destination W&B environment ★★★
+# ============================================================
+destination:
+  # Change this to your W&B server URL (e.g., "https://api.wandb.ai" or your self-hosted URL)
+  base_url: "https://fe-crew.wandb.io"  # <-- CHANGE THIS
+  # Your W&B entity (team or username)
+  entity: "aise"                        # <-- CHANGE THIS
+  # Your target project name
+  project: "japanese-leaderboard-move"  # <-- CHANGE THIS
+
+# Artifacts to migrate (subset for testing)
+artifacts:
+  - "wandb-japan/llm-leaderboard3/jaster:v6"
+  - "wandb-japan/llm-leaderboard3/lctg:v0"
+  - "wandb-japan/llm-leaderboard3-private/jbbq:v2"
+  - "wandb-japan/toxicity-dataset-private/toxicity_dataset_full:v3"
+  - "wandb-japan/toxicity-dataset-private/toxicity_judge_prompts:v1"
+  - "wandb-japan/llm-leaderboard/mtbench_ja_question:v4"
+  - "wandb-japan/llm-leaderboard/mtbench_ja_question_small_for_test:v5"
+  - "wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer:v2"
+  - "wandb-japan/llm-leaderboard/mtbench_ja_referenceanswer_small_for_test:v2"
+  - "wandb-japan/llm-leaderboard/mtbench_ja_prompt:v1"
+
+
+# ============================================================
+# ★★★ OPTIONAL: Adjust migration options as needed ★★★
+# ============================================================
+options:
+  # Number of parallel workers for migration (adjust based on your needs)
+  max_workers: 2                    # <-- ADJUST IF NEEDED
+  # Skip runs that already exist in destination
+  skip_existing: true
+  # For incremental updates: only migrate runs after this date (ISO format)
+  # Example: "2024-01-01T00:00:00" or null to migrate all runs
+  start_date: null                  # <-- SET FOR INCREMENTAL UPDATES
+  # Limit number of runs to migrate (null for no limit, set a number for testing)
+  limit: 5                          # <-- SET A NUMBER FOR TESTING
