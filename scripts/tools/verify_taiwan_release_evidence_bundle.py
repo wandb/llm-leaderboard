@@ -9576,6 +9576,148 @@ def validate_paid_review_record_review_source_evidence(
     return errors
 
 
+def validate_run_eval_preflight_payload(payload: dict[str, Any], *, label: str) -> list[str]:
+    errors: list[str] = []
+    if payload.get("ok") is not True:
+        errors.append(f"{label} ok must be true")
+    if payload.get("status") != "passed":
+        errors.append(f"{label} status must be passed")
+    for field in (
+        "will_initialize_wandb",
+        "will_log_wandb_artifacts",
+        "will_initialize_weave",
+        "will_start_inference_engine",
+        "will_run_evaluators",
+    ):
+        if payload.get(field) is not False:
+            errors.append(f"{label} {field} must be false")
+    if not isinstance(payload.get("enabled_benchmarks"), list):
+        errors.append(f"{label} enabled_benchmarks must be a list")
+    return errors
+
+
+def validate_paid_review_run_eval_preflight_evidence(
+    *,
+    bundle_dir: Path,
+    manifest: dict[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    current_gate = manifest.get("current_gate")
+    if not isinstance(current_gate, dict):
+        return errors
+    paid_review_package = current_gate.get("paid_run_review_package")
+    gates = paid_review_package.get("gates") if isinstance(paid_review_package, dict) else None
+    if not isinstance(gates, list):
+        return errors
+
+    records_by_source = file_records_by_source(manifest)
+    for gate in gates:
+        if not isinstance(gate, dict):
+            continue
+        gate_name = str(gate.get("name") or "unknown_gate")
+        review_records = gate.get("records")
+        if not isinstance(review_records, list):
+            continue
+        for record_index, record in enumerate(review_records, start=1):
+            if not isinstance(record, dict):
+                continue
+            if record.get("status") != "completed" and record.get("ok") is not True:
+                continue
+            review_key = source_path_key(record.get("path"))
+            label = f"paid review run_eval preflight {gate_name}#{record_index}"
+            review_record = records_by_source.get(review_key) if review_key else None
+            if not isinstance(review_record, dict):
+                errors.append(f"{label} missing bundled paid review JSON: {review_key}")
+                continue
+            review_bundle_path = review_record.get("bundle_path")
+            if not isinstance(review_bundle_path, str) or not review_bundle_path:
+                errors.append(f"{label} bundled paid review JSON missing bundle_path")
+                continue
+            try:
+                review_payload = read_json_object(bundle_dir / review_bundle_path)
+            except (OSError, json.JSONDecodeError, ValueError) as exc:
+                errors.append(f"{label} bundled paid review JSON is not readable: {exc}")
+                continue
+            if review_payload.get("status") != "completed":
+                continue
+            preflights = review_payload.get("run_eval_preflights")
+            if not isinstance(preflights, list) or not preflights:
+                errors.append(f"{label} bundled paid review JSON missing run_eval_preflights")
+                continue
+            top_outputs = {
+                str(item.get("output_json"))
+                for item in preflights
+                if isinstance(item, dict) and nonempty_string(item.get("output_json"))
+            }
+            for preflight_index, preflight in enumerate(preflights, start=1):
+                if not isinstance(preflight, dict):
+                    errors.append(f"{label} run_eval_preflights {preflight_index} is not an object")
+                    continue
+                output_json = preflight.get("output_json")
+                command = preflight.get("command")
+                preflight_label = f"{label}.{preflight_index}"
+                if preflight.get("required_before_run_eval") is not True:
+                    errors.append(f"{preflight_label} required_before_run_eval must be true")
+                if not isinstance(command, list) or not command:
+                    errors.append(f"{preflight_label} command is missing")
+                else:
+                    command_parts = [str(part) for part in command]
+                    if "scripts/run_eval.py" not in command_parts:
+                        errors.append(f"{preflight_label} command must invoke scripts/run_eval.py")
+                    if "--preflight" not in command_parts:
+                        errors.append(f"{preflight_label} command missing --preflight")
+                    if "--preflight-json" not in command_parts:
+                        errors.append(f"{preflight_label} command missing --preflight-json")
+                    elif nonempty_string(output_json):
+                        try:
+                            output_arg = command_parts[command_parts.index("--preflight-json") + 1]
+                        except IndexError:
+                            errors.append(f"{preflight_label} command --preflight-json missing value")
+                        else:
+                            if output_arg != output_json:
+                                errors.append(
+                                    f"{preflight_label} command --preflight-json does not match output_json"
+                                )
+                preflight_record = validate_any_file_role(
+                    errors=errors,
+                    records=records_by_source,
+                    path_value=output_json,
+                    role_suffix=":run_eval_preflight",
+                    label=preflight_label,
+                )
+                if not isinstance(preflight_record, dict):
+                    continue
+                bundle_path = preflight_record.get("bundle_path")
+                if not isinstance(bundle_path, str) or not bundle_path:
+                    errors.append(f"{preflight_label} bundled preflight JSON missing bundle_path")
+                    continue
+                try:
+                    payload = read_json_object(bundle_dir / bundle_path)
+                except (OSError, json.JSONDecodeError, ValueError) as exc:
+                    errors.append(f"{preflight_label} bundled preflight JSON is not readable: {exc}")
+                    continue
+                errors.extend(validate_run_eval_preflight_payload(payload, label=preflight_label))
+            runs = review_payload.get("runs")
+            if isinstance(runs, list):
+                for run_index, run in enumerate(runs, start=1):
+                    if not isinstance(run, dict):
+                        continue
+                    preflight_json = run.get("preflight_json")
+                    run_label = f"{label}.run{run_index}"
+                    if not nonempty_string(preflight_json):
+                        errors.append(f"{run_label} missing preflight_json")
+                        continue
+                    if top_outputs and str(preflight_json) not in top_outputs:
+                        errors.append(
+                            f"{run_label} preflight_json does not match run_eval_preflights output_json"
+                        )
+                    if run.get("preflight_returncode") != 0:
+                        errors.append(f"{run_label} preflight_returncode must be 0")
+                    if run.get("preflight_ok") is not True:
+                        errors.append(f"{run_label} preflight_ok must be true")
+    return errors
+
+
 def validate_paid_review_scope_attestation_evidence(
     *,
     bundle_dir: Path,
@@ -12689,6 +12831,7 @@ def verify_bundle(
     errors.extend(validate_wandb_completion_contract_consistency(manifest))
     errors.extend(validate_wandb_completion_proof_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_paid_review_record_review_source_evidence(bundle_dir=bundle_dir, manifest=manifest))
+    errors.extend(validate_paid_review_run_eval_preflight_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_paid_review_wandb_completion_entry_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_paid_review_package_accounting_evidence(manifest))
     errors.extend(validate_paid_review_scope_attestation_evidence(bundle_dir=bundle_dir, manifest=manifest))

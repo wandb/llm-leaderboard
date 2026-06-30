@@ -1834,6 +1834,31 @@ def build_bundle_with_paid_review_scope_attestation(tmp_path):
         },
     )
     pre_run_budget_sha = sha256(pre_run_budget)
+    run_eval_preflight = write_json(
+        tmp_path / "run_eval_preflight.json",
+        {
+            "schema_version": 1,
+            "generated_at": 1,
+            "status": "passed",
+            "ok": True,
+            "config": "config.yaml",
+            "base_config": "configs/base_config_taiwan.yaml",
+            "wandb": {
+                "entity": "test-entity",
+                "project": "test-project",
+                "run_name": "taiwan/full/test",
+            },
+            "api": "openai_responses",
+            "model": "gpt-4.1-mini-2025-04-14",
+            "enabled_benchmarks": ["agentic_math", "swebench_pro"],
+            "will_initialize_wandb": False,
+            "will_log_wandb_artifacts": False,
+            "will_initialize_weave": False,
+            "will_start_inference_engine": False,
+            "will_run_evaluators": False,
+            "token_validation": {"ok": True, "has_errors": False, "results": []},
+        },
+    )
     review_path = tmp_path / "canary_agentic_paid_run_review.json"
     attestation_path = tmp_path / "agentic_math-run-1.confirmed_scope_attestation.json"
     review = write_json(
@@ -1857,9 +1882,31 @@ def build_bundle_with_paid_review_scope_attestation(tmp_path):
             },
             "verify_wandb_completion": True,
             "verify_weave_agents": False,
+            "run_eval_preflights": [
+                {
+                    "config": "config.yaml",
+                    "output_json": str(run_eval_preflight),
+                    "required_before_run_eval": True,
+                    "command": [
+                        "python3",
+                        "scripts/run_eval.py",
+                        "--base-config",
+                        "base_config_taiwan.yaml",
+                        "--config",
+                        "config.yaml",
+                        "--preflight",
+                        "--preflight-json",
+                        str(run_eval_preflight),
+                    ],
+                }
+            ],
             "runs": [
                 {
                     "config": "config.yaml",
+                    "preflight_json": str(run_eval_preflight),
+                    "preflight_returncode": 0,
+                    "preflight_ok": True,
+                    "preflight_status": "passed",
                     "log_path": "run.log",
                     "wandb_entity": "test-entity",
                     "wandb_project": "test-project",
@@ -7764,6 +7811,86 @@ def test_verify_release_evidence_bundle_rejects_missing_pre_run_budget_source(tm
     payload = json.loads(result.stdout)
     assert any(
         "missing bundled evidence for paid review pre-run budget estimate" in error
+        for error in payload["errors"]
+    )
+
+
+def test_verify_release_evidence_bundle_includes_paid_review_run_eval_preflight(tmp_path):
+    bundle, _attestation = build_bundle_with_paid_review_scope_attestation(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+
+    preflight_records = [
+        record
+        for record in manifest["files"]
+        if any(str(role).endswith(":run_eval_preflight") for role in record.get("roles", []))
+    ]
+
+    assert preflight_records
+    payload = json.loads((bundle / preflight_records[0]["bundle_path"]).read_text(encoding="utf-8"))
+    assert payload["ok"] is True
+    assert payload["status"] == "passed"
+    assert payload["will_initialize_wandb"] is False
+    assert payload["will_start_inference_engine"] is False
+    assert payload["will_run_evaluators"] is False
+
+
+def test_verify_release_evidence_bundle_rejects_missing_paid_review_run_eval_preflight(
+    tmp_path,
+):
+    bundle, _attestation = build_bundle_with_paid_review_scope_attestation(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["files"] = [
+        record
+        for record in manifest["files"]
+        if not any(str(role).endswith(":run_eval_preflight") for role in record.get("roles", []))
+    ]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert any(
+        "missing bundled evidence for paid review run_eval preflight" in error
+        for error in payload["errors"]
+    )
+
+
+def test_verify_release_evidence_bundle_rejects_mutated_paid_review_run_eval_preflight(
+    tmp_path,
+):
+    bundle, _attestation = build_bundle_with_paid_review_scope_attestation(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    preflight_record = next(
+        record
+        for record in manifest["files"]
+        if any(str(role).endswith(":run_eval_preflight") for role in record.get("roles", []))
+    )
+    bundled_preflight = bundle / preflight_record["bundle_path"]
+    payload = json.loads(bundled_preflight.read_text(encoding="utf-8"))
+    payload["will_initialize_wandb"] = True
+    bundled_preflight.write_text(json.dumps(payload), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, preflight_record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert any(
+        "will_initialize_wandb must be false" in error
         for error in payload["errors"]
     )
 

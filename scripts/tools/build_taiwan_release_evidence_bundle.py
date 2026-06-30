@@ -171,6 +171,32 @@ def add_json_referenced_paths(
             role=f"{role}:external_action_approval_report",
             path_value=external_action_approval.get("path"),
         )
+    if payload.get("status") == "completed":
+        preflights = payload.get("run_eval_preflights")
+        if isinstance(preflights, list):
+            for index, record in enumerate(preflights, start=1):
+                if not isinstance(record, dict):
+                    continue
+                add_evidence(
+                    evidence,
+                    role=f"{role}:run_eval_preflight",
+                    path_value=record.get("output_json"),
+                )
+                add_evidence(
+                    evidence,
+                    role=f"{role}:run_eval_preflight:{index}",
+                    path_value=record.get("output_json"),
+                )
+        runs = payload.get("runs")
+        if isinstance(runs, list):
+            for index, record in enumerate(runs, start=1):
+                if not isinstance(record, dict):
+                    continue
+                add_evidence(
+                    evidence,
+                    role=f"{role}:run:{index}:preflight_json",
+                    path_value=record.get("preflight_json"),
+                )
     operation_results = payload.get("operation_results")
     if isinstance(operation_results, dict):
         for name, record in operation_results.items():
