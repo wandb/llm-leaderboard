@@ -52,6 +52,21 @@ BENCHMARK_MODEL_CONFIG_EXPECTATIONS = {
     "agentic_math": "agentic_math.openclaw_model",
     "agentic_swe": "swebench_pro.openclaw_model",
 }
+BENCHMARK_NEMOCLAW_CONFIG_EXPECTATIONS = {
+    "agentic_math": [
+        "agentic_math.nemoclaw_sandbox",
+        "agentic_math.use_task_agent",
+        "agentic_math.deny_tool",
+        "agentic_math.deny_argument_pattern",
+    ],
+    "agentic_swe": [
+        "swebench_pro.nemoclaw_sandbox",
+        "swebench_pro.nemoclaw_checkout_transfer_mode",
+        "swebench_pro.nemoclaw_checkout_sandbox_root",
+        "swebench_pro.deny_tool",
+        "swebench_pro.deny_argument_pattern",
+    ],
+}
 AGENTIC_GENERATION_PHASES = {"agentic", "full"}
 DEFAULT_WEAVE_CONTENT_CANARY_MAX_AGE_SECONDS = 24 * 60 * 60
 WEAVE_AGENTS_COMPLETION_SCHEMA_VERSION = 1
@@ -757,6 +772,7 @@ def wandb_verify_config_expectations(config_path: Path, *, benchmark: str) -> di
     model_key = BENCHMARK_MODEL_CONFIG_EXPECTATIONS.get(benchmark)
     if model_key:
         keys.append(model_key)
+    keys.extend(BENCHMARK_NEMOCLAW_CONFIG_EXPECTATIONS.get(benchmark, []))
     expectations: dict[str, object] = {}
     for key in keys:
         present, value = config_lookup(config, key)

@@ -205,6 +205,10 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "NeMoClaw batch deny argument patterns constant",
                 "REQUIRED_NEMOCLAW_AGENTIC_DENIED_ARGUMENT_PATTERNS",
             ),
+            (
+                "NeMoClaw W&B verifier config expectations constant",
+                "BENCHMARK_NEMOCLAW_CONFIG_EXPECTATIONS",
+            ),
             ("NeMoClaw batch Math deny_tool guard", '"agentic_math.deny_tool"'),
             ("NeMoClaw batch SWE deny_tool guard", '"swebench_pro.deny_tool"'),
             (
@@ -214,6 +218,22 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             (
                 "NeMoClaw batch SWE deny_argument_pattern guard",
                 '"swebench_pro.deny_argument_pattern"',
+            ),
+            (
+                "NeMoClaw W&B Math sandbox expectation",
+                '"agentic_math.nemoclaw_sandbox"',
+            ),
+            (
+                "NeMoClaw W&B Math task-agent expectation",
+                '"agentic_math.use_task_agent"',
+            ),
+            (
+                "NeMoClaw W&B SWE sandbox expectation",
+                '"swebench_pro.nemoclaw_sandbox"',
+            ),
+            (
+                "NeMoClaw W&B SWE checkout transfer expectation",
+                '"swebench_pro.nemoclaw_checkout_transfer_mode"',
             ),
         ),
     },

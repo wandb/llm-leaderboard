@@ -265,25 +265,59 @@ def test_wandb_verify_config_expectations_read_generated_config(tmp_path):
                 "  pretrained_model_name_or_path: gpt-4.1-mini-2025-04-14",
                 "run:",
                 "  agentic_math: true",
-                "  swebench_pro: false",
+                "  swebench_pro: true",
                 "  aggregate_taiwan: false",
                 "agentic_math:",
                 "  openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14",
+                "  nemoclaw_sandbox: nejumi-taiwan",
+                "  use_task_agent: true",
+                "  deny_tool:",
+                "    - web_search",
+                "    - web_fetch",
+                "  deny_argument_pattern:",
+                "    - https?://",
+                "swebench_pro:",
+                "  openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14",
+                "  nemoclaw_sandbox: nejumi-taiwan",
+                "  nemoclaw_checkout_transfer_mode: copy",
+                "  deny_tool:",
+                "    - web_search",
+                "    - web_fetch",
+                "  deny_argument_pattern:",
+                "    - https?://",
             ]
         )
         + "\n",
         encoding="utf-8",
     )
 
-    expectations = module.wandb_verify_config_expectations(
+    math_expectations = module.wandb_verify_config_expectations(
         config,
         benchmark="agentic_math",
     )
+    swe_expectations = module.wandb_verify_config_expectations(
+        config,
+        benchmark="agentic_swe",
+    )
 
-    assert expectations == {
+    assert math_expectations == {
+        "agentic_math.deny_argument_pattern": ["https?://"],
+        "agentic_math.deny_tool": ["web_search", "web_fetch"],
+        "agentic_math.nemoclaw_sandbox": "nejumi-taiwan",
         "agentic_math.openclaw_model": "openai-direct/gpt-4.1-mini-2025-04-14",
+        "agentic_math.use_task_agent": True,
         "model.pretrained_model_name_or_path": "gpt-4.1-mini-2025-04-14",
         "run.agentic_math": True,
+        "wandb.run_name": "taiwan/full/openai/gpt-4.1-mini: canary",
+    }
+    assert swe_expectations == {
+        "model.pretrained_model_name_or_path": "gpt-4.1-mini-2025-04-14",
+        "run.swebench_pro": True,
+        "swebench_pro.deny_argument_pattern": ["https?://"],
+        "swebench_pro.deny_tool": ["web_search", "web_fetch"],
+        "swebench_pro.nemoclaw_checkout_transfer_mode": "copy",
+        "swebench_pro.nemoclaw_sandbox": "nejumi-taiwan",
+        "swebench_pro.openclaw_model": "openai-direct/gpt-4.1-mini-2025-04-14",
         "wandb.run_name": "taiwan/full/openai/gpt-4.1-mini: canary",
     }
 

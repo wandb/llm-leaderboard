@@ -12654,6 +12654,47 @@ def test_verify_release_evidence_bundle_rejects_full_batch_missing_nemoclaw_deny
     ) in payload["errors"]
 
 
+def test_verify_release_evidence_bundle_rejects_full_batch_missing_nemoclaw_wandb_config_expectations(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path") == "scripts/tools/run_taiwan_full_eval_batch.py"
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace(
+            "BENCHMARK_NEMOCLAW_CONFIG_EXPECTATIONS",
+            "REMOVED_AGENTIC_WANDB_CONFIG_EXPECTATIONS",
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "agentic runner script missing source contract "
+        "NeMoClaw W&B verifier config expectations constant: "
+        "scripts/tools/run_taiwan_full_eval_batch.py: "
+        "BENCHMARK_NEMOCLAW_CONFIG_EXPECTATIONS"
+    ) in payload["errors"]
+
+
 def test_verify_release_evidence_bundle_rejects_weave_content_canary_contract_helper_tamper(
     tmp_path,
 ):
