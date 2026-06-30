@@ -121,6 +121,8 @@ blend_run_configs/blend_config_temp.yaml
 # generated data
 dataset/
 logs/
+temp/
+external/
 fastchat/llm_judge/data/japanese_mt_bench
 hallulens_output_table.table.json
 wandb_export_*.csv
