@@ -19,9 +19,9 @@ docs/taiwan_leaderboard_overview_ja.md
 ```text
 branch: dev-zh-TW
 remote: origin/dev-zh-TW
-latest pushed commit: 5b3c610 Wire Taiwan agentic benchmarks into run_eval
+latest pushed implementation commit: 5b3c610 Wire Taiwan agentic benchmarks into run_eval
 
-pushed this cycle:
+pushed implementation/docs commits this cycle before this ledger update:
   ebe5dcd Ignore local evaluation scratch dirs
   118cd71 Document Taiwan leaderboard readiness state
   f0477b4 Add NeMoClaw setup and verification tooling
