@@ -17,6 +17,8 @@ from pathlib import Path
 from omegaconf import OmegaConf
 
 from prepare_taiwan_full_eval_configs import (
+    AGENTIC_DENIED_ARGUMENT_PATTERNS,
+    AGENTIC_DENIED_TOOLS,
     CONFIG_DIR,
     DEFAULT_MANIFEST,
     PHASE_CHOICES,
@@ -53,6 +55,10 @@ BENCHMARK_MODEL_CONFIG_EXPECTATIONS = {
 AGENTIC_GENERATION_PHASES = {"agentic", "full"}
 DEFAULT_WEAVE_CONTENT_CANARY_MAX_AGE_SECONDS = 24 * 60 * 60
 WEAVE_AGENTS_COMPLETION_SCHEMA_VERSION = 1
+REQUIRED_NEMOCLAW_AGENTIC_DENIED_TOOLS = set(AGENTIC_DENIED_TOOLS)
+REQUIRED_NEMOCLAW_AGENTIC_DENIED_ARGUMENT_PATTERNS = set(
+    AGENTIC_DENIED_ARGUMENT_PATTERNS
+)
 
 
 def nonempty_string(value: object) -> bool:
@@ -233,14 +239,42 @@ def build_nemoclaw_agentic_config_guard(
             _, value = config_lookup(loaded, key)
             return value
 
+        def string_list(value: object) -> list[str] | None:
+            if not isinstance(value, list) or not all(
+                isinstance(item, str) for item in value
+            ):
+                return None
+            return value
+
+        def require_string_superset(
+            *,
+            section: str,
+            field: str,
+            observed_value: object,
+            required_values: set[str],
+        ) -> None:
+            observed = string_list(observed_value)
+            if observed is None:
+                issues.append(f"{section}.{field} must be a string list")
+                return
+            missing = sorted(required_values - set(observed))
+            if missing:
+                issues.append(
+                    f"{section}.{field} missing required values: {', '.join(missing)}"
+                )
+
         issues: list[str] = []
         run_agentic_math = lookup("run.agentic_math") is True
         run_swebench_pro = lookup("run.swebench_pro") is True
         math_sandbox = lookup("agentic_math.nemoclaw_sandbox")
         math_use_task_agent = lookup("agentic_math.use_task_agent")
+        math_deny_tools = lookup("agentic_math.deny_tool")
+        math_deny_argument_patterns = lookup("agentic_math.deny_argument_pattern")
         swe_sandbox = lookup("swebench_pro.nemoclaw_sandbox")
         swe_transfer_mode = lookup("swebench_pro.nemoclaw_checkout_transfer_mode")
         swe_checkout_root = lookup("swebench_pro.nemoclaw_checkout_sandbox_root")
+        swe_deny_tools = lookup("swebench_pro.deny_tool")
+        swe_deny_argument_patterns = lookup("swebench_pro.deny_argument_pattern")
 
         record.update(
             {
@@ -248,12 +282,20 @@ def build_nemoclaw_agentic_config_guard(
                 "run_swebench_pro": run_swebench_pro,
                 "agentic_math_nemoclaw_sandbox": math_sandbox if isinstance(math_sandbox, str) else "",
                 "agentic_math_use_task_agent": math_use_task_agent,
+                "agentic_math_deny_tool": string_list(math_deny_tools) or [],
+                "agentic_math_deny_argument_pattern": (
+                    string_list(math_deny_argument_patterns) or []
+                ),
                 "swebench_pro_nemoclaw_sandbox": swe_sandbox if isinstance(swe_sandbox, str) else "",
                 "swebench_pro_nemoclaw_checkout_transfer_mode": (
                     swe_transfer_mode if isinstance(swe_transfer_mode, str) else ""
                 ),
                 "swebench_pro_nemoclaw_checkout_sandbox_root": (
                     swe_checkout_root if isinstance(swe_checkout_root, str) else ""
+                ),
+                "swebench_pro_deny_tool": string_list(swe_deny_tools) or [],
+                "swebench_pro_deny_argument_pattern": (
+                    string_list(swe_deny_argument_patterns) or []
                 ),
             }
         )
@@ -266,6 +308,18 @@ def build_nemoclaw_agentic_config_guard(
                 issues.append("agentic_math.nemoclaw_sandbox must be set")
             if math_use_task_agent is False:
                 issues.append("agentic_math.use_task_agent must not be false")
+            require_string_superset(
+                section="agentic_math",
+                field="deny_tool",
+                observed_value=math_deny_tools,
+                required_values=REQUIRED_NEMOCLAW_AGENTIC_DENIED_TOOLS,
+            )
+            require_string_superset(
+                section="agentic_math",
+                field="deny_argument_pattern",
+                observed_value=math_deny_argument_patterns,
+                required_values=REQUIRED_NEMOCLAW_AGENTIC_DENIED_ARGUMENT_PATTERNS,
+            )
             if not nonempty_string(swe_sandbox):
                 issues.append("swebench_pro.nemoclaw_sandbox must be set")
             if not (
@@ -276,6 +330,18 @@ def build_nemoclaw_agentic_config_guard(
                     "swebench_pro must set nemoclaw_checkout_transfer_mode=copy "
                     "or nemoclaw_checkout_sandbox_root"
                 )
+            require_string_superset(
+                section="swebench_pro",
+                field="deny_tool",
+                observed_value=swe_deny_tools,
+                required_values=REQUIRED_NEMOCLAW_AGENTIC_DENIED_TOOLS,
+            )
+            require_string_superset(
+                section="swebench_pro",
+                field="deny_argument_pattern",
+                observed_value=swe_deny_argument_patterns,
+                required_values=REQUIRED_NEMOCLAW_AGENTIC_DENIED_ARGUMENT_PATTERNS,
+            )
         record["ok"] = not issues
         record["errors"] = issues
         records.append(record)

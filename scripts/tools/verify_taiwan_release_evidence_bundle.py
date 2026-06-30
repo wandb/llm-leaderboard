@@ -197,6 +197,24 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ),
             ("native Weave contract blocking field", "native_weave_contract_ok"),
             ("hand-edited Weave gate rejection status", "weave_gate_contract_invalid"),
+            (
+                "NeMoClaw batch deny tools constant",
+                "REQUIRED_NEMOCLAW_AGENTIC_DENIED_TOOLS",
+            ),
+            (
+                "NeMoClaw batch deny argument patterns constant",
+                "REQUIRED_NEMOCLAW_AGENTIC_DENIED_ARGUMENT_PATTERNS",
+            ),
+            ("NeMoClaw batch Math deny_tool guard", '"agentic_math.deny_tool"'),
+            ("NeMoClaw batch SWE deny_tool guard", '"swebench_pro.deny_tool"'),
+            (
+                "NeMoClaw batch Math deny_argument_pattern guard",
+                '"agentic_math.deny_argument_pattern"',
+            ),
+            (
+                "NeMoClaw batch SWE deny_argument_pattern guard",
+                '"swebench_pro.deny_argument_pattern"',
+            ),
         ),
     },
     "scripts/tools/weave_content_canary_gate_contract.py": {

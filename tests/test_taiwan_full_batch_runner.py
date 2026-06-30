@@ -1045,8 +1045,12 @@ def test_prepare_only_review_records_completion_requirements(tmp_path, monkeypat
     assert guard["ok"] is True
     assert guard["records"][0]["agentic_math_nemoclaw_sandbox"] == "nejumi-taiwan"
     assert guard["records"][0]["agentic_math_use_task_agent"] is True
+    assert "web_search" in guard["records"][0]["agentic_math_deny_tool"]
+    assert "https?://" in guard["records"][0]["agentic_math_deny_argument_pattern"]
     assert guard["records"][0]["swebench_pro_nemoclaw_sandbox"] == "nejumi-taiwan"
     assert guard["records"][0]["swebench_pro_nemoclaw_checkout_transfer_mode"] == "copy"
+    assert "web_search" in guard["records"][0]["swebench_pro_deny_tool"]
+    assert "https?://" in guard["records"][0]["swebench_pro_deny_argument_pattern"]
     preflights = review["run_eval_preflights"]
     assert len(preflights) == 1
     assert preflights[0]["required_before_run_eval"] is True
@@ -1119,6 +1123,59 @@ def test_prepare_only_can_require_nemoclaw_agentic_config(tmp_path, monkeypatch)
     assert guard["enforced"] is True
     assert guard["ok"] is False
     assert "agentic_math.nemoclaw_sandbox must be set" in guard["errors"][0]
+
+
+def test_nemoclaw_agentic_config_guard_requires_remote_lookup_deny_policy(tmp_path):
+    module = load_module()
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "run:",
+                "  agentic_math: true",
+                "  swebench_pro: true",
+                "agentic_math:",
+                "  nemoclaw_sandbox: nejumi-taiwan",
+                "  use_task_agent: true",
+                "  deny_tool:",
+                "    - code_execution",
+                "  deny_argument_pattern:",
+                r"    - \b(curl|wget)\b",
+                "swebench_pro:",
+                "  nemoclaw_sandbox: nejumi-taiwan",
+                "  nemoclaw_checkout_transfer_mode: copy",
+                "  deny_tool:",
+                "    - code_execution",
+                "    - web_search",
+                "    - web_fetch",
+                "    - browser",
+                "    - browser_*",
+                "    - '*search*'",
+                "  deny_argument_pattern:",
+                "    - https?://",
+                r"    - \b(curl|wget)\b",
+                r"    - \b(requests|urllib|httpx)\.",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    guard = module.build_nemoclaw_agentic_config_guard(
+        [config],
+        phase="agentic",
+        required=True,
+    )
+
+    assert guard["ok"] is False
+    assert any(
+        "agentic_math.deny_tool missing required values" in error
+        for error in guard["errors"]
+    )
+    assert any(
+        "agentic_math.deny_argument_pattern missing required values" in error
+        for error in guard["errors"]
+    )
 
 
 def test_paid_run_executes_run_eval_preflight_before_run_eval(tmp_path, monkeypatch):
