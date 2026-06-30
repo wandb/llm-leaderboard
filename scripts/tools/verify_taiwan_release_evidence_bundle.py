@@ -19,6 +19,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    import yaml
+except ImportError:  # pragma: no cover - exercised only in stripped runtime envs.
+    yaml = None
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RELEASE_GATE_JSON_NAME_RE = re.compile(r"^taiwan_release_gate_(\d{8}T\d{6}Z)\.json$")
@@ -65,6 +70,19 @@ REQUIRED_NEMOCLAW_CANARY_REMOTE_LOOKUP_CHECK_NAMES = {
     "agentic Math denies remote lookup via deny_tool",
     "agentic SWE denies remote lookup via deny_argument_pattern",
     "agentic SWE denies remote lookup via deny_tool",
+}
+NEMOCLAW_AGENTIC_CONFIG_REQUIRED_DENIED_TOOLS = {
+    "*search*",
+    "browser",
+    "browser_*",
+    "code_execution",
+    "web_fetch",
+    "web_search",
+}
+NEMOCLAW_AGENTIC_CONFIG_REQUIRED_DENIED_ARGUMENT_PATTERNS = {
+    r"\b(curl|wget)\b",
+    r"\b(requests|urllib|httpx)\.",
+    "https?://",
 }
 NEMOCLAW_CANARY_READINESS_SCRIPT_SOURCE_TOKENS = (
     ("remote lookup deny tools constant", "AGENTIC_REQUIRED_DENIED_TOOLS"),
@@ -559,6 +577,15 @@ def read_json_object(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"{path} is not a JSON object")
+    return payload
+
+
+def read_yaml_object(path: Path) -> dict[str, Any]:
+    if yaml is None:
+        raise ValueError("PyYAML is required to read bundled YAML evidence")
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path} is not a YAML object")
     return payload
 
 
@@ -7116,6 +7143,228 @@ def validate_nemoclaw_swebench_non_adoption_evidence(
     return errors
 
 
+def yaml_section(payload: dict[str, Any], section_name: str) -> dict[str, Any]:
+    section = payload.get(section_name)
+    return section if isinstance(section, dict) else {}
+
+
+def validate_config_string_list_superset(
+    *,
+    errors: list[str],
+    section: dict[str, Any],
+    field: str,
+    required_values: set[str],
+    label: str,
+) -> None:
+    values = section.get(field)
+    if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+        errors.append(f"{label} {field} is not a string list")
+        return
+    observed = set(values)
+    for required in sorted(required_values):
+        if required not in observed:
+            errors.append(f"{label} {field} missing required value {required}")
+
+
+def validate_agentic_math_nemoclaw_config_yaml(
+    *,
+    errors: list[str],
+    payload: dict[str, Any],
+    expected_sandbox: str | None,
+    label: str,
+) -> None:
+    run = yaml_section(payload, "run")
+    agentic_math = yaml_section(payload, "agentic_math")
+    if run.get("agentic_math") is not True:
+        errors.append(f"{label} run.agentic_math must be true")
+    if not agentic_math:
+        errors.append(f"{label} agentic_math section is missing or invalid")
+        return
+    sandbox = agentic_math.get("nemoclaw_sandbox")
+    if expected_sandbox and sandbox != expected_sandbox:
+        errors.append(
+            f"{label} agentic_math.nemoclaw_sandbox must be {expected_sandbox!r}"
+        )
+    elif not isinstance(sandbox, str) or not sandbox.strip():
+        errors.append(f"{label} agentic_math.nemoclaw_sandbox is missing")
+    if agentic_math.get("use_task_agent") is False:
+        errors.append(f"{label} agentic_math.use_task_agent must not be false")
+    validate_config_string_list_superset(
+        errors=errors,
+        section=agentic_math,
+        field="deny_tool",
+        required_values=NEMOCLAW_AGENTIC_CONFIG_REQUIRED_DENIED_TOOLS,
+        label=f"{label} agentic_math",
+    )
+    validate_config_string_list_superset(
+        errors=errors,
+        section=agentic_math,
+        field="deny_argument_pattern",
+        required_values=NEMOCLAW_AGENTIC_CONFIG_REQUIRED_DENIED_ARGUMENT_PATTERNS,
+        label=f"{label} agentic_math",
+    )
+
+
+def validate_swebench_nemoclaw_config_yaml(
+    *,
+    errors: list[str],
+    payload: dict[str, Any],
+    expected_sandbox: str | None,
+    label: str,
+) -> None:
+    run = yaml_section(payload, "run")
+    swebench_pro = yaml_section(payload, "swebench_pro")
+    nemoclaw_keys = sorted(key for key in swebench_pro if str(key).startswith("nemoclaw"))
+    if not nemoclaw_keys:
+        return
+    if run.get("swebench_pro") is not True:
+        errors.append(f"{label} run.swebench_pro must be true")
+    sandbox = swebench_pro.get("nemoclaw_sandbox")
+    if expected_sandbox and sandbox != expected_sandbox:
+        errors.append(
+            f"{label} swebench_pro.nemoclaw_sandbox must be {expected_sandbox!r}"
+        )
+    elif not isinstance(sandbox, str) or not sandbox.strip():
+        errors.append(f"{label} swebench_pro.nemoclaw_sandbox is missing")
+    transfer_mode = swebench_pro.get("nemoclaw_checkout_transfer_mode")
+    sandbox_root = swebench_pro.get("nemoclaw_checkout_sandbox_root")
+    if transfer_mode != "copy" and not (
+        isinstance(sandbox_root, str) and sandbox_root.strip()
+    ):
+        errors.append(
+            f"{label} swebench_pro must set nemoclaw_checkout_transfer_mode='copy' "
+            "or nemoclaw_checkout_sandbox_root"
+        )
+    validate_config_string_list_superset(
+        errors=errors,
+        section=swebench_pro,
+        field="deny_tool",
+        required_values=NEMOCLAW_AGENTIC_CONFIG_REQUIRED_DENIED_TOOLS,
+        label=f"{label} swebench_pro",
+    )
+    validate_config_string_list_superset(
+        errors=errors,
+        section=swebench_pro,
+        field="deny_argument_pattern",
+        required_values=NEMOCLAW_AGENTIC_CONFIG_REQUIRED_DENIED_ARGUMENT_PATTERNS,
+        label=f"{label} swebench_pro",
+    )
+
+
+def validate_bundled_nemoclaw_config_yaml(
+    *,
+    bundle_dir: Path,
+    record: dict[str, Any],
+    path_value: Any,
+    errors: list[str],
+    label: str,
+) -> dict[str, Any] | None:
+    bundle_path = record.get("bundle_path")
+    if not isinstance(bundle_path, str) or not bundle_path:
+        errors.append(f"{label} missing bundle_path: {source_path_key(path_value)}")
+        return None
+    try:
+        return read_yaml_object(bundle_dir / bundle_path)
+    except (OSError, ValueError) as exc:
+        errors.append(f"{label} YAML is not readable: {source_path_key(path_value)}: {exc}")
+        return None
+
+
+def validate_nemoclaw_agentic_config_yaml_evidence(
+    *,
+    bundle_dir: Path,
+    manifest: dict[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    payload = read_bundled_nemoclaw_adoption_json(
+        bundle_dir=bundle_dir,
+        manifest=manifest,
+        errors=errors,
+    )
+    if not isinstance(payload, dict):
+        return errors
+    adoption_decision = (
+        payload.get("adoption_decision")
+        if isinstance(payload.get("adoption_decision"), dict)
+        else {}
+    )
+    expected_sandbox = (
+        adoption_decision.get("sandbox")
+        if isinstance(adoption_decision.get("sandbox"), str)
+        else payload.get("sandbox")
+        if isinstance(payload.get("sandbox"), str)
+        else None
+    )
+    criteria = payload.get("criteria")
+    if not isinstance(criteria, list):
+        return errors
+    records = file_records_by_source(manifest)
+    for criterion in criteria:
+        if not isinstance(criterion, dict) or criterion.get("ok") is not True:
+            continue
+        name = criterion.get("name")
+        evidence_paths = (
+            criterion.get("evidence_paths")
+            if isinstance(criterion.get("evidence_paths"), list)
+            else []
+        )
+        if name == "agentic_math_config":
+            if not evidence_paths:
+                errors.append(
+                    "NeMoClaw agentic_math_config passed but evidence_paths is empty"
+                )
+            for evidence_path in evidence_paths:
+                record = validate_any_file_role(
+                    errors=errors,
+                    records=records,
+                    path_value=evidence_path,
+                    role_suffix="agentic_math_config:evidence",
+                    label="NeMoClaw Agentic Math config YAML evidence",
+                )
+                if not isinstance(record, dict):
+                    continue
+                config = validate_bundled_nemoclaw_config_yaml(
+                    bundle_dir=bundle_dir,
+                    record=record,
+                    path_value=evidence_path,
+                    errors=errors,
+                    label="NeMoClaw Agentic Math config YAML evidence",
+                )
+                if isinstance(config, dict):
+                    validate_agentic_math_nemoclaw_config_yaml(
+                        errors=errors,
+                        payload=config,
+                        expected_sandbox=expected_sandbox,
+                        label=f"NeMoClaw Agentic Math config {source_path_key(evidence_path)}",
+                    )
+        elif name == "swebench_pro_non_adoption_guard":
+            for evidence_path in evidence_paths:
+                record = validate_any_file_role(
+                    errors=errors,
+                    records=records,
+                    path_value=evidence_path,
+                    role_suffix="swebench_pro_non_adoption_guard:evidence",
+                    label="NeMoClaw SWE-Bench Pro config YAML evidence",
+                )
+                if not isinstance(record, dict):
+                    continue
+                config = validate_bundled_nemoclaw_config_yaml(
+                    bundle_dir=bundle_dir,
+                    record=record,
+                    path_value=evidence_path,
+                    errors=errors,
+                    label="NeMoClaw SWE-Bench Pro config YAML evidence",
+                )
+                if isinstance(config, dict):
+                    validate_swebench_nemoclaw_config_yaml(
+                        errors=errors,
+                        payload=config,
+                        expected_sandbox=expected_sandbox,
+                        label=f"NeMoClaw SWE-Bench Pro config {source_path_key(evidence_path)}",
+                    )
+    return errors
+
+
 def validate_nemoclaw_post_install_verification_evidence(
     *,
     bundle_dir: Path,
@@ -13027,6 +13276,7 @@ def verify_bundle(
     errors.extend(validate_nemoclaw_adoption_payload_matches_current_gate(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_nemoclaw_setup_installed_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_nemoclaw_swebench_non_adoption_evidence(bundle_dir=bundle_dir, manifest=manifest))
+    errors.extend(validate_nemoclaw_agentic_config_yaml_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_nemoclaw_operator_docs_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_nemoclaw_post_install_verification_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_wandb_completion_contract_consistency(manifest))

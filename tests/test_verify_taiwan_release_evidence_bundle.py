@@ -2565,7 +2565,32 @@ def build_bundle_with_nemoclaw_adoption(tmp_path):
     setup = write_json(tmp_path / "nemoclaw_setup.json", setup_payload)
     operator_handoff = nemoclaw_operator_handoff_payload(setup, setup_payload)
     config = tmp_path / "config.yaml"
-    config.write_text("run:\n  swebench_pro: true\nswebench_pro: {}\n", encoding="utf-8")
+    config.write_text(
+        "\n".join(
+            [
+                "run:",
+                "  agentic_math: true",
+                "  swebench_pro: true",
+                "agentic_math:",
+                "  nemoclaw_sandbox: nejumi-taiwan",
+                "  use_task_agent: true",
+                "  deny_tool:",
+                "    - code_execution",
+                "    - web_search",
+                "    - web_fetch",
+                "    - browser",
+                "    - browser_*",
+                "    - '*search*'",
+                "  deny_argument_pattern:",
+                "    - https?://",
+                r"    - \b(curl|wget)\b",
+                r"    - \b(requests|urllib|httpx)\.",
+                "swebench_pro: {}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
     installer_review_path = tmp_path / "nemoclaw_installer_review.json"
     install_onboard_json = tmp_path / "nemoclaw_install_onboard.json"
     installer_review = write_json(
@@ -2692,6 +2717,14 @@ def build_bundle_with_nemoclaw_adoption(tmp_path):
                     "runtime_installed": False,
                     "missing_required_commands": ["nemoclaw", "openshell"],
                     "missing_components": ["nemoclaw", "openshell"],
+                },
+                {
+                    "name": "agentic_math_config",
+                    "ok": True,
+                    "status": "passed",
+                    "detail": "Agentic Math has a NeMoClaw-ready generated config.",
+                    "next_action": "Use the passing config for the Agentic Math canary.",
+                    "evidence_paths": [str(config)],
                 },
                 {
                     "name": "swebench_pro_non_adoption_guard",
@@ -9705,6 +9738,95 @@ def test_verify_release_evidence_bundle_requires_swebench_nemoclaw_config_eviden
     )
     assert any(
         "is not listed in evidence_paths" in error
+        for error in payload["errors"]
+    )
+
+
+def test_verify_release_evidence_bundle_rejects_agentic_math_config_missing_deny_policy(
+    tmp_path,
+):
+    bundle, _setup = build_bundle_with_nemoclaw_adoption(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    config_record = next(
+        record
+        for record in manifest["files"]
+        if any(
+            str(role).endswith("agentic_math_config:evidence")
+            for role in record.get("roles", [])
+        )
+    )
+    bundled_config = bundle / config_record["bundle_path"]
+    text = bundled_config.read_text(encoding="utf-8")
+    bundled_config.write_text(text.replace("    - web_search\n", ""), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, config_record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "agentic_math deny_tool missing required value web_search" in error
+        for error in payload["errors"]
+    )
+
+
+def test_verify_release_evidence_bundle_rejects_swebench_nemoclaw_config_without_checkout_transfer(
+    tmp_path,
+):
+    bundle, _setup = build_bundle_with_nemoclaw_adoption(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    config_record = next(
+        record
+        for record in manifest["files"]
+        if any(
+            str(role).endswith("swebench_pro_non_adoption_guard:evidence")
+            for role in record.get("roles", [])
+        )
+    )
+    bundled_config = bundle / config_record["bundle_path"]
+    text = bundled_config.read_text(encoding="utf-8")
+    swe_section = "\n".join(
+        [
+            "swebench_pro:",
+            "  nemoclaw_sandbox: nejumi-taiwan",
+            "  deny_tool:",
+            "    - code_execution",
+            "    - web_search",
+            "    - web_fetch",
+            "    - browser",
+            "    - browser_*",
+            "    - '*search*'",
+            "  deny_argument_pattern:",
+            "    - https?://",
+            r"    - \b(curl|wget)\b",
+            r"    - \b(requests|urllib|httpx)\.",
+            "",
+        ]
+    )
+    bundled_config.write_text(text.replace("swebench_pro: {}\n", swe_section), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, config_record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "swebench_pro must set nemoclaw_checkout_transfer_mode='copy' "
+        "or nemoclaw_checkout_sandbox_root" in error
         for error in payload["errors"]
     )
 
