@@ -3614,12 +3614,38 @@ def _review_run_eval_preflight_records(payload: dict[str, Any]) -> list[str]:
         if not isinstance(command, list) or not command:
             errors.append(f"run_eval_preflights {index} missing command")
         else:
-            if "scripts/run_eval.py" not in [str(part) for part in command]:
+            command_parts = [str(part) for part in command]
+            if "scripts/run_eval.py" not in command_parts:
                 errors.append(f"run_eval_preflights {index} command must invoke scripts/run_eval.py")
-            if "--preflight" not in command:
+            if "--preflight" not in command_parts:
                 errors.append(f"run_eval_preflights {index} command missing --preflight")
-            if "--preflight-json" not in command:
+            if "--preflight-json" not in command_parts:
                 errors.append(f"run_eval_preflights {index} command missing --preflight-json")
+            elif _nonempty_string(record.get("output_json")):
+                try:
+                    output_arg = command_parts[command_parts.index("--preflight-json") + 1]
+                except IndexError:
+                    errors.append(
+                        f"run_eval_preflights {index} command --preflight-json missing value"
+                    )
+                else:
+                    if output_arg != record.get("output_json"):
+                        errors.append(
+                            f"run_eval_preflights {index} command --preflight-json "
+                            "does not match output_json"
+                        )
+            if "--config" in command_parts and _nonempty_string(record.get("config")):
+                try:
+                    config_arg = command_parts[command_parts.index("--config") + 1]
+                except IndexError:
+                    errors.append(f"run_eval_preflights {index} command --config missing value")
+                else:
+                    if config_arg != record.get("config"):
+                        errors.append(
+                            f"run_eval_preflights {index} command --config does not match config"
+                        )
+            else:
+                errors.append(f"run_eval_preflights {index} command missing --config")
         if record.get("required_before_run_eval") is not True:
             errors.append(
                 f"run_eval_preflights {index} required_before_run_eval must be true"
@@ -3651,6 +3677,11 @@ def _review_completed_errors(payload: dict[str, Any]) -> list[str]:
         errors.append(f"completed review has {len(runs)} runs but model_count is {model_count}")
     verify_wandb = bool(payload.get("verify_wandb_completion"))
     verify_weave = bool(payload.get("verify_weave_agents"))
+    top_preflight_outputs = {
+        str(record.get("output_json"))
+        for record in payload.get("run_eval_preflights", [])
+        if isinstance(record, dict) and _nonempty_string(record.get("output_json"))
+    } if isinstance(payload.get("run_eval_preflights"), list) else set()
     for index, run in enumerate(runs, start=1):
         if not isinstance(run, dict):
             errors.append(f"run {index} is not an object")
@@ -3660,6 +3691,10 @@ def _review_completed_errors(payload: dict[str, Any]) -> list[str]:
                 errors.append(f"run {index} missing {field}")
         if not _nonempty_string(run.get("preflight_json")):
             errors.append(f"run {index} missing preflight_json")
+        elif top_preflight_outputs and str(run.get("preflight_json")) not in top_preflight_outputs:
+            errors.append(
+                f"run {index} preflight_json does not match a top-level run_eval_preflights output_json"
+            )
         if run.get("preflight_returncode") != 0:
             errors.append(f"run {index} preflight_returncode must be 0")
         if run.get("preflight_ok") is not True:

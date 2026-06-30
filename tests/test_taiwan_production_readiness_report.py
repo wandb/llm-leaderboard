@@ -1859,6 +1859,23 @@ def test_paid_run_review_package_rejects_completed_review_without_run_eval_prefl
     assert "run 1 preflight_ok must be true" in record["errors"]
 
 
+def test_paid_run_review_package_rejects_mismatched_run_eval_preflight(tmp_path):
+    module = load_module()
+    payload = completed_review_payload()
+    payload["run_eval_preflights"][0]["output_json"] = "temp/other_preflight.json"
+    payload["run_eval_preflights"][0]["command"][-1] = "temp/other_preflight.json"
+    review = write_json(tmp_path / "review.json", payload)
+
+    result = module.evaluate_paid_run_review_package([review], require=True)
+
+    assert result["ok"] is False
+    record = result["records"][0]
+    assert (
+        "run 1 preflight_json does not match a top-level run_eval_preflights output_json"
+        in record["errors"]
+    )
+
+
 def test_paid_run_review_package_rejects_completed_agentic_without_nemoclaw_config(tmp_path):
     module = load_module()
     review = write_json(
