@@ -124,6 +124,30 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("conversation-order summary counter", "conversation_order_violation_patches"),
         ),
     },
+    "scripts/tools/run_taiwan_full_eval_batch.py": {
+        "role": "agentic_runner:full_batch_script",
+        "tokens": (
+            (
+                "native Weave content canary contract validator",
+                "def weave_content_canary_gate_contract_issues(",
+            ),
+            ("native Weave content canary gate name", "WEAVE_CONTENT_CANARY_GATE_NAME"),
+            (
+                "native Weave verifier schema contract",
+                "WEAVE_AGENTS_VERIFIER_SCHEMA_VERSION = 1",
+            ),
+            (
+                "Agents diagnostic schema contract",
+                "AGENTS_DIAGNOSTIC_SCHEMA_VERSION = 1",
+            ),
+            ("native Weave verifier status field", '"weave_verifier_ok"'),
+            ("Agents diagnostic status field", '"agents_diagnostic_ok"'),
+            ("native Weave contract blocking field", "native_weave_contract_ok"),
+            ("hand-edited Weave gate rejection status", "weave_gate_contract_invalid"),
+            ("Weave verifier artifact existence proof", '"verifier_json_exists"'),
+            ("Agents diagnostic artifact existence proof", '"agents_diagnostic_json_exists"'),
+        ),
+    },
     "scripts/tools/log_agentic_math_results_to_wandb.py": {
         "role": "agentic_runner:math_relog_script",
         "tokens": (

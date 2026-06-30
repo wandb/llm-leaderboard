@@ -1537,6 +1537,7 @@ def test_release_evidence_bundle_copies_report_references(tmp_path):
         "scripts/tools/run_openclaw_agent_protocol.py": "agentic_runner:protocol_script",
         "scripts/tools/run_agentic_math_openclaw.py": "agentic_runner:math_script",
         "scripts/tools/run_swebench_pro_openclaw.py": "agentic_runner:swe_script",
+        "scripts/tools/run_taiwan_full_eval_batch.py": "agentic_runner:full_batch_script",
         "scripts/tools/log_agentic_math_results_to_wandb.py": "agentic_runner:math_relog_script",
         "scripts/tools/log_agentic_swe_results_to_wandb.py": "agentic_runner:swe_relog_script",
     }

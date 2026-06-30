@@ -96,6 +96,51 @@ def write_external_action_approval_report(path: Path, *, source_packet: Path | N
     return source_packet
 
 
+def passing_weave_content_canary_gate_payload() -> dict:
+    return {
+        "ok": True,
+        "gate": "weave_agents_content_canary",
+        "status": "passed",
+        "generated_at": time.time(),
+        "model": "openai-direct/test-mini",
+        "canary_id": "CANARY",
+        "task_id": "weave_agents_content_canary_CANARY",
+        "agent_name": "nejumi-taiwan-openclaw",
+        "entity": "llm-leaderboard",
+        "project": "tc-leaderboard",
+        "will_call_paid_model_api": True,
+        "paid_api_attempted": True,
+        "command_ok": True,
+        "command_returncode": 0,
+        "weave_verifier_ok": True,
+        "weave_verifier_schema_version": 1,
+        "weave_verifier_latest_trace_id": "trace-1",
+        "weave_verifier_validation_issues": [],
+        "agents_diagnostic_ok": True,
+        "agents_diagnostic_schema_version": 1,
+        "agents_diagnostic_latest_trace_id": "trace-1",
+        "agents_diagnostic_validation_issues": [],
+        "content_capture_health": {
+            "message_spans_with_input": 1,
+            "tool_spans_with_content": 1,
+            "spans_with_valid_timestamps": 3,
+            "spans_with_invalid_timestamps": 0,
+        },
+        "failed_checks": [],
+        "paths": {
+            "plan_file": "outputs/weave_agents_content_canary/plans/canary.json",
+            "command_result_file": "outputs/weave_agents_content_canary/plans/canary.command_result.json",
+            "command_result_exists": True,
+            "verifier_json": "outputs/weave_agents_content_canary/verifier/canary/attempt_001.json",
+            "verifier_json_exists": True,
+            "agents_diagnostic_json": "outputs/weave_agents_content_canary/agents_diagnostics/canary.agents.json",
+            "agents_diagnostic_json_exists": True,
+            "expected_sidecar": "outputs/weave_agents_content_canary/agentic_math/canary/openclaw_result.json",
+            "prompt_file": "outputs/weave_agents_content_canary/prompts/canary.md",
+        },
+    }
+
+
 def test_default_wandb_verify_benchmarks_by_phase():
     module = load_module()
 
@@ -492,17 +537,7 @@ def test_weave_content_canary_gate_does_not_block_prepare_only(tmp_path):
 def test_weave_content_canary_gate_accepts_passed_json(tmp_path):
     module = load_module()
     gate = tmp_path / "content_canary.gate.json"
-    gate.write_text(
-        json.dumps(
-            {
-                "ok": True,
-                "status": "passed",
-                "model": "openai-direct/test-mini",
-                "canary_id": "CANARY",
-            }
-        ),
-        encoding="utf-8",
-    )
+    gate.write_text(json.dumps(passing_weave_content_canary_gate_payload()), encoding="utf-8")
 
     record = module.build_weave_content_canary_gate_record(
         gate_path=gate,
@@ -516,6 +551,40 @@ def test_weave_content_canary_gate_accepts_passed_json(tmp_path):
     assert record["blocking_ok"] is True
     assert record["status"] == "passed"
     assert record["fresh"] is True
+    assert record["native_weave_contract_ok"] is True
+    assert record["native_weave_contract_issues"] == []
+
+
+def test_weave_content_canary_gate_rejects_hand_edited_passed_json(tmp_path):
+    module = load_module()
+    gate = tmp_path / "content_canary.gate.json"
+    gate.write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "status": "passed",
+                "generated_at": time.time(),
+                "model": "openai-direct/test-mini",
+                "canary_id": "CANARY",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    record = module.build_weave_content_canary_gate_record(
+        gate_path=gate,
+        require_gate=True,
+        phase="agentic",
+        will_call_paid_model_api=True,
+    )
+
+    assert record["enforced"] is True
+    assert record["passed"] is True
+    assert record["blocking_ok"] is False
+    assert record["status"] == "weave_gate_contract_invalid"
+    assert record["native_weave_contract_ok"] is False
+    assert "weave_verifier_ok must be true" in record["native_weave_contract_issues"]
+    assert "paths must be an object" in record["native_weave_contract_issues"]
 
 
 def test_weave_content_canary_gate_blocks_stale_passed_json(tmp_path):
@@ -524,8 +593,7 @@ def test_weave_content_canary_gate_blocks_stale_passed_json(tmp_path):
     gate.write_text(
         json.dumps(
             {
-                "ok": True,
-                "status": "passed",
+                **passing_weave_content_canary_gate_payload(),
                 "generated_at": time.time() - 90_000,
             }
         ),
@@ -553,8 +621,7 @@ def test_weave_content_canary_gate_can_disable_freshness(tmp_path):
     gate.write_text(
         json.dumps(
             {
-                "ok": True,
-                "status": "passed",
+                **passing_weave_content_canary_gate_payload(),
                 "generated_at": time.time() - 90_000,
             }
         ),
@@ -571,6 +638,101 @@ def test_weave_content_canary_gate_can_disable_freshness(tmp_path):
 
     assert record["fresh"] is True
     assert record["blocking_ok"] is True
+
+
+def test_paid_agentic_run_rejects_hand_edited_weave_gate_before_run_eval(
+    tmp_path,
+    monkeypatch,
+):
+    module = load_module()
+    manifest = tmp_path / "models.yaml"
+    manifest.write_text(
+        "\n".join(
+            [
+                "models:",
+                "  - slug: gpt-4_1-mini-openai-direct-canary",
+                "    source_config: config-gpt-4.1-mini-2025-04-14.yaml",
+                "    run_name: 'taiwan/full/openai/gpt-4.1-mini: canary'",
+                "    openclaw_model: 'openai-direct/gpt-4.1-mini-2025-04-14'",
+                "    agentic_thinking: 'off'",
+                "    swe_thinking: 'off'",
+                "    judge_model: 'gpt-4.1-mini-2025-04-14'",
+                "    canary: true",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    output_root = tmp_path / "outputs"
+    budget = output_root / "openai_canary_budget_estimate.json"
+    write_budget_estimate(budget)
+    approval = output_root / "external_action_approval.verify.json"
+    source_packet = write_external_action_approval_report(approval)
+    gate = output_root / "hand_edited_content_canary.gate.json"
+    gate.write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "status": "passed",
+                "generated_at": time.time(),
+                "model": "openai-direct/test-mini",
+                "canary_id": "CANARY",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def unexpected_stream_run(command, log_path, env):  # pragma: no cover - assertion path
+        raise AssertionError(f"run_eval should not be reached: {command}")
+
+    monkeypatch.setattr(module, "stream_run", unexpected_stream_run)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_taiwan_full_eval_batch.py",
+            "--manifest",
+            str(manifest),
+            "--canary",
+            "--phase",
+            "agentic",
+            "--generated-config-dir",
+            str(tmp_path / "generated"),
+            "--output-root",
+            str(output_root),
+            "--wandb-run-id-prefix",
+            "twcanary-test",
+            "--run-purpose",
+            "paid content canary guard test",
+            "--expected-cost-band",
+            "$1-$3",
+            "--pre-run-budget-estimate-json",
+            str(budget),
+            "--external-action-approval-report-json",
+            str(approval),
+            "--external-action-approval-source-packet-json",
+            str(source_packet),
+            "--weave-content-canary-gate",
+            str(gate),
+            "--require-weave-content-canary",
+        ],
+    )
+
+    try:
+        module.main()
+    except SystemExit as exc:
+        assert "Weave content canary gate failed" in str(exc)
+    else:
+        raise AssertionError("expected hand-edited content canary gate to block paid run")
+
+    review = json.loads(
+        (output_root / "canary_agentic_paid_run_review.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert review["status"] == "weave_content_canary_gate_failed"
+    assert review["blocking_reason"]["status"] == "weave_gate_contract_invalid"
+    assert review["blocking_reason"]["native_weave_contract_ok"] is False
 
 
 def test_pre_run_budget_estimate_record_validates_schema_and_hash(tmp_path):
