@@ -1,6 +1,6 @@
 # Taiwan Leaderboard Task Status
 
-Last updated: 2026-07-01 01:05 JST
+Last updated: 2026-07-01 01:46 JST
 
 This file is the persistent progress ledger for the Taiwan leaderboard work.
 Update it at every meaningful milestone so progress is visible even when chat
@@ -13,6 +13,34 @@ Current Release Progress Matrix.
 
 Plain Japanese overview for readers who do not know the project context, including a glossary for English gate labels:
 docs/taiwan_leaderboard_overview_ja.md
+
+## Latest Commit / Push State
+
+```text
+branch: dev-zh-TW
+remote: origin/dev-zh-TW
+latest pushed commit: 4e8e575 Add Taiwan release readiness gates
+
+pushed this cycle:
+  ebe5dcd Ignore local evaluation scratch dirs
+  118cd71 Document Taiwan leaderboard readiness state
+  f0477b4 Add NeMoClaw setup and verification tooling
+  f036342 Add Taiwan agentic math and SWE runners
+  4e8e575 Add Taiwan release readiness gates
+
+validated before push:
+  NeMoClaw/OpenClaw setup tests: 47 passed
+  Agentic Math/SWE runner tests: 114 passed
+  release gate / paid-run / W&B-Weave verifier tests: 573 passed
+  OpenAI-direct canary config/batch readiness tests after OpenRouter-default removal: 59 passed
+  targeted post-removal checks for canary readiness and OpenRouter rejection guards: 29 passed
+
+cost/API state for these commits:
+  local tests and git operations only
+  no paid model inference
+  no OpenRouter execution
+  no W&B write
+```
 
 ## Latest Machine State
 
