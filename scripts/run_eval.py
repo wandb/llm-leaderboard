@@ -4,6 +4,8 @@ if os.environ.get("NEJUMI_MAIN_STARTED") == "1":
     raise SystemExit(0)
 os.environ["NEJUMI_MAIN_STARTED"] = "1"
 
+import json
+import time
 import wandb
 from pathlib import Path
 from argparse import ArgumentParser
@@ -47,6 +49,107 @@ swebench_pro = LazyEvaluatorModule("swebench_pro")
 agentic_math = LazyEvaluatorModule("agentic_math")
 arc_agi = LazyEvaluatorModule("arc_agi")
 
+BENCHMARK_MAP = {
+    'bfcl': 'bfcl',
+    'agentic_math': 'agentic_math',
+    'swebench': 'swebench',
+    'swebench_pro': 'swebench_pro',
+    'mtbench': 'mtbench',
+    'jbbq': 'jbbq',
+    'toxicity': 'toxicity',
+    'jtruthfulqa': 'jtruthfulqa',
+    'hle': 'hle',
+    'hallulens': 'hallulens',
+    'arc_agi': 'arc_agi',
+    'm_ifeval': 'm_ifeval',
+    'jaster': 'jaster',
+}
+
+
+def enabled_benchmarks_from_config(cfg):
+    enabled = []
+    for bench_key, bench_name in BENCHMARK_MAP.items():
+        if OmegaConf.select(cfg, f"run.{bench_key}", default=False):
+            enabled.append(bench_name)
+    return enabled
+
+
+def summarize_token_validation(cfg, enabled_benchmarks):
+    validation_results = validate_all_benchmarks(cfg)
+    rows = []
+    has_warnings = False
+    has_errors = False
+
+    for benchmark, (is_valid, message) in validation_results.items():
+        if benchmark not in enabled_benchmarks:
+            continue
+        severity = "ok"
+        if not is_valid:
+            if "❌" in message:
+                has_errors = True
+                severity = "error"
+            else:
+                has_warnings = True
+                severity = "warning"
+        rows.append(
+            {
+                "benchmark": benchmark,
+                "ok": bool(is_valid),
+                "severity": severity,
+                "message": message,
+            }
+        )
+
+    return {
+        "ok": not has_errors,
+        "has_errors": has_errors,
+        "has_warnings": has_warnings,
+        "results": rows,
+    }
+
+
+def print_token_validation_summary(validation_summary):
+    print("\n" + "=" * 80)
+    print("🔍 GLOBAL TOKEN ALLOCATION VALIDATION")
+    print("=" * 80)
+    for row in validation_summary["results"]:
+        print(row["message"])
+    print("=" * 80)
+
+    if validation_summary["has_errors"]:
+        print("\n❌ CRITICAL: Some benchmarks have insufficient output tokens!")
+        print("   This will likely cause empty responses and unfairly low scores.")
+    elif validation_summary["has_warnings"]:
+        print("\n⚠️  WARNING: Some benchmarks have suboptimal token allocation.")
+    else:
+        print("\n✅ All token allocations look good!")
+
+
+def build_preflight_payload(custom_cfg_path, base_cfg_path, cfg, enabled_benchmarks):
+    validation_summary = summarize_token_validation(cfg, enabled_benchmarks)
+    return {
+        "schema_version": 1,
+        "generated_at": time.time(),
+        "status": "passed" if validation_summary["ok"] else "failed",
+        "ok": bool(validation_summary["ok"]),
+        "config": str(custom_cfg_path),
+        "base_config": str(base_cfg_path),
+        "wandb": {
+            "entity": OmegaConf.select(cfg, "wandb.entity"),
+            "project": OmegaConf.select(cfg, "wandb.project"),
+            "run_name": OmegaConf.select(cfg, "wandb.run_name"),
+        },
+        "api": OmegaConf.select(cfg, "api"),
+        "model": OmegaConf.select(cfg, "model.pretrained_model_name_or_path"),
+        "enabled_benchmarks": enabled_benchmarks,
+        "will_initialize_wandb": False,
+        "will_log_wandb_artifacts": False,
+        "will_initialize_weave": False,
+        "will_start_inference_engine": False,
+        "will_run_evaluators": False,
+        "token_validation": validation_summary,
+    }
+
 # プログレストラッカーとバリデーション機能をインポート
 from evaluator.evaluate_utils.progress_tracker import (
     initialize_progress_tracker, start_benchmark_tracking, 
@@ -62,6 +165,18 @@ parser.add_argument("--config", "-c", type=str)
 parser.add_argument("--select-config", "-s", action="store_true", default=False)
 parser.add_argument("--base-config", type=str, default=base_cfg_name)
 parser.add_argument("--yes", "-y", action="store_true", default=False)
+parser.add_argument(
+    "--preflight",
+    action="store_true",
+    default=False,
+    help="Load and validate the merged config, then exit before W&B, Weave, model, or evaluator execution.",
+)
+parser.add_argument(
+    "--preflight-json",
+    type=str,
+    default=None,
+    help="Optional JSON output path for --preflight.",
+)
 args = parser.parse_args()
 
 if args.select_config:
@@ -98,6 +213,33 @@ if "api" in custom_cfg and custom_cfg.api in ["vllm", "vllm-docker"]:
 custom_cfg = OmegaConf.merge(base_cfg, custom_cfg)
 cfg_dict = OmegaConf.to_container(custom_cfg, resolve=True)
 assert isinstance(cfg_dict, dict), "instance.config must be a DictConfig"
+enabled_benchmarks = enabled_benchmarks_from_config(custom_cfg)
+
+if args.preflight:
+    payload = build_preflight_payload(
+        custom_cfg_path=custom_cfg_path,
+        base_cfg_path=base_cfg_path,
+        cfg=custom_cfg,
+        enabled_benchmarks=enabled_benchmarks,
+    )
+    print_token_validation_summary(payload["token_validation"])
+    print("\nPreflight summary:")
+    print(f"  config: {payload['config']}")
+    print(f"  base_config: {payload['base_config']}")
+    print(f"  model: {payload['model']}")
+    print(f"  enabled_benchmarks: {', '.join(enabled_benchmarks) if enabled_benchmarks else '(none)'}")
+    print("  W&B/Weave/model/evaluator execution: skipped")
+
+    if args.preflight_json:
+        preflight_json_path = Path(args.preflight_json)
+        preflight_json_path.parent.mkdir(parents=True, exist_ok=True)
+        preflight_json_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        print(f"  preflight_json: {preflight_json_path}")
+
+    raise SystemExit(0 if payload["ok"] else 2)
 
 # 環境変数からAPIキーを取得
 def get_api_key_from_env(service_name):
@@ -158,69 +300,25 @@ run.log_artifact(artifact)
 # Inherit old runs
 blend_run(run_chain=True)
 
-# 有効なベンチマークリストを取得
-enabled_benchmarks = []
-benchmark_map = {
-    'bfcl': 'bfcl',
-    'agentic_math': 'agentic_math',
-    'swebench': 'swebench', 
-    'swebench_pro': 'swebench_pro',
-    'mtbench': 'mtbench',
-    'jbbq': 'jbbq',
-    'toxicity': 'toxicity',
-    'jtruthfulqa': 'jtruthfulqa',
-    'hle': 'hle',
-    'hallulens': 'hallulens',
-    'arc_agi': 'arc_agi',
-    'm_ifeval': 'm_ifeval',
-    'jaster': 'jaster',
-}
-
-for bench_key, bench_name in benchmark_map.items():
-    if getattr(cfg.run, bench_key, False):
-        enabled_benchmarks.append(bench_name)
-
 # グローバルトークンバリデーション実行
-print("\n" + "="*80)
-print("🔍 GLOBAL TOKEN ALLOCATION VALIDATION")
-print("="*80)
 try:
-    validation_results = validate_all_benchmarks(cfg)
-    
-    has_warnings = False
-    has_errors = False
-    
-    for benchmark, (is_valid, message) in validation_results.items():
-        if benchmark in enabled_benchmarks:  # 有効なベンチマークのみチェック
-            if not is_valid:
-                if "❌" in message:
-                    has_errors = True
-                else:
-                    has_warnings = True
-            print(message)
-    
-    print("="*80)
-    
-    if has_errors:
-        print("\n❌ CRITICAL: Some benchmarks have insufficient output tokens!")
-        print("   This will likely cause empty responses and unfairly low scores.")
+    validation_summary = summarize_token_validation(cfg, enabled_benchmarks)
+    print_token_validation_summary(validation_summary)
+
+    if validation_summary["has_errors"]:
         response = "y" if args.yes else input("\nContinue anyway? (y/N): ").strip().lower()
         if response not in ['y', 'yes']:
             print("Evaluation aborted by user.")
             if run:
                 run.finish()
             exit(1)
-    elif has_warnings:
-        print("\n⚠️  WARNING: Some benchmarks have suboptimal token allocation.")
+    elif validation_summary["has_warnings"]:
         response = "y" if args.yes else input("\nContinue? (Y/n): ").strip().lower()
         if response in ['n', 'no']:
             print("Evaluation aborted by user.")
             if run:
                 run.finish()
             exit(1)
-    else:
-        print("\n✅ All token allocations look good!")
-        
 except Exception as e:
     print(f"⚠️  Token validation failed: {e}")
     print("Proceeding with evaluation...")
