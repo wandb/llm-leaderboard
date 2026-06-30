@@ -24,6 +24,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WEAVE_AGENTS_COMPLETION_SCHEMA_VERSION = 1
 REQUIRED_WEAVE_AGENTS_CHECK_NAMES = {
+    "request_model",
     "trace_timestamp_quality",
     "trace_order",
     "trace_user_message_order",
@@ -100,6 +101,107 @@ def _check_names(value: Any) -> set[str]:
         for row in value
         if isinstance(row, dict) and isinstance(row.get("name"), str)
     }
+
+
+def _non_empty_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value:
+        if isinstance(item, str) and item.strip():
+            result.append(item.strip())
+    return result
+
+
+def _check_by_name(value: Any, name: str) -> dict[str, Any] | None:
+    if not isinstance(value, list):
+        return None
+    for row in value:
+        if isinstance(row, dict) and row.get("name") == name:
+            return row
+    return None
+
+
+def _request_model_evidence(
+    payload: dict[str, Any],
+    *,
+    required: dict[str, Any],
+    health: dict[str, Any],
+) -> tuple[bool, dict[str, Any], list[str]]:
+    issues: list[str] = []
+    checks = payload.get("checks")
+    expected = _non_empty_string_list(required.get("expected_request_models"))
+    if not expected:
+        issues.append(
+            "required_evidence.expected_request_models must be a non-empty list of strings"
+        )
+
+    check = _check_by_name(checks, "request_model")
+    check_expected: list[str] = []
+    check_observed: list[str] = []
+    if check is None:
+        issues.append("checks missing required check(s): request_model")
+    else:
+        if check.get("ok") is not True:
+            issues.append("request_model check must be ok=true")
+        check_expected = _non_empty_string_list(check.get("expected_request_models"))
+        check_observed = _non_empty_string_list(check.get("observed_request_models"))
+        if not check_expected:
+            issues.append(
+                "checks.request_model.expected_request_models must be a non-empty list of strings"
+            )
+        elif expected and set(check_expected) != set(expected):
+            issues.append(
+                "checks.request_model.expected_request_models must match "
+                "required_evidence.expected_request_models"
+            )
+        if not check_observed:
+            issues.append(
+                "checks.request_model.observed_request_models must be a non-empty list of strings"
+            )
+        elif expected and set(expected).isdisjoint(check_observed):
+            issues.append(
+                "checks.request_model.observed_request_models must include an expected model alias"
+            )
+
+    spans = payload.get("latest_trace_spans_chronological")
+    span_rows = spans if isinstance(spans, list) else []
+    span_models = sorted(
+        {
+            str(span.get("request_model")).strip()
+            for span in span_rows
+            if isinstance(span, dict)
+            and isinstance(span.get("request_model"), str)
+            and span.get("request_model").strip()
+        }
+    )
+    if not span_models:
+        issues.append("latest_trace_spans_chronological must expose request_model")
+    elif expected and set(expected).isdisjoint(span_models):
+        issues.append(
+            "latest_trace_spans_chronological request_model values must include an expected model alias"
+        )
+    if check_observed and span_models and set(check_observed) != set(span_models):
+        issues.append(
+            "checks.request_model.observed_request_models must match "
+            "latest_trace_spans_chronological request_model values"
+        )
+
+    request_model_count = health.get("request_model_count")
+    if not isinstance(request_model_count, int) or request_model_count <= 0:
+        issues.append("content_capture_health.request_model_count must be a positive integer")
+    elif span_models and request_model_count != len(span_models):
+        issues.append(
+            "content_capture_health.request_model_count must match unique request_model values"
+        )
+
+    evidence = {
+        "expected_request_models": expected,
+        "observed_request_models": check_observed,
+        "span_request_models": span_models,
+        "request_model_count": request_model_count,
+    }
+    return not issues, evidence, issues
 
 
 def _parse_span_timestamp(value: Any) -> float | None:
@@ -299,6 +401,13 @@ def weave_payload_current(payload: dict[str, Any]) -> tuple[bool, list[str]]:
         issues.append("content_capture_health must be an object")
         health = {}
     check_names = _check_names(payload.get("checks"))
+    request_model_proven, _, request_model_issues = _request_model_evidence(
+        payload,
+        required=required,
+        health=health,
+    )
+    if not request_model_proven:
+        issues.extend(request_model_issues)
 
     _numeric_minimum_check(
         health,
@@ -473,6 +582,17 @@ def weave_completion_entry(
     query_source = payload.get("query_source")
     if not isinstance(query_source, dict):
         query_source = {}
+    required = payload.get("required_evidence")
+    if not isinstance(required, dict):
+        required = {}
+    health = payload.get("content_capture_health")
+    if not isinstance(health, dict):
+        health = {}
+    request_model_proven, request_model_evidence, _ = _request_model_evidence(
+        payload,
+        required=required,
+        health=health,
+    )
     return {
         "ok": bool(payload.get("ok")),
         "run_id": run_id,
@@ -484,6 +604,10 @@ def weave_completion_entry(
         "trace_present": isinstance(payload.get("latest_trace_id"), str)
         and bool(payload.get("latest_trace_id")),
         "run_scope_proven": run_scope_proven,
+        "request_model_proven": request_model_proven,
+        "expected_request_models": request_model_evidence["expected_request_models"],
+        "observed_request_models": request_model_evidence["observed_request_models"],
+        "span_request_models": request_model_evidence["span_request_models"],
         "conversation_id": run_scope["conversation_id"],
         "conversation_id_contains": run_scope["conversation_id_contains"],
         "query_source_kind": query_source.get("kind"),

@@ -210,6 +210,7 @@ def weave_agents_completion_payload(
             "trace_final_answer_order_required": True,
             "conversation_id": "",
             "conversation_id_contains": run_id,
+            "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
         },
         "content_capture_health": {
             "span_count_checked": 2,
@@ -220,6 +221,7 @@ def weave_agents_completion_payload(
             "tool_spans_with_content": 1,
             "spans_with_valid_timestamps": 2,
             "spans_with_invalid_timestamps": 0,
+            "request_model_count": 1,
         },
         "latest_trace_spans_chronological": [
             {
@@ -234,6 +236,7 @@ def weave_agents_completion_payload(
                 "error_type": None,
                 "has_input_messages": True,
                 "has_output_messages": True,
+                "request_model": "gpt-4.1-mini-2025-04-14",
             },
             {
                 "started_at": "2026-06-28T00:00:02Z",
@@ -246,10 +249,17 @@ def weave_agents_completion_payload(
                 "parent_span_id": "span-1",
                 "tool_name": "python",
                 "error_type": None,
+                "request_model": "gpt-4.1-mini-2025-04-14",
             },
         ],
         "checks": [
             {"name": "agent_present", "ok": True},
+            {
+                "name": "request_model",
+                "ok": True,
+                "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
+                "observed_request_models": ["gpt-4.1-mini-2025-04-14"],
+            },
             {"name": "message_content_capture", "ok": True},
             {"name": "input_message_capture", "ok": True},
             {"name": "tool_content_capture", "ok": True},
@@ -290,6 +300,10 @@ def weave_sync_dry_run_payload(
                 "checks_valid": True,
                 "trace_present": True,
                 "run_scope_proven": True,
+                "request_model_proven": True,
+                "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
+                "observed_request_models": ["gpt-4.1-mini-2025-04-14"],
+                "span_request_models": ["gpt-4.1-mini-2025-04-14"],
                 "conversation_id": "",
                 "conversation_id_contains": run_id,
                 "query_source_kind": "wandb_agents_api",
@@ -1408,6 +1422,55 @@ def test_one_model_canary_accepts_required_wandb_completion_entries(tmp_path):
         "agentic_swe",
         "taiwan_full",
     ]
+
+
+def test_one_model_canary_rejects_weave_agents_completion_without_request_model_evidence(tmp_path):
+    module = load_module()
+    payload = weave_agents_completion_payload(run_id="required-run")
+    payload["required_evidence"].pop("expected_request_models")
+    payload["checks"] = [
+        check for check in payload["checks"] if check.get("name") != "request_model"
+    ]
+    payload["content_capture_health"].pop("request_model_count")
+    for span in payload["latest_trace_spans_chronological"]:
+        span.pop("request_model", None)
+    weave_verifier = write_json(tmp_path / "weave.json", payload)
+    agentic_review_before_weave = write_json(
+        tmp_path / "agentic.before_weave.json",
+        {
+            "status": "completed",
+            "phase": "agentic",
+            "canary": True,
+            "model_count": 1,
+            "runs": [{"wandb_run_id": "required-run"}],
+        },
+    )
+    agentic_review_before_weave_sha = sha256(agentic_review_before_weave)
+    weave_sync_dry_run = write_json(
+        tmp_path / "weave.sync_dry_run.json",
+        weave_sync_dry_run_payload(
+            review_path=agentic_review_before_weave,
+            completion_path=weave_verifier,
+            source_review_sha256=agentic_review_before_weave_sha,
+            run_id="required-run",
+        ),
+    )
+    entry = module._verify_review_weave_agents_completion_entry(
+        {
+            "ok": True,
+            "path": str(weave_verifier),
+            "agent_name": "nejumi-taiwan-openclaw",
+            "run_id": "required-run",
+            "sync_dry_run_report_json": str(weave_sync_dry_run),
+            "sync_dry_run_source_review_json": str(agentic_review_before_weave),
+            "sync_dry_run_source_review_sha256": agentic_review_before_weave_sha,
+        },
+        max_age_seconds=86400,
+    )
+
+    assert entry["verified"] is False
+    assert entry["request_model_proven"] is False
+    assert "expected_request_models" in entry["verification_error"]
 
 
 def test_one_model_canary_rejects_agentic_benchmark_without_weave_agents_completion(tmp_path):
@@ -2792,6 +2855,7 @@ def test_build_report_surfaces_blockers(tmp_path):
         "weave_agents_completion_verifier_requirements"
     ]
     assert weave_requirements["required_checks"] == [
+        "request_model",
         "trace_final_answer_order",
         "trace_order",
         "trace_timestamp_quality",

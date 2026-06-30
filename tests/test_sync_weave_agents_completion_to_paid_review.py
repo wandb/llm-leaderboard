@@ -107,6 +107,7 @@ def weave_completion_payload(*, ok=True, agent_name="nejumi-taiwan-openclaw"):
             "required_texts": [],
             "conversation_id": "",
             "conversation_id_contains": "run-1",
+            "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
         },
         "content_capture_health": {
             "span_count_checked": 2,
@@ -120,6 +121,7 @@ def weave_completion_payload(*, ok=True, agent_name="nejumi-taiwan-openclaw"):
             "trace_input_tokens": 10,
             "trace_output_tokens": 5,
             "required_text_count": 0,
+            "request_model_count": 1,
         },
         "latest_trace_spans_chronological": [
             {
@@ -134,6 +136,7 @@ def weave_completion_payload(*, ok=True, agent_name="nejumi-taiwan-openclaw"):
                 "error_type": None,
                 "has_input_messages": ok,
                 "has_output_messages": ok,
+                "request_model": "gpt-4.1-mini-2025-04-14",
             },
             {
                 "started_at": "2026-06-28T00:00:02Z",
@@ -146,11 +149,18 @@ def weave_completion_payload(*, ok=True, agent_name="nejumi-taiwan-openclaw"):
                 "parent_span_id": "span-1",
                 "tool_name": "python",
                 "error_type": None,
+                "request_model": "gpt-4.1-mini-2025-04-14",
             },
         ],
         "checks": [
             {"name": "agent_present", "ok": ok},
             {"name": "latest_trace", "ok": ok},
+            {
+                "name": "request_model",
+                "ok": ok,
+                "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
+                "observed_request_models": ["gpt-4.1-mini-2025-04-14"],
+            },
             {"name": "message_content_capture", "ok": ok},
             {"name": "input_message_capture", "ok": ok},
             {"name": "tool_content_capture", "ok": ok},
@@ -194,7 +204,11 @@ def wandb_completion_payload():
     return add_wandb_run_metadata(payload)
 
 
-def review_payload(wandb_completion_path: Path | None = None):
+def review_payload(
+    wandb_completion_path: Path | None = None,
+    *,
+    preflight_path: Path | None = None,
+):
     run = {
         "config": "config-a.yaml",
         "log_path": "run.log",
@@ -205,6 +219,31 @@ def review_payload(wandb_completion_path: Path | None = None):
         "started_at": time.time() - 90,
         "ended_at": time.time() - 10,
     }
+    run_eval_preflights = []
+    if preflight_path is not None:
+        run.update(
+            {
+                "preflight_json": str(preflight_path),
+                "preflight_returncode": 0,
+                "preflight_ok": True,
+            }
+        )
+        run_eval_preflights.append(
+            {
+                "config": "config-a.yaml",
+                "output_json": str(preflight_path),
+                "command": [
+                    "python3",
+                    "scripts/run_eval.py",
+                    "--config",
+                    "config-a.yaml",
+                    "--preflight",
+                    "--preflight-json",
+                    str(preflight_path),
+                ],
+                "required_before_run_eval": True,
+            }
+        )
     if wandb_completion_path is not None:
         run["wandb_completion"] = [
             {
@@ -217,7 +256,7 @@ def review_payload(wandb_completion_path: Path | None = None):
                 "sha256": sha256(wandb_completion_path),
             }
         ]
-    return {
+    payload = {
         "status": "completed",
         "phase": "full",
         "canary": True,
@@ -236,6 +275,9 @@ def review_payload(wandb_completion_path: Path | None = None):
         "verify_weave_agents": False,
         "runs": [run],
     }
+    if run_eval_preflights:
+        payload["run_eval_preflights"] = run_eval_preflights
+    return payload
 
 
 def test_sync_review_adds_weave_completion_to_matching_run():
@@ -297,12 +339,51 @@ def test_cli_writes_updated_review_to_output(tmp_path):
     assert entry["latest_trace_id"] == "trace-1"
     assert entry["checks_valid"] is True
     assert entry["run_scope_proven"] is True
+    assert entry["request_model_proven"] is True
+    assert entry["expected_request_models"] == ["gpt-4.1-mini-2025-04-14"]
+    assert entry["observed_request_models"] == ["gpt-4.1-mini-2025-04-14"]
     assert entry["conversation_id_contains"] == "run-1"
     assert entry["query_source_kind"] == "wandb_agents_api"
     assert entry["query_source_api_base_url"] == "https://trace.wandb.ai"
     assert entry["query_source_agents_endpoint"] == "/agents/query"
     assert entry["query_source_spans_endpoint"] == "/agents/spans/query"
     assert entry["query_source_project_id"] == "llm-leaderboard/tc-leaderboard"
+
+
+def test_cli_rejects_weave_agents_verifier_missing_request_model_evidence(tmp_path):
+    review = write_json(tmp_path / "review.json", review_payload())
+    payload = weave_completion_payload()
+    payload["required_evidence"].pop("expected_request_models")
+    payload["checks"] = [
+        check for check in payload["checks"] if check.get("name") != "request_model"
+    ]
+    payload["content_capture_health"].pop("request_model_count")
+    for span in payload["latest_trace_spans_chronological"]:
+        span.pop("request_model", None)
+    completion = write_json(tmp_path / "weave.json", payload)
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--review-json",
+            str(review),
+            "--completion-json",
+            str(completion),
+            "--run-id",
+            "run-1",
+            "--output-json",
+            str(tmp_path / "updated_review.json"),
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "expected_request_models" in result.stderr
+    assert "request_model" in result.stderr
 
 
 def test_cli_rejects_weave_agents_verifier_missing_query_source(tmp_path):
@@ -1062,7 +1143,23 @@ def test_sync_output_passes_paid_review_doctor(tmp_path):
         tmp_path / "wandb_completion.json",
         wandb_completion_payload(),
     )
-    review = write_json(tmp_path / "review.json", review_payload(wandb_completion))
+    preflight = write_json(
+        tmp_path / "preflight.json",
+        {
+            "ok": True,
+            "status": "passed",
+            "will_initialize_wandb": False,
+            "will_log_wandb_artifacts": False,
+            "will_initialize_weave": False,
+            "will_start_inference_engine": False,
+            "will_run_evaluators": False,
+            "enabled_benchmarks": [],
+        },
+    )
+    review = write_json(
+        tmp_path / "review.json",
+        review_payload(wandb_completion, preflight_path=preflight),
+    )
     weave_completion = write_json(tmp_path / "weave.json", weave_completion_payload())
     dry_run_report = tmp_path / "sync_dry_run.json"
     output = tmp_path / "updated_review.json"

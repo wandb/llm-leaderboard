@@ -38,6 +38,7 @@ STANDALONE_OPERATOR_PLAN_MARKDOWN_NAME_RE = re.compile(
     r"^taiwan_release_operator_plan_(\d{8}T\d{6}Z)\.md$"
 )
 REQUIRED_WEAVE_AGENTS_CHECK_NAMES = {
+    "request_model",
     "trace_timestamp_quality",
     "trace_order",
     "trace_user_message_order",
@@ -10766,6 +10767,8 @@ def validate_weave_agents_sync_dry_run_report(
                 errors.append(f"{label} claimed entry trace_present must be true")
             if row.get("run_scope_proven") is not True:
                 errors.append(f"{label} claimed entry run_scope_proven must be true")
+            if row.get("request_model_proven") is not True:
+                errors.append(f"{label} claimed entry request_model_proven must be true")
             latest_trace_id = entry.get("latest_trace_id")
             if isinstance(latest_trace_id, str) and latest_trace_id:
                 if row.get("latest_trace_id") != latest_trace_id:
@@ -11032,6 +11035,99 @@ def _check_names(value: Any) -> set[str]:
     }
 
 
+def _non_empty_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value:
+        if isinstance(item, str) and item.strip():
+            result.append(item.strip())
+    return result
+
+
+def _check_by_name(value: Any, name: str) -> dict[str, Any] | None:
+    if not isinstance(value, list):
+        return None
+    for row in value:
+        if isinstance(row, dict) and row.get("name") == name:
+            return row
+    return None
+
+
+def _validate_weave_agents_request_model_evidence(
+    *,
+    payload: dict[str, Any],
+    required: dict[str, Any],
+    health: dict[str, Any],
+    label: str,
+    errors: list[str],
+) -> None:
+    expected = _non_empty_string_list(required.get("expected_request_models"))
+    if not expected:
+        errors.append(
+            f"{label} required_evidence.expected_request_models is not a non-empty list of strings"
+        )
+
+    check = _check_by_name(payload.get("checks"), "request_model")
+    check_expected: list[str] = []
+    check_observed: list[str] = []
+    if check is None:
+        errors.append(f"{label} checks missing required check: request_model")
+    else:
+        if check.get("ok") is not True:
+            errors.append(f"{label} request_model check is not ok")
+        check_expected = _non_empty_string_list(check.get("expected_request_models"))
+        check_observed = _non_empty_string_list(check.get("observed_request_models"))
+        if not check_expected:
+            errors.append(
+                f"{label} checks.request_model.expected_request_models is not a non-empty list of strings"
+            )
+        elif expected and set(check_expected) != set(expected):
+            errors.append(
+                f"{label} checks.request_model.expected_request_models does not match required_evidence"
+            )
+        if not check_observed:
+            errors.append(
+                f"{label} checks.request_model.observed_request_models is not a non-empty list of strings"
+            )
+        elif expected and set(expected).isdisjoint(check_observed):
+            errors.append(
+                f"{label} checks.request_model.observed_request_models does not include an expected model alias"
+            )
+
+    spans = payload.get("latest_trace_spans_chronological")
+    span_rows = spans if isinstance(spans, list) else []
+    span_models = sorted(
+        {
+            str(span.get("request_model")).strip()
+            for span in span_rows
+            if isinstance(span, dict)
+            and isinstance(span.get("request_model"), str)
+            and span.get("request_model").strip()
+        }
+    )
+    if not span_models:
+        errors.append(f"{label} latest_trace_spans_chronological does not expose request_model")
+    elif expected and set(expected).isdisjoint(span_models):
+        errors.append(
+            f"{label} latest_trace_spans_chronological request_model values do not include an expected model alias"
+        )
+    if check_observed and span_models and set(check_observed) != set(span_models):
+        errors.append(
+            f"{label} checks.request_model.observed_request_models does not match latest_trace_spans_chronological"
+        )
+
+    request_model_count = health.get("request_model_count")
+    if not isinstance(request_model_count, int) or request_model_count <= 0:
+        errors.append(
+            f"{label} content_capture_health.request_model_count is not a positive integer"
+        )
+    elif span_models and request_model_count != len(span_models):
+        errors.append(
+            f"{label} content_capture_health.request_model_count does not match unique request_model values"
+        )
+
+
 def _parse_weave_span_timestamp(value: Any) -> float | None:
     if not isinstance(value, str) or not value.strip():
         return None
@@ -11212,6 +11308,14 @@ def validate_weave_agents_completion_payload(
             errors.append(f"{label} checks missing required check: {required_check_name}")
         if required_texts and "required_text_capture" not in check_names:
             errors.append(f"{label} checks missing required check: required_text_capture")
+
+    _validate_weave_agents_request_model_evidence(
+        payload=payload,
+        required=required,
+        health=health,
+        label=label,
+        errors=errors,
+    )
 
     spans = payload.get("latest_trace_spans_chronological")
     valid_spans: list[dict[str, Any]] = []

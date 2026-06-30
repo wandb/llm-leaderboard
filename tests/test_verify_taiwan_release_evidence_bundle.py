@@ -3365,6 +3365,7 @@ def weave_agents_completion_payload():
             "required_texts": [],
             "conversation_id": "",
             "conversation_id_contains": "run-1",
+            "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
         },
         "content_capture_health": {
             "span_count_checked": 2,
@@ -3378,6 +3379,7 @@ def weave_agents_completion_payload():
             "trace_input_tokens": 10,
             "trace_output_tokens": 5,
             "required_text_count": 0,
+            "request_model_count": 1,
         },
         "latest_trace_spans_chronological": [
             {
@@ -3392,6 +3394,7 @@ def weave_agents_completion_payload():
                 "error_type": None,
                 "has_input_messages": True,
                 "has_output_messages": True,
+                "request_model": "gpt-4.1-mini-2025-04-14",
             },
             {
                 "started_at": "2026-06-28T00:00:02Z",
@@ -3406,12 +3409,20 @@ def weave_agents_completion_payload():
                 "error_type": None,
                 "has_tool_call_arguments": True,
                 "has_tool_call_result": True,
+                "request_model": "gpt-4.1-mini-2025-04-14",
             },
         ],
         "checks": [
             {"name": "agent_present", "ok": True, "detail": "agent is present"},
             {"name": "latest_trace", "ok": True, "detail": "latest trace id is present"},
             {"name": "trace_span_count", "ok": True, "detail": "latest trace has enough spans"},
+            {
+                "name": "request_model",
+                "ok": True,
+                "detail": "latest trace request_model matches an expected model alias",
+                "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
+                "observed_request_models": ["gpt-4.1-mini-2025-04-14"],
+            },
             {"name": "message_content_capture", "ok": True, "detail": "message content is visible"},
             {"name": "input_message_capture", "ok": True, "detail": "user/problem input is visible"},
             {"name": "tool_content_capture", "ok": True, "detail": "tool content is visible"},
@@ -3498,6 +3509,10 @@ def build_bundle_with_weave_agents_completion(tmp_path):
                     "checks_valid": True,
                     "trace_present": True,
                     "run_scope_proven": True,
+                    "request_model_proven": True,
+                    "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
+                    "observed_request_models": ["gpt-4.1-mini-2025-04-14"],
+                    "span_request_models": ["gpt-4.1-mini-2025-04-14"],
                     "conversation_id": "",
                     "conversation_id_contains": "run-1",
                     "query_source_kind": "wandb_agents_api",
@@ -11669,6 +11684,46 @@ def test_verify_release_evidence_bundle_rejects_missing_timestamp_quality_check(
     assert payload["integrity_ok"] is False
     assert any(
         "checks missing required check: trace_timestamp_quality" in error
+        for error in payload["errors"]
+    )
+
+
+def test_verify_release_evidence_bundle_rejects_weave_agents_completion_missing_request_model_evidence(tmp_path):
+    bundle, completion = build_bundle_with_weave_agents_completion(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    completion_record = next(
+        record for record in manifest["files"] if record["source_path"] == str(completion)
+    )
+    bundled_completion = bundle / completion_record["bundle_path"]
+    payload = json.loads(bundled_completion.read_text(encoding="utf-8"))
+    payload["required_evidence"].pop("expected_request_models")
+    payload["checks"] = [
+        check for check in payload["checks"] if check.get("name") != "request_model"
+    ]
+    payload["content_capture_health"].pop("request_model_count")
+    for span in payload["latest_trace_spans_chronological"]:
+        span.pop("request_model", None)
+    bundled_completion.write_text(json.dumps(payload), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, completion_record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "Weave Agents completion proof" in error
+        and "expected_request_models" in error
+        for error in payload["errors"]
+    )
+    assert any(
+        "checks missing required check: request_model" in error
         for error in payload["errors"]
     )
 

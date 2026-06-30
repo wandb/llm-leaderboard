@@ -70,6 +70,7 @@ WANDB_COMPLETION_QUERY_SOURCE_KIND = "wandb_sdk"
 WANDB_COMPLETION_API_TIMEOUT_SECONDS = 60
 WEAVE_AGENTS_COMPLETION_SCHEMA_VERSION = 1
 REQUIRED_WEAVE_AGENTS_CHECK_NAMES = {
+    "request_model",
     "trace_timestamp_quality",
     "trace_order",
     "trace_user_message_order",
@@ -2555,6 +2556,105 @@ def _check_names(value: Any) -> set[str]:
     }
 
 
+def _non_empty_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value:
+        if isinstance(item, str) and item.strip():
+            result.append(item.strip())
+    return result
+
+
+def _check_by_name(value: Any, name: str) -> dict[str, Any] | None:
+    if not isinstance(value, list):
+        return None
+    for row in value:
+        if isinstance(row, dict) and row.get("name") == name:
+            return row
+    return None
+
+
+def _weave_agents_request_model_evidence(
+    payload: dict[str, Any],
+    *,
+    required_evidence: dict[str, Any],
+    content_capture_health: dict[str, Any],
+) -> dict[str, Any]:
+    errors: list[str] = []
+    expected = _non_empty_string_list(required_evidence.get("expected_request_models"))
+    if not expected:
+        errors.append(
+            "required_evidence.expected_request_models must be a non-empty list of strings"
+        )
+
+    check = _check_by_name(payload.get("checks"), "request_model")
+    check_expected: list[str] = []
+    check_observed: list[str] = []
+    if check is None:
+        errors.append("checks missing required check: request_model")
+    else:
+        if check.get("ok") is not True:
+            errors.append("request_model check must be ok=true")
+        check_expected = _non_empty_string_list(check.get("expected_request_models"))
+        check_observed = _non_empty_string_list(check.get("observed_request_models"))
+        if not check_expected:
+            errors.append(
+                "checks.request_model.expected_request_models must be a non-empty list of strings"
+            )
+        elif expected and set(check_expected) != set(expected):
+            errors.append(
+                "checks.request_model.expected_request_models must match required_evidence.expected_request_models"
+            )
+        if not check_observed:
+            errors.append(
+                "checks.request_model.observed_request_models must be a non-empty list of strings"
+            )
+        elif expected and set(expected).isdisjoint(check_observed):
+            errors.append(
+                "checks.request_model.observed_request_models must include an expected model alias"
+            )
+
+    spans = payload.get("latest_trace_spans_chronological")
+    span_rows = spans if isinstance(spans, list) else []
+    span_models = sorted(
+        {
+            str(span.get("request_model")).strip()
+            for span in span_rows
+            if isinstance(span, dict)
+            and isinstance(span.get("request_model"), str)
+            and span.get("request_model").strip()
+        }
+    )
+    if not span_models:
+        errors.append("latest_trace_spans_chronological must expose request_model")
+    elif expected and set(expected).isdisjoint(span_models):
+        errors.append(
+            "latest_trace_spans_chronological request_model values must include an expected model alias"
+        )
+    if check_observed and span_models and set(check_observed) != set(span_models):
+        errors.append(
+            "checks.request_model.observed_request_models must match latest_trace_spans_chronological request_model values"
+        )
+
+    request_model_count = content_capture_health.get("request_model_count")
+    if not isinstance(request_model_count, int) or request_model_count <= 0:
+        errors.append("content_capture_health.request_model_count must be a positive integer")
+    elif span_models and request_model_count != len(span_models):
+        errors.append(
+            "content_capture_health.request_model_count must match unique request_model values"
+        )
+
+    return {
+        "request_model_proven": not errors,
+        "request_model_errors": errors,
+        "expected_request_models": expected,
+        "observed_request_models": check_observed,
+        "span_request_models": span_models,
+        "request_model_count": request_model_count,
+    }
+
+
 def _required_texts(value: Any) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     if value in (None, ""):
@@ -2784,6 +2884,8 @@ def _verify_weave_agents_sync_dry_run_report(entry: dict[str, Any]) -> dict[str,
                 errors.append("sync dry-run report entry trace_present must be true")
             if row.get("run_scope_proven") is not True:
                 errors.append("sync dry-run report entry run_scope_proven must be true")
+            if row.get("request_model_proven") is not True:
+                errors.append("sync dry-run report entry request_model_proven must be true")
             latest_trace_id = entry.get("latest_trace_id")
             if isinstance(latest_trace_id, str) and latest_trace_id:
                 if row.get("latest_trace_id") != latest_trace_id:
@@ -2891,6 +2993,11 @@ def _verify_review_weave_agents_completion_entry(
         if isinstance(payload.get("content_capture_health"), dict)
         else {}
     )
+    request_model_evidence = _weave_agents_request_model_evidence(
+        payload,
+        required_evidence=required_evidence,
+        content_capture_health=content_capture_health,
+    )
     input_message_visible = (
         isinstance(content_capture_health.get("message_spans_with_input"), int)
         and content_capture_health.get("message_spans_with_input") > 0
@@ -2945,6 +3052,7 @@ def _verify_review_weave_agents_completion_entry(
             "required_text_errors": required_text_errors,
             "required_text_capture_present": required_text_capture_present,
             "required_text_count_ok": required_text_count_ok,
+            **request_model_evidence,
             "input_message_required": input_message_required,
             "input_message_visible": input_message_visible,
             "trace_timestamp_quality_required": trace_timestamp_quality_required,
@@ -2962,6 +3070,7 @@ def _verify_review_weave_agents_completion_entry(
             and agent_name_matches
             and schema_valid
             and checks_valid
+            and request_model_evidence["request_model_proven"]
             and query_source_valid
             and input_message_required
             and input_message_visible
@@ -3007,6 +3116,11 @@ def _verify_review_weave_agents_completion_entry(
                 )
             else:
                 issues.append("Weave Agents verifier JSON has missing or failed checks")
+        if not request_model_evidence["request_model_proven"]:
+            issues.append(
+                "Weave Agents verifier JSON does not prove request_model: "
+                + "; ".join(request_model_evidence["request_model_errors"])
+            )
         if not query_source_valid:
             issues.append(
                 "Weave Agents verifier JSON query_source is invalid: "
