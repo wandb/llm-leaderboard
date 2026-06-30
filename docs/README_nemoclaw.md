@@ -14,7 +14,7 @@ References:
 
 ## Current Status
 
-As of 2026-07-01 07:54 JST:
+As of 2026-07-01 08:22 JST:
 
 - Host prerequisites are present: Docker, Node.js, npm, zstd, and OpenClaw.
 - `nemoclaw v0.0.55` and `openshell 0.0.44` are installed on this machine.
@@ -48,14 +48,21 @@ As of 2026-07-01 07:54 JST:
   plugin/config/policy/secret all OK and writes the latest local evidence to
   `temp/nemoclaw_weave_config_check_after_tests.json`.
 - `configs/nemoclaw/policies/wandb_weave.yaml` is the W&B/Weave egress policy
-  template for the sandbox. The latest host evidence
-  `temp/nemoclaw_setup_check_20260701T075249.json` reports
-  `policies: []` from `nemoclaw status --json`, so the current runtime sandbox
-  policy should be treated as not observed/configured. Agentic benchmark
-  anti-cheat still relies on generated OpenClaw `deny_tool` and
-  `deny_argument_pattern` guards until a NeMoClaw runtime policy is visibly
-  attached and re-verified. No provider-pricing/router egress policy is part of
-  the current NeMoClaw sandbox policy.
+  template for the sandbox. It was applied with
+  `nemoclaw nejumi-taiwan policy-add --from-file ... --yes`; the command
+  reported `Applied preset: wandb-weave`.
+- `nemoclaw status --json` still reports `policies: []` for the sandbox, but
+  the detailed `nemoclaw sandbox status nejumi-taiwan` output lists
+  `network_policies.wandb-weave`. Current readiness therefore parses both the
+  JSON summary and detailed status.
+- The current runtime network policy is not W&B-only. Detailed status also
+  lists NeMoClaw/OpenClaw base policies such as `clawhub`,
+  `managed_inference`, `npm_registry`, `nvidia`, `openclaw_api`, and
+  `openclaw_docs`. Agentic benchmark anti-cheat still relies on generated
+  OpenClaw `deny_tool` and `deny_argument_pattern` guards plus session-order
+  checks; the NeMoClaw policy is evidence of sandboxed runtime boundaries and
+  W&B/Weave egress, not a standalone proof that every non-W&B network path is
+  impossible.
 - The repo now includes a reproducible setup/check script:
   `scripts/setup/install_nemoclaw.sh`.
 - Setup plans and remediation commands include `--json` output paths for

@@ -263,7 +263,12 @@ def check_env(env: dict[str, str], *, openclaw_model: str) -> list[Check]:
     return checks
 
 
-def _run_status(command: list[str], env: dict[str, str], timeout: int = 60) -> tuple[bool, str]:
+def _run_status(
+    command: list[str],
+    env: dict[str, str],
+    timeout: int = 60,
+    max_detail_chars: int = 500,
+) -> tuple[bool, str]:
     try:
         result = subprocess.run(
             command,
@@ -276,8 +281,8 @@ def _run_status(command: list[str], env: dict[str, str], timeout: int = 60) -> t
     except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
         return False, str(exc)
     detail = (result.stdout + result.stderr).strip()
-    if len(detail) > 500:
-        detail = detail[:500] + "..."
+    if len(detail) > max_detail_chars:
+        detail = detail[:max_detail_chars] + "..."
     return result.returncode == 0, detail
 
 
@@ -319,18 +324,55 @@ def _sandbox_record_from_status(payload: dict[str, Any], sandbox: str) -> dict[s
     return None
 
 
-def _sandbox_policy_detail(payload: dict[str, Any] | None, sandbox: str) -> dict[str, Any]:
+def _strip_ansi(text: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
+def _network_policy_names_from_status_detail(status_text: str) -> list[str]:
+    names: list[str] = []
+    in_network_policies = False
+    for raw_line in _strip_ansi(status_text).splitlines():
+        line = raw_line.rstrip()
+        if line.strip() == "network_policies:":
+            in_network_policies = True
+            continue
+        if not in_network_policies:
+            continue
+        if line and not line.startswith(" "):
+            break
+        match = re.match(r"^ {4}([A-Za-z0-9_-]+):\s*$", line)
+        if match:
+            names.append(match.group(1))
+    return sorted(set(names))
+
+
+def _sandbox_policy_detail(
+    payload: dict[str, Any] | None,
+    sandbox: str,
+    status_text: str = "",
+) -> dict[str, Any]:
     record = _sandbox_record_from_status(payload or {}, sandbox)
-    policies = record.get("policies") if isinstance(record, dict) else None
-    if not isinstance(policies, list):
-        policies = []
+    summary_policies = record.get("policies") if isinstance(record, dict) else None
+    if not isinstance(summary_policies, list):
+        summary_policies = []
+    summary_policy_names = sorted(str(item) for item in summary_policies if str(item))
+    network_policy_names = _network_policy_names_from_status_detail(status_text)
+    combined_policies = sorted(set(summary_policy_names) | set(network_policy_names))
     permissions = record.get("permissions") if isinstance(record, dict) else None
     return {
         "sandbox": sandbox,
         "sandbox_found": isinstance(record, dict),
-        "policy_count": len(policies),
-        "policies": policies,
-        "policy_configured": bool(policies),
+        "policy_count": len(combined_policies),
+        "policies": combined_policies,
+        "policy_configured": bool(combined_policies),
+        "summary_policy_count": len(summary_policy_names),
+        "summary_policies": summary_policy_names,
+        "detailed_status_network_policy_count": len(network_policy_names),
+        "detailed_status_network_policies": network_policy_names,
+        "wandb_weave_policy_present": "wandb-weave" in combined_policies,
+        "non_wandb_network_policies": [
+            name for name in network_policy_names if name != "wandb-weave"
+        ],
         "permissions": permissions if isinstance(permissions, (dict, str, list)) else None,
         "provider": record.get("provider") if isinstance(record, dict) else None,
         "model": record.get("model") if isinstance(record, dict) else None,
@@ -379,6 +421,7 @@ def check_nemoclaw(
     status_ok, status_detail = _run_status(
         [resolved_nemoclaw, "sandbox", "status", sandbox],
         env,
+        max_detail_chars=8000,
     )
     checks.append(
         Check(
@@ -392,7 +435,7 @@ def check_nemoclaw(
         [resolved_nemoclaw, "status", "--json"],
         env,
     )
-    policy_detail = _sandbox_policy_detail(status_json, sandbox)
+    policy_detail = _sandbox_policy_detail(status_json, sandbox, status_detail)
     checks.append(
         Check(
             f"NeMoClaw sandbox runtime policy is introspectable: {sandbox}",
@@ -403,14 +446,22 @@ def check_nemoclaw(
                     "status_json_ok": status_json_ok,
                     "error": "" if status_json_ok else status_json_detail,
                     "anti_cheat_note": (
-                        "policy_count=0 means this evidence did not observe a "
-                        "NeMoClaw sandbox policy; Agentic benchmark network "
-                        "guards still depend on generated OpenClaw deny_tool "
-                        "and deny_argument_pattern settings."
+                        "NeMoClaw status --json summary_policies may be empty "
+                        "even when detailed status lists network_policies; "
+                        "Agentic benchmark anti-cheat still depends on "
+                        "generated OpenClaw deny_tool and "
+                        "deny_argument_pattern settings."
                     ),
                 },
                 ensure_ascii=False,
             ),
+        )
+    )
+    checks.append(
+        Check(
+            f"NeMoClaw W&B/Weave runtime policy is present: {sandbox}",
+            bool(policy_detail["wandb_weave_policy_present"]) or not require,
+            json.dumps(policy_detail, ensure_ascii=False),
         )
     )
 

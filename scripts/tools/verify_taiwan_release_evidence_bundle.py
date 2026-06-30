@@ -97,9 +97,12 @@ NEMOCLAW_CANARY_READINESS_SCRIPT_SOURCE_TOKENS = (
     ("Math deny_argument_pattern check", '"agentic_math",\n                        "deny_argument_pattern"'),
     ("SWE deny_argument_pattern check", '"swebench_pro",\n                        "deny_argument_pattern"'),
     ("NeMoClaw status JSON introspection", "def _run_json_status("),
+    ("NeMoClaw detailed status policy parser", "def _network_policy_names_from_status_detail("),
     ("NeMoClaw sandbox policy detail parser", "def _sandbox_policy_detail("),
     ("NeMoClaw runtime policy check", "NeMoClaw sandbox runtime policy is introspectable"),
     ("NeMoClaw runtime policy count evidence", '"policy_count"'),
+    ("NeMoClaw W&B/Weave runtime policy check", "NeMoClaw W&B/Weave runtime policy is present"),
+    ("NeMoClaw W&B/Weave policy evidence", "wandb_weave_policy_present"),
     ("NeMoClaw runtime policy anti-cheat note", "OpenClaw deny_tool"),
 )
 OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
