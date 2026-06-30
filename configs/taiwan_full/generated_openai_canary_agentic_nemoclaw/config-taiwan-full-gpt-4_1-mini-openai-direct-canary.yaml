@@ -1,0 +1,113 @@
+wandb:
+  run_name: 'taiwan/full/openai/gpt-4.1-mini: openai-direct-canary'
+api: openai_responses
+batch_size: 32
+model:
+  pretrained_model_name_or_path: gpt-4.1-mini-2025-04-14
+  bfcl_model_id: gpt-4.1-mini-2025-04-14-FC
+  base_model: unknown
+  size_category: api
+  size: null
+  release_date: 4/14/2025
+testmode: false
+run:
+  agentic_math: true
+  bfcl: false
+  swebench: false
+  swebench_pro: true
+  mtbench: false
+  jbbq: false
+  toxicity: false
+  jtruthfulqa: false
+  hle: false
+  hallulens: false
+  hallulens_zh_tw: false
+  arc_agi: false
+  m_ifeval: false
+  ifeval_zh_tw: false
+  ts_bench: false
+  twbias: false
+  tceval_v2: false
+  script_adherence: false
+  jaster: false
+  jmmlu_robustness: false
+  tmmluplus_robustness: false
+  aggregate: false
+  aggregate_taiwan: false
+agentic_math:
+  subset: leaderboard
+  output_dir: outputs/taiwan_full_eval/agentic_math/gpt-4_1-mini-openai-direct-canary
+  prefix: taiwan-math-gpt-4_1-mini-openai-direct-canary
+  task_agent_prefix: tw-math-gpt-4_1-mini-openai-direct-canary
+  openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14
+  thinking: 'off'
+  openclaw_max_attempts: 3
+  openclaw_retry_base_seconds: 15
+  dry_run: false
+  run_openclaw: true
+  results_dir: null
+  weave_sidecar: false
+  weave_sidecar_strict: false
+  openclaw_tool_profile: coding
+  deny_tool:
+  - code_execution
+  - web_search
+  - web_fetch
+  - browser
+  - browser_*
+  - '*search*'
+  deny_argument_pattern:
+  - https?://
+  - \b(curl|wget)\b
+  - \b(requests|urllib|httpx)\.
+  nemoclaw_sandbox: nejumi-taiwan
+  nemoclaw_bin: nemoclaw
+  nemoclaw_workdir: /sandbox
+  use_task_agent: true
+swebench_pro:
+  subset: leaderboard_compact_80
+  output_dir: outputs/taiwan_full_eval/swebench_pro/gpt-4_1-mini-openai-direct-canary
+  checkout_root: outputs/taiwan_full_eval/swebench_pro_checkouts/gpt-4_1-mini-openai-direct-canary
+  prefix: taiwan-swe-gpt-4_1-mini-openai-direct-canary
+  task_agent_prefix: tw-swe-gpt-4_1-mini-openai-direct-canary
+  openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14
+  thinking: 'off'
+  openclaw_max_attempts: 3
+  openclaw_retry_base_seconds: 15
+  dry_run: false
+  run_openclaw: true
+  patch_path: null
+  evaluate: true
+  weave_sidecar: false
+  weave_sidecar_strict: false
+  openclaw_tool_profile: coding
+  max_input_tokens: 1000000
+  max_tool_calls: 60
+  deny_tool:
+  - code_execution
+  - web_search
+  - web_fetch
+  - browser
+  - browser_*
+  - '*search*'
+  deny_argument_pattern:
+  - https?://
+  - \b(curl|wget)\b
+  - \b(requests|urllib|httpx)\.
+  nemoclaw_sandbox: nejumi-taiwan
+  nemoclaw_bin: nemoclaw
+  nemoclaw_checkout_transfer_mode: copy
+bfcl:
+  allow_overwrite: false
+mtbench:
+  judge:
+    model: gpt-4.1-mini-2025-04-14
+    parallel: 2
+hle:
+  judge:
+    model: gpt-4.1-mini-2025-04-14
+    parallel: 2
+hallulens_zh_tw:
+  judge:
+    model: gpt-4.1-mini-2025-04-14
+    parallel: 2

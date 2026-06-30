@@ -1,0 +1,13 @@
+models:
+  - slug: gpt-4_1-mini-openai-direct-canary
+    source_config: config-gpt-4.1-mini-2025-04-14.yaml
+    run_name: "taiwan/full/openai/gpt-4.1-mini: openai-direct-canary"
+    japanese_runname: "openai/gpt-4-1-mini-2025-04-14"
+    openclaw_model: "openai-direct/gpt-4.1-mini-2025-04-14"
+    reasoning_effort: null
+    agentic_thinking: "off"
+    swe_thinking: "off"
+    judge_model: "gpt-4.1-mini-2025-04-14"
+    judge_parallel: 2
+    canary: true
+    notes: "Low-cost OpenAI-direct one-model canary for harness validation before broader model expansion."
