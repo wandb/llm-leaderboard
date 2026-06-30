@@ -25,6 +25,36 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def write_run_eval_preflight_payload(path: Path | None = None):
+    if path is None:
+        path = REPO_ROOT / "temp" / "test_taiwan_paid_review_run_eval_preflight.json"
+    return write_json(
+        path,
+        {
+            "schema_version": 1,
+            "generated_at": time.time(),
+            "status": "passed",
+            "ok": True,
+            "config": "config.yaml",
+            "base_config": "configs/base_config_taiwan.yaml",
+            "wandb": {
+                "entity": "test-entity",
+                "project": "test-project",
+                "run_name": "taiwan/full/test",
+            },
+            "api": "openai_responses",
+            "model": "gpt-4.1-mini-2025-04-14",
+            "enabled_benchmarks": ["agentic_math", "swebench_pro"],
+            "will_initialize_wandb": False,
+            "will_log_wandb_artifacts": False,
+            "will_initialize_weave": False,
+            "will_start_inference_engine": False,
+            "will_run_evaluators": False,
+            "token_validation": {"ok": True, "has_errors": False, "results": []},
+        },
+    )
+
+
 def add_wandb_run_metadata(payload, *, benchmark="agentic_math", run_id="run-1"):
     required = payload.setdefault("required_evidence", {})
     required["run_metadata"] = {
@@ -93,6 +123,7 @@ def wandb_completion_payload(*, run_id: str = "run-1"):
 
 def completed_review_payload(completion_path: Path):
     completion_sha256 = sha256_file(completion_path)
+    preflight = write_run_eval_preflight_payload()
     return {
         "status": "completed",
         "phase": "full",
@@ -104,6 +135,24 @@ def completed_review_payload(completion_path: Path):
         "execution_plan_path": "plan.json",
         "batch_manifest_path": "manifest.json",
         "post_run_cost_command": "estimate",
+        "run_eval_preflights": [
+            {
+                "config": "config.yaml",
+                "output_json": str(preflight),
+                "required_before_run_eval": True,
+                "command": [
+                    "python3",
+                    "scripts/run_eval.py",
+                    "--base-config",
+                    "base_config_taiwan.yaml",
+                    "--config",
+                    "config.yaml",
+                    "--preflight",
+                    "--preflight-json",
+                    str(preflight),
+                ],
+            }
+        ],
         "actual_cost_estimate": "$12.34",
         "provider_bill_reference": "billing export",
         "created_at": time.time() - 100,
@@ -112,6 +161,10 @@ def completed_review_payload(completion_path: Path):
         "runs": [
             {
                 "config": "config.yaml",
+                "preflight_json": str(preflight),
+                "preflight_returncode": 0,
+                "preflight_ok": True,
+                "preflight_status": "passed",
                 "log_path": "run.log",
                 "wandb_entity": "test-entity",
                 "wandb_project": "test-project",
@@ -444,6 +497,13 @@ def test_paid_review_doctor_accepts_verified_one_model_review(tmp_path):
         "provider_bill_reference",
         "runs",
     ]
+    assert "run_eval_preflights" in payload["review_completion_requirements"]["review_required_fields"]
+    assert payload["review_completion_requirements"]["run_eval_preflight_required_when"] == (
+        "before every run_eval.py invocation"
+    )
+    assert "preflight_json" in payload["review_completion_requirements"]["run_required_fields"]
+    assert "preflight_returncode" in payload["review_completion_requirements"]["run_required_fields"]
+    assert "preflight_ok" in payload["review_completion_requirements"]["run_required_fields"]
     assert (
         payload["review_completion_requirements"]["wandb_completion_verifier_requirements"][
             "observed_evidence.run_state"

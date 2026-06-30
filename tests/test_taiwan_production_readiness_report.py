@@ -44,6 +44,36 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def write_run_eval_preflight_payload(path: Path | None = None):
+    if path is None:
+        path = REPO_ROOT / "temp" / "test_taiwan_run_eval_preflight.json"
+    return write_json(
+        path,
+        {
+            "schema_version": 1,
+            "generated_at": time.time(),
+            "status": "passed",
+            "ok": True,
+            "config": "configs/taiwan_full/generated/config-taiwan-full-test.yaml",
+            "base_config": "configs/base_config_taiwan.yaml",
+            "wandb": {
+                "entity": "llm-leaderboard",
+                "project": "tc-leaderboard",
+                "run_name": "taiwan/full/test",
+            },
+            "api": "openai_responses",
+            "model": "gpt-4.1-mini-2025-04-14",
+            "enabled_benchmarks": ["agentic_math", "swebench_pro"],
+            "will_initialize_wandb": False,
+            "will_log_wandb_artifacts": False,
+            "will_initialize_weave": False,
+            "will_start_inference_engine": False,
+            "will_run_evaluators": False,
+            "token_validation": {"ok": True, "has_errors": False, "results": []},
+        },
+    )
+
+
 def add_wandb_run_metadata(payload, *, benchmark="agentic_math", run_id="run-1"):
     required = payload.setdefault("required_evidence", {})
     required["run_metadata"] = {
@@ -1643,6 +1673,7 @@ def test_one_model_canary_rejects_legacy_wandb_completion_verifier(tmp_path):
 
 
 def completed_review_payload(**overrides):
+    preflight = write_run_eval_preflight_payload()
     payload = {
         "status": "completed",
         "phase": "full",
@@ -1654,6 +1685,24 @@ def completed_review_payload(**overrides):
         "execution_plan_path": "outputs/taiwan_full_eval/canary_full_execution_plan.json",
         "batch_manifest_path": "outputs/taiwan_full_eval/batch_manifest.json",
         "post_run_cost_command": "uv run python scripts/analysis/estimate_agentic_usage_costs.py outputs/taiwan_full_eval",
+        "run_eval_preflights": [
+            {
+                "config": "configs/taiwan_full/generated/config-taiwan-full-test.yaml",
+                "output_json": str(preflight),
+                "required_before_run_eval": True,
+                "command": [
+                    "python3",
+                    "scripts/run_eval.py",
+                    "--base-config",
+                    "base_config_taiwan.yaml",
+                    "--config",
+                    "configs/taiwan_full/generated/config-taiwan-full-test.yaml",
+                    "--preflight",
+                    "--preflight-json",
+                    str(preflight),
+                ],
+            }
+        ],
         "actual_cost_estimate": "$12.34",
         "provider_bill_reference": "billing export 2026-06-27",
         "created_at": time.time() - 100,
@@ -1663,6 +1712,10 @@ def completed_review_payload(**overrides):
         "runs": [
             {
                 "config": "configs/taiwan_full/generated/config-taiwan-full-test.yaml",
+                "preflight_json": str(preflight),
+                "preflight_returncode": 0,
+                "preflight_ok": True,
+                "preflight_status": "passed",
                 "log_path": "outputs/taiwan_full_eval/logs/full-test.log",
                 "wandb_run_id": "run-1",
                 "wandb_entity": "test-entity",
@@ -1784,6 +1837,26 @@ def test_paid_run_review_package_accepts_complete_review(tmp_path):
     assert record["actual_cost_estimate_present"] is True
     assert record["configs"] == ["configs/taiwan_full/generated/config-taiwan-full-test.yaml"]
     assert record["requires_paid_model_api"] is False
+
+
+def test_paid_run_review_package_rejects_completed_review_without_run_eval_preflight(tmp_path):
+    module = load_module()
+    payload = completed_review_payload()
+    payload.pop("run_eval_preflights")
+    payload["runs"][0].pop("preflight_json")
+    payload["runs"][0].pop("preflight_returncode")
+    payload["runs"][0].pop("preflight_ok")
+    review = write_json(tmp_path / "review.json", payload)
+
+    result = module.evaluate_paid_run_review_package([review], require=True)
+
+    assert result["ok"] is False
+    assert result["status"] == "invalid_review_package"
+    record = result["records"][0]
+    assert "completed review must include run_eval_preflights" in record["errors"]
+    assert "run 1 missing preflight_json" in record["errors"]
+    assert "run 1 preflight_returncode must be 0" in record["errors"]
+    assert "run 1 preflight_ok must be true" in record["errors"]
 
 
 def test_paid_run_review_package_rejects_completed_agentic_without_nemoclaw_config(tmp_path):

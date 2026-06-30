@@ -495,6 +495,7 @@ def paid_run_review_completion_requirements(
             "expected_cost_band",
             "model_count",
             "configs",
+            "run_eval_preflights",
             "created_at",
             "execution_plan_path",
             "batch_manifest_path",
@@ -520,12 +521,27 @@ def paid_run_review_completion_requirements(
         ],
         "run_required_fields": [
             "config",
+            "preflight_json",
+            "preflight_returncode",
+            "preflight_ok",
             "log_path",
             "returncode",
             "started_at",
             "ended_at",
             "wandb_run_id for successful runs",
             "wandb_entity and wandb_project for successful W&B-verified runs",
+        ],
+        "run_eval_preflight_required_when": "before every run_eval.py invocation",
+        "run_eval_preflight_required_fields": [
+            "top-level run_eval_preflights[] with command/output_json/required_before_run_eval",
+            "per-run preflight_json",
+            "per-run preflight_returncode=0",
+            "per-run preflight_ok=true",
+            "preflight payload ok=true",
+            "preflight payload status=passed",
+            "preflight payload will_initialize_wandb=false",
+            "preflight payload will_start_inference_engine=false",
+            "preflight payload will_run_evaluators=false",
         ],
         "wandb_completion_required_when": "verify_wandb_completion=true",
         "wandb_completion_required_fields": ["benchmark", "path", "entity", "project", "run_id"],
@@ -3546,6 +3562,71 @@ def _review_external_action_approval(payload: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _review_run_eval_preflight_payload(
+    path_value: Any,
+    *,
+    run_index: int,
+) -> list[str]:
+    errors: list[str] = []
+    if not _nonempty_string(path_value):
+        return [f"run {run_index} missing preflight_json"]
+    preflight_path = repo_path(str(path_value))
+    payload, error = read_json(preflight_path)
+    if payload is None:
+        return [f"run {run_index} preflight_json could not be read: {error or 'invalid JSON'}"]
+    if payload.get("ok") is not True:
+        errors.append(f"run {run_index} preflight payload ok must be true")
+    if payload.get("status") != "passed":
+        errors.append(f"run {run_index} preflight payload status must be passed")
+    for field in (
+        "will_initialize_wandb",
+        "will_log_wandb_artifacts",
+        "will_initialize_weave",
+        "will_start_inference_engine",
+        "will_run_evaluators",
+    ):
+        if payload.get(field) is not False:
+            errors.append(f"run {run_index} preflight payload {field} must be false")
+    enabled_benchmarks = payload.get("enabled_benchmarks")
+    if not isinstance(enabled_benchmarks, list):
+        errors.append(f"run {run_index} preflight payload enabled_benchmarks must be a list")
+    return errors
+
+
+def _review_run_eval_preflight_records(payload: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    records = payload.get("run_eval_preflights")
+    model_count = payload.get("model_count")
+    if not isinstance(records, list) or not records:
+        return ["completed review must include run_eval_preflights"]
+    if isinstance(model_count, int) and model_count > 0 and len(records) != model_count:
+        errors.append(
+            f"completed review has {len(records)} run_eval_preflights but model_count is {model_count}"
+        )
+    for index, record in enumerate(records, start=1):
+        if not isinstance(record, dict):
+            errors.append(f"run_eval_preflights {index} is not an object")
+            continue
+        for field in ("config", "output_json"):
+            if not _nonempty_string(record.get(field)):
+                errors.append(f"run_eval_preflights {index} missing {field}")
+        command = record.get("command")
+        if not isinstance(command, list) or not command:
+            errors.append(f"run_eval_preflights {index} missing command")
+        else:
+            if "scripts/run_eval.py" not in [str(part) for part in command]:
+                errors.append(f"run_eval_preflights {index} command must invoke scripts/run_eval.py")
+            if "--preflight" not in command:
+                errors.append(f"run_eval_preflights {index} command missing --preflight")
+            if "--preflight-json" not in command:
+                errors.append(f"run_eval_preflights {index} command missing --preflight-json")
+        if record.get("required_before_run_eval") is not True:
+            errors.append(
+                f"run_eval_preflights {index} required_before_run_eval must be true"
+            )
+    return errors
+
+
 def _review_completed_errors(payload: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if numeric_timestamp(payload.get("ended_at")) is None:
@@ -3562,6 +3643,7 @@ def _review_completed_errors(payload: dict[str, Any]) -> list[str]:
         errors.append("completed review provider_bill_reference must not be a placeholder")
     runs = payload.get("runs")
     model_count = payload.get("model_count")
+    errors.extend(_review_run_eval_preflight_records(payload))
     if not isinstance(runs, list) or not runs:
         errors.append("completed review must include runs")
         return errors
@@ -3576,6 +3658,19 @@ def _review_completed_errors(payload: dict[str, Any]) -> list[str]:
         for field in ("config", "log_path"):
             if not _nonempty_string(run.get(field)):
                 errors.append(f"run {index} missing {field}")
+        if not _nonempty_string(run.get("preflight_json")):
+            errors.append(f"run {index} missing preflight_json")
+        if run.get("preflight_returncode") != 0:
+            errors.append(f"run {index} preflight_returncode must be 0")
+        if run.get("preflight_ok") is not True:
+            errors.append(f"run {index} preflight_ok must be true")
+        if _nonempty_string(run.get("preflight_json")):
+            errors.extend(
+                _review_run_eval_preflight_payload(
+                    run.get("preflight_json"),
+                    run_index=index,
+                )
+            )
         if "returncode" not in run:
             errors.append(f"run {index} missing returncode")
         if numeric_timestamp(run.get("started_at")) is None:
