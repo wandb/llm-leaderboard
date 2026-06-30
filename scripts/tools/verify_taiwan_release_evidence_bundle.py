@@ -238,6 +238,42 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 '"swebench_pro.nemoclaw_checkout_transfer_mode"',
             ),
             (
+                "Agentic production evidence requirements constant",
+                "AGENTIC_PRODUCTION_EVIDENCE_REQUIREMENTS",
+            ),
+            (
+                "Agentic production evidence guard function",
+                "def build_agentic_production_evidence_guard(",
+            ),
+            (
+                "Agentic production evidence missing-flags status",
+                "agentic_production_evidence_required",
+            ),
+            (
+                "Agentic production evidence requires W&B completion",
+                "--verify-wandb-completion",
+            ),
+            (
+                "Agentic production evidence requires Weave Agents",
+                "--verify-weave-agents",
+            ),
+            (
+                "Agentic production evidence requires Weave content canary",
+                "--require-weave-content-canary",
+            ),
+            (
+                "Agentic production evidence requires NeMoClaw config guard",
+                "--require-nemoclaw-agentic-config",
+            ),
+            (
+                "Agentic production evidence requires tool content",
+                "--weave-agents-require-tool-content",
+            ),
+            (
+                "Agentic production evidence requires usage",
+                "--weave-agents-require-usage",
+            ),
+            (
                 "Weave request-model alias resolver",
                 "def weave_expected_request_models(",
             ),

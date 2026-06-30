@@ -153,6 +153,15 @@ def passing_weave_content_canary_gate_payload() -> dict:
     }
 
 
+def write_passing_weave_content_canary_gate(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(passing_weave_content_canary_gate_payload()) + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
 def test_default_wandb_verify_benchmarks_by_phase():
     module = load_module()
 
@@ -620,8 +629,7 @@ def test_weave_content_canary_gate_does_not_block_prepare_only(tmp_path):
 
 def test_weave_content_canary_gate_accepts_passed_json(tmp_path):
     module = load_module()
-    gate = tmp_path / "content_canary.gate.json"
-    gate.write_text(json.dumps(passing_weave_content_canary_gate_payload()), encoding="utf-8")
+    gate = write_passing_weave_content_canary_gate(tmp_path / "content_canary.gate.json")
 
     record = module.build_weave_content_canary_gate_record(
         gate_path=gate,
@@ -784,8 +792,20 @@ def test_paid_agentic_run_rejects_hand_edited_weave_gate_before_run_eval(
             str(tmp_path / "generated"),
             "--output-root",
             str(output_root),
+            "--agentic-math-nemoclaw-sandbox",
+            "nejumi-taiwan",
+            "--swebench-pro-nemoclaw-sandbox",
+            "nejumi-taiwan",
+            "--swebench-pro-nemoclaw-checkout-transfer-mode",
+            "copy",
+            "--require-nemoclaw-agentic-config",
             "--wandb-run-id-prefix",
             "twcanary-test",
+            "--verify-wandb-completion",
+            "--verify-weave-agents",
+            "--weave-agents-require-tool-span",
+            "--weave-agents-require-tool-content",
+            "--weave-agents-require-usage",
             "--run-purpose",
             "paid content canary guard test",
             "--expected-cost-band",
@@ -1262,6 +1282,49 @@ def test_nemoclaw_agentic_config_guard_requires_remote_lookup_deny_policy(tmp_pa
     )
 
 
+def test_agentic_production_evidence_guard_requires_wandb_weave_and_nemoclaw(tmp_path):
+    module = load_module()
+    args = SimpleNamespace(
+        require_nemoclaw_agentic_config=False,
+        require_weave_content_canary=False,
+        weave_content_canary_gate=None,
+        verify_wandb_completion=False,
+        verify_weave_agents=False,
+        wandb_run_id_prefix="",
+        weave_agents_no_require_content=False,
+        weave_agents_require_tool_span=False,
+        weave_agents_require_tool_content=False,
+        weave_agents_require_usage=False,
+    )
+
+    blocked = module.build_agentic_production_evidence_guard(
+        args,
+        phase="agentic",
+        will_call_paid_model_api=True,
+    )
+    prepare_only = module.build_agentic_production_evidence_guard(
+        args,
+        phase="agentic",
+        will_call_paid_model_api=False,
+    )
+    nonagentic = module.build_agentic_production_evidence_guard(
+        args,
+        phase="nonagentic",
+        will_call_paid_model_api=True,
+    )
+
+    assert blocked["enforced"] is True
+    assert blocked["ok"] is False
+    assert "--verify-wandb-completion" in blocked["missing_flags"]
+    assert "--verify-weave-agents" in blocked["missing_flags"]
+    assert "--require-nemoclaw-agentic-config" in blocked["missing_flags"]
+    assert "--weave-content-canary-gate" in blocked["missing_flags"]
+    assert prepare_only["enforced"] is False
+    assert prepare_only["ok"] is True
+    assert nonagentic["enforced"] is False
+    assert nonagentic["ok"] is True
+
+
 def test_paid_run_executes_run_eval_preflight_before_run_eval(tmp_path, monkeypatch):
     module = load_module()
     manifest = tmp_path / "models.yaml"
@@ -1290,6 +1353,9 @@ def test_paid_run_executes_run_eval_preflight_before_run_eval(tmp_path, monkeypa
     )
     approval = output_root / "external_action_approval.verify.json"
     source_packet = write_external_action_approval_report(approval)
+    gate = write_passing_weave_content_canary_gate(
+        output_root / "content_canary.gate.json"
+    )
     calls: list[list[str]] = []
 
     def fake_stream_run(command, log_path, env):
@@ -1341,6 +1407,14 @@ def test_paid_run_executes_run_eval_preflight_before_run_eval(tmp_path, monkeypa
             "--require-nemoclaw-agentic-config",
             "--wandb-run-id-prefix",
             "twcanary-test",
+            "--verify-wandb-completion",
+            "--verify-weave-agents",
+            "--weave-agents-require-tool-span",
+            "--weave-agents-require-tool-content",
+            "--weave-agents-require-usage",
+            "--weave-content-canary-gate",
+            str(gate),
+            "--require-weave-content-canary",
             "--run-purpose",
             "paid preflight order test",
             "--expected-cost-band",
@@ -1405,6 +1479,9 @@ def test_paid_run_stops_before_run_eval_when_preflight_fails(tmp_path, monkeypat
     )
     approval = output_root / "external_action_approval.verify.json"
     source_packet = write_external_action_approval_report(approval)
+    gate = write_passing_weave_content_canary_gate(
+        output_root / "content_canary.gate.json"
+    )
     calls: list[list[str]] = []
 
     def fake_stream_run(command, log_path, env):
@@ -1455,6 +1532,14 @@ def test_paid_run_stops_before_run_eval_when_preflight_fails(tmp_path, monkeypat
             "--require-nemoclaw-agentic-config",
             "--wandb-run-id-prefix",
             "twcanary-test",
+            "--verify-wandb-completion",
+            "--verify-weave-agents",
+            "--weave-agents-require-tool-span",
+            "--weave-agents-require-tool-content",
+            "--weave-agents-require-usage",
+            "--weave-content-canary-gate",
+            str(gate),
+            "--require-weave-content-canary",
             "--run-purpose",
             "paid preflight failure test",
             "--expected-cost-band",

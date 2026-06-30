@@ -74,6 +74,18 @@ REQUIRED_NEMOCLAW_AGENTIC_DENIED_TOOLS = set(AGENTIC_DENIED_TOOLS)
 REQUIRED_NEMOCLAW_AGENTIC_DENIED_ARGUMENT_PATTERNS = set(
     AGENTIC_DENIED_ARGUMENT_PATTERNS
 )
+AGENTIC_PRODUCTION_EVIDENCE_REQUIREMENTS = {
+    "--require-nemoclaw-agentic-config": "Agentic Math/SWE generated configs must route through NeMoClaw with deny-policy guards.",
+    "--require-weave-content-canary": "A fresh native Weave content canary must pass before paid agentic execution.",
+    "--weave-content-canary-gate": "The paid run must be bound to the reviewed content-canary gate JSON.",
+    "--verify-wandb-completion": "W&B scalar/table/artifact completion verification is mandatory.",
+    "--verify-weave-agents": "Native W&B Weave Agents trace verification is mandatory.",
+    "--wandb-run-id-prefix": "W&B run IDs must be explicit so W&B and Weave evidence can be scoped to this run.",
+    "--weave-agents-require-content": "Weave Agents verification must require visible conversation content.",
+    "--weave-agents-require-tool-span": "Weave Agents verification must require tool spans.",
+    "--weave-agents-require-tool-content": "Weave Agents verification must require tool content.",
+    "--weave-agents-require-usage": "Weave Agents verification must require usage metadata for cost/accountability review.",
+}
 
 
 def nonempty_string(value: object) -> bool:
@@ -370,6 +382,42 @@ def build_nemoclaw_agentic_config_guard(
         "ok": not errors,
         "errors": errors,
         "records": records,
+    }
+
+
+def build_agentic_production_evidence_guard(
+    args: argparse.Namespace,
+    *,
+    phase: str,
+    will_call_paid_model_api: bool,
+) -> dict[str, object]:
+    enforced = bool(will_call_paid_model_api and phase in AGENTIC_GENERATION_PHASES)
+    observations = {
+        "--require-nemoclaw-agentic-config": bool(args.require_nemoclaw_agentic_config),
+        "--require-weave-content-canary": bool(args.require_weave_content_canary),
+        "--weave-content-canary-gate": bool(args.weave_content_canary_gate),
+        "--verify-wandb-completion": bool(args.verify_wandb_completion),
+        "--verify-weave-agents": bool(args.verify_weave_agents),
+        "--wandb-run-id-prefix": nonempty_string(args.wandb_run_id_prefix),
+        "--weave-agents-require-content": not bool(args.weave_agents_no_require_content),
+        "--weave-agents-require-tool-span": bool(args.weave_agents_require_tool_span),
+        "--weave-agents-require-tool-content": bool(args.weave_agents_require_tool_content),
+        "--weave-agents-require-usage": bool(args.weave_agents_require_usage),
+    }
+    missing = [flag for flag, present in observations.items() if not present]
+    errors = [
+        f"{flag} is required for paid {phase} execution: {AGENTIC_PRODUCTION_EVIDENCE_REQUIREMENTS[flag]}"
+        for flag in missing
+    ] if enforced else []
+    return {
+        "required": phase in AGENTIC_GENERATION_PHASES,
+        "enforced": enforced,
+        "phase": phase,
+        "ok": not errors,
+        "missing_flags": missing if enforced else [],
+        "errors": errors,
+        "observations": observations,
+        "requirements": AGENTIC_PRODUCTION_EVIDENCE_REQUIREMENTS,
     }
 
 
@@ -1272,6 +1320,11 @@ def main() -> None:
         configs,
         phase=args.phase,
     )
+    agentic_production_evidence_guard = build_agentic_production_evidence_guard(
+        args,
+        phase=args.phase,
+        will_call_paid_model_api=will_call_paid_model_api,
+    )
     nemoclaw_agentic_config_guard = build_nemoclaw_agentic_config_guard(
         configs,
         phase=args.phase,
@@ -1314,6 +1367,7 @@ def main() -> None:
         "model_count": len(configs),
         "configs": [config_arg(path) for path in configs],
         "selected_config_model_bindings": selected_config_model_bindings,
+        "agentic_production_evidence_guard": agentic_production_evidence_guard,
         "nemoclaw_agentic_config_guard": nemoclaw_agentic_config_guard,
         "wandb_run_id_prefix": args.wandb_run_id_prefix or "",
         "verify_wandb_completion": bool(args.verify_wandb_completion),
@@ -1353,6 +1407,7 @@ def main() -> None:
         "model_count": len(configs),
         "configs": execution_plan["configs"],
         "selected_config_model_bindings": selected_config_model_bindings,
+        "agentic_production_evidence_guard": agentic_production_evidence_guard,
         "nemoclaw_agentic_config_guard": nemoclaw_agentic_config_guard,
         "wandb_run_id_prefix": args.wandb_run_id_prefix or "",
         "verify_wandb_completion": bool(args.verify_wandb_completion),
@@ -1459,6 +1514,15 @@ def main() -> None:
                     "wandb_run_id when --weave-agents-conversation-id-contains is not set"
                 ),
             },
+            "agentic_production_evidence": {
+                "required_for_paid_agentic_or_full": True,
+                "required_flags": list(AGENTIC_PRODUCTION_EVIDENCE_REQUIREMENTS),
+                "purpose": (
+                    "Prevent paid Agentic Math/SWE execution from being reviewed "
+                    "as complete unless NeMoClaw routing, W&B completion, and "
+                    "native Weave Agents evidence are all required up front."
+                ),
+            },
         },
         "execution_plan_path": str(plan_path),
         "batch_manifest_path": str(batch_manifest_path),
@@ -1474,6 +1538,15 @@ def main() -> None:
         "ended_at": None,
     }
     write_json(review_path, review_record)
+
+    if not agentic_production_evidence_guard["ok"]:
+        review_record["status"] = "agentic_production_evidence_required"
+        review_record["blocking_reason"] = agentic_production_evidence_guard
+        write_json(review_path, review_record)
+        raise SystemExit(
+            "Paid Agentic Math/SWE execution requires production evidence flags: "
+            + ", ".join(str(item) for item in agentic_production_evidence_guard["missing_flags"])
+        )
 
     if not nemoclaw_agentic_config_guard["ok"]:
         review_record["status"] = "nemoclaw_agentic_config_failed"
