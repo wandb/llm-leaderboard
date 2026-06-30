@@ -1,6 +1,6 @@
 # Taiwan Leaderboard Task Status
 
-Last updated: 2026-07-01 02:15 JST
+Last updated: 2026-07-01 02:19 JST
 
 This file is the persistent progress ledger for the Taiwan leaderboard work.
 Update it at every meaningful milestone so progress is visible even when chat
@@ -19,7 +19,7 @@ docs/taiwan_leaderboard_overview_ja.md
 ```text
 branch: dev-zh-TW
 remote: origin/dev-zh-TW
-latest pushed implementation commit: 1ed2ada Require run_eval preflight evidence in paid reviews
+latest pushed implementation commit: 6290523 Bind paid review preflight records to runs
 
 pushed implementation/docs commits this cycle before this ledger update:
   ebe5dcd Ignore local evaluation scratch dirs
@@ -33,6 +33,7 @@ pushed implementation/docs commits this cycle before this ledger update:
   ac91dc4 Keep run_eval preflight lightweight
   37cd5e0 Preflight run_eval before Taiwan batch execution
   1ed2ada Require run_eval preflight evidence in paid reviews
+  6290523 Bind paid review preflight records to runs
 
 validated before push:
   NeMoClaw/OpenClaw setup tests: 47 passed
@@ -68,6 +69,11 @@ validated before push:
     paid-run review gate re-reads the preflight JSON and requires ok=true, status=passed, and W&B/Weave/model/evaluator execution flags all false
     py_compile build_taiwan_production_readiness_report.py, check_taiwan_paid_run_review_package.py, and related tests: passed
     pytest tests/test_taiwan_production_readiness_report.py tests/test_check_taiwan_paid_run_review_package.py: 84 passed
+    pytest tests/test_taiwan_release_evidence_bundle.py tests/test_verify_taiwan_release_evidence_bundle.py: 279 passed
+  paid-review preflight binding checks after 6290523:
+    top-level run_eval_preflights command --config and --preflight-json must match the recorded config/output_json
+    per-run preflight_json must match one of the top-level run_eval_preflights output_json values
+    pytest tests/test_taiwan_production_readiness_report.py tests/test_check_taiwan_paid_run_review_package.py: 85 passed
     pytest tests/test_taiwan_release_evidence_bundle.py tests/test_verify_taiwan_release_evidence_bundle.py: 279 passed
 
 cost/API state for these commits:
