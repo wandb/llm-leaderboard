@@ -304,6 +304,7 @@ def verify_agents_payload(
     require_usage: bool = False,
     require_no_errors: bool = True,
     required_texts: list[str] | None = None,
+    expected_request_models: list[str] | None = None,
     conversation_id: str | None = None,
     conversation_id_contains: str | None = None,
 ) -> dict[str, Any]:
@@ -456,6 +457,16 @@ def verify_agents_payload(
     tool_spans_with_content = [span for span in tool_spans if _has_tool_content(span)]
     final_answer_spans = [span for span in message_spans if _is_final_answer_span(span)]
     visible_trace_text = "\n".join(_span_visible_text(span) for span in latest_trace_spans_chronological)
+    expected_request_models = [
+        model.strip() for model in (expected_request_models or []) if model.strip()
+    ]
+    observed_request_models = sorted(
+        {
+            str(span.get("request_model")).strip()
+            for span in latest_trace_spans_chronological
+            if str(span.get("request_model") or "").strip()
+        }
+    )
     project_id = f"{entity}/{project}"
 
     if timestamp_issues:
@@ -557,6 +568,35 @@ def verify_agents_payload(
                     "latest trace exposes all required canary text",
                     required_text_count=len(required_texts),
                     visible_text_length=len(visible_trace_text),
+                )
+            )
+
+    if expected_request_models:
+        if not observed_request_models:
+            checks.append(
+                _fail_check(
+                    "request_model",
+                    "latest trace does not expose request_model on any span",
+                    expected_request_models=expected_request_models,
+                    observed_request_models=[],
+                )
+            )
+        elif set(expected_request_models).isdisjoint(observed_request_models):
+            checks.append(
+                _fail_check(
+                    "request_model",
+                    "latest trace request_model does not match expected model aliases",
+                    expected_request_models=expected_request_models,
+                    observed_request_models=observed_request_models,
+                )
+            )
+        else:
+            checks.append(
+                _ok_check(
+                    "request_model",
+                    "latest trace request_model matches an expected model alias",
+                    expected_request_models=expected_request_models,
+                    observed_request_models=observed_request_models,
                 )
             )
 
@@ -781,6 +821,7 @@ def verify_agents_payload(
         "trace_input_tokens": trace_input_tokens,
         "trace_output_tokens": trace_output_tokens,
         "required_text_count": len(required_texts),
+        "request_model_count": len(observed_request_models),
     }
     ok = all(check["ok"] for check in checks)
     result = {
@@ -871,6 +912,12 @@ def parse_args() -> argparse.Namespace:
         default=[],
         help="Require this exact text to be visible in the latest matching trace content. Repeatable.",
     )
+    parser.add_argument(
+        "--expected-request-model",
+        action="append",
+        default=[],
+        help="Require the latest matching trace to expose one of these request_model values. Repeatable.",
+    )
     parser.add_argument("--allow-error-spans", action="store_true")
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
     parser.add_argument("--json", type=Path, help="Optional path to write verifier JSON.")
@@ -904,6 +951,7 @@ def main() -> None:
         require_usage=bool(args.require_usage),
         require_no_errors=not bool(args.allow_error_spans),
         required_texts=args.require_text,
+        expected_request_models=args.expected_request_model,
         conversation_id=args.conversation_id,
         conversation_id_contains=args.conversation_id_contains,
     )
@@ -923,6 +971,7 @@ def main() -> None:
         "usage_required": bool(args.require_usage),
         "no_error_spans_required": not bool(args.allow_error_spans),
         "required_texts": list(args.require_text or []),
+        "expected_request_models": list(args.expected_request_model or []),
         "conversation_id": args.conversation_id or "",
         "conversation_id_contains": args.conversation_id_contains or "",
     }

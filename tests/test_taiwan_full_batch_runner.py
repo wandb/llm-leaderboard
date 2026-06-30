@@ -399,6 +399,10 @@ def test_build_weave_agents_verify_command_adds_strict_trace_options():
         require_tool_content=True,
         require_usage=True,
         conversation_id_contains="agentic_math",
+        expected_request_models=[
+            "openai-direct/gpt-4.1-mini-2025-04-14",
+            "gpt-4.1-mini-2025-04-14",
+        ],
     )
 
     assert command[:2] == ["python3", str(module.WEAVE_AGENTS_VERIFY_RUNNER)]
@@ -408,7 +412,41 @@ def test_build_weave_agents_verify_command_adds_strict_trace_options():
     assert "--require-tool-span" in command
     assert "--require-tool-content" in command
     assert "--require-usage" in command
-    assert command[-2:] == ["--conversation-id-contains", "agentic_math"]
+    conversation_filter_index = command.index("--conversation-id-contains")
+    assert ["--conversation-id-contains", "agentic_math"] == command[
+        conversation_filter_index : conversation_filter_index + 2
+    ]
+    assert command.count("--expected-request-model") == 2
+    assert "gpt-4.1-mini-2025-04-14" in command
+    assert "openai-direct/gpt-4.1-mini-2025-04-14" in command
+
+
+def test_weave_expected_request_models_reads_generated_config(tmp_path):
+    module = load_module()
+    config = tmp_path / "config-taiwan-full-gpt-mini.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "api: openai_responses",
+                "model:",
+                "  pretrained_model_name_or_path: gpt-4.1-mini-2025-04-14",
+                "run:",
+                "  agentic_math: true",
+                "  swebench_pro: true",
+                "agentic_math:",
+                "  openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14",
+                "swebench_pro:",
+                "  openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert module.weave_expected_request_models(config, phase="agentic") == [
+        "gpt-4.1-mini-2025-04-14",
+        "openai-direct/gpt-4.1-mini-2025-04-14",
+    ]
 
 
 def test_resolve_weave_conversation_id_contains_defaults_to_wandb_run_id():

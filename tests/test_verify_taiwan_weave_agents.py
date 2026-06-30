@@ -39,6 +39,7 @@ def spans_payload(
     output_content="working draft",
     final_after_tool=False,
     final_output_content="ANSWER: 1",
+    request_model="gpt-4.1-mini-2025-04-14",
 ):
     first_message_started = "2026-06-27T00:00:01.000000"
     tool_started = "2026-06-27T00:00:02.000000"
@@ -58,6 +59,7 @@ def spans_payload(
                 "conversation_id": conversation_id,
                 "operation_name": "chat",
                 "span_name": "chat",
+                "request_model": request_model,
                 "started_at": first_message_started,
                 "ended_at": "2026-06-27T00:00:04.000000",
                 "input_messages": input_messages,
@@ -74,6 +76,7 @@ def spans_payload(
                 "conversation_id": conversation_id,
                 "operation_name": "execute_tool",
                 "span_name": "execute_tool",
+                "request_model": request_model,
                 "tool_name": "exec",
                 "started_at": tool_started,
                 "ended_at": "2026-06-27T00:00:02.500000",
@@ -94,6 +97,7 @@ def spans_payload(
                 "conversation_id": conversation_id,
                 "operation_name": "chat",
                 "span_name": "chat",
+                "request_model": request_model,
                 "started_at": "2026-06-27T00:00:03.000000",
                 "ended_at": "2026-06-27T00:00:04.000000",
                 "input_messages": [],
@@ -152,6 +156,7 @@ def test_verify_weave_agents_accepts_contentful_ordered_trace():
         "trace_input_tokens": 10,
         "trace_output_tokens": 3,
         "required_text_count": 0,
+        "request_model_count": 1,
     }
 
 
@@ -441,5 +446,53 @@ def test_verify_weave_agents_rejects_missing_required_texts():
         check["name"] == "required_text_capture"
         and not check["ok"]
         and check["missing_required_texts"] == ["CANARY_RESULT TEST_CANARY 91"]
+        for check in result["checks"]
+    )
+
+
+def test_verify_weave_agents_accepts_expected_request_model_alias():
+    module = load_module()
+
+    result = module.verify_agents_payload(
+        agents_payload(),
+        spans_payload(request_model="gpt-4.1-mini-2025-04-14"),
+        entity="llm-leaderboard",
+        project="tc-leaderboard",
+        agent_name="nejumi-taiwan-openclaw",
+        require_content=True,
+        expected_request_models=[
+            "openai-direct/gpt-4.1-mini-2025-04-14",
+            "gpt-4.1-mini-2025-04-14",
+        ],
+    )
+
+    assert result["ok"] is True
+    assert result["content_capture_health"]["request_model_count"] == 1
+    assert any(
+        check["name"] == "request_model"
+        and check["ok"]
+        and "gpt-4.1-mini-2025-04-14" in check["observed_request_models"]
+        for check in result["checks"]
+    )
+
+
+def test_verify_weave_agents_rejects_unexpected_request_model():
+    module = load_module()
+
+    result = module.verify_agents_payload(
+        agents_payload(),
+        spans_payload(request_model="wrong-model"),
+        entity="llm-leaderboard",
+        project="tc-leaderboard",
+        agent_name="nejumi-taiwan-openclaw",
+        require_content=True,
+        expected_request_models=["gpt-4.1-mini-2025-04-14"],
+    )
+
+    assert result["ok"] is False
+    assert any(
+        check["name"] == "request_model"
+        and not check["ok"]
+        and check["observed_request_models"] == ["wrong-model"]
         for check in result["checks"]
     )

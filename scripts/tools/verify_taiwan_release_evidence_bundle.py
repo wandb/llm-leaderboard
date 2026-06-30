@@ -235,6 +235,39 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "NeMoClaw W&B SWE checkout transfer expectation",
                 '"swebench_pro.nemoclaw_checkout_transfer_mode"',
             ),
+            (
+                "Weave request-model alias resolver",
+                "def weave_expected_request_models(",
+            ),
+            (
+                "Weave request-model verifier option",
+                "--expected-request-model",
+            ),
+            (
+                "Weave request-model verifier pass-through",
+                "expected_request_models=weave_expected_request_models(",
+            ),
+        ),
+    },
+    "scripts/tools/verify_taiwan_weave_agents.py": {
+        "role": "agentic_runner:weave_agents_verifier_script",
+        "tokens": (
+            (
+                "Weave request-model CLI option",
+                "--expected-request-model",
+            ),
+            (
+                "Weave request-model check name",
+                '"request_model"',
+            ),
+            (
+                "Weave expected request-model evidence",
+                '"expected_request_models"',
+            ),
+            (
+                "Weave observed request-model evidence",
+                "observed_request_models",
+            ),
         ),
     },
     "scripts/tools/weave_content_canary_gate_contract.py": {

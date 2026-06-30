@@ -781,6 +781,28 @@ def wandb_verify_config_expectations(config_path: Path, *, benchmark: str) -> di
     return expectations
 
 
+def request_model_aliases(model_id: str) -> list[str]:
+    value = model_id.strip()
+    if not value:
+        return []
+    aliases = [value]
+    if value.startswith("openai-direct/"):
+        aliases.append(value.removeprefix("openai-direct/"))
+    if "/" in value:
+        aliases.append(value.rsplit("/", 1)[-1])
+    return list(dict.fromkeys(alias for alias in aliases if alias))
+
+
+def weave_expected_request_models(config_path: Path, *, phase: str) -> list[str]:
+    config = OmegaConf.to_container(OmegaConf.load(config_path), resolve=True)
+    if not isinstance(config, dict):
+        return []
+    models: list[str] = []
+    for model_id in model_identifier_values(config, phase=phase):
+        models.extend(request_model_aliases(model_id))
+    return sorted(dict.fromkeys(models))
+
+
 def build_wandb_verify_command(
     *,
     python: str,
@@ -900,6 +922,7 @@ def build_weave_agents_verify_command(
     require_tool_content: bool,
     require_usage: bool,
     conversation_id_contains: str | None = None,
+    expected_request_models: list[str] | None = None,
 ) -> list[str]:
     command = [
         python,
@@ -919,6 +942,8 @@ def build_weave_agents_verify_command(
         command.append("--require-usage")
     if conversation_id_contains:
         command.extend(["--conversation-id-contains", conversation_id_contains])
+    for model in sorted(dict.fromkeys(expected_request_models or [])):
+        command.extend(["--expected-request-model", model])
     return command
 
 
@@ -1003,6 +1028,7 @@ def run_weave_agents_verification(
     require_tool_content: bool,
     require_usage: bool,
     conversation_id_contains: str | None = None,
+    expected_request_models: list[str] | None = None,
 ) -> dict:
     command = build_weave_agents_verify_command(
         python=python,
@@ -1013,6 +1039,7 @@ def run_weave_agents_verification(
         require_tool_content=require_tool_content,
         require_usage=require_usage,
         conversation_id_contains=conversation_id_contains,
+        expected_request_models=expected_request_models,
     )
     result = subprocess.run(
         command,
@@ -1044,6 +1071,7 @@ def run_weave_agents_verification(
             "tool_content_required": require_tool_content,
             "usage_required": require_usage,
             "conversation_id_contains": conversation_id_contains or "",
+            "expected_request_models": list(expected_request_models or []),
         },
     )
     payload["payload_ok"] = payload_ok
@@ -1713,6 +1741,10 @@ def main() -> None:
                 require_tool_content=bool(args.weave_agents_require_tool_content),
                 require_usage=bool(args.weave_agents_require_usage),
                 conversation_id_contains=weave_conversation_id_contains,
+                expected_request_models=weave_expected_request_models(
+                    config_path,
+                    phase=args.phase,
+                ),
             )
             row["weave_agents_completion"] = {
                 "ok": bool(weave_result.get("ok")),
@@ -1720,6 +1752,10 @@ def main() -> None:
                 "agent_name": args.weave_agent_name,
                 "run_id": row["wandb_run_id"],
                 "conversation_id_contains": weave_conversation_id_contains,
+                "expected_request_models": weave_expected_request_models(
+                    config_path,
+                    phase=args.phase,
+                ),
             }
             if not weave_result.get("ok"):
                 row["returncode"] = 1

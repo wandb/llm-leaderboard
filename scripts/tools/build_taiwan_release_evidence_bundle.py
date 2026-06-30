@@ -45,6 +45,7 @@ AGENTIC_RUNNER_SCRIPT_ROLES = {
     "scripts/tools/run_agentic_math_openclaw.py": "agentic_runner:math_script",
     "scripts/tools/run_swebench_pro_openclaw.py": "agentic_runner:swe_script",
     "scripts/tools/run_taiwan_full_eval_batch.py": "agentic_runner:full_batch_script",
+    "scripts/tools/verify_taiwan_weave_agents.py": "agentic_runner:weave_agents_verifier_script",
     WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT: (
         "agentic_runner:weave_content_canary_gate_contract_script"
     ),
