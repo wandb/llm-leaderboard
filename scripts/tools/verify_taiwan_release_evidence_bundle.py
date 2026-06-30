@@ -69,22 +69,13 @@ OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
         "DEFAULT_WEAVE_CONTENT_CANARY_MAX_AGE_SECONDS",
     ),
     (
-        "native Weave content canary contract validator",
-        "def weave_content_canary_gate_contract_issues(",
-    ),
-    ("native Weave content canary gate name", "WEAVE_CONTENT_CANARY_GATE_NAME"),
-    (
-        "native Weave verifier schema contract",
-        "WEAVE_AGENTS_VERIFIER_SCHEMA_VERSION = 1",
+        "native Weave content canary contract helper import",
+        "from weave_content_canary_gate_contract import",
     ),
     (
-        "Agents diagnostic schema contract",
-        "AGENTS_DIAGNOSTIC_SCHEMA_VERSION = 1",
+        "native Weave content canary contract helper call",
+        "weave_content_canary_gate_contract_issues(payload)",
     ),
-    ("native Weave verifier status field", '"weave_verifier_ok"'),
-    ("Agents diagnostic status field", '"agents_diagnostic_ok"'),
-    ("Weave verifier artifact existence proof", '"verifier_json_exists"'),
-    ("Agents diagnostic artifact existence proof", '"agents_diagnostic_json_exists"'),
     (
         "Weave content canary command-policy call",
         "validate_weave_content_canary_gate_option(",
@@ -145,6 +136,21 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
         "role": "agentic_runner:full_batch_script",
         "tokens": (
             (
+                "native Weave content canary contract helper import",
+                "from weave_content_canary_gate_contract import",
+            ),
+            (
+                "native Weave content canary contract helper call",
+                "weave_content_canary_gate_contract_issues(payload)",
+            ),
+            ("native Weave contract blocking field", "native_weave_contract_ok"),
+            ("hand-edited Weave gate rejection status", "weave_gate_contract_invalid"),
+        ),
+    },
+    "scripts/tools/weave_content_canary_gate_contract.py": {
+        "role": "agentic_runner:weave_content_canary_gate_contract_script",
+        "tokens": (
+            (
                 "native Weave content canary contract validator",
                 "def weave_content_canary_gate_contract_issues(",
             ),
@@ -159,8 +165,6 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ),
             ("native Weave verifier status field", '"weave_verifier_ok"'),
             ("Agents diagnostic status field", '"agents_diagnostic_ok"'),
-            ("native Weave contract blocking field", "native_weave_contract_ok"),
-            ("hand-edited Weave gate rejection status", "weave_gate_contract_invalid"),
             ("Weave verifier artifact existence proof", '"verifier_json_exists"'),
             ("Agents diagnostic artifact existence proof", '"agents_diagnostic_json_exists"'),
         ),

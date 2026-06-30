@@ -4715,6 +4715,46 @@ def test_verify_release_evidence_bundle_rejects_operator_renderer_script_missing
     ) in payload["errors"]
 
 
+def test_verify_release_evidence_bundle_rejects_operator_renderer_missing_weave_contract_helper(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path")
+        == "scripts/tools/render_taiwan_operator_execution_plan.py"
+    )
+    renderer_script = bundle / record["bundle_path"]
+    renderer_script.write_text(
+        renderer_script.read_text(encoding="utf-8").replace(
+            "from weave_content_canary_gate_contract import",
+            "from removed_weave_content_canary_gate_contract import",
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "operator execution plan renderer script missing source contract "
+        "native Weave content canary contract helper import: "
+        "from weave_content_canary_gate_contract import"
+    ) in payload["errors"]
+
+
 def test_verify_release_evidence_bundle_rejects_external_action_approval_packet_hash_mismatch(tmp_path):
     bundle = build_bundle_with_operator_command_script(tmp_path)
     packet_path = bundle / "external_action_approval_packet.json"
@@ -12153,6 +12193,48 @@ def test_verify_release_evidence_bundle_rejects_full_batch_missing_weave_gate_co
     script_text = script_path.read_text(encoding="utf-8")
     script_path.write_text(
         script_text.replace(
+            "from weave_content_canary_gate_contract import",
+            "from removed_weave_content_canary_gate_contract import",
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "agentic runner script missing source contract "
+        "native Weave content canary contract helper import: "
+        "scripts/tools/run_taiwan_full_eval_batch.py: "
+        "from weave_content_canary_gate_contract import"
+    ) in payload["errors"]
+
+
+def test_verify_release_evidence_bundle_rejects_weave_content_canary_contract_helper_tamper(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path")
+        == "scripts/tools/weave_content_canary_gate_contract.py"
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace(
             "def weave_content_canary_gate_contract_issues(",
             "def removed_weave_content_canary_gate_contract_issues(",
         ),
@@ -12174,7 +12256,7 @@ def test_verify_release_evidence_bundle_rejects_full_batch_missing_weave_gate_co
     assert (
         "agentic runner script missing source contract "
         "native Weave content canary contract validator: "
-        "scripts/tools/run_taiwan_full_eval_batch.py: "
+        "scripts/tools/weave_content_canary_gate_contract.py: "
         "def weave_content_canary_gate_contract_issues("
     ) in payload["errors"]
 
