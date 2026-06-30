@@ -12217,6 +12217,84 @@ def test_verify_release_evidence_bundle_rejects_agentic_evaluator_missing_sessio
     ) in payload["errors"]
 
 
+def test_verify_release_evidence_bundle_rejects_agentic_math_missing_remote_lookup_disable_contract(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path") == "scripts/tools/run_agentic_math_openclaw.py"
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace(
+            'tools["toolSearch"] = False',
+            'tools["toolSearch"] = True',
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "agentic runner script missing source contract OpenClaw tool search disabled: "
+        'scripts/tools/run_agentic_math_openclaw.py: tools["toolSearch"] = False'
+    ) in payload["errors"]
+
+
+def test_verify_release_evidence_bundle_rejects_swe_missing_remote_lookup_disable_contract(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path") == "scripts/tools/run_swebench_pro_openclaw.py"
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace(
+            'browser["enabled"] = False',
+            'browser["enabled"] = True',
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "agentic runner script missing source contract OpenClaw browser disabled: "
+        'scripts/tools/run_swebench_pro_openclaw.py: browser["enabled"] = False'
+    ) in payload["errors"]
+
+
 def test_verify_release_evidence_bundle_rejects_full_batch_missing_weave_gate_contract(tmp_path):
     bundle = build_bundle_with_operator_command_script(tmp_path)
     manifest_path = bundle / "manifest.json"
