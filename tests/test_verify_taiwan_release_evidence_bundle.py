@@ -4755,6 +4755,43 @@ def test_verify_release_evidence_bundle_rejects_operator_renderer_missing_weave_
     ) in payload["errors"]
 
 
+def test_verify_release_evidence_bundle_rejects_operator_renderer_helper_missing_dependency_role(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path")
+        == "scripts/tools/weave_content_canary_gate_contract.py"
+    )
+    record["roles"] = [
+        role
+        for role in record.get("roles", [])
+        if role != "operator_execution_plan_renderer:dependency_script"
+    ]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "bundled evidence for operator execution plan renderer dependency script "
+        "missing role operator_execution_plan_renderer:dependency_script: "
+        "scripts/tools/weave_content_canary_gate_contract.py"
+    ) in payload["errors"]
+
+
 def test_verify_release_evidence_bundle_rejects_external_action_approval_packet_hash_mismatch(tmp_path):
     bundle = build_bundle_with_operator_command_script(tmp_path)
     packet_path = bundle / "external_action_approval_packet.json"

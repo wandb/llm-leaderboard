@@ -35,6 +35,9 @@ EXTERNAL_ACTION_APPROVAL_PACKET_VERIFIER_SCRIPT = (
 EXTERNAL_ACTION_APPROVAL_TEMPLATE_RENDERER_SCRIPT = (
     "scripts/tools/render_external_action_approval_template.py"
 )
+WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT = (
+    "scripts/tools/weave_content_canary_gate_contract.py"
+)
 AGENTIC_RUNNER_SCRIPT_ROLES = {
     "scripts/evaluator/agentic_math.py": "agentic_runner:math_evaluator_script",
     "scripts/evaluator/swebench_pro.py": "agentic_runner:swe_evaluator_script",
@@ -42,7 +45,9 @@ AGENTIC_RUNNER_SCRIPT_ROLES = {
     "scripts/tools/run_agentic_math_openclaw.py": "agentic_runner:math_script",
     "scripts/tools/run_swebench_pro_openclaw.py": "agentic_runner:swe_script",
     "scripts/tools/run_taiwan_full_eval_batch.py": "agentic_runner:full_batch_script",
-    "scripts/tools/weave_content_canary_gate_contract.py": "agentic_runner:weave_content_canary_gate_contract_script",
+    WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT: (
+        "agentic_runner:weave_content_canary_gate_contract_script"
+    ),
     "scripts/tools/log_agentic_math_results_to_wandb.py": "agentic_runner:math_relog_script",
     "scripts/tools/log_agentic_swe_results_to_wandb.py": "agentic_runner:swe_relog_script",
 }
@@ -3234,6 +3239,11 @@ def add_computed_operator_command_script_evidence(
         evidence,
         role="operator_execution_plan_renderer:script",
         path_value="scripts/tools/render_taiwan_operator_execution_plan.py",
+    )
+    add_evidence(
+        evidence,
+        role="operator_execution_plan_renderer:dependency_script",
+        path_value=WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT,
     )
     add_agentic_runner_script_evidence(evidence)
 

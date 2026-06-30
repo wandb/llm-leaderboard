@@ -1551,6 +1551,10 @@ def test_release_evidence_bundle_copies_report_references(tmp_path):
         assert "agentic_runner:script" in sources[script_path]["roles"]
         assert role in sources[script_path]["roles"]
         assert (output_dir / sources[script_path]["bundle_path"]).exists()
+    assert (
+        "operator_execution_plan_renderer:dependency_script"
+        in sources["scripts/tools/weave_content_canary_gate_contract.py"]["roles"]
+    )
     summary = (output_dir / "summary.md").read_text(encoding="utf-8")
     assert "Taiwan Release Evidence Bundle" in summary
     assert "Operator plan JSON" in summary

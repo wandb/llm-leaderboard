@@ -56,6 +56,9 @@ RELOG_COMMAND_SCRIPT_PATHS = {
 OPERATOR_EXECUTION_PLAN_RENDERER_SCRIPT = (
     "scripts/tools/render_taiwan_operator_execution_plan.py"
 )
+WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT = (
+    "scripts/tools/weave_content_canary_gate_contract.py"
+)
 OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
     (
         "Weave content canary gate validator function",
@@ -1712,6 +1715,13 @@ def validate_operator_execution_plan_renderer(
                     bundle_path=bundle_path,
                 )
             )
+    validate_file_role(
+        errors=errors,
+        records=records,
+        path_value=WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT,
+        role="operator_execution_plan_renderer:dependency_script",
+        label="operator execution plan renderer dependency script",
+    )
     if isinstance(markdown_text, str):
         for snippet in (
             "## Operator Execution Plan Renderer",
