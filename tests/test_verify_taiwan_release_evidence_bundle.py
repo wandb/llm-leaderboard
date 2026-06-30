@@ -2790,7 +2790,83 @@ def build_bundle_with_nemoclaw_post_install(tmp_path):
     )
     readiness = write_json(
         tmp_path / "nemoclaw_canary_readiness.json",
-        {"ok": False, "status": "failed"},
+        {
+            "ok": False,
+            "status": "failed",
+            "checks": [
+                {
+                    "name": "NeMoClaw command is available",
+                    "ok": False,
+                    "detail": "missing",
+                },
+                {
+                    "name": "agentic Math denies remote lookup via deny_tool",
+                    "ok": True,
+                    "detail": json.dumps(
+                        {
+                            "section": "agentic_math",
+                            "missing": [],
+                            "observed": [
+                                "*search*",
+                                "browser",
+                                "browser_*",
+                                "code_execution",
+                                "web_fetch",
+                                "web_search",
+                            ],
+                        }
+                    ),
+                },
+                {
+                    "name": "agentic SWE denies remote lookup via deny_tool",
+                    "ok": True,
+                    "detail": json.dumps(
+                        {
+                            "section": "swebench_pro",
+                            "missing": [],
+                            "observed": [
+                                "*search*",
+                                "browser",
+                                "browser_*",
+                                "code_execution",
+                                "web_fetch",
+                                "web_search",
+                            ],
+                        }
+                    ),
+                },
+                {
+                    "name": "agentic Math denies remote lookup via deny_argument_pattern",
+                    "ok": True,
+                    "detail": json.dumps(
+                        {
+                            "section": "agentic_math",
+                            "missing": [],
+                            "observed": [
+                                r"\b(curl|wget)\b",
+                                r"\b(requests|urllib|httpx)\.",
+                                "https?://",
+                            ],
+                        }
+                    ),
+                },
+                {
+                    "name": "agentic SWE denies remote lookup via deny_argument_pattern",
+                    "ok": True,
+                    "detail": json.dumps(
+                        {
+                            "section": "swebench_pro",
+                            "missing": [],
+                            "observed": [
+                                r"\b(curl|wget)\b",
+                                r"\b(requests|urllib|httpx)\.",
+                                "https?://",
+                            ],
+                        }
+                    ),
+                },
+            ],
+        },
     )
     adoption = write_json(
         tmp_path / "taiwan_nemoclaw_adoption_check.json",
@@ -10717,6 +10793,47 @@ def test_verify_release_evidence_bundle_rejects_nemoclaw_post_install_step_paylo
     )
 
 
+def test_verify_release_evidence_bundle_rejects_nemoclaw_readiness_missing_remote_lookup_check(
+    tmp_path,
+):
+    bundle, post_install = build_bundle_with_nemoclaw_post_install(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    post_install_record = next(
+        record for record in manifest["files"] if record["source_path"] == str(post_install)
+    )
+    bundled_post_install = bundle / post_install_record["bundle_path"]
+    post_install_payload = json.loads(bundled_post_install.read_text(encoding="utf-8"))
+    readiness_source = post_install_payload["outputs"]["readiness_json"]
+    readiness_record = next(
+        record for record in manifest["files"] if record["source_path"] == readiness_source
+    )
+    bundled_readiness = bundle / readiness_record["bundle_path"]
+    readiness_payload = json.loads(bundled_readiness.read_text(encoding="utf-8"))
+    readiness_payload["checks"] = [
+        check
+        for check in readiness_payload["checks"]
+        if check.get("name") != "agentic SWE denies remote lookup via deny_tool"
+    ]
+    bundled_readiness.write_text(json.dumps(readiness_payload), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, readiness_record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "NeMoClaw canary readiness missing required remote lookup check: "
+        "agentic SWE denies remote lookup via deny_tool"
+    ) in payload["errors"]
+
+
 def test_verify_release_evidence_bundle_rejects_nemoclaw_post_install_missing_payload_contract(
     tmp_path,
 ):
@@ -12009,6 +12126,46 @@ def test_verify_release_evidence_bundle_requires_current_gate_remediation_comman
     assert (
         "current_gate remediation_plan command script is not bundled: "
         "scripts/tools/check_taiwan_canary_readiness.py"
+    ) in payload["errors"]
+
+
+def test_verify_release_evidence_bundle_rejects_canary_readiness_script_missing_deny_policy_contract(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_weave_content_canary_command(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path") == "scripts/tools/check_taiwan_canary_readiness.py"
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace(
+            "AGENTIC_REQUIRED_DENIED_TOOLS",
+            "REMOTE_DENIED_TOOLS_REMOVED",
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "NeMoClaw canary readiness script missing source contract "
+        "remote lookup deny tools constant: "
+        "scripts/tools/check_taiwan_canary_readiness.py: AGENTIC_REQUIRED_DENIED_TOOLS"
     ) in payload["errors"]
 
 

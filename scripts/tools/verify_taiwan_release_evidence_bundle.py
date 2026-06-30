@@ -59,6 +59,25 @@ OPERATOR_EXECUTION_PLAN_RENDERER_SCRIPT = (
 WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT = (
     "scripts/tools/weave_content_canary_gate_contract.py"
 )
+NEMOCLAW_CANARY_READINESS_SCRIPT = "scripts/tools/check_taiwan_canary_readiness.py"
+REQUIRED_NEMOCLAW_CANARY_REMOTE_LOOKUP_CHECK_NAMES = {
+    "agentic Math denies remote lookup via deny_argument_pattern",
+    "agentic Math denies remote lookup via deny_tool",
+    "agentic SWE denies remote lookup via deny_argument_pattern",
+    "agentic SWE denies remote lookup via deny_tool",
+}
+NEMOCLAW_CANARY_READINESS_SCRIPT_SOURCE_TOKENS = (
+    ("remote lookup deny tools constant", "AGENTIC_REQUIRED_DENIED_TOOLS"),
+    (
+        "remote lookup deny argument patterns constant",
+        "AGENTIC_REQUIRED_DENIED_ARGUMENT_PATTERNS",
+    ),
+    ("remote lookup deny policy checker", "def deny_policy_check("),
+    ("Math deny_tool check", '"agentic_math",\n                        "deny_tool"'),
+    ("SWE deny_tool check", '"swebench_pro",\n                        "deny_tool"'),
+    ("Math deny_argument_pattern check", '"agentic_math",\n                        "deny_argument_pattern"'),
+    ("SWE deny_argument_pattern check", '"swebench_pro",\n                        "deny_argument_pattern"'),
+)
 OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
     (
         "Weave content canary gate validator function",
@@ -4056,6 +4075,93 @@ def validate_agentic_runner_script_evidence(
     return errors
 
 
+def validate_nemoclaw_canary_readiness_script_source(
+    *,
+    bundle_dir: Path,
+    manifest: dict[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    records = file_records_by_source(manifest)
+    record = records.get(source_path_key(NEMOCLAW_CANARY_READINESS_SCRIPT))
+    if not isinstance(record, dict):
+        return errors
+    roles = record.get("roles")
+    if not isinstance(roles, list) or not (
+        "operator_plan:command_script" in roles
+        or "current_gate:remediation_plan:command_script" in roles
+    ):
+        errors.append(
+            "NeMoClaw canary readiness script missing command-script role: "
+            f"{NEMOCLAW_CANARY_READINESS_SCRIPT}"
+        )
+    bundle_path = record.get("bundle_path")
+    if not isinstance(bundle_path, str) or not bundle_path:
+        errors.append(
+            "NeMoClaw canary readiness script missing bundle_path: "
+            f"{NEMOCLAW_CANARY_READINESS_SCRIPT}"
+        )
+        return errors
+    script_file = bundle_dir / bundle_path
+    try:
+        text = script_file.read_text(encoding="utf-8")
+    except OSError as exc:
+        errors.append(
+            "NeMoClaw canary readiness script is not readable: "
+            f"{NEMOCLAW_CANARY_READINESS_SCRIPT}: {exc}"
+        )
+        return errors
+    for label, token in NEMOCLAW_CANARY_READINESS_SCRIPT_SOURCE_TOKENS:
+        if token not in text:
+            errors.append(
+                "NeMoClaw canary readiness script missing source contract "
+                f"{label}: {NEMOCLAW_CANARY_READINESS_SCRIPT}: {token}"
+            )
+    return errors
+
+
+def validate_nemoclaw_canary_readiness_remote_lookup_checks(
+    payload: dict[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    checks = payload.get("checks")
+    if not isinstance(checks, list):
+        return ["NeMoClaw canary readiness checks is not a list"]
+    checks_by_name = {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+    for name in sorted(REQUIRED_NEMOCLAW_CANARY_REMOTE_LOOKUP_CHECK_NAMES):
+        check = checks_by_name.get(name)
+        if not isinstance(check, dict):
+            errors.append(
+                "NeMoClaw canary readiness missing required remote lookup check: "
+                f"{name}"
+            )
+            continue
+        if check.get("ok") is not True:
+            errors.append(
+                "NeMoClaw canary readiness remote lookup check is not ok: "
+                f"{name}"
+            )
+        detail = check.get("detail")
+        if isinstance(detail, str) and detail.strip():
+            try:
+                detail_payload = json.loads(detail)
+            except json.JSONDecodeError:
+                errors.append(
+                    "NeMoClaw canary readiness remote lookup check detail is not JSON: "
+                    f"{name}"
+                )
+            else:
+                if detail_payload.get("missing") not in ([], None):
+                    errors.append(
+                        "NeMoClaw canary readiness remote lookup check has missing "
+                        f"deny policy entries: {name}"
+                    )
+    return errors
+
+
 def file_records_by_source(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
     files = manifest.get("files")
     file_records = files if isinstance(files, list) else []
@@ -7257,6 +7363,9 @@ def validate_nemoclaw_post_install_verification_evidence(
         if not isinstance(output_payload.get("ok"), bool):
             errors.append(f"NeMoClaw post-install verification output {name} ok is not a bool")
         output_payloads[name] = output_payload
+    readiness_payload = output_payloads.get("readiness_json")
+    if isinstance(readiness_payload, dict):
+        errors.extend(validate_nemoclaw_canary_readiness_remote_lookup_checks(readiness_payload))
 
     steps = payload.get("steps")
     required_steps = {
@@ -12908,6 +13017,7 @@ def verify_bundle(
     errors.extend(validate_current_gate_remediation_command_scripts(manifest=manifest))
     errors.extend(validate_existing_results_relog_command_scripts(manifest=manifest))
     errors.extend(validate_agentic_runner_script_evidence(bundle_dir=bundle_dir, manifest=manifest))
+    errors.extend(validate_nemoclaw_canary_readiness_script_source(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_wandb_adoption_draft_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_wandb_adoption_unconfirmed_checks_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_weave_agents_adoption_validation_failures_evidence(bundle_dir=bundle_dir, manifest=manifest))
