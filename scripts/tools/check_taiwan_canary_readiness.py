@@ -37,6 +37,19 @@ OPENCLAW_PROVIDER_ENV_KEYS = {
     "deepseek": "DEEPSEEK_API_KEY",
     "xai": "XAI_API_KEY",
 }
+AGENTIC_REQUIRED_DENIED_TOOLS = {
+    "*search*",
+    "browser",
+    "browser_*",
+    "code_execution",
+    "web_fetch",
+    "web_search",
+}
+AGENTIC_REQUIRED_DENIED_ARGUMENT_PATTERNS = {
+    r"\b(curl|wget)\b",
+    r"\b(requests|urllib|httpx)\.",
+    r"https?://",
+}
 
 
 @dataclass
@@ -147,6 +160,35 @@ def load_merged_config(base_config: Path, phase_config: Path) -> DictConfig:
 
 def nonempty_string(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def string_set(value: Any) -> set[str]:
+    if value is None:
+        return set()
+    if isinstance(value, str):
+        return {value}
+    try:
+        items = list(value)
+    except TypeError:
+        return set()
+    return {str(item) for item in items if str(item)}
+
+
+def deny_policy_check(cfg: Any, section: str, field: str, required: set[str], label: str) -> Check:
+    observed = string_set(cfg_get(cfg, f"{section}.{field}"))
+    missing = sorted(required - observed)
+    return Check(
+        f"agentic {label} denies remote lookup via {field}",
+        not missing,
+        json.dumps(
+            {
+                "section": section,
+                "missing": missing,
+                "observed": sorted(observed),
+            },
+            ensure_ascii=False,
+        ),
+    )
 
 
 def check_manifest(manifest_path: Path, *, expected_slug: str | None) -> list[Check]:
@@ -371,6 +413,34 @@ def check_generated_configs(
                         swe_transfer_mode == "copy" or nonempty_string(swe_sandbox_root),
                         f"nemoclaw_checkout_transfer_mode={swe_transfer_mode!r}, "
                         f"nemoclaw_checkout_sandbox_root={swe_sandbox_root!r}",
+                    ),
+                    deny_policy_check(
+                        cfg,
+                        "agentic_math",
+                        "deny_tool",
+                        AGENTIC_REQUIRED_DENIED_TOOLS,
+                        "Math",
+                    ),
+                    deny_policy_check(
+                        cfg,
+                        "swebench_pro",
+                        "deny_tool",
+                        AGENTIC_REQUIRED_DENIED_TOOLS,
+                        "SWE",
+                    ),
+                    deny_policy_check(
+                        cfg,
+                        "agentic_math",
+                        "deny_argument_pattern",
+                        AGENTIC_REQUIRED_DENIED_ARGUMENT_PATTERNS,
+                        "Math",
+                    ),
+                    deny_policy_check(
+                        cfg,
+                        "swebench_pro",
+                        "deny_argument_pattern",
+                        AGENTIC_REQUIRED_DENIED_ARGUMENT_PATTERNS,
+                        "SWE",
                     ),
                 ]
             )

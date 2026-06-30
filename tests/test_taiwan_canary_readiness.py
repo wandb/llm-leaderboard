@@ -234,10 +234,14 @@ model:
   pretrained_model_name_or_path: gpt-4.1-mini-2025-04-14
 agentic_math:
   openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14
+  deny_tool: [code_execution, web_search, web_fetch, browser, browser_*, '*search*']
+  deny_argument_pattern: ['https?://', '\\b(curl|wget)\\b', '\\b(requests|urllib|httpx)\\.']
   nemoclaw_sandbox: nejumi-taiwan
   use_task_agent: true
 swebench_pro:
   openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14
+  deny_tool: [code_execution, web_search, web_fetch, browser, browser_*, '*search*']
+  deny_argument_pattern: ['https?://', '\\b(curl|wget)\\b', '\\b(requests|urllib|httpx)\\.']
   nemoclaw_sandbox: nejumi-taiwan
   nemoclaw_checkout_transfer_mode: copy
 """,
@@ -257,6 +261,16 @@ swebench_pro:
     assert any(check.name == "agentic config uses NeMoClaw sandbox" for check in checks)
     assert any(check.name == "agentic config keeps task-agent enabled" for check in checks)
     assert any(check.name == "agentic SWE checkout is sandbox-accessible" for check in checks)
+    assert any(check.name == "agentic Math denies remote lookup via deny_tool" for check in checks)
+    assert any(check.name == "agentic SWE denies remote lookup via deny_tool" for check in checks)
+    assert any(
+        check.name == "agentic Math denies remote lookup via deny_argument_pattern"
+        for check in checks
+    )
+    assert any(
+        check.name == "agentic SWE denies remote lookup via deny_argument_pattern"
+        for check in checks
+    )
 
 
 def test_generated_agentic_config_rejects_non_nemoclaw_routing_when_required(tmp_path):
@@ -296,3 +310,7 @@ swebench_pro:
     assert "agentic config uses NeMoClaw sandbox" in failed
     assert "agentic config keeps task-agent enabled" in failed
     assert "agentic SWE checkout is sandbox-accessible" in failed
+    assert "agentic Math denies remote lookup via deny_tool" in failed
+    assert "agentic SWE denies remote lookup via deny_tool" in failed
+    assert "agentic Math denies remote lookup via deny_argument_pattern" in failed
+    assert "agentic SWE denies remote lookup via deny_argument_pattern" in failed
