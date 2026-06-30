@@ -110,6 +110,17 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def resolve_session_prefix(args: argparse.Namespace, default_prefix: str = "swebench-pro") -> str:
+    configured = str(getattr(args, "session_prefix", "") or "").strip()
+    prefix = configured or default_prefix
+    wandb_run_id = os.environ.get("WANDB_RUN_ID", "").strip()
+    if "{wandb_run_id}" in prefix:
+        return prefix.replace("{wandb_run_id}", wandb_run_id or "no-wandb-run-id")
+    if wandb_run_id and wandb_run_id not in prefix:
+        return f"{wandb_run_id}:{prefix}"
+    return prefix
+
+
 def build_cache_key(row: dict[str, Any], prompt_text: str, args: argparse.Namespace) -> dict[str, Any]:
     return {
         "runner_version": RUNNER_VERSION,
@@ -128,6 +139,7 @@ def build_cache_key(row: dict[str, Any], prompt_text: str, args: argparse.Namesp
         "nemoclaw_checkout_transfer_mode": str(
             getattr(args, "nemoclaw_checkout_transfer_mode", "visible") or "visible"
         ),
+        "session_prefix": resolve_session_prefix(args),
     }
 
 
@@ -908,11 +920,7 @@ def run_openclaw_for_task(
     sidecar_path: Path | None = None
     for attempt_number in range(1, max_attempts + 1):
         attempt_id = f"{int(time.time())}-{os.getpid()}-{attempt_number}"
-        session_key = (
-            f"{args.session_prefix}:{row['instance_id']}:{attempt_id}"
-            if args.session_prefix
-            else f"swebench-pro:{row['instance_id']}:{attempt_id}"
-        )
+        session_key = f"{resolve_session_prefix(args)}:{row['instance_id']}:{attempt_id}"
         attempt_output_dir = task_dir / "openclaw_attempts" / attempt_id
         sidecar_path = task_sidecar_path(attempt_output_dir, str(row["instance_id"]))
         invocation_path = invocation_dir / f"{attempt_id}.json"

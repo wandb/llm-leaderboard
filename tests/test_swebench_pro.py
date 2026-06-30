@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,6 +15,14 @@ def load_module(path: Path):
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+def load_script_module(path: Path):
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    try:
+        return load_module(path)
+    finally:
+        sys.path.pop(0)
 
 
 def sample_row() -> dict:
@@ -424,6 +433,7 @@ def test_swebench_runtime_budget_exceeded_returns_disqualified_metadata(tmp_path
 
 
 def test_swebench_nemoclaw_run_forwards_sandbox_command_args(tmp_path, monkeypatch):
+    monkeypatch.setenv("WANDB_RUN_ID", "twcanary-swe-run")
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
     row = sample_row()
     checkout_dir = tmp_path / "checkout-example"
@@ -494,6 +504,8 @@ def test_swebench_nemoclaw_run_forwards_sandbox_command_args(tmp_path, monkeypat
     assert captured_command[captured_command.index("--nemoclaw-sandbox") + 1] == "nejumi-taiwan"
     assert captured_command[captured_command.index("--nemoclaw-workdir") + 1] == expected_checkout
     assert captured_command[captured_command.index("--openclaw-config-path") + 1] == expected_config
+    session_key = captured_command[captured_command.index("--session-key") + 1]
+    assert session_key.startswith(f"twcanary-swe-run:swebench-pro:{row['instance_id']}:")
 
 
 def test_swebench_nemoclaw_copy_mode_syncs_when_checkout_not_visible(tmp_path, monkeypatch):
@@ -891,6 +903,36 @@ def test_swebench_patch_cache_reuses_only_matching_cache_key(tmp_path):
     assert module.load_cached_patch_record(task_dir, changed_key, "new-prefix") is None
 
 
+def test_swebench_session_prefix_is_bound_to_wandb_run_id(monkeypatch):
+    monkeypatch.setenv("WANDB_RUN_ID", "twcanary-run-1")
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    row = sample_row()
+    args = SimpleNamespace(
+        model="openai-direct/example-model",
+        thinking="high",
+        deny_tool=None,
+        deny_argument_pattern=None,
+        max_input_tokens=1_000_000,
+        max_tool_calls=60,
+        nemoclaw_sandbox=None,
+        nemoclaw_checkout_sandbox_root=None,
+        nemoclaw_checkout_transfer_mode="visible",
+        session_prefix=None,
+    )
+
+    assert module.resolve_session_prefix(args) == "twcanary-run-1:swebench-pro"
+    key = module.build_cache_key(row, module.build_prompt(row), args)
+    assert key["session_prefix"] == "twcanary-run-1:swebench-pro"
+
+
+def test_swebench_session_prefix_expands_wandb_placeholder(monkeypatch):
+    monkeypatch.setenv("WANDB_RUN_ID", "twcanary-run-2")
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    args = SimpleNamespace(session_prefix="swe/{wandb_run_id}")
+
+    assert module.resolve_session_prefix(args) == "swe/twcanary-run-2"
+
+
 def test_swebench_patch_cache_rejects_legacy_empty_patch(tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
     row = sample_row()
@@ -1087,3 +1129,40 @@ def test_swebench_eval_wandb_artifact_includes_summary_and_patch(tmp_path):
         "official_eval/summary.json",
         "patches.json",
     ]
+
+
+def test_evaluator_passes_session_prefix_to_swebench_runner(tmp_path, monkeypatch):
+    from omegaconf import OmegaConf
+
+    module = load_script_module(REPO_ROOT / "scripts" / "evaluator" / "swebench_pro.py")
+    commands = []
+
+    def fake_run_command(command):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+    cfg = OmegaConf.create(
+        {
+            "testmode": False,
+            "model": {"pretrained_model_name_or_path": "provider/model"},
+            "swebench_pro": {
+                "checkout_root": str(tmp_path / "checkouts"),
+                "prefix": "tw-swe",
+                "thinking": "high",
+                "agent": "nejumi-taiwan",
+                "openclaw_timeout": 60,
+                "openclaw_max_attempts": 1,
+                "openclaw_retry_base_seconds": 1,
+                "max_input_tokens": 1_000_000,
+                "max_tool_calls": 60,
+                "session_prefix": "{wandb_run_id}:swebench-pro",
+                "weave_sidecar": False,
+            },
+        }
+    )
+
+    module._run_openclaw(cfg, tmp_path / "dataset.jsonl", tmp_path / "outputs")
+
+    [command] = commands
+    assert command[command.index("--session-prefix") + 1] == "{wandb_run_id}:swebench-pro"

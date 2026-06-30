@@ -189,6 +189,9 @@ def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
     task_agent_prefix = _cfg_get(cfg.swebench_pro, "task_agent_prefix")
     if task_agent_prefix:
         command.extend(["--task-agent-prefix", str(task_agent_prefix)])
+    session_prefix = _cfg_get(cfg.swebench_pro, "session_prefix")
+    if session_prefix:
+        command.extend(["--session-prefix", str(session_prefix)])
     model = _cfg_get(cfg.swebench_pro, "openclaw_model") or _cfg_get(
         cfg.model, "pretrained_model_name_or_path", ""
     )

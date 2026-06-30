@@ -264,6 +264,107 @@ def test_cache_key_requires_prompt_model_thinking_and_runner_version():
     assert not module.cache_key_matches({"cache_key": stale}, key)
 
 
+def test_agentic_math_session_prefix_is_bound_to_wandb_run_id(monkeypatch):
+    monkeypatch.setenv("WANDB_RUN_ID", "twcanary-run-1")
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    args = type(
+        "Args",
+        (),
+        {
+            "session_prefix": None,
+            "model": "openai-direct/example-model",
+            "thinking": "high",
+            "deny_tool": None,
+            "deny_argument_pattern": None,
+        },
+    )()
+
+    assert module.resolve_session_prefix(args) == "twcanary-run-1:agentic-math"
+    key = module.build_cache_key(
+        {"task_id": "task_1", "answer_format": "math_expression"},
+        "prompt",
+        args,
+    )
+    assert key["session_prefix"] == "twcanary-run-1:agentic-math"
+
+
+def test_agentic_math_session_prefix_expands_wandb_placeholder(monkeypatch):
+    monkeypatch.setenv("WANDB_RUN_ID", "twcanary-run-2")
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    args = type("Args", (), {"session_prefix": "math/{wandb_run_id}"})()
+
+    assert module.resolve_session_prefix(args) == "math/twcanary-run-2"
+
+
+def test_agentic_math_run_passes_wandb_scoped_session_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("WANDB_RUN_ID", "twcanary-run-3")
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    captured_command = []
+    row = {
+        "task_id": "math_1",
+        "answer": "2",
+        "question": "1+1?",
+        "subject": "algebra",
+        "answer_format": "math_expression",
+    }
+
+    def fake_run_command(command, cwd=None, timeout=None, check=True):
+        captured_command[:] = command
+        output_dir = Path(command[command.index("--output-dir") + 1])
+        sidecar_path = module.task_sidecar_path(output_dir, row["task_id"])
+        sidecar_path.parent.mkdir(parents=True, exist_ok=True)
+        sidecar_path.write_text(
+            json.dumps(
+                {
+                    "returncode": 0,
+                    "stdout": "ANSWER: 2\n",
+                    "tool_policy_ok": True,
+                    "tool_policy_violations": [],
+                    "tool_call_count": 0,
+                    "tool_error_count": 0,
+                    "conversation_order": {"ok": True},
+                    "weave_sidecar": {"ok": True},
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, stdout=str(sidecar_path), stderr="")
+
+    monkeypatch.setattr(module, "run_command", fake_run_command)
+    args = type(
+        "Args",
+        (),
+        {
+            "agent": "main",
+            "allow_failed_preflight": False,
+            "deny_argument_pattern": None,
+            "deny_tool": None,
+            "dry_run": False,
+            "fail_fast": False,
+            "model": "openai-direct/example-model",
+            "nemoclaw_sandbox": None,
+            "no_local": False,
+            "openclaw_max_attempts": 1,
+            "openclaw_retry_base_seconds": 0,
+            "openclaw_timeout": 30,
+            "profile": None,
+            "redo": False,
+            "session_prefix": None,
+            "thinking": "high",
+            "use_task_agent": False,
+            "weave_sidecar": False,
+            "weave_sidecar_strict": False,
+        },
+    )()
+
+    record = module.run_openclaw_for_task(row, tmp_path / "task", args)
+
+    session_key = captured_command[captured_command.index("--session-key") + 1]
+    assert session_key.startswith("twcanary-run-3:agentic-math:math_1:")
+    assert record["correct"] is True
+    assert record["cache_key"]["session_prefix"] == "twcanary-run-3:agentic-math"
+
+
 def test_archive_stale_result_moves_active_result_out_of_collection_path(tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
     result_path = tmp_path / "result.json"
@@ -571,6 +672,7 @@ def test_evaluator_passes_nemoclaw_args_to_agentic_math_runner(tmp_path, monkeyp
                 "nemoclaw_bin": "/usr/local/bin/nemoclaw",
                 "nemoclaw_workdir": "/sandbox/work",
                 "nemoclaw_openclaw_config_path": "/sandbox/.openclaw/openclaw.json",
+                "session_prefix": "{wandb_run_id}:agentic-math",
                 "weave_sidecar": False,
             },
         }
@@ -584,6 +686,7 @@ def test_evaluator_passes_nemoclaw_args_to_agentic_math_runner(tmp_path, monkeyp
     assert command[command.index("--nemoclaw-bin") + 1] == "/usr/local/bin/nemoclaw"
     assert command[command.index("--nemoclaw-workdir") + 1] == "/sandbox/work"
     assert command[command.index("--nemoclaw-openclaw-config-path") + 1] == "/sandbox/.openclaw/openclaw.json"
+    assert command[command.index("--session-prefix") + 1] == "{wandb_run_id}:agentic-math"
 
 
 def test_evaluator_passes_no_use_task_agent_when_explicitly_disabled(tmp_path, monkeypatch):
