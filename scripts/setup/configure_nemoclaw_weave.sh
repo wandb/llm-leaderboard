@@ -1,0 +1,352 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Configure native weave-openclaw inside a NeMoClaw sandbox.
+
+Usage:
+  scripts/setup/configure_nemoclaw_weave.sh [options]
+
+Options:
+  --sandbox NAME              NeMoClaw sandbox name. Default: nejumi-taiwan.
+  --nemoclaw-bin PATH         NeMoClaw executable. Default: nemoclaw.
+  --env-file PATH             Env file to source before reading WANDB_API_KEY. Default: .env.
+  --wandb-key-env NAME        Env var containing the W&B API key. Default: WANDB_API_KEY.
+  --entity NAME               W&B entity. Default: llm-leaderboard.
+  --project NAME              W&B project. Default: tc-leaderboard.
+  --agent-name NAME           Weave agent name. Default: nejumi-taiwan-openclaw.
+  --agent-version VALUE       Weave agent version. Default: nejumi-agent-protocol-2026.04.
+  --service-name NAME         Weave service name. Default: openclaw-agent.
+  --policy-file PATH          NeMoClaw W&B egress policy YAML.
+  --secret-file PATH          Sandbox secret JSON path. Default: /sandbox/.openclaw/nejumi_secrets.json.
+  --openclaw-config PATH      Sandbox OpenClaw config path. Default: /sandbox/.openclaw/openclaw.json.
+  --weave-plugin-source MODE  auto|local|npm. Default: auto.
+  --local-weave-project PATH  Host weave-openclaw npm project for local install fallback.
+  --check-only                Do not mutate; inspect current sandbox state only.
+  --skip-policy               Do not add the W&B egress policy.
+  --skip-plugin-install       Do not install weave-openclaw.
+  --json PATH                 Write a machine-readable report.
+  -h, --help                  Show this help.
+
+The W&B key is sent to the sandbox over stdin and stored as a file SecretRef
+source. The secret value is not included in command arguments or JSON reports.
+EOF
+}
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SANDBOX="nejumi-taiwan"
+NEMOCLAW_BIN="nemoclaw"
+ENV_FILE="$REPO_ROOT/.env"
+WANDB_KEY_ENV="WANDB_API_KEY"
+ENTITY="llm-leaderboard"
+PROJECT="tc-leaderboard"
+AGENT_NAME="nejumi-taiwan-openclaw"
+AGENT_VERSION="nejumi-agent-protocol-2026.04"
+SERVICE_NAME="openclaw-agent"
+POLICY_FILE="$REPO_ROOT/configs/nemoclaw/policies/wandb_weave.yaml"
+SECRET_FILE="/sandbox/.openclaw/nejumi_secrets.json"
+OPENCLAW_CONFIG="/sandbox/.openclaw/openclaw.json"
+WEAVE_PLUGIN_SOURCE="auto"
+LOCAL_WEAVE_PROJECT="${OPENCLAW_WEAVE_PROJECT:-$HOME/.openclaw/npm/projects/weave-openclaw}"
+SANDBOX_WEAVE_PROJECT="/sandbox/.openclaw/npm/projects/weave-openclaw"
+CHECK_ONLY=0
+SKIP_POLICY=0
+SKIP_PLUGIN_INSTALL=0
+JSON_OUT=""
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --sandbox) SANDBOX="$2"; shift 2 ;;
+    --nemoclaw-bin) NEMOCLAW_BIN="$2"; shift 2 ;;
+    --env-file) ENV_FILE="$2"; shift 2 ;;
+    --wandb-key-env) WANDB_KEY_ENV="$2"; shift 2 ;;
+    --entity) ENTITY="$2"; shift 2 ;;
+    --project) PROJECT="$2"; shift 2 ;;
+    --agent-name) AGENT_NAME="$2"; shift 2 ;;
+    --agent-version) AGENT_VERSION="$2"; shift 2 ;;
+    --service-name) SERVICE_NAME="$2"; shift 2 ;;
+    --policy-file) POLICY_FILE="$2"; shift 2 ;;
+    --secret-file) SECRET_FILE="$2"; shift 2 ;;
+    --openclaw-config) OPENCLAW_CONFIG="$2"; shift 2 ;;
+    --weave-plugin-source) WEAVE_PLUGIN_SOURCE="$2"; shift 2 ;;
+    --local-weave-project) LOCAL_WEAVE_PROJECT="$2"; shift 2 ;;
+    --check-only) CHECK_ONLY=1; shift ;;
+    --skip-policy) SKIP_POLICY=1; shift ;;
+    --skip-plugin-install) SKIP_PLUGIN_INSTALL=1; shift ;;
+    --json) JSON_OUT="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+if [[ ! "$WANDB_KEY_ENV" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+  echo "Invalid --wandb-key-env: $WANDB_KEY_ENV" >&2
+  exit 2
+fi
+
+case "$WEAVE_PLUGIN_SOURCE" in
+  auto|local|npm) ;;
+  *) echo "Invalid --weave-plugin-source: $WEAVE_PLUGIN_SOURCE" >&2; exit 2 ;;
+esac
+
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+fi
+
+if ! command -v "$NEMOCLAW_BIN" >/dev/null 2>&1; then
+  echo "NeMoClaw executable not found: $NEMOCLAW_BIN" >&2
+  exit 1
+fi
+
+if [ ! -f "$POLICY_FILE" ]; then
+  echo "Policy file not found: $POLICY_FILE" >&2
+  exit 1
+fi
+
+WANDb_KEY_VALUE="${!WANDB_KEY_ENV:-}"
+credential_available=false
+if [ -n "$WANDb_KEY_VALUE" ]; then
+  credential_available=true
+fi
+
+run_nemoclaw() {
+  "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout "${2:-120}" -- bash -lc "$1"
+}
+
+json_bool() {
+  if [ "$1" = true ] || [ "$1" = 1 ]; then
+    printf true
+  else
+    printf false
+  fi
+}
+
+plugin_probe() {
+  run_nemoclaw "openclaw plugins list --json | python3 -c 'import json,sys; raw=sys.stdin.read(); start=raw.find(\"{\"); end=raw.rfind(\"}\"); data=json.loads(raw[start:end+1]) if start >= 0 and end >= start else {}; print(str(any(p.get(\"id\")==\"weave\" and p.get(\"enabled\") for p in data.get(\"plugins\", []))).lower())'" 120 2>/dev/null || printf false
+}
+
+config_probe() {
+  "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 - "$OPENCLAW_CONFIG" <<'PY' 2>/dev/null || printf false
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists():
+    print("false")
+    raise SystemExit
+data = json.loads(path.read_text(encoding="utf-8"))
+entry = data.get("plugins", {}).get("entries", {}).get("weave")
+cfg = entry.get("config") if isinstance(entry, dict) else None
+api_key = cfg.get("apiKey") if isinstance(cfg, dict) else None
+print(str(bool(
+    isinstance(entry, dict)
+    and entry.get("enabled") is True
+    and isinstance(api_key, dict)
+    and api_key.get("source") == "file"
+)).lower())
+PY
+}
+
+policy_probe() {
+  "$NEMOCLAW_BIN" sandbox status "$SANDBOX" 2>/dev/null | grep -q "host: api.wandb.ai" && printf true || printf false
+}
+
+install_weave_from_local_project() {
+  local local_project="$1"
+  local tmp_dir tar_path host_sha sandbox_sha chunk
+  if [ ! -d "$local_project/node_modules/weave-openclaw" ]; then
+    return 1
+  fi
+  tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "$tmp_dir"' RETURN
+  tar_path="$tmp_dir/weave-openclaw-project.tgz"
+  tar -C "$(dirname "$local_project")" -czf "$tar_path" "$(basename "$local_project")"
+  host_sha="$(sha256sum "$tar_path" | awk '{print $1}')"
+  "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 30 -- bash -lc \
+    'mkdir -p /sandbox/tmp /sandbox/.openclaw/npm/projects && : > /sandbox/tmp/weave-openclaw-project.tgz'
+  mkdir -p "$tmp_dir/chunks"
+  split -b 512k "$tar_path" "$tmp_dir/chunks/part-"
+  for chunk in "$tmp_dir"/chunks/part-*; do
+    "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 30 -- bash -lc \
+      'cat >> /sandbox/tmp/weave-openclaw-project.tgz' < "$chunk"
+  done
+  sandbox_sha="$("$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 30 -- sha256sum /sandbox/tmp/weave-openclaw-project.tgz | awk '{print $1}')"
+  if [ "$host_sha" != "$sandbox_sha" ]; then
+    echo "Transferred weave-openclaw archive sha256 mismatch" >&2
+    return 1
+  fi
+  "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 120 -- bash -lc \
+    'rm -rf /sandbox/.openclaw/npm/projects/weave-openclaw && tar -xzf /sandbox/tmp/weave-openclaw-project.tgz -C /sandbox/.openclaw/npm/projects'
+  "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 120 -- openclaw plugins install \
+    "$SANDBOX_WEAVE_PROJECT/node_modules/weave-openclaw" --link
+}
+
+install_weave_from_npm() {
+  "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 300 -- bash -lc \
+    'openclaw plugins install weave-openclaw >/dev/null || openclaw plugins install wandb/weave-openclaw >/dev/null'
+}
+
+secret_probe() {
+  "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 - "$SECRET_FILE" <<'PY' 2>/dev/null || printf false
+import json
+import stat
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists():
+    print("false")
+    raise SystemExit
+mode = stat.S_IMODE(path.stat().st_mode)
+data = json.loads(path.read_text(encoding="utf-8"))
+print(str(bool(data.get("wandb", {}).get("apiKey")) and mode & 0o077 == 0).lower())
+PY
+}
+
+policy_added=false
+plugin_install_attempted=false
+plugin_install_method="none"
+secret_written=false
+config_written=false
+
+if [ "$CHECK_ONLY" -eq 0 ]; then
+  if [ "$SKIP_POLICY" -eq 0 ]; then
+    "$NEMOCLAW_BIN" sandbox policy add "$SANDBOX" --from-file "$POLICY_FILE" --yes >/dev/null
+    policy_added=true
+  fi
+
+  if [ "$SKIP_PLUGIN_INSTALL" -eq 0 ]; then
+    if [ "$(plugin_probe)" = true ]; then
+      plugin_install_method="already_installed"
+    elif [ "$WEAVE_PLUGIN_SOURCE" != "npm" ] && [ -d "$LOCAL_WEAVE_PROJECT/node_modules/weave-openclaw" ]; then
+      plugin_install_attempted=true
+      plugin_install_method="local_project"
+      install_weave_from_local_project "$LOCAL_WEAVE_PROJECT"
+    elif [ "$WEAVE_PLUGIN_SOURCE" = "local" ]; then
+      echo "Local weave-openclaw project not found: $LOCAL_WEAVE_PROJECT" >&2
+      exit 1
+    else
+      plugin_install_attempted=true
+      plugin_install_method="npm"
+      install_weave_from_npm
+    fi
+  fi
+
+  if [ "$credential_available" = true ]; then
+    printf '%s' "$WANDb_KEY_VALUE" | "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 -c 'import json, os, sys; from pathlib import Path; path = Path(sys.argv[1]); secret = sys.stdin.read().strip(); path.parent.mkdir(parents=True, exist_ok=True); data = {}; data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}; data.setdefault("wandb", {})["apiKey"] = secret; tmp = path.with_suffix(path.suffix + ".tmp"); tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"); os.chmod(tmp, 0o600); tmp.replace(path); os.chmod(path, 0o600)' "$SECRET_FILE"
+    secret_written=true
+  fi
+
+  "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 - \
+    "$OPENCLAW_CONFIG" "$SECRET_FILE" "$ENTITY" "$PROJECT" "$SERVICE_NAME" "$AGENT_NAME" "$AGENT_VERSION" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+config_path = Path(sys.argv[1])
+secret_file, entity, project, service_name, agent_name, agent_version = sys.argv[2:8]
+data = json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
+plugins = data.setdefault("plugins", {})
+allow = plugins.setdefault("allow", [])
+if "weave" not in allow:
+    allow.append("weave")
+entries = plugins.setdefault("entries", {})
+entries["weave"] = {
+    "enabled": True,
+    "config": {
+        "entity": entity,
+        "project": project,
+        "apiKey": {"source": "file", "provider": "nejumi-wandb", "id": "/wandb/apiKey"},
+        "serviceName": service_name,
+        "agentName": agent_name,
+        "agentVersion": agent_version,
+        "agentDescription": "Nejumi 4.5 Taiwan agentic evaluation",
+        "captureContent": True,
+        "flushIntervalMs": 1000,
+    },
+    "hooks": {"allowConversationAccess": True},
+}
+secrets = data.setdefault("secrets", {})
+providers = secrets.setdefault("providers", {})
+providers["nejumi-wandb"] = {
+    "source": "file",
+    "path": secret_file,
+    "mode": "json",
+    "allowInsecurePath": True,
+}
+defaults = secrets.setdefault("defaults", {})
+defaults.setdefault("file", "nejumi-wandb")
+tmp = config_path.with_suffix(config_path.suffix + ".tmp")
+tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+tmp.replace(config_path)
+PY
+  config_written=true
+fi
+
+plugin_installed="$(plugin_probe)"
+config_ok="$(config_probe)"
+policy_ok="$(policy_probe)"
+secret_ok="$(secret_probe)"
+ok=false
+if [ "$plugin_installed" = true ] && [ "$config_ok" = true ] && [ "$policy_ok" = true ] && { [ "$credential_available" = false ] || [ "$secret_ok" = true ]; }; then
+  ok=true
+fi
+
+report_json="$(python3 - "$SANDBOX" "$WANDB_KEY_ENV" "$credential_available" "$policy_added" "$plugin_install_attempted" "$plugin_install_method" "$secret_written" "$config_written" "$plugin_installed" "$config_ok" "$policy_ok" "$secret_ok" "$ok" "$SECRET_FILE" "$OPENCLAW_CONFIG" "$POLICY_FILE" "$WEAVE_PLUGIN_SOURCE" "$LOCAL_WEAVE_PROJECT" <<'PY'
+import json
+import sys
+
+keys = [
+    "sandbox",
+    "wandb_key_env",
+    "credential_available",
+    "policy_added",
+    "plugin_install_attempted",
+    "plugin_install_method",
+    "secret_written",
+    "config_written",
+    "plugin_installed",
+    "config_ok",
+    "policy_ok",
+    "secret_ok",
+    "ok",
+    "secret_file",
+    "openclaw_config",
+    "policy_file",
+    "weave_plugin_source",
+    "local_weave_project",
+]
+payload = dict(zip(keys, sys.argv[1:]))
+for key in [
+    "credential_available",
+    "policy_added",
+    "plugin_install_attempted",
+    "secret_written",
+    "config_written",
+    "plugin_installed",
+    "config_ok",
+    "policy_ok",
+    "secret_ok",
+    "ok",
+]:
+    payload[key] = payload[key] == "true"
+payload["secret_value_in_report"] = False
+payload["weave_agent_name"] = "nejumi-taiwan-openclaw"
+print(json.dumps(payload, ensure_ascii=False, indent=2))
+PY
+)"
+
+if [ -n "$JSON_OUT" ]; then
+  mkdir -p "$(dirname "$JSON_OUT")"
+  printf '%s\n' "$report_json" > "$JSON_OUT"
+fi
+printf '%s\n' "$report_json"
+
+if [ "$ok" != true ]; then
+  exit 1
+fi

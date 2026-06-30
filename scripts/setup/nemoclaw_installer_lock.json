@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "name": "NVIDIA NemoClaw installer lock",
+  "installer_url": "https://www.nvidia.com/nemoclaw.sh",
+  "install_ref": "lkg",
+  "sha256": "a4ebc5710dfd8b10035968fd25562773ad56ec4c73ecf9bfe5c78c77724000e7",
+  "size_bytes": 6356,
+  "reviewed_at": "2026-06-28T01:32:47Z",
+  "source_review_json": "temp/nemoclaw_installer_review_20260628T013247Z.json",
+  "will_execute_installer": false,
+  "will_install_or_onboard": false,
+  "will_launch_model_inference": false,
+  "will_query_wandb": false
+}

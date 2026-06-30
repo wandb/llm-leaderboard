@@ -1,0 +1,33 @@
+{
+  "diagnostics": {
+    "enabled": true
+  },
+  "plugins": {
+    "allow": [
+      "weave"
+    ],
+    "entries": {
+      "weave": {
+        "enabled": true,
+        "config": {
+          "entity": "llm-leaderboard",
+          "project": "tc-leaderboard",
+          "apiKey": {
+            "source": "env",
+            "provider": "default",
+            "id": "WANDB_API_KEY"
+          },
+          "serviceName": "openclaw-agent",
+          "agentName": "nejumi-taiwan-openclaw",
+          "agentVersion": "nejumi-agent-protocol-2026.04",
+          "agentDescription": "Nejumi 4.5 Taiwan agentic evaluation",
+          "captureContent": true,
+          "flushIntervalMs": 1000
+        },
+        "hooks": {
+          "allowConversationAccess": true
+        }
+      }
+    }
+  }
+}

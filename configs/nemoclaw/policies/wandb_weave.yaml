@@ -1,0 +1,50 @@
+preset:
+  name: wandb-weave
+  description: W&B Weave trace export for Nejumi Taiwan NeMoClaw runs
+network_policies:
+  wandb-weave:
+    name: wandb-weave
+    endpoints:
+      - host: api.wandb.ai
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow:
+              method: GET
+              path: /**
+          - allow:
+              method: POST
+              path: /**
+          - allow:
+              method: PUT
+              path: /**
+      - host: trace.wandb.ai
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow:
+              method: GET
+              path: /**
+          - allow:
+              method: POST
+              path: /**
+          - allow:
+              method: PUT
+              path: /**
+      - host: wandb.ai
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow:
+              method: GET
+              path: /**
+          - allow:
+              method: POST
+              path: /**
+    binaries:
+      - path: /usr/local/bin/openclaw
+      - path: /usr/local/bin/node
+      - path: /usr/bin/node
