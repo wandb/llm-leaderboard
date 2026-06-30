@@ -1,6 +1,6 @@
 # Taiwan Leaderboard Task Status
 
-Last updated: 2026-07-01 02:08 JST
+Last updated: 2026-07-01 02:15 JST
 
 This file is the persistent progress ledger for the Taiwan leaderboard work.
 Update it at every meaningful milestone so progress is visible even when chat
@@ -19,7 +19,7 @@ docs/taiwan_leaderboard_overview_ja.md
 ```text
 branch: dev-zh-TW
 remote: origin/dev-zh-TW
-latest pushed implementation commit: 37cd5e0 Preflight run_eval before Taiwan batch execution
+latest pushed implementation commit: 1ed2ada Require run_eval preflight evidence in paid reviews
 
 pushed implementation/docs commits this cycle before this ledger update:
   ebe5dcd Ignore local evaluation scratch dirs
@@ -32,6 +32,7 @@ pushed implementation/docs commits this cycle before this ledger update:
   df8b585 Add run_eval preflight mode
   ac91dc4 Keep run_eval preflight lightweight
   37cd5e0 Preflight run_eval before Taiwan batch execution
+  1ed2ada Require run_eval preflight evidence in paid reviews
 
 validated before push:
   NeMoClaw/OpenClaw setup tests: 47 passed
@@ -62,6 +63,12 @@ validated before push:
     related production-readiness/operator regression tests: 103 passed
     real prepare-only agentic canary batch generated run_eval_preflights in execution plan and paid-run review
     generated run_eval preflight command wrote ok=true/status=passed JSON and skipped W&B/Weave/model/evaluator execution
+  paid-review preflight evidence gate after 1ed2ada:
+    completed paid-run reviews now require top-level run_eval_preflights plus per-run preflight_json/preflight_returncode/preflight_ok
+    paid-run review gate re-reads the preflight JSON and requires ok=true, status=passed, and W&B/Weave/model/evaluator execution flags all false
+    py_compile build_taiwan_production_readiness_report.py, check_taiwan_paid_run_review_package.py, and related tests: passed
+    pytest tests/test_taiwan_production_readiness_report.py tests/test_check_taiwan_paid_run_review_package.py: 84 passed
+    pytest tests/test_taiwan_release_evidence_bundle.py tests/test_verify_taiwan_release_evidence_bundle.py: 279 passed
 
 cost/API state for these commits:
   local tests and git operations only
