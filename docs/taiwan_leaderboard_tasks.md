@@ -1,6 +1,6 @@
 # Taiwan Leaderboard Task Status
 
-Last updated: 2026-07-01 01:46 JST
+Last updated: 2026-07-01 01:53 JST
 
 This file is the persistent progress ledger for the Taiwan leaderboard work.
 Update it at every meaningful milestone so progress is visible even when chat
@@ -19,7 +19,7 @@ docs/taiwan_leaderboard_overview_ja.md
 ```text
 branch: dev-zh-TW
 remote: origin/dev-zh-TW
-latest pushed commit: 4e8e575 Add Taiwan release readiness gates
+latest pushed commit: 5b3c610 Wire Taiwan agentic benchmarks into run_eval
 
 pushed this cycle:
   ebe5dcd Ignore local evaluation scratch dirs
@@ -27,6 +27,8 @@ pushed this cycle:
   f0477b4 Add NeMoClaw setup and verification tooling
   f036342 Add Taiwan agentic math and SWE runners
   4e8e575 Add Taiwan release readiness gates
+  db35f11 Update Taiwan progress ledger
+  5b3c610 Wire Taiwan agentic benchmarks into run_eval
 
 validated before push:
   NeMoClaw/OpenClaw setup tests: 47 passed
@@ -34,6 +36,13 @@ validated before push:
   release gate / paid-run / W&B-Weave verifier tests: 573 passed
   OpenAI-direct canary config/batch readiness tests after OpenRouter-default removal: 59 passed
   targeted post-removal checks for canary readiness and OpenRouter rejection guards: 29 passed
+  run_eval wiring checks after 5b3c610:
+    py_compile scripts/run_eval.py and scripts/evaluator/__init__.py: passed
+    run_eval --help: passed
+    evaluator lazy import for agentic_math and swebench_pro: passed
+    Taiwan OpenAI-direct agentic NeMoClaw config merge: passed
+    Agentic runner + batch/config readiness pytest set: 144 passed
+    check_taiwan_canary_readiness.py --require-nemoclaw: passed
 
 cost/API state for these commits:
   local tests and git operations only
