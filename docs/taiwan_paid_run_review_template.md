@@ -112,6 +112,7 @@ uv run python scripts/tools/run_taiwan_full_eval_batch.py \
   --verify-weave-agents \
   --weave-agents-require-tool-span \
   --weave-agents-require-tool-content \
+  --weave-agents-require-usage \
   --weave-content-canary-gate WEAVE_CONTENT_CANARY_GATE \
   --require-weave-content-canary \
   --yes \

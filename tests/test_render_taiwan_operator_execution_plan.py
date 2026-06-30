@@ -228,6 +228,7 @@ def write_agentic_batch_operator_plan(
                             "--wandb-run-id-prefix twcanary-test "
                             "--weave-agents-require-tool-span "
                             "--weave-agents-require-tool-content "
+                            "--weave-agents-require-usage "
                             f"--weave-content-canary-gate {gate_json} "
                             "--require-weave-content-canary"
                         )
@@ -729,6 +730,7 @@ def test_render_operator_execution_plan_rejects_stale_agentic_batch_command(tmp_
     assert policy["valid"] is False
     assert any("--require-nemoclaw-agentic-config" in error for error in policy["errors"])
     assert any("--weave-content-canary-gate" in error for error in policy["errors"])
+    assert any("--weave-agents-require-usage" in error for error in policy["errors"])
     assert any(
         "--external-action-approval-report-json" in error
         for error in policy["errors"]

@@ -1951,6 +1951,7 @@ def test_release_evidence_bundle_operator_plan_lists_batch_runner_outputs(tmp_pa
                             "--verify-wandb-completion --verify-weave-agents "
                             "--weave-agents-require-tool-span "
                             "--weave-agents-require-tool-content "
+                            "--weave-agents-require-usage "
                             "--weave-content-canary-gate WEAVE_CONTENT_CANARY_GATE "
                             "--require-weave-content-canary --yes "
                             "--run-purpose 'OpenAI-direct one-model agentic phase' "

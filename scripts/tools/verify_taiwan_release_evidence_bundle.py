@@ -122,6 +122,7 @@ OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
         "validate_weave_content_canary_gate_option(",
     ),
     ("Weave content canary NeMoClaw command policy", "--nemoclaw-sandbox"),
+    ("Weave Agents usage command policy", "--weave-agents-require-usage"),
 )
 AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
     "scripts/evaluator/agentic_math.py": {
@@ -3194,6 +3195,37 @@ def validate_taiwan_full_batch_external_approval_command(
     )
 
 
+def validate_taiwan_full_batch_agentic_production_evidence_command(
+    *,
+    parts: list[str],
+    label: str,
+    errors: list[str],
+) -> None:
+    if not command_invokes_taiwan_full_eval_batch(parts):
+        return
+    if "--prepare-only" in parts:
+        return
+    phase = operator_command_flag_value(parts, "--phase", "full")
+    if phase not in {"agentic", "full"}:
+        return
+    for option in (
+        "--require-nemoclaw-agentic-config",
+        "--weave-content-canary-gate",
+        "--require-weave-content-canary",
+        "--verify-wandb-completion",
+        "--verify-weave-agents",
+        "--wandb-run-id-prefix",
+        "--weave-agents-require-tool-span",
+        "--weave-agents-require-tool-content",
+        "--weave-agents-require-usage",
+    ):
+        if option not in parts:
+            errors.append(
+                f"{label} runs paid {phase} run_taiwan_full_eval_batch.py "
+                f"without {option}"
+            )
+
+
 def validate_weave_content_canary_external_approval_command(
     *,
     parts: list[str],
@@ -3960,6 +3992,11 @@ def validate_operator_plan_command_policy(
         except ValueError:
             parts = command.split()
         validate_taiwan_full_batch_external_approval_command(
+            parts=parts,
+            label=f"operator_plan command {index}",
+            errors=errors,
+        )
+        validate_taiwan_full_batch_agentic_production_evidence_command(
             parts=parts,
             label=f"operator_plan command {index}",
             errors=errors,

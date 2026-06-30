@@ -325,6 +325,12 @@ def validate_command_policy(
                     for option in (
                         "--weave-content-canary-gate",
                         "--require-weave-content-canary",
+                        "--verify-wandb-completion",
+                        "--verify-weave-agents",
+                        "--wandb-run-id-prefix",
+                        "--weave-agents-require-tool-span",
+                        "--weave-agents-require-tool-content",
+                        "--weave-agents-require-usage",
                     ):
                         if not option_present(parts, option):
                             command_errors.append(
@@ -342,6 +348,7 @@ def validate_command_policy(
                         "--wandb-run-id-prefix",
                         "--weave-agents-require-tool-span",
                         "--weave-agents-require-tool-content",
+                        "--weave-agents-require-usage",
                     ):
                         if not option_present(parts, option):
                             command_errors.append(

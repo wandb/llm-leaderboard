@@ -406,6 +406,7 @@ def one_model_canary_commands() -> list[str]:
             "--wandb-run-id-prefix twcanary-openai-mini-YYYYMMDD "
             "--verify-wandb-completion --verify-weave-agents "
             "--weave-agents-require-tool-span --weave-agents-require-tool-content "
+            "--weave-agents-require-usage "
             "--weave-content-canary-gate WEAVE_CONTENT_CANARY_GATE "
             "--require-weave-content-canary "
             "--yes --run-purpose 'OpenAI-direct gpt-4.1-mini one-model agentic phase' "
