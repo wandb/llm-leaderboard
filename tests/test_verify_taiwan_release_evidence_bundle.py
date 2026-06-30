@@ -12069,6 +12069,40 @@ def test_verify_release_evidence_bundle_rejects_agentic_runner_missing_source_co
     ) in payload["errors"]
 
 
+def test_verify_release_evidence_bundle_rejects_agentic_runner_missing_session_scope_contract(tmp_path):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path") == "scripts/tools/run_agentic_math_openclaw.py"
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace("def resolve_session_prefix(", "def removed_session_prefix("),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "agentic runner script missing source contract W&B session-scope resolver: "
+        "scripts/tools/run_agentic_math_openclaw.py: def resolve_session_prefix("
+    ) in payload["errors"]
+
+
 def test_verify_release_evidence_bundle_rejects_current_gate_remediation_script_missing_role(tmp_path):
     bundle = build_bundle_with_operator_command_script(tmp_path)
     manifest_path = bundle / "manifest.json"

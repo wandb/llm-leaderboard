@@ -87,6 +87,10 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
     "scripts/tools/run_agentic_math_openclaw.py": {
         "role": "agentic_runner:math_script",
         "tokens": (
+            ("W&B session-scope resolver", "def resolve_session_prefix("),
+            ("W&B run id session binding", 'os.environ.get("WANDB_RUN_ID"'),
+            ("session-prefix cache binding", '"session_prefix": resolve_session_prefix(args)'),
+            ("session-key resolver call", 'session_key = f"{resolve_session_prefix(args)}'),
             ("conversation-order non-scoreable reason", "conversation_order_violation"),
             ("conversation-order result field", "conversation_order_ok"),
             ("conversation-order summary counter", "conversation_order_violation_instances"),
@@ -95,6 +99,10 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
     "scripts/tools/run_swebench_pro_openclaw.py": {
         "role": "agentic_runner:swe_script",
         "tokens": (
+            ("W&B session-scope resolver", "def resolve_session_prefix("),
+            ("W&B run id session binding", 'os.environ.get("WANDB_RUN_ID"'),
+            ("session-prefix cache binding", '"session_prefix": resolve_session_prefix(args)'),
+            ("session-key resolver call", 'session_key = f"{resolve_session_prefix(args)}'),
             ("conversation-order non-scoreable reason", "conversation_order_violation"),
             ("conversation-order result field", "conversation_order_ok"),
             ("conversation-order summary counter", "conversation_order_violation_patches"),
