@@ -1,6 +1,6 @@
 # Taiwan Leaderboard Task Status
 
-Last updated: 2026-07-01 02:19 JST
+Last updated: 2026-07-01 02:27 JST
 
 This file is the persistent progress ledger for the Taiwan leaderboard work.
 Update it at every meaningful milestone so progress is visible even when chat
@@ -19,7 +19,7 @@ docs/taiwan_leaderboard_overview_ja.md
 ```text
 branch: dev-zh-TW
 remote: origin/dev-zh-TW
-latest pushed implementation commit: 6290523 Bind paid review preflight records to runs
+latest pushed implementation commit: f7b8ff5 Bundle paid review run_eval preflight evidence
 
 pushed implementation/docs commits this cycle before this ledger update:
   ebe5dcd Ignore local evaluation scratch dirs
@@ -34,6 +34,7 @@ pushed implementation/docs commits this cycle before this ledger update:
   37cd5e0 Preflight run_eval before Taiwan batch execution
   1ed2ada Require run_eval preflight evidence in paid reviews
   6290523 Bind paid review preflight records to runs
+  f7b8ff5 Bundle paid review run_eval preflight evidence
 
 validated before push:
   NeMoClaw/OpenClaw setup tests: 47 passed
@@ -75,6 +76,11 @@ validated before push:
     per-run preflight_json must match one of the top-level run_eval_preflights output_json values
     pytest tests/test_taiwan_production_readiness_report.py tests/test_check_taiwan_paid_run_review_package.py: 85 passed
     pytest tests/test_taiwan_release_evidence_bundle.py tests/test_verify_taiwan_release_evidence_bundle.py: 279 passed
+  release-bundle preflight evidence checks after f7b8ff5:
+    completed paid-run review JSONs now cause release bundles to include referenced run_eval preflight JSONs
+    release bundle verifier re-reads bundled preflight JSONs and requires ok=true, status=passed, and W&B/Weave/model/evaluator execution flags all false
+    targeted run_eval preflight bundle tests: 3 passed
+    pytest tests/test_taiwan_release_evidence_bundle.py tests/test_verify_taiwan_release_evidence_bundle.py: 282 passed
 
 cost/API state for these commits:
   local tests and git operations only
