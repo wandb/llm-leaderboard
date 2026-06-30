@@ -29,11 +29,13 @@ dependencies = [
     "langchain>=0.3.25",
     "langdetect==1.0.9",
     "mistralai>=1.8.2", # より新しい方に統一
+    "math-verify",
     "mpmath==1.3.0",
     "nltk==3.9.1",
     "numpy==1.26.4",
     "omegaconf>=2.3.0",
     "openai>=1.86.0", # より新しい方に統一
+    "opencc-python-reimplemented>=0.1.7",
     "overrides",
     "pandas>=2.3.0",
     "pathlib",
@@ -67,4 +69,21 @@ dependencies = [
     "matplotlib>=3.10.3",
     "docker>=6.0.0", # SWE-bench評価用に追加
     "awscli>=1.41.17",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = [
+    ".git",
+    ".venv",
+    "artifacts",
+    "data",
+    "external",
+    "outputs",
+    "temp",
 ]
