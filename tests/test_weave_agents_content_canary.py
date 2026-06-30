@@ -144,6 +144,9 @@ def test_prepare_only_writes_plan_without_paid_execution(tmp_path):
         "TEST_CANARY_001",
         "CANARY_RESULT TEST_CANARY_001 91",
     ]
+    assert plan["verification_requirements"]["expected_request_models"] == [
+        "gpt-5.4-mini-2026-03-17"
+    ]
     assert plan["verification_requirements"]["require_tool_content"] is True
     assert Path(plan["prompt_file"]).exists()
     assert Path(plan["expected_sidecar"]).name == "openclaw_result.json"
@@ -214,6 +217,10 @@ def test_execute_requires_external_action_approval_before_openclaw(tmp_path, cap
     plan = json.loads(Path(payload["plan_file"]).read_text(encoding="utf-8"))
     assert plan["will_execute_external_actions"] is True
     assert plan["nemoclaw"] == expected_nemoclaw_metadata()
+    assert plan["verification_requirements"]["expected_request_models"] == [
+        "openai-direct/gpt-4.1-nano-2025-04-14",
+        "gpt-4.1-nano-2025-04-14",
+    ]
     assert plan["external_action_approval"]["valid"] is False
     assert not (tmp_path / "plans" / "weave_agents_content_canary_TEST_CANARY_APPROVAL.command_result.json").exists()
 
@@ -251,7 +258,11 @@ def test_external_action_approval_record_requires_matching_source_packet(tmp_pat
 
 def test_verify_command_uses_sidecar_conversation_or_task_id(tmp_path):
     module = load_module()
-    args = make_args(tmp_path, nemoclaw_sandbox="nejumi-taiwan")
+    args = make_args(
+        tmp_path,
+        model="openai-direct/gpt-4.1-nano-2025-04-14",
+        nemoclaw_sandbox="nejumi-taiwan",
+    )
     paths = module.canary_paths(tmp_path, "TEST_CANARY_001")
     sidecar_dir = paths.expected_sidecar.parent
     sidecar_dir.mkdir(parents=True)
@@ -278,6 +289,9 @@ def test_verify_command_uses_sidecar_conversation_or_task_id(tmp_path):
     assert fallback.count("--require-text") == 2
     assert "TEST_CANARY_001" in fallback
     assert "CANARY_RESULT TEST_CANARY_001 91" in fallback
+    assert fallback.count("--expected-request-model") == 2
+    assert "openai-direct/gpt-4.1-nano-2025-04-14" in fallback
+    assert "gpt-4.1-nano-2025-04-14" in fallback
 
     diagnostic = module.build_agents_diagnostic_command(
         args,

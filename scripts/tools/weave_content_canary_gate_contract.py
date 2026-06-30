@@ -23,6 +23,12 @@ def empty_list(value: Any) -> bool:
     return isinstance(value, list) and not value
 
 
+def nonempty_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if isinstance(item, str) and item.strip()]
+
+
 def weave_content_canary_gate_contract_issues(payload: dict[str, Any]) -> list[str]:
     """Validate native Weave proof carried by a passed content-canary gate."""
 
@@ -73,6 +79,26 @@ def weave_content_canary_gate_contract_issues(payload: dict[str, Any]) -> list[s
         if not nonempty_string(payload.get(field)):
             issues.append(f"{field} must be a non-empty string")
 
+    expected_request_models = nonempty_string_list(payload.get("expected_request_models"))
+    observed_request_models = nonempty_string_list(payload.get("observed_request_models"))
+    span_request_models = nonempty_string_list(payload.get("span_request_models"))
+    if not expected_request_models:
+        issues.append("expected_request_models must be a non-empty list")
+    if payload.get("request_model_proven") is not True:
+        issues.append("request_model_proven must be true")
+    if not observed_request_models:
+        issues.append("observed_request_models must be a non-empty list")
+    elif expected_request_models and set(expected_request_models).isdisjoint(
+        observed_request_models
+    ):
+        issues.append("observed_request_models must include an expected model alias")
+    if not span_request_models:
+        issues.append("span_request_models must be a non-empty list")
+    elif expected_request_models and set(expected_request_models).isdisjoint(
+        span_request_models
+    ):
+        issues.append("span_request_models must include an expected model alias")
+
     nemoclaw = payload.get("nemoclaw")
     if not isinstance(nemoclaw, dict):
         issues.append("nemoclaw must be an object")
@@ -97,6 +123,8 @@ def weave_content_canary_gate_contract_issues(payload: dict[str, Any]) -> list[s
             issues.append("content_capture_health.spans_with_valid_timestamps must be >= 1")
         if health.get("spans_with_invalid_timestamps") != 0:
             issues.append("content_capture_health.spans_with_invalid_timestamps must be 0")
+        if not int_at_least(health.get("request_model_count"), 1):
+            issues.append("content_capture_health.request_model_count must be >= 1")
 
     paths = payload.get("paths")
     if not isinstance(paths, dict):

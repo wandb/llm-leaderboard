@@ -294,6 +294,9 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("Agents diagnostic artifact existence proof", '"agents_diagnostic_json_exists"'),
             ("NeMoClaw content canary proof", '"nemoclaw"'),
             ("NeMoClaw sandbox proof", '"sandbox"'),
+            ("Content canary expected request-model proof", '"expected_request_models"'),
+            ("Content canary observed request-model proof", '"observed_request_models"'),
+            ("Content canary request-model proven flag", '"request_model_proven"'),
         ),
     },
     "scripts/tools/log_agentic_math_results_to_wandb.py": {
@@ -11802,6 +11805,38 @@ def validate_weave_content_canary_gate_payload(
         errors.append(f"{label} canary_id is missing for a passed gate")
     if not isinstance(payload.get("task_id"), str) or not payload.get("task_id"):
         errors.append(f"{label} task_id is missing for a passed gate")
+    expected_request_models = _non_empty_string_list(payload.get("expected_request_models"))
+    observed_request_models = _non_empty_string_list(payload.get("observed_request_models"))
+    span_request_models = _non_empty_string_list(payload.get("span_request_models"))
+    if not expected_request_models:
+        errors.append(f"{label} expected_request_models is not a non-empty list")
+    if payload.get("request_model_proven") is not True:
+        errors.append(f"{label} request_model_proven is not true")
+    if not observed_request_models:
+        errors.append(f"{label} observed_request_models is not a non-empty list")
+    elif expected_request_models and set(expected_request_models).isdisjoint(
+        observed_request_models
+    ):
+        errors.append(
+            f"{label} observed_request_models does not include an expected model alias"
+        )
+    if not span_request_models:
+        errors.append(f"{label} span_request_models is not a non-empty list")
+    elif expected_request_models and set(expected_request_models).isdisjoint(
+        span_request_models
+    ):
+        errors.append(
+            f"{label} span_request_models does not include an expected model alias"
+        )
+    health = payload.get("content_capture_health")
+    if not isinstance(health, dict):
+        errors.append(f"{label} content_capture_health is not an object")
+    else:
+        request_model_count = health.get("request_model_count")
+        if not isinstance(request_model_count, int) or request_model_count <= 0:
+            errors.append(
+                f"{label} content_capture_health.request_model_count must be positive"
+            )
     nemoclaw = payload.get("nemoclaw")
     if not isinstance(nemoclaw, dict):
         errors.append(f"{label} nemoclaw is not an object for a passed gate")

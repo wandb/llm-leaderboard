@@ -47,6 +47,9 @@ def write_plan(tmp_path, *, will_call_paid_model_api=False, task_id="weave_agent
                 "agent_name": "nejumi-taiwan-openclaw",
                 "entity": "llm-leaderboard",
                 "project": "tc-leaderboard",
+                "verification_requirements": {
+                    "expected_request_models": ["openai-direct/test-mini", "test-mini"],
+                },
                 "nemoclaw": {
                     "required": True,
                     "enabled": True,
@@ -107,6 +110,7 @@ def passing_verifier_payload(task_id="weave_agents_content_canary_PASS"):
             "input_message_required": True,
             "trace_timestamp_quality_required": True,
             "trace_final_answer_order_required": True,
+            "expected_request_models": ["openai-direct/test-mini", "test-mini"],
             "conversation_id": "",
             "conversation_id_contains": task_id,
         },
@@ -118,12 +122,19 @@ def passing_verifier_payload(task_id="weave_agents_content_canary_PASS"):
             "spans_with_invalid_timestamps": 0,
             "trace_input_tokens": 10,
             "trace_output_tokens": 2,
+            "request_model_count": 1,
         },
         "checks": [
             {"name": "message_content_capture", "ok": True},
             {"name": "input_message_capture", "ok": True},
             {"name": "tool_content_capture", "ok": True},
             {"name": "usage", "ok": True},
+            {
+                "name": "request_model",
+                "ok": True,
+                "expected_request_models": ["openai-direct/test-mini", "test-mini"],
+                "observed_request_models": ["test-mini"],
+            },
             {"name": "trace_timestamp_quality", "ok": True},
             {"name": "trace_order", "ok": True},
             {"name": "trace_user_message_order", "ok": True},
@@ -367,6 +378,10 @@ def test_successful_verifier_passes_gate(tmp_path):
     assert summary["weave_verifier_validation_issues"] == []
     assert summary["agents_diagnostic_ok"] is True
     assert summary["agents_diagnostic_validation_issues"] == []
+    assert summary["expected_request_models"] == ["openai-direct/test-mini", "test-mini"]
+    assert summary["observed_request_models"] == ["test-mini"]
+    assert summary["span_request_models"] == ["test-mini"]
+    assert summary["request_model_proven"] is True
 
 
 def test_successful_verifier_summary_satisfies_shared_gate_contract(tmp_path):
@@ -534,6 +549,30 @@ def test_ok_verifier_without_input_message_requirement_does_not_pass_gate(tmp_pa
     assert summary["ok"] is False
     assert summary["status"] == "weave_verifier_schema_invalid"
     assert "required_evidence.input_message_required must be true" in summary["detail"]
+
+
+def test_ok_verifier_without_request_model_evidence_does_not_pass_gate(tmp_path):
+    module = load_module()
+    task_id = "weave_agents_content_canary_REQUEST_MODEL_MISSING"
+    plan_file = write_plan(tmp_path, will_call_paid_model_api=True, task_id=task_id)
+    write_command_result(plan_file, task_id, {"ok": True, "returncode": 0})
+    payload = passing_verifier_payload(task_id)
+    payload["required_evidence"].pop("expected_request_models")
+    payload["checks"] = [
+        check for check in payload["checks"] if check.get("name") != "request_model"
+    ]
+    payload["content_capture_health"].pop("request_model_count")
+    for span in payload["latest_trace_spans_chronological"]:
+        span.pop("request_model", None)
+    write_verifier(tmp_path, task_id, payload)
+
+    summary = module.build_gate_summary(plan_file=plan_file)
+
+    assert summary["ok"] is False
+    assert summary["status"] == "weave_verifier_schema_invalid"
+    assert summary["request_model_proven"] is False
+    assert "required_evidence.expected_request_models" in summary["detail"]
+    assert "checks must include exactly one request_model check" in summary["detail"]
 
 
 def test_ok_verifier_without_required_text_capture_does_not_pass_gate(tmp_path):

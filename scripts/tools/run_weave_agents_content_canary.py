@@ -367,6 +367,18 @@ def build_nemoclaw_metadata(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def request_model_aliases(model_id: str | None) -> list[str]:
+    value = str(model_id or "").strip()
+    if not value:
+        return []
+    aliases = [value]
+    if value.startswith("openai-direct/"):
+        aliases.append(value.removeprefix("openai-direct/"))
+    if "/" in value:
+        aliases.append(value.rsplit("/", 1)[-1])
+    return list(dict.fromkeys(alias for alias in aliases if alias))
+
+
 def _sidecar_get_agent_meta(sidecar: dict[str, Any]) -> dict[str, Any]:
     stdout_json = sidecar.get("stdout_json")
     candidates: list[dict[str, Any]] = []
@@ -438,6 +450,8 @@ def build_verify_command(
         command.extend(["--require-tool-span", "--require-tool-content"])
     if not args.no_require_usage:
         command.append("--require-usage")
+    for model in request_model_aliases(args.model):
+        command.extend(["--expected-request-model", model])
     command.extend(["--require-text", paths.canary_id])
     command.extend(["--require-text", f"CANARY_RESULT {paths.canary_id} 91"])
     return command
@@ -505,6 +519,7 @@ def write_canary_files(
             "require_tool_span": not bool(args.no_require_tool),
             "require_tool_content": not bool(args.no_require_tool),
             "require_usage": not bool(args.no_require_usage),
+            "expected_request_models": request_model_aliases(args.model),
             "required_texts": [
                 paths.canary_id,
                 f"CANARY_RESULT {paths.canary_id} 91",

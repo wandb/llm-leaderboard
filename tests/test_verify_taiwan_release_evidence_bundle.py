@@ -3648,6 +3648,9 @@ def build_bundle_with_weave_content_canary(tmp_path):
         canary_id,
         f"CANARY_RESULT {canary_id} 91",
     ]
+    verifier_payload["required_evidence"]["expected_request_models"] = [
+        "gpt-4.1-mini-2025-04-14"
+    ]
     verifier_payload["content_capture_health"]["required_text_count"] = 2
     verifier_payload["checks"].append(
         {
@@ -3687,6 +3690,7 @@ def build_bundle_with_weave_content_canary(tmp_path):
                 "require_tool_span": True,
                 "require_tool_content": True,
                 "require_usage": False,
+                "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
                 "required_texts": [
                     canary_id,
                     f"CANARY_RESULT {canary_id} 91",
@@ -3850,6 +3854,10 @@ def build_bundle_with_weave_content_canary(tmp_path):
             "agent_name": "nejumi-taiwan-openclaw",
             "entity": "llm-leaderboard",
             "project": "tc-leaderboard",
+            "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
+            "observed_request_models": ["gpt-4.1-mini-2025-04-14"],
+            "span_request_models": ["gpt-4.1-mini-2025-04-14"],
+            "request_model_proven": True,
             "nemoclaw": {
                 "required": True,
                 "enabled": True,
@@ -3865,6 +3873,13 @@ def build_bundle_with_weave_content_canary(tmp_path):
             "agents_diagnostic_schema_version": 1,
             "agents_diagnostic_latest_trace_id": "trace-1",
             "agents_diagnostic_validation_issues": [],
+            "content_capture_health": {
+                "message_spans_with_input": 1,
+                "tool_spans_with_content": 1,
+                "spans_with_valid_timestamps": 2,
+                "spans_with_invalid_timestamps": 0,
+                "request_model_count": 1,
+            },
             "paths": {
                 "plan_file": str(plan),
                 "command_result_file": str(command_result),
@@ -3993,6 +4008,37 @@ def test_verify_release_evidence_bundle_rejects_legacy_weave_content_canary_proo
         "weave_verifier_schema_version is not 1" in error
         for error in payload["errors"]
     )
+
+
+def test_verify_release_evidence_bundle_rejects_weave_content_canary_without_request_model_proof(tmp_path):
+    bundle, gate, _verifier = build_bundle_with_weave_content_canary(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    gate_record = next(
+        record for record in manifest["files"] if record["source_path"] == str(gate)
+    )
+    bundled_gate = bundle / gate_record["bundle_path"]
+    payload = json.loads(bundled_gate.read_text(encoding="utf-8"))
+    payload.pop("expected_request_models")
+    payload.pop("observed_request_models")
+    payload.pop("span_request_models")
+    payload["request_model_proven"] = False
+    payload["content_capture_health"].pop("request_model_count")
+    bundled_gate.write_text(json.dumps(payload), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, gate_record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any("expected_request_models is not a non-empty list" in error for error in payload["errors"])
+    assert any("request_model_proven is not true" in error for error in payload["errors"])
 
 
 def test_verify_release_evidence_bundle_rejects_weave_content_canary_without_verifier_json(tmp_path):

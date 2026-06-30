@@ -108,6 +108,10 @@ def passing_weave_content_canary_gate_payload() -> dict:
         "agent_name": "nejumi-taiwan-openclaw",
         "entity": "llm-leaderboard",
         "project": "tc-leaderboard",
+        "expected_request_models": ["openai-direct/test-mini", "test-mini"],
+        "observed_request_models": ["test-mini"],
+        "span_request_models": ["test-mini"],
+        "request_model_proven": True,
         "nemoclaw": {
             "required": True,
             "enabled": True,
@@ -132,6 +136,7 @@ def passing_weave_content_canary_gate_payload() -> dict:
             "tool_spans_with_content": 1,
             "spans_with_valid_timestamps": 3,
             "spans_with_invalid_timestamps": 0,
+            "request_model_count": 1,
         },
         "failed_checks": [],
         "paths": {

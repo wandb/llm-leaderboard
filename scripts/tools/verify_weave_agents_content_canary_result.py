@@ -166,6 +166,12 @@ def _int_at_least(value: Any, minimum: int) -> bool:
     return isinstance(value, int) and value >= minimum
 
 
+def _non_empty_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if isinstance(item, str) and item.strip()]
+
+
 def _span_time_key(span: dict[str, Any]) -> tuple[str, str, str]:
     return (
         str(span.get("started_at") or ""),
@@ -308,12 +314,148 @@ def latest_trace_span_validation_issues(
     return issues
 
 
+def request_model_aliases(model_id: str | None) -> list[str]:
+    value = str(model_id or "").strip()
+    if not value:
+        return []
+    aliases = [value]
+    if value.startswith("openai-direct/"):
+        aliases.append(value.removeprefix("openai-direct/"))
+    if "/" in value:
+        aliases.append(value.rsplit("/", 1)[-1])
+    return list(dict.fromkeys(alias for alias in aliases if alias))
+
+
+def expected_request_models_from_plan(plan: dict[str, Any]) -> list[str]:
+    verification_requirements = plan.get("verification_requirements")
+    if isinstance(verification_requirements, dict):
+        expected = _non_empty_string_list(
+            verification_requirements.get("expected_request_models")
+        )
+        if expected:
+            return list(dict.fromkeys(expected))
+    return request_model_aliases(
+        plan.get("model") if isinstance(plan.get("model"), str) else None
+    )
+
+
+def request_model_evidence(verifier: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(verifier, dict):
+        return {
+            "observed_request_models": [],
+            "span_request_models": [],
+            "request_model_count": None,
+        }
+    spans = verifier.get("latest_trace_spans_chronological")
+    span_models = sorted(
+        {
+            str(span.get("request_model")).strip()
+            for span in spans
+            if isinstance(span, dict) and str(span.get("request_model") or "").strip()
+        }
+    ) if isinstance(spans, list) else []
+    observed: list[str] = []
+    checks = verifier.get("checks")
+    if isinstance(checks, list):
+        for check in checks:
+            if isinstance(check, dict) and check.get("name") == "request_model":
+                observed = _non_empty_string_list(check.get("observed_request_models"))
+                break
+    if not observed:
+        observed = span_models
+    health = verifier.get("content_capture_health")
+    request_model_count = (
+        health.get("request_model_count") if isinstance(health, dict) else None
+    )
+    return {
+        "observed_request_models": observed,
+        "span_request_models": span_models,
+        "request_model_count": request_model_count,
+    }
+
+
+def request_model_validation_issues(
+    verifier: dict[str, Any],
+    *,
+    expected_request_models: list[str],
+) -> list[str]:
+    issues: list[str] = []
+    if not expected_request_models:
+        return ["expected_request_models must be a non-empty list"]
+    expected = set(expected_request_models)
+    required_evidence = verifier.get("required_evidence")
+    if not isinstance(required_evidence, dict):
+        issues.append("required_evidence must be an object")
+        required_expected: list[str] = []
+    else:
+        required_expected = _non_empty_string_list(
+            required_evidence.get("expected_request_models")
+        )
+        if not required_expected:
+            issues.append(
+                "required_evidence.expected_request_models must be a non-empty list"
+            )
+        elif set(required_expected) != expected:
+            issues.append(
+                "required_evidence.expected_request_models must match the canary plan"
+            )
+
+    request_model_checks = [
+        check
+        for check in verifier.get("checks", [])
+        if isinstance(check, dict) and check.get("name") == "request_model"
+    ] if isinstance(verifier.get("checks"), list) else []
+    if len(request_model_checks) != 1:
+        issues.append("checks must include exactly one request_model check")
+        observed_from_check: list[str] = []
+    else:
+        check = request_model_checks[0]
+        if check.get("ok") is not True:
+            issues.append("request_model check must have ok=true")
+        check_expected = _non_empty_string_list(check.get("expected_request_models"))
+        observed_from_check = _non_empty_string_list(check.get("observed_request_models"))
+        if set(check_expected) != expected:
+            issues.append(
+                "checks.request_model.expected_request_models must match the canary plan"
+            )
+        if not observed_from_check:
+            issues.append(
+                "checks.request_model.observed_request_models must be a non-empty list"
+            )
+        elif expected.isdisjoint(observed_from_check):
+            issues.append(
+                "checks.request_model.observed_request_models must include an expected model alias"
+            )
+
+    evidence = request_model_evidence(verifier)
+    span_models = evidence["span_request_models"]
+    if not span_models:
+        issues.append("latest_trace_spans_chronological must expose request_model")
+    elif expected.isdisjoint(span_models):
+        issues.append(
+            "latest_trace_spans_chronological request_model values must include an expected model alias"
+        )
+    if observed_from_check and sorted(set(observed_from_check)) != sorted(set(span_models)):
+        issues.append(
+            "checks.request_model.observed_request_models must match latest_trace_spans_chronological request_model values"
+        )
+    request_model_count = evidence["request_model_count"]
+    if not isinstance(request_model_count, int) or request_model_count <= 0:
+        issues.append("content_capture_health.request_model_count must be a positive integer")
+    elif span_models and request_model_count != len(set(span_models)):
+        issues.append(
+            "content_capture_health.request_model_count must match unique request_model values"
+        )
+    return issues
+
+
 def passing_verifier_validation_issues(
     verifier: dict[str, Any] | None,
     *,
     expected_project_id: str | None = None,
     expected_agent_name: str | None = None,
     expected_task_id: str | None = None,
+    expected_request_models: list[str] | None = None,
 ) -> list[str]:
     if verifier is None:
         return ["Weave verifier JSON is missing"]
@@ -361,6 +503,12 @@ def passing_verifier_validation_issues(
     ]
     if missing_checks:
         issues.append("checks missing required check(s): " + ", ".join(missing_checks))
+    issues.extend(
+        request_model_validation_issues(
+            verifier,
+            expected_request_models=expected_request_models or [],
+        )
+    )
     required_texts = required_texts_from_verifier(verifier, issues)
     if required_texts and "required_text_capture" not in verifier_check_names(verifier):
         issues.append("checks missing required check(s): required_text_capture")
@@ -575,6 +723,7 @@ def status_from_verifier(
     expected_project_id: str | None,
     expected_agent_name: str | None,
     expected_task_id: str | None,
+    expected_request_models: list[str],
 ) -> tuple[str, str]:
     if verifier is None:
         return "trace_missing", verifier_error or "Weave verifier JSON is missing"
@@ -584,6 +733,7 @@ def status_from_verifier(
             expected_project_id=expected_project_id,
             expected_agent_name=expected_agent_name,
             expected_task_id=expected_task_id,
+            expected_request_models=expected_request_models,
         )
         if issues:
             return "weave_verifier_schema_invalid", "; ".join(issues)
@@ -602,6 +752,8 @@ def status_from_verifier(
         return "canary_text_missing", "required canary id or expected answer text is not visible in the Agents API"
     if "usage" in names:
         return "usage_missing", "token usage is missing from the Agents API"
+    if "request_model" in names:
+        return "request_model_missing", "request_model is missing or does not match the canary model"
     if "trace_timestamp_quality" in names:
         return "trace_order_invalid", "span timestamps are missing or invalid in the Agents API"
     if "trace_final_answer_order" in names:
@@ -692,6 +844,7 @@ def build_gate_summary(
     entity = plan.get("entity") if isinstance(plan.get("entity"), str) else None
     project = plan.get("project") if isinstance(plan.get("project"), str) else None
     expected_project_id = f"{entity}/{project}" if entity and project else None
+    expected_request_models = expected_request_models_from_plan(plan)
     sidecar_path_value = plan.get("expected_sidecar")
     sidecar_path = repo_relative_path(sidecar_path_value) if isinstance(sidecar_path_value, str) else None
     sidecar, _sidecar_error = read_json(sidecar_path)
@@ -721,6 +874,7 @@ def build_gate_summary(
             expected_project_id=expected_project_id,
             expected_agent_name=expected_agent_name,
             expected_task_id=task_id,
+            expected_request_models=expected_request_models,
         )
         if status == "passed":
             diagnostic_issues = agents_diagnostic_validation_issues(
@@ -740,10 +894,12 @@ def build_gate_summary(
             expected_project_id=expected_project_id,
             expected_agent_name=expected_agent_name,
             expected_task_id=task_id,
+            expected_request_models=expected_request_models,
         )
         if isinstance(verifier, dict) and verifier.get("ok") is True
         else []
     )
+    request_model = request_model_evidence(verifier)
     agents_diagnostic_validation = (
         agents_diagnostic_validation_issues(
             diagnostic,
@@ -768,6 +924,18 @@ def build_gate_summary(
         "project": plan.get("project"),
         "entity": plan.get("entity"),
         "nemoclaw": plan.get("nemoclaw") if isinstance(plan.get("nemoclaw"), dict) else {},
+        "expected_request_models": expected_request_models,
+        "observed_request_models": request_model["observed_request_models"],
+        "span_request_models": request_model["span_request_models"],
+        "request_model_proven": status == "passed"
+        and bool(expected_request_models)
+        and not any(
+            issue
+            for issue in verifier_validation_issues
+            if "request_model" in issue
+            or "expected_request_models" in issue
+            or "latest_trace_spans_chronological request_model" in issue
+        ),
         "will_call_paid_model_api": will_call_paid_model_api,
         "paid_api_attempted": paid_api_attempted,
         "command_ok": command_result.get("ok") if isinstance(command_result, dict) else None,
