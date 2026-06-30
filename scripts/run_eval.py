@@ -6,20 +6,14 @@ os.environ["NEJUMI_MAIN_STARTED"] = "1"
 
 import json
 import time
-import wandb
 from pathlib import Path
 from argparse import ArgumentParser
 from omegaconf import OmegaConf
 import questionary
 import importlib
+import importlib.util
 
-from config_singleton import WandbConfigSingleton
-from llm_inference_adapter import get_llm_inference_engine
-from vllm_server import shutdown_vllm_server
-from docker_vllm_manager import stop_vllm_container_if_needed, start_vllm_container_if_needed
-from blend_run import blend_run
 from utils import paginate_choices
-import weave
 
 
 class LazyEvaluatorModule:
@@ -64,6 +58,27 @@ BENCHMARK_MAP = {
     'm_ifeval': 'm_ifeval',
     'jaster': 'jaster',
 }
+
+
+def load_validate_all_benchmarks():
+    validation_helpers_path = (
+        Path(__file__).resolve().parent
+        / "evaluator"
+        / "evaluate_utils"
+        / "validation_helpers.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "_nejumi_validation_helpers",
+        validation_helpers_path,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Failed to load validation helper: {validation_helpers_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.validate_all_benchmarks
+
+
+validate_all_benchmarks = load_validate_all_benchmarks()
 
 
 def enabled_benchmarks_from_config(cfg):
@@ -150,13 +165,6 @@ def build_preflight_payload(custom_cfg_path, base_cfg_path, cfg, enabled_benchma
         "token_validation": validation_summary,
     }
 
-# プログレストラッカーとバリデーション機能をインポート
-from evaluator.evaluate_utils.progress_tracker import (
-    initialize_progress_tracker, start_benchmark_tracking, 
-    complete_benchmark_tracking, finish_progress_tracking
-)
-from evaluator.evaluate_utils.validation_helpers import validate_all_benchmarks
-
 # Set config path
 config_dir = Path("configs")
 base_cfg_name = "base_config.yaml"
@@ -240,6 +248,20 @@ if args.preflight:
         print(f"  preflight_json: {preflight_json_path}")
 
     raise SystemExit(0 if payload["ok"] else 2)
+
+import wandb
+import weave
+from blend_run import blend_run
+from config_singleton import WandbConfigSingleton
+from docker_vllm_manager import stop_vllm_container_if_needed, start_vllm_container_if_needed
+from llm_inference_adapter import get_llm_inference_engine
+from vllm_server import shutdown_vllm_server
+
+# プログレストラッカーをインポート
+from evaluator.evaluate_utils.progress_tracker import (
+    initialize_progress_tracker, start_benchmark_tracking,
+    complete_benchmark_tracking, finish_progress_tracking
+)
 
 # 環境変数からAPIキーを取得
 def get_api_key_from_env(service_name):

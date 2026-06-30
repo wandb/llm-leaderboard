@@ -92,6 +92,7 @@ def test_run_eval_preflight_writes_no_execution_payload(tmp_path):
     assert payload["will_run_evaluators"] is False
     assert "Wandb API key loaded" not in result.stdout
     assert "Warning: WANDB_API_KEY" not in result.stdout
+    assert "config_singleton not available" not in result.stderr
 
 
 def test_run_eval_preflight_fails_on_critical_token_validation(tmp_path):
