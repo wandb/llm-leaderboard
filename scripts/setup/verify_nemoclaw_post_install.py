@@ -227,6 +227,23 @@ def require_check_ok(
     errors.append(f"missing required check {name!r}")
 
 
+def require_criterion_ok(
+    errors: list[str],
+    payload: dict[str, Any],
+    name: str,
+) -> None:
+    criteria = payload.get("criteria")
+    if not isinstance(criteria, list):
+        errors.append("criteria must be a list")
+        return
+    for row in criteria:
+        if isinstance(row, dict) and row.get("name") == name:
+            if row.get("ok") is not True:
+                errors.append(f"criterion {name!r} must have ok=true")
+            return
+    errors.append(f"missing required criterion {name!r}")
+
+
 def validate_step_payload_contract(
     name: str,
     payload: dict[str, Any] | None,
@@ -274,6 +291,8 @@ def validate_step_payload_contract(
             "NeMoClaw version command succeeds",
             f"NeMoClaw sandbox status succeeds: {sandbox}",
             f"OpenClaw runs inside NeMoClaw sandbox: {sandbox}",
+            f"NeMoClaw sandbox runtime policy is introspectable: {sandbox}",
+            f"NeMoClaw W&B/Weave runtime policy is present: {sandbox}",
         ):
             require_check_ok(errors, payload, check_name)
     elif name == "adoption_check":
@@ -312,6 +331,7 @@ def validate_step_payload_contract(
             )
         require_empty_list(errors, payload, "adoption_decision.blockers")
         require_empty_list(errors, payload, "summary.blockers")
+        require_criterion_ok(errors, payload, "runtime_wandb_weave_policy")
     else:
         errors.append(f"unknown post-install step {name!r}")
 

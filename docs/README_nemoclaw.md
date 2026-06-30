@@ -14,7 +14,7 @@ References:
 
 ## Current Status
 
-As of 2026-07-01 08:22 JST:
+As of 2026-07-01 08:48 JST:
 
 - Host prerequisites are present: Docker, Node.js, npm, zstd, and OpenClaw.
 - `nemoclaw v0.0.55` and `openshell 0.0.44` are installed on this machine.
@@ -63,6 +63,10 @@ As of 2026-07-01 08:22 JST:
   checks; the NeMoClaw policy is evidence of sandboxed runtime boundaries and
   W&B/Weave egress, not a standalone proof that every non-W&B network path is
   impossible.
+- A555 post-install/adoption evidence exposes this as a first-class
+  `runtime_wandb_weave_policy` criterion. Post-install verification now fails
+  unless canary readiness proves the W&B/Weave policy and the adoption JSON
+  carries that passing criterion.
 - The repo now includes a reproducible setup/check script:
   `scripts/setup/install_nemoclaw.sh`.
 - Setup plans and remediation commands include `--json` output paths for
@@ -105,8 +109,8 @@ As of 2026-07-01 08:22 JST:
   NeMoClaw/OpenShell/sandbox OpenClaw preflight a hard canary readiness gate.
 - `scripts/tools/check_taiwan_nemoclaw_adoption.py` summarizes the ADR
   adoption criteria into JSON/Markdown: setup-plan safety, installed commands,
-  sandbox readiness, Agentic Math config readiness, and SWE-Bench Pro
-  migration guard.
+  sandbox readiness, W&B/Weave runtime policy evidence, Agentic Math config
+  readiness, and SWE-Bench Pro migration guard.
 - The adoption checker separates runtime readiness from the adoption decision.
   A local `status=not_installed` result can still emit
   `adoption_decision.recommendation=conditional_adopt_for_agentic_math` when

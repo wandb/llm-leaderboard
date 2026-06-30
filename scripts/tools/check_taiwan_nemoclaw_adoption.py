@@ -41,12 +41,17 @@ DEFAULT_AGENTIC_CONFIG_GLOBS = (
     "configs/config-taiwan-*.yaml",
     "configs/base_config_taiwan.yaml",
 )
-RUNTIME_BLOCKER_CRITERIA = {"setup_installed", "sandbox_readiness"}
+RUNTIME_BLOCKER_CRITERIA = {
+    "setup_installed",
+    "sandbox_readiness",
+    "runtime_wandb_weave_policy",
+}
 DESIGN_ADOPTION_CRITERIA = {
     "setup_plan_safety",
     "agentic_math_config",
     "swebench_pro_non_adoption_guard",
 }
+WANDB_WEAVE_POLICY_CHECK_PREFIX = "NeMoClaw W&B/Weave runtime policy is present:"
 REQUIRED_POLICY_TIER = "restricted"
 ALLOWED_POLICY_TIERS = ["restricted", "balanced", "open"]
 REQUIRED_INSTALLER_LOCK_JSON = "scripts/setup/nemoclaw_installer_lock.json"
@@ -1144,6 +1149,140 @@ def sandbox_readiness(readiness_paths: list[Path], setup_paths: list[Path]) -> d
     )
 
 
+def _readiness_check_by_prefix(payload: dict[str, Any], prefix: str) -> dict[str, Any] | None:
+    checks = payload.get("checks")
+    if not isinstance(checks, list):
+        return None
+    for row in checks:
+        if isinstance(row, dict) and str(row.get("name") or "").startswith(prefix):
+            return row
+    return None
+
+
+def _json_detail(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return {}
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def runtime_wandb_weave_policy(
+    readiness_paths: list[Path],
+    setup_paths: list[Path],
+) -> dict[str, Any]:
+    requirement = (
+        "The accepted NeMoClaw canary readiness JSON must prove that the sandbox "
+        "has the W&B/Weave runtime network policy applied."
+    )
+    readiness_gate = readiness.evaluate_nemoclaw_readiness(
+        readiness_paths,
+        require=True,
+        setup_paths=setup_paths,
+    )
+    if readiness_gate.get("ok") is not True:
+        return criterion(
+            name="runtime_wandb_weave_policy",
+            ok=False,
+            status="readiness_not_passed",
+            requirement=requirement,
+            evidence_paths=[
+                repo_path(path)
+                for path in readiness_gate.get("evidence_paths", [])
+                if isinstance(path, str)
+            ],
+            detail=(
+                "No accepted readiness JSON is available for W&B/Weave runtime "
+                "policy validation."
+            ),
+            next_action=(
+                "Rerun check_taiwan_canary_readiness.py --require-nemoclaw "
+                "after NeMoClaw setup and policy application."
+            ),
+            extra={"readiness_gate": readiness_gate},
+        )
+
+    evidence_paths = [
+        repo_path(path)
+        for path in readiness_gate.get("evidence_paths", [])
+        if isinstance(path, str)
+    ]
+    latest = latest_by_mtime(evidence_paths)
+    payload = read_json(latest) if latest is not None else None
+    check = (
+        _readiness_check_by_prefix(payload, WANDB_WEAVE_POLICY_CHECK_PREFIX)
+        if isinstance(payload, dict)
+        else None
+    )
+    detail_payload = _json_detail(check.get("detail")) if isinstance(check, dict) else {}
+    policies = detail_payload.get("policies")
+    if not isinstance(policies, list):
+        policies = []
+    detailed_status_network_policies = detail_payload.get("detailed_status_network_policies")
+    if not isinstance(detailed_status_network_policies, list):
+        detailed_status_network_policies = []
+    policy_count = int_or_none(detail_payload.get("policy_count"))
+    detailed_policy_count = int_or_none(
+        detail_payload.get("detailed_status_network_policy_count")
+    )
+    ok = (
+        isinstance(check, dict)
+        and check.get("ok") is True
+        and detail_payload.get("wandb_weave_policy_present") is True
+        and "wandb-weave" in {str(item) for item in policies}
+        and isinstance(detailed_policy_count, int)
+        and detailed_policy_count > 0
+    )
+    status = "passed" if ok else "missing_or_invalid_policy_evidence"
+    return criterion(
+        name="runtime_wandb_weave_policy",
+        ok=ok,
+        status=status,
+        requirement=requirement,
+        evidence_paths=evidence_paths,
+        detail=(
+            "NeMoClaw W&B/Weave runtime policy evidence is present."
+            if ok
+            else "The accepted readiness JSON does not prove W&B/Weave runtime policy presence."
+        ),
+        next_action=(
+            "Keep the same sandbox policy when running Agentic Math/SWE."
+            if ok
+            else (
+                "Apply configs/nemoclaw/policies/wandb_weave.yaml to the sandbox, "
+                "rerun canary readiness, then rerun the adoption check."
+            )
+        ),
+        extra={
+            "readiness_gate": readiness_gate,
+            "source_check_name": check.get("name") if isinstance(check, dict) else "",
+            "source_check_ok": check.get("ok") if isinstance(check, dict) else None,
+            "wandb_weave_policy_present": detail_payload.get("wandb_weave_policy_present"),
+            "policy_count": policy_count,
+            "policies": [str(item) for item in policies],
+            "summary_policy_count": int_or_none(detail_payload.get("summary_policy_count")),
+            "summary_policies": (
+                detail_payload.get("summary_policies")
+                if isinstance(detail_payload.get("summary_policies"), list)
+                else []
+            ),
+            "detailed_status_network_policy_count": detailed_policy_count,
+            "detailed_status_network_policies": [
+                str(item) for item in detailed_status_network_policies
+            ],
+            "non_wandb_network_policies": (
+                detail_payload.get("non_wandb_network_policies")
+                if isinstance(detail_payload.get("non_wandb_network_policies"), list)
+                else []
+            ),
+        },
+    )
+
+
 def load_config(path: Path) -> dict[str, Any] | None:
     try:
         payload = OmegaConf.to_container(OmegaConf.load(path), resolve=True)
@@ -1394,6 +1533,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         setup_plan_safety(setup_paths),
         setup_installed(setup_paths),
         sandbox_readiness(readiness_paths, setup_paths),
+        runtime_wandb_weave_policy(readiness_paths, setup_paths),
         agentic_math_config_ready(config_paths, sandbox=args.sandbox),
         swebench_guard(config_paths, sandbox=args.sandbox),
     ]

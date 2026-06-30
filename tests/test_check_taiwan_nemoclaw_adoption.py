@@ -338,6 +338,42 @@ def setup_payload(*, ok: bool) -> dict:
 
 
 def readiness_payload() -> dict:
+    policy_detail = {
+        "sandbox": "nejumi-taiwan",
+        "sandbox_found": True,
+        "policy_count": 7,
+        "policies": [
+            "clawhub",
+            "managed_inference",
+            "npm_registry",
+            "nvidia",
+            "openclaw_api",
+            "openclaw_docs",
+            "wandb-weave",
+        ],
+        "policy_configured": True,
+        "summary_policy_count": 0,
+        "summary_policies": [],
+        "detailed_status_network_policy_count": 7,
+        "detailed_status_network_policies": [
+            "clawhub",
+            "managed_inference",
+            "npm_registry",
+            "nvidia",
+            "openclaw_api",
+            "openclaw_docs",
+            "wandb-weave",
+        ],
+        "wandb_weave_policy_present": True,
+        "non_wandb_network_policies": [
+            "clawhub",
+            "managed_inference",
+            "npm_registry",
+            "nvidia",
+            "openclaw_api",
+            "openclaw_docs",
+        ],
+    }
     return {
         "ok": True,
         "checks": [
@@ -346,6 +382,16 @@ def readiness_payload() -> dict:
             {"name": "NeMoClaw version command succeeds", "ok": True},
             {"name": "NeMoClaw sandbox status succeeds: nejumi-taiwan", "ok": True},
             {"name": "OpenClaw runs inside NeMoClaw sandbox: nejumi-taiwan", "ok": True},
+            {
+                "name": "NeMoClaw sandbox runtime policy is introspectable: nejumi-taiwan",
+                "ok": True,
+                "detail": json.dumps(policy_detail),
+            },
+            {
+                "name": "NeMoClaw W&B/Weave runtime policy is present: nejumi-taiwan",
+                "ok": True,
+                "detail": json.dumps(policy_detail),
+            },
         ],
     }
 
@@ -381,14 +427,23 @@ def test_nemoclaw_adoption_doctor_reports_not_installed(tmp_path):
     assert payload["adoption_decision"]["runtime_blockers"] == [
         "setup_installed",
         "sandbox_readiness",
+        "runtime_wandb_weave_policy",
     ]
     assert payload["adoption_decision"]["design_blockers"] == []
     assert payload["ready_for_use"] is False
     assert payload["adoption_recommendation"] == "conditional_adopt_for_agentic_math"
     assert payload["adoption_scope"] == "agentic_math_only"
     assert payload["design_ready"] is True
-    assert payload["blockers"] == ["setup_installed", "sandbox_readiness"]
-    assert payload["runtime_blockers"] == ["setup_installed", "sandbox_readiness"]
+    assert payload["blockers"] == [
+        "setup_installed",
+        "sandbox_readiness",
+        "runtime_wandb_weave_policy",
+    ]
+    assert payload["runtime_blockers"] == [
+        "setup_installed",
+        "sandbox_readiness",
+        "runtime_wandb_weave_policy",
+    ]
     assert payload["design_blockers"] == []
     assert payload["other_blockers"] == []
     assert payload["setup_runtime"] == {
@@ -1398,9 +1453,58 @@ def test_nemoclaw_adoption_doctor_accepts_agentic_math_only_config(tmp_path):
     assert output_payload["ok"] is True
     assert output_payload["path"] == str(output_json)
     assert output_payload["markdown_path"] == str(output_md)
+    policy_gate = next(
+        row for row in payload["criteria"] if row["name"] == "runtime_wandb_weave_policy"
+    )
+    assert policy_gate["ok"] is True
+    assert policy_gate["wandb_weave_policy_present"] is True
+    assert policy_gate["policy_count"] == 7
+    assert "wandb-weave" in policy_gate["policies"]
     markdown = output_md.read_text(encoding="utf-8")
     assert "Operator Handoff" in markdown
+    assert "runtime_wandb_weave_policy" in markdown
     assert "swebench_pro_non_adoption_guard" in markdown
+
+
+def test_nemoclaw_adoption_doctor_rejects_missing_wandb_weave_policy_evidence(tmp_path):
+    setup = write_json(tmp_path / "setup.json", setup_payload(ok=True))
+    readiness_doc = readiness_payload()
+    readiness_doc["checks"] = [
+        row
+        for row in readiness_doc["checks"]
+        if "W&B/Weave runtime policy" not in row["name"]
+    ]
+    readiness = write_json(tmp_path / "readiness.json", readiness_doc)
+    config = write_config(tmp_path / "config.yaml")
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--setup-json",
+            str(setup),
+            "--readiness-json",
+            str(readiness),
+            "--agentic-config",
+            str(config),
+            "--fail-on-not-adoptable",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "not_adoptable"
+    assert payload["runtime_blockers"] == ["runtime_wandb_weave_policy"]
+    policy_gate = next(
+        row for row in payload["criteria"] if row["name"] == "runtime_wandb_weave_policy"
+    )
+    assert policy_gate["ok"] is False
+    assert policy_gate["status"] == "missing_or_invalid_policy_evidence"
+    assert policy_gate["wandb_weave_policy_present"] is None
 
 
 def test_nemoclaw_adoption_doctor_accepts_agentic_config_glob(tmp_path):

@@ -91,6 +91,19 @@ p.add_argument('--require-nemoclaw', action='store_true')
 p.add_argument('--nemoclaw-bin')
 p.add_argument('--nemoclaw-sandbox')
 args, _unknown = p.parse_known_args()
+policy_detail = {{
+  "sandbox": "nejumi-taiwan",
+  "sandbox_found": True,
+  "policy_count": 7,
+  "policies": ["clawhub", "managed_inference", "npm_registry", "nvidia", "openclaw_api", "openclaw_docs", "wandb-weave"],
+  "policy_configured": True,
+  "summary_policy_count": 0,
+  "summary_policies": [],
+  "detailed_status_network_policy_count": 7,
+  "detailed_status_network_policies": ["clawhub", "managed_inference", "npm_registry", "nvidia", "openclaw_api", "openclaw_docs", "wandb-weave"],
+  "wandb_weave_policy_present": True,
+  "non_wandb_network_policies": ["clawhub", "managed_inference", "npm_registry", "nvidia", "openclaw_api", "openclaw_docs"]
+}}
 payload = {{
   "ok": {py_bool},
   "checks": [
@@ -98,7 +111,9 @@ payload = {{
     {{"name": "OpenShell command is available", "ok": {py_bool}}},
     {{"name": "NeMoClaw version command succeeds", "ok": {py_bool}}},
     {{"name": "NeMoClaw sandbox status succeeds: nejumi-taiwan", "ok": {py_bool}}},
-    {{"name": "OpenClaw runs inside NeMoClaw sandbox: nejumi-taiwan", "ok": {py_bool}}}
+    {{"name": "OpenClaw runs inside NeMoClaw sandbox: nejumi-taiwan", "ok": {py_bool}}},
+    {{"name": "NeMoClaw sandbox runtime policy is introspectable: nejumi-taiwan", "ok": {py_bool}, "detail": json.dumps(policy_detail)}},
+    {{"name": "NeMoClaw W&B/Weave runtime policy is present: nejumi-taiwan", "ok": {py_bool}, "detail": json.dumps(policy_detail)}}
   ]
 }}
 open(args.json, 'w', encoding='utf-8').write(json.dumps(payload) + '\\n')
@@ -129,7 +144,10 @@ payload = {{
     "design_ready": {py_bool},
     "scope": "agentic_math_only",
     "blockers": []
-  }}
+  }},
+  "criteria": [
+    {{"name": "runtime_wandb_weave_policy", "ok": {py_bool}}}
+  ]
 }}
 open(args.json, 'w', encoding='utf-8').write(json.dumps(payload) + '\\n')
 open(args.markdown, 'w', encoding='utf-8').write('# adoption\\n')
@@ -253,7 +271,10 @@ payload = {
     "design_ready": True,
     "scope": "agentic_math_and_swebench_pro",
     "blockers": []
-  }
+  },
+  "criteria": [
+    {"name": "runtime_wandb_weave_policy", "ok": True}
+  ]
 }
 open(args.json, 'w', encoding='utf-8').write(json.dumps(payload) + '\\n')
 open(args.markdown, 'w', encoding='utf-8').write('# adoption\\n')

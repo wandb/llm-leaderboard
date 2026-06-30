@@ -66,6 +66,7 @@ WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT = (
     "scripts/tools/weave_content_canary_gate_contract.py"
 )
 NEMOCLAW_CANARY_READINESS_SCRIPT = "scripts/tools/check_taiwan_canary_readiness.py"
+NEMOCLAW_ADOPTION_SCRIPT = "scripts/tools/check_taiwan_nemoclaw_adoption.py"
 REQUIRED_NEMOCLAW_CANARY_REMOTE_LOOKUP_CHECK_NAMES = {
     "agentic Math denies remote lookup via deny_argument_pattern",
     "agentic Math denies remote lookup via deny_tool",
@@ -104,6 +105,12 @@ NEMOCLAW_CANARY_READINESS_SCRIPT_SOURCE_TOKENS = (
     ("NeMoClaw W&B/Weave runtime policy check", "NeMoClaw W&B/Weave runtime policy is present"),
     ("NeMoClaw W&B/Weave policy evidence", "wandb_weave_policy_present"),
     ("NeMoClaw runtime policy anti-cheat note", "OpenClaw deny_tool"),
+)
+NEMOCLAW_ADOPTION_SCRIPT_SOURCE_TOKENS = (
+    ("W&B/Weave runtime policy criterion", "def runtime_wandb_weave_policy("),
+    ("W&B/Weave runtime policy blocker", '"runtime_wandb_weave_policy"'),
+    ("W&B/Weave canary check parser", "NeMoClaw W&B/Weave runtime policy is present"),
+    ("W&B/Weave policy evidence field", "wandb_weave_policy_present"),
 )
 OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
     (
@@ -4310,6 +4317,50 @@ def validate_nemoclaw_canary_readiness_script_source(
     return errors
 
 
+def validate_nemoclaw_adoption_script_source(
+    *,
+    bundle_dir: Path,
+    manifest: dict[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    records = file_records_by_source(manifest)
+    record = records.get(source_path_key(NEMOCLAW_ADOPTION_SCRIPT))
+    if not isinstance(record, dict):
+        return errors
+    roles = record.get("roles")
+    if not isinstance(roles, list) or not (
+        "operator_plan:command_script" in roles
+        or "current_gate:remediation_plan:command_script" in roles
+    ):
+        errors.append(
+            "NeMoClaw adoption script missing command-script role: "
+            f"{NEMOCLAW_ADOPTION_SCRIPT}"
+        )
+    bundle_path = record.get("bundle_path")
+    if not isinstance(bundle_path, str) or not bundle_path:
+        errors.append(
+            "NeMoClaw adoption script missing bundle_path: "
+            f"{NEMOCLAW_ADOPTION_SCRIPT}"
+        )
+        return errors
+    script_file = bundle_dir / bundle_path
+    try:
+        text = script_file.read_text(encoding="utf-8")
+    except OSError as exc:
+        errors.append(
+            "NeMoClaw adoption script is not readable: "
+            f"{NEMOCLAW_ADOPTION_SCRIPT}: {exc}"
+        )
+        return errors
+    for label, token in NEMOCLAW_ADOPTION_SCRIPT_SOURCE_TOKENS:
+        if token not in text:
+            errors.append(
+                "NeMoClaw adoption script missing source contract "
+                f"{label}: {NEMOCLAW_ADOPTION_SCRIPT}: {token}"
+            )
+    return errors
+
+
 def validate_nemoclaw_canary_readiness_remote_lookup_checks(
     payload: dict[str, Any],
 ) -> list[str]:
@@ -4351,6 +4402,68 @@ def validate_nemoclaw_canary_readiness_remote_lookup_checks(
                         f"deny policy entries: {name}"
                     )
     return errors
+
+
+def validate_nemoclaw_canary_readiness_runtime_policy_checks(
+    payload: dict[str, Any],
+) -> list[str]:
+    if payload.get("ok") is not True:
+        return []
+    errors: list[str] = []
+    checks = payload.get("checks")
+    if not isinstance(checks, list):
+        return ["NeMoClaw canary readiness checks is not a list"]
+    checks_by_name = {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+    required = (
+        "NeMoClaw sandbox runtime policy is introspectable: nejumi-taiwan",
+        "NeMoClaw W&B/Weave runtime policy is present: nejumi-taiwan",
+    )
+    for name in required:
+        check = checks_by_name.get(name)
+        if not isinstance(check, dict):
+            errors.append(f"NeMoClaw canary readiness missing runtime policy check: {name}")
+            continue
+        if check.get("ok") is not True:
+            errors.append(f"NeMoClaw canary readiness runtime policy check is not ok: {name}")
+        detail = check.get("detail")
+        try:
+            detail_payload = json.loads(detail) if isinstance(detail, str) else detail
+        except json.JSONDecodeError:
+            detail_payload = None
+        if not isinstance(detail_payload, dict):
+            errors.append(f"NeMoClaw canary readiness runtime policy detail is not JSON: {name}")
+            continue
+        if name.startswith("NeMoClaw W&B/Weave") and detail_payload.get(
+            "wandb_weave_policy_present"
+        ) is not True:
+            errors.append("NeMoClaw canary readiness W&B/Weave policy evidence is not true")
+    return errors
+
+
+def validate_nemoclaw_adoption_runtime_policy_criterion(
+    payload: dict[str, Any],
+) -> list[str]:
+    if payload.get("ok") is not True:
+        return []
+    criteria = payload.get("criteria")
+    if not isinstance(criteria, list):
+        return ["NeMoClaw adoption JSON criteria is not a list"]
+    for row in criteria:
+        if isinstance(row, dict) and row.get("name") == "runtime_wandb_weave_policy":
+            if row.get("ok") is not True:
+                return [
+                    "NeMoClaw adoption JSON runtime_wandb_weave_policy criterion is not ok"
+                ]
+            if row.get("wandb_weave_policy_present") is not True:
+                return [
+                    "NeMoClaw adoption JSON runtime_wandb_weave_policy evidence is not true"
+                ]
+            return []
+    return ["NeMoClaw adoption JSON missing runtime_wandb_weave_policy criterion"]
 
 
 def file_records_by_source(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -7779,6 +7892,10 @@ def validate_nemoclaw_post_install_verification_evidence(
     readiness_payload = output_payloads.get("readiness_json")
     if isinstance(readiness_payload, dict):
         errors.extend(validate_nemoclaw_canary_readiness_remote_lookup_checks(readiness_payload))
+        errors.extend(validate_nemoclaw_canary_readiness_runtime_policy_checks(readiness_payload))
+    adoption_payload = output_payloads.get("adoption_json")
+    if isinstance(adoption_payload, dict):
+        errors.extend(validate_nemoclaw_adoption_runtime_policy_criterion(adoption_payload))
 
     steps = payload.get("steps")
     required_steps = {
@@ -13577,6 +13694,7 @@ def verify_bundle(
     errors.extend(validate_existing_results_relog_command_scripts(manifest=manifest))
     errors.extend(validate_agentic_runner_script_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_nemoclaw_canary_readiness_script_source(bundle_dir=bundle_dir, manifest=manifest))
+    errors.extend(validate_nemoclaw_adoption_script_source(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_wandb_adoption_draft_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_wandb_adoption_unconfirmed_checks_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_weave_agents_adoption_validation_failures_evidence(bundle_dir=bundle_dir, manifest=manifest))
