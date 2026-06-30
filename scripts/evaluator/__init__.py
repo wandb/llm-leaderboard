@@ -1,30 +1,36 @@
-# Evaluator modules
-from . import jaster
-from . import jbbq
-from . import mtbench
-from . import jaster_translation
-from . import toxicity
-from . import jtruthfulqa
-from . import aggregate
-from . import bfcl
-from . import swe_bench
-from . import hallulens
-from . import arc_agi
-from . import hle
-from . import m_ifeval
+"""Lazy evaluator module exports.
+
+Importing every evaluator at package import time pulls optional heavyweight
+dependencies such as transformers, COMET, Docker clients, and benchmark-specific
+packages even when the corresponding benchmark is disabled. Keep the historical
+`from evaluator import foo` surface, but import each submodule only on first use.
+"""
+
+from importlib import import_module
+
 
 __all__ = [
-    'jaster',
-    'jbbq', 
-    'mtbench',
-    'jaster_translation',
-    'toxicity',
-    'jtruthfulqa',
-    'aggregate',
-    'bfcl',
-    'swe_bench',
-    'hallulens',
-    'arc_agi',
-    'hle',
-    'm_ifeval',
+    "jaster",
+    "jbbq",
+    "mtbench",
+    "jaster_translation",
+    "toxicity",
+    "jtruthfulqa",
+    "aggregate",
+    "bfcl",
+    "swe_bench",
+    "hallulens",
+    "arc_agi",
+    "hle",
+    "m_ifeval",
+    "agentic_math",
+    "swebench_pro",
 ]
+
+
+def __getattr__(name: str):
+    if name not in __all__:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module = import_module(f"{__name__}.{name}")
+    globals()[name] = module
+    return module

@@ -9,29 +9,43 @@ from pathlib import Path
 from argparse import ArgumentParser
 from omegaconf import OmegaConf
 import questionary
+import importlib
 
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import get_llm_inference_engine
 from vllm_server import shutdown_vllm_server
 from docker_vllm_manager import stop_vllm_container_if_needed, start_vllm_container_if_needed
 from blend_run import blend_run
-from evaluator import (
-    jaster,
-    jbbq,
-    mtbench,
-    jaster_translation,
-    toxicity,
-    bfcl,
-    jtruthfulqa,
-    hle,
-    hallulens,
-    m_ifeval,
-    aggregate,
-    swe_bench,
-    arc_agi,
-)
 from utils import paginate_choices
 import weave
+
+
+class LazyEvaluatorModule:
+    def __init__(self, module_name: str):
+        self.module_name = module_name
+        self.module = None
+
+    def __getattr__(self, item):
+        if self.module is None:
+            self.module = importlib.import_module(f"evaluator.{self.module_name}")
+        return getattr(self.module, item)
+
+
+jaster = LazyEvaluatorModule("jaster")
+jbbq = LazyEvaluatorModule("jbbq")
+mtbench = LazyEvaluatorModule("mtbench")
+jaster_translation = LazyEvaluatorModule("jaster_translation")
+toxicity = LazyEvaluatorModule("toxicity")
+bfcl = LazyEvaluatorModule("bfcl")
+jtruthfulqa = LazyEvaluatorModule("jtruthfulqa")
+hle = LazyEvaluatorModule("hle")
+hallulens = LazyEvaluatorModule("hallulens")
+m_ifeval = LazyEvaluatorModule("m_ifeval")
+aggregate = LazyEvaluatorModule("aggregate")
+swe_bench = LazyEvaluatorModule("swe_bench")
+swebench_pro = LazyEvaluatorModule("swebench_pro")
+agentic_math = LazyEvaluatorModule("agentic_math")
+arc_agi = LazyEvaluatorModule("arc_agi")
 
 # プログレストラッカーとバリデーション機能をインポート
 from evaluator.evaluate_utils.progress_tracker import (
@@ -46,6 +60,8 @@ base_cfg_name = "base_config.yaml"
 parser = ArgumentParser()
 parser.add_argument("--config", "-c", type=str)
 parser.add_argument("--select-config", "-s", action="store_true", default=False)
+parser.add_argument("--base-config", type=str, default=base_cfg_name)
+parser.add_argument("--yes", "-y", action="store_true", default=False)
 args = parser.parse_args()
 
 if args.select_config:
@@ -70,7 +86,7 @@ assert custom_cfg_path.exists(), f"Config file {custom_cfg_path.resolve()} does 
 
 # Configuration loading
 custom_cfg = OmegaConf.load(custom_cfg_path)
-base_cfg_path = config_dir / base_cfg_name
+base_cfg_path = config_dir / args.base_config
 base_cfg = OmegaConf.load(base_cfg_path)
 
 # vLLM利用時にbase_urlが未指定の場合、Composeサービス名 'vllm' をデフォルト設定
@@ -146,7 +162,9 @@ blend_run(run_chain=True)
 enabled_benchmarks = []
 benchmark_map = {
     'bfcl': 'bfcl',
+    'agentic_math': 'agentic_math',
     'swebench': 'swebench', 
+    'swebench_pro': 'swebench_pro',
     'mtbench': 'mtbench',
     'jbbq': 'jbbq',
     'toxicity': 'toxicity',
@@ -155,7 +173,7 @@ benchmark_map = {
     'hallulens': 'hallulens',
     'arc_agi': 'arc_agi',
     'm_ifeval': 'm_ifeval',
-    'jaster': 'jaster'
+    'jaster': 'jaster',
 }
 
 for bench_key, bench_name in benchmark_map.items():
@@ -186,7 +204,7 @@ try:
     if has_errors:
         print("\n❌ CRITICAL: Some benchmarks have insufficient output tokens!")
         print("   This will likely cause empty responses and unfairly low scores.")
-        response = input("\nContinue anyway? (y/N): ").strip().lower()
+        response = "y" if args.yes else input("\nContinue anyway? (y/N): ").strip().lower()
         if response not in ['y', 'yes']:
             print("Evaluation aborted by user.")
             if run:
@@ -194,7 +212,7 @@ try:
             exit(1)
     elif has_warnings:
         print("\n⚠️  WARNING: Some benchmarks have suboptimal token allocation.")
-        response = input("\nContinue? (Y/n): ").strip().lower()
+        response = "y" if args.yes else input("\nContinue? (Y/n): ").strip().lower()
         if response in ['n', 'no']:
             print("Evaluation aborted by user.")
             if run:
@@ -242,6 +260,12 @@ if cfg.run.bfcl:
     bfcl.evaluate()
     complete_benchmark_tracking('bfcl')
 
+# Agentic Math evaluation
+if cfg.run.get('agentic_math', False):
+    start_benchmark_tracking('agentic_math')
+    agentic_math.evaluate()
+    complete_benchmark_tracking('agentic_math')
+
 # SWE-Bench Verified evaluation
 if cfg.run.swebench:
     start_benchmark_tracking('swebench')
@@ -252,6 +276,12 @@ if cfg.run.swebench:
     else:
         swe_bench.evaluate()
     complete_benchmark_tracking('swebench')
+
+# SWE-bench Pro agentic evaluation
+if cfg.run.get('swebench_pro', False):
+    start_benchmark_tracking('swebench_pro')
+    swebench_pro.evaluate()
+    complete_benchmark_tracking('swebench_pro')
 
 # mt-bench evaluation
 if cfg.run.mtbench:
