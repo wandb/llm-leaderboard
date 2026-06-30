@@ -36,6 +36,8 @@ EXTERNAL_ACTION_APPROVAL_TEMPLATE_RENDERER_SCRIPT = (
     "scripts/tools/render_external_action_approval_template.py"
 )
 AGENTIC_RUNNER_SCRIPT_ROLES = {
+    "scripts/evaluator/agentic_math.py": "agentic_runner:math_evaluator_script",
+    "scripts/evaluator/swebench_pro.py": "agentic_runner:swe_evaluator_script",
     "scripts/tools/run_openclaw_agent_protocol.py": "agentic_runner:protocol_script",
     "scripts/tools/run_agentic_math_openclaw.py": "agentic_runner:math_script",
     "scripts/tools/run_swebench_pro_openclaw.py": "agentic_runner:swe_script",

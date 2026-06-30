@@ -1532,6 +1532,8 @@ def test_release_evidence_bundle_copies_report_references(tmp_path):
     ):
         assert "current_gate:remediation_plan:command_script" in sources[script_path]["roles"]
     expected_agentic_runner_roles = {
+        "scripts/evaluator/agentic_math.py": "agentic_runner:math_evaluator_script",
+        "scripts/evaluator/swebench_pro.py": "agentic_runner:swe_evaluator_script",
         "scripts/tools/run_openclaw_agent_protocol.py": "agentic_runner:protocol_script",
         "scripts/tools/run_agentic_math_openclaw.py": "agentic_runner:math_script",
         "scripts/tools/run_swebench_pro_openclaw.py": "agentic_runner:swe_script",

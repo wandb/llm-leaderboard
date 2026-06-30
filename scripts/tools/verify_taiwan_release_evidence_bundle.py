@@ -74,6 +74,22 @@ OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
     ),
 )
 AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
+    "scripts/evaluator/agentic_math.py": {
+        "role": "agentic_runner:math_evaluator_script",
+        "tokens": (
+            ("Agentic Math runner path", "run_agentic_math_openclaw.py"),
+            ("Agentic Math session-prefix config lookup", 'session_prefix = _cfg_get(cfg.agentic_math, "session_prefix")'),
+            ("Agentic Math session-prefix pass-through", 'command.extend(["--session-prefix", str(session_prefix)])'),
+        ),
+    },
+    "scripts/evaluator/swebench_pro.py": {
+        "role": "agentic_runner:swe_evaluator_script",
+        "tokens": (
+            ("SWE-Bench Pro runner path", "run_swebench_pro_openclaw.py"),
+            ("SWE-Bench Pro session-prefix config lookup", 'session_prefix = _cfg_get(cfg.swebench_pro, "session_prefix")'),
+            ("SWE-Bench Pro session-prefix pass-through", 'command.extend(["--session-prefix", str(session_prefix)])'),
+        ),
+    },
     "scripts/tools/run_openclaw_agent_protocol.py": {
         "role": "agentic_runner:protocol_script",
         "tokens": (
