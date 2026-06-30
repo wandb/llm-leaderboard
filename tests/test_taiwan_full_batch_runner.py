@@ -959,6 +959,234 @@ def test_prepare_only_can_require_nemoclaw_agentic_config(tmp_path, monkeypatch)
     assert "agentic_math.nemoclaw_sandbox must be set" in guard["errors"][0]
 
 
+def test_paid_run_executes_run_eval_preflight_before_run_eval(tmp_path, monkeypatch):
+    module = load_module()
+    manifest = tmp_path / "models.yaml"
+    manifest.write_text(
+        "\n".join(
+            [
+                "models:",
+                "  - slug: gpt-4_1-mini-openai-direct-canary",
+                "    source_config: config-gpt-4.1-mini-2025-04-14.yaml",
+                "    run_name: 'taiwan/full/openai/gpt-4.1-mini: canary'",
+                "    openclaw_model: 'openai-direct/gpt-4.1-mini-2025-04-14'",
+                "    agentic_thinking: 'off'",
+                "    swe_thinking: 'off'",
+                "    judge_model: 'gpt-4.1-mini-2025-04-14'",
+                "    canary: true",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    output_root = tmp_path / "outputs"
+    budget = output_root / "openai_canary_budget_estimate.json"
+    write_budget_estimate(
+        budget,
+        target_model="openai-direct/gpt-4.1-mini-2025-04-14",
+    )
+    approval = output_root / "external_action_approval.verify.json"
+    source_packet = write_external_action_approval_report(approval)
+    calls: list[list[str]] = []
+
+    def fake_stream_run(command, log_path, env):
+        calls.append(command)
+        if "--preflight" in command:
+            output_path = Path(command[command.index("--preflight-json") + 1])
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "ok": True,
+                        "status": "passed",
+                        "enabled_benchmarks": ["agentic_math", "swebench_pro"],
+                        "will_initialize_wandb": False,
+                        "will_log_wandb_artifacts": False,
+                        "will_initialize_weave": False,
+                        "will_start_inference_engine": False,
+                        "will_run_evaluators": False,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            return 0
+        return 7
+
+    monkeypatch.setattr(module, "stream_run", fake_stream_run)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_taiwan_full_eval_batch.py",
+            "--manifest",
+            str(manifest),
+            "--canary",
+            "--phase",
+            "agentic",
+            "--generated-config-dir",
+            str(tmp_path / "generated"),
+            "--output-root",
+            str(output_root),
+            "--agentic-math-nemoclaw-sandbox",
+            "nejumi-taiwan",
+            "--swebench-pro-nemoclaw-sandbox",
+            "nejumi-taiwan",
+            "--swebench-pro-nemoclaw-checkout-transfer-mode",
+            "copy",
+            "--require-nemoclaw-agentic-config",
+            "--wandb-run-id-prefix",
+            "twcanary-test",
+            "--run-purpose",
+            "paid preflight order test",
+            "--expected-cost-band",
+            "$1-$3",
+            "--pre-run-budget-estimate-json",
+            str(budget),
+            "--external-action-approval-report-json",
+            str(approval),
+            "--external-action-approval-source-packet-json",
+            str(source_packet),
+        ],
+    )
+
+    try:
+        module.main()
+    except SystemExit as exc:
+        assert exc.code == 7
+    else:  # pragma: no cover - regression guard
+        raise AssertionError("expected mocked run_eval failure")
+
+    assert len(calls) == 2
+    assert "--preflight" in calls[0]
+    assert "--preflight" not in calls[1]
+    review = json.loads(
+        (output_root / "canary_agentic_paid_run_review.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert review["status"] == "failed"
+    run = review["runs"][0]
+    assert run["preflight_ok"] is True
+    assert run["preflight_returncode"] == 0
+    assert run["preflight_status"] == "passed"
+    assert run["returncode"] == 7
+
+
+def test_paid_run_stops_before_run_eval_when_preflight_fails(tmp_path, monkeypatch):
+    module = load_module()
+    manifest = tmp_path / "models.yaml"
+    manifest.write_text(
+        "\n".join(
+            [
+                "models:",
+                "  - slug: gpt-4_1-mini-openai-direct-canary",
+                "    source_config: config-gpt-4.1-mini-2025-04-14.yaml",
+                "    run_name: 'taiwan/full/openai/gpt-4.1-mini: canary'",
+                "    openclaw_model: 'openai-direct/gpt-4.1-mini-2025-04-14'",
+                "    agentic_thinking: 'off'",
+                "    swe_thinking: 'off'",
+                "    judge_model: 'gpt-4.1-mini-2025-04-14'",
+                "    canary: true",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    output_root = tmp_path / "outputs"
+    budget = output_root / "openai_canary_budget_estimate.json"
+    write_budget_estimate(
+        budget,
+        target_model="openai-direct/gpt-4.1-mini-2025-04-14",
+    )
+    approval = output_root / "external_action_approval.verify.json"
+    source_packet = write_external_action_approval_report(approval)
+    calls: list[list[str]] = []
+
+    def fake_stream_run(command, log_path, env):
+        calls.append(command)
+        assert "--preflight" in command
+        output_path = Path(command[command.index("--preflight-json") + 1])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "ok": False,
+                    "status": "failed",
+                    "enabled_benchmarks": [],
+                    "will_initialize_wandb": False,
+                    "will_log_wandb_artifacts": False,
+                    "will_initialize_weave": False,
+                    "will_start_inference_engine": False,
+                    "will_run_evaluators": False,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return 2
+
+    monkeypatch.setattr(module, "stream_run", fake_stream_run)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_taiwan_full_eval_batch.py",
+            "--manifest",
+            str(manifest),
+            "--canary",
+            "--phase",
+            "agentic",
+            "--generated-config-dir",
+            str(tmp_path / "generated"),
+            "--output-root",
+            str(output_root),
+            "--agentic-math-nemoclaw-sandbox",
+            "nejumi-taiwan",
+            "--swebench-pro-nemoclaw-sandbox",
+            "nejumi-taiwan",
+            "--swebench-pro-nemoclaw-checkout-transfer-mode",
+            "copy",
+            "--require-nemoclaw-agentic-config",
+            "--wandb-run-id-prefix",
+            "twcanary-test",
+            "--run-purpose",
+            "paid preflight failure test",
+            "--expected-cost-band",
+            "$1-$3",
+            "--pre-run-budget-estimate-json",
+            str(budget),
+            "--external-action-approval-report-json",
+            str(approval),
+            "--external-action-approval-source-packet-json",
+            str(source_packet),
+        ],
+    )
+
+    try:
+        module.main()
+    except SystemExit as exc:
+        assert "run_eval preflight failed" in str(exc)
+    else:  # pragma: no cover - regression guard
+        raise AssertionError("expected preflight failure")
+
+    assert len(calls) == 1
+    assert "--preflight" in calls[0]
+    review = json.loads(
+        (output_root / "canary_agentic_paid_run_review.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert review["status"] == "run_eval_preflight_failed"
+    run = review["runs"][0]
+    assert run["preflight_ok"] is False
+    assert run["preflight_returncode"] == 2
+    assert run["preflight_status"] == "failed"
+    assert run["returncode"] == 2
+
+
 def test_paid_run_requires_pre_run_budget_estimate(tmp_path, monkeypatch):
     module = load_module()
     manifest = tmp_path / "models.yaml"
