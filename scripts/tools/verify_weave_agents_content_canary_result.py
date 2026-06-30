@@ -767,6 +767,7 @@ def build_gate_summary(
         "agent_name": plan.get("agent_name"),
         "project": plan.get("project"),
         "entity": plan.get("entity"),
+        "nemoclaw": plan.get("nemoclaw") if isinstance(plan.get("nemoclaw"), dict) else {},
         "will_call_paid_model_api": will_call_paid_model_api,
         "paid_api_attempted": paid_api_attempted,
         "command_ok": command_result.get("ok") if isinstance(command_result, dict) else None,

@@ -108,6 +108,13 @@ def passing_weave_content_canary_gate_payload() -> dict:
         "agent_name": "nejumi-taiwan-openclaw",
         "entity": "llm-leaderboard",
         "project": "tc-leaderboard",
+        "nemoclaw": {
+            "required": True,
+            "enabled": True,
+            "bin": "nemoclaw",
+            "sandbox": "nejumi-taiwan",
+            "workdir": "/sandbox",
+        },
         "will_call_paid_model_api": True,
         "paid_api_attempted": True,
         "command_ok": True,

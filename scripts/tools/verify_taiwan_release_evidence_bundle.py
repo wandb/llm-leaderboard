@@ -121,6 +121,7 @@ OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
         "Weave content canary command-policy call",
         "validate_weave_content_canary_gate_option(",
     ),
+    ("Weave content canary NeMoClaw command policy", "--nemoclaw-sandbox"),
 )
 AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
     "scripts/evaluator/agentic_math.py": {
@@ -291,6 +292,8 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("Agents diagnostic status field", '"agents_diagnostic_ok"'),
             ("Weave verifier artifact existence proof", '"verifier_json_exists"'),
             ("Agents diagnostic artifact existence proof", '"agents_diagnostic_json_exists"'),
+            ("NeMoClaw content canary proof", '"nemoclaw"'),
+            ("NeMoClaw sandbox proof", '"sandbox"'),
         ),
     },
     "scripts/tools/log_agentic_math_results_to_wandb.py": {
@@ -3166,6 +3169,11 @@ def validate_weave_content_canary_external_approval_command(
         errors=errors,
         command_description="run_weave_agents_content_canary.py --execute",
     )
+    if "--nemoclaw-sandbox" not in parts:
+        errors.append(
+            f"{label} runs run_weave_agents_content_canary.py --execute without "
+            "--nemoclaw-sandbox"
+        )
 
 
 def command_invokes_wandb_completion_sync_apply(parts: list[str]) -> bool:
@@ -11794,6 +11802,17 @@ def validate_weave_content_canary_gate_payload(
         errors.append(f"{label} canary_id is missing for a passed gate")
     if not isinstance(payload.get("task_id"), str) or not payload.get("task_id"):
         errors.append(f"{label} task_id is missing for a passed gate")
+    nemoclaw = payload.get("nemoclaw")
+    if not isinstance(nemoclaw, dict):
+        errors.append(f"{label} nemoclaw is not an object for a passed gate")
+    else:
+        if nemoclaw.get("required") is not True:
+            errors.append(f"{label} nemoclaw.required is not true")
+        if nemoclaw.get("enabled") is not True:
+            errors.append(f"{label} nemoclaw.enabled is not true")
+        for field in ("sandbox", "bin", "workdir"):
+            if not isinstance(nemoclaw.get(field), str) or not nemoclaw.get(field):
+                errors.append(f"{label} nemoclaw.{field} is missing for a passed gate")
     issues = payload.get("weave_verifier_validation_issues")
     if not isinstance(issues, list):
         errors.append(f"{label} weave_verifier_validation_issues is not a list")

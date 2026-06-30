@@ -560,6 +560,15 @@ def test_weave_content_gate_fails_when_no_candidate_passes(tmp_path):
         in command
         for command in execute_commands
     )
+    assert all(
+        "--nemoclaw-sandbox nejumi-taiwan" in command
+        for command in execute_commands
+    )
+    assert any(
+        "--canary-id PREPARE_ONLY" in command
+        and "--nemoclaw-sandbox nejumi-taiwan" in command
+        for command in result["remediation_commands"]
+    )
 
 
 def test_weave_content_gate_points_to_verifier_regeneration_for_schema_invalid(tmp_path):

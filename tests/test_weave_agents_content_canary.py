@@ -54,6 +54,16 @@ def make_args(tmp_path, **overrides):
     return Namespace(**values)
 
 
+def expected_nemoclaw_metadata() -> dict:
+    return {
+        "required": True,
+        "enabled": True,
+        "bin": "nemoclaw",
+        "sandbox": "nejumi-taiwan",
+        "workdir": "/sandbox",
+    }
+
+
 def write_external_action_approval_report(path: Path, *, source_packet: Path | None = None) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     if source_packet is None:
@@ -112,6 +122,8 @@ def test_prepare_only_writes_plan_without_paid_execution(tmp_path):
             str(tmp_path),
             "--model",
             "gpt-5.4-mini-2026-03-17",
+            "--nemoclaw-sandbox",
+            "nejumi-taiwan",
             "--verify-sleep-seconds",
             "0",
         ],
@@ -127,6 +139,7 @@ def test_prepare_only_writes_plan_without_paid_execution(tmp_path):
     plan = payload["plan"]
     assert plan["will_call_paid_model_api"] is False
     assert plan["model"] == "gpt-5.4-mini-2026-03-17"
+    assert plan["nemoclaw"] == expected_nemoclaw_metadata()
     assert plan["verification_requirements"]["required_texts"] == [
         "TEST_CANARY_001",
         "CANARY_RESULT TEST_CANARY_001 91",
@@ -150,6 +163,25 @@ def test_execute_requires_explicit_model():
         raise AssertionError("main should require --model with --execute")
 
 
+def test_execute_requires_nemoclaw_sandbox():
+    module = load_module()
+
+    try:
+        module.main(
+            [
+                "--execute",
+                "--model",
+                "openai-direct/gpt-4.1-nano-2025-04-14",
+                "--verify-sleep-seconds",
+                "0",
+            ]
+        )
+    except SystemExit as exc:
+        assert "--nemoclaw-sandbox is required" in str(exc)
+    else:
+        raise AssertionError("main should require --nemoclaw-sandbox with --execute")
+
+
 def test_execute_requires_external_action_approval_before_openclaw(tmp_path, capsys):
     module = load_module()
 
@@ -159,6 +191,8 @@ def test_execute_requires_external_action_approval_before_openclaw(tmp_path, cap
                 "--execute",
                 "--model",
                 "openai-direct/gpt-4.1-nano-2025-04-14",
+                "--nemoclaw-sandbox",
+                "nejumi-taiwan",
                 "--canary-id",
                 "TEST_CANARY_APPROVAL",
                 "--output-dir",
@@ -179,6 +213,7 @@ def test_execute_requires_external_action_approval_before_openclaw(tmp_path, cap
     assert "--external-action-approval-report-json" in payload["missing_fields"]
     plan = json.loads(Path(payload["plan_file"]).read_text(encoding="utf-8"))
     assert plan["will_execute_external_actions"] is True
+    assert plan["nemoclaw"] == expected_nemoclaw_metadata()
     assert plan["external_action_approval"]["valid"] is False
     assert not (tmp_path / "plans" / "weave_agents_content_canary_TEST_CANARY_APPROVAL.command_result.json").exists()
 
@@ -216,7 +251,7 @@ def test_external_action_approval_record_requires_matching_source_packet(tmp_pat
 
 def test_verify_command_uses_sidecar_conversation_or_task_id(tmp_path):
     module = load_module()
-    args = make_args(tmp_path)
+    args = make_args(tmp_path, nemoclaw_sandbox="nejumi-taiwan")
     paths = module.canary_paths(tmp_path, "TEST_CANARY_001")
     sidecar_dir = paths.expected_sidecar.parent
     sidecar_dir.mkdir(parents=True)
@@ -257,6 +292,22 @@ def test_verify_command_uses_sidecar_conversation_or_task_id(tmp_path):
     diagnostic_fallback = module.build_agents_diagnostic_command(args, paths)
     assert "--conversation-id-contains" in diagnostic_fallback
     assert paths.task_id in diagnostic_fallback
+
+
+def test_run_command_routes_through_nemoclaw_when_sandbox_is_set(tmp_path):
+    module = load_module()
+    args = make_args(tmp_path, model="openai-direct/test", nemoclaw_sandbox="nejumi-taiwan")
+    paths = module.canary_paths(tmp_path, "TEST_CANARY_NEMOCLAW")
+
+    command = module.build_run_command(args, paths)
+
+    assert "--nemoclaw-bin" in command
+    assert "nemoclaw" in command
+    assert "--nemoclaw-sandbox" in command
+    assert "nejumi-taiwan" in command
+    assert "--nemoclaw-workdir" in command
+    assert "/sandbox" in command
+    assert module.build_nemoclaw_metadata(args) == expected_nemoclaw_metadata()
 
 
 def test_classify_openclaw_failure_detects_provider_quota(tmp_path):

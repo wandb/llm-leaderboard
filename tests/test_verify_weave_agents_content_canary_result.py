@@ -47,6 +47,13 @@ def write_plan(tmp_path, *, will_call_paid_model_api=False, task_id="weave_agent
                 "agent_name": "nejumi-taiwan-openclaw",
                 "entity": "llm-leaderboard",
                 "project": "tc-leaderboard",
+                "nemoclaw": {
+                    "required": True,
+                    "enabled": True,
+                    "bin": "nemoclaw",
+                    "sandbox": "nejumi-taiwan",
+                    "workdir": "/sandbox",
+                },
             }
         ),
         encoding="utf-8",
@@ -374,6 +381,25 @@ def test_successful_verifier_summary_satisfies_shared_gate_contract(tmp_path):
     summary = module.build_gate_summary(plan_file=plan_file)
 
     assert contract_module.weave_content_canary_gate_contract_issues(summary) == []
+
+
+def test_successful_verifier_summary_requires_nemoclaw_metadata(tmp_path):
+    module = load_module()
+    contract_module = load_gate_contract_module()
+    task_id = "weave_agents_content_canary_PASS"
+    plan_file = write_plan(tmp_path, will_call_paid_model_api=True, task_id=task_id)
+    plan = json.loads(plan_file.read_text(encoding="utf-8"))
+    plan.pop("nemoclaw")
+    plan_file.write_text(json.dumps(plan), encoding="utf-8")
+    write_command_result(plan_file, task_id, {"ok": True, "returncode": 0})
+    write_verifier(tmp_path, task_id, passing_verifier_payload(task_id))
+    write_agents_diagnostic(tmp_path, task_id, passing_agents_diagnostic_payload(task_id))
+
+    summary = module.build_gate_summary(plan_file=plan_file)
+
+    assert summary["ok"] is True
+    issues = contract_module.weave_content_canary_gate_contract_issues(summary)
+    assert "nemoclaw.required must be true" in issues or "nemoclaw must be an object" in issues
 
 
 def test_successful_verifier_without_agents_diagnostic_does_not_pass_gate(tmp_path):

@@ -278,6 +278,7 @@ def validate_command_policy(
                 for option in (
                     "--external-action-approval-source-packet-json",
                     "--external-action-approval-report-json",
+                    "--nemoclaw-sandbox",
                 ):
                     if not option_present(parts, option):
                         command_errors.append(

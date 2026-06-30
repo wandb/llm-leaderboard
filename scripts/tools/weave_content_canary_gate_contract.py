@@ -73,6 +73,18 @@ def weave_content_canary_gate_contract_issues(payload: dict[str, Any]) -> list[s
         if not nonempty_string(payload.get(field)):
             issues.append(f"{field} must be a non-empty string")
 
+    nemoclaw = payload.get("nemoclaw")
+    if not isinstance(nemoclaw, dict):
+        issues.append("nemoclaw must be an object")
+    else:
+        if nemoclaw.get("required") is not True:
+            issues.append("nemoclaw.required must be true")
+        if nemoclaw.get("enabled") is not True:
+            issues.append("nemoclaw.enabled must be true")
+        for field in ("sandbox", "bin", "workdir"):
+            if not nonempty_string(nemoclaw.get(field)):
+                issues.append(f"nemoclaw.{field} must be a non-empty string")
+
     health = payload.get("content_capture_health")
     if not isinstance(health, dict):
         issues.append("content_capture_health must be an object")

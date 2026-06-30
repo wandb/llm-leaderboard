@@ -148,12 +148,14 @@ def weave_content_canary_commands() -> list[str]:
         (
             "uv run python scripts/tools/run_weave_agents_content_canary.py "
             "--canary-id PREPARE_ONLY "
-            "--model openai-direct/gpt-4.1-nano-2025-04-14 --thinking off"
+            "--model openai-direct/gpt-4.1-nano-2025-04-14 --thinking off "
+            "--nemoclaw-sandbox nejumi-taiwan"
         ),
         (
             "uv run python scripts/tools/run_weave_agents_content_canary.py "
             "--execute --canary-id CONTENT_CANARY_YYYYMMDDTHHMM "
             "--model openai-direct/gpt-4.1-nano-2025-04-14 --thinking off --timeout 180 "
+            "--nemoclaw-sandbox nejumi-taiwan "
             f"{approval_flag}"
         ),
         (

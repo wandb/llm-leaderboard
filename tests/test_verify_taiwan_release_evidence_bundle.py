@@ -799,13 +799,15 @@ def build_bundle_with_operator_weave_content_canary_command(tmp_path):
                         (
                             "uv run python scripts/tools/run_weave_agents_content_canary.py "
                             "--canary-id PREPARE_ONLY "
-                            "--model openai-direct/gpt-4.1-nano-2025-04-14 --thinking off"
+                            "--model openai-direct/gpt-4.1-nano-2025-04-14 --thinking off "
+                            "--nemoclaw-sandbox nejumi-taiwan"
                         ),
                         (
                             "uv run python scripts/tools/run_weave_agents_content_canary.py "
                             "--execute --canary-id CONTENT_CANARY_YYYYMMDDTHHMM "
                             "--model openai-direct/gpt-4.1-nano-2025-04-14 "
                             "--thinking off --timeout 180 "
+                            "--nemoclaw-sandbox nejumi-taiwan "
                             "--external-action-approval-source-packet-json "
                             "outputs/taiwan_release_evidence/bundle_YYYYMMDDTHHMM/"
                             "external_action_approval_packet.json "
@@ -3669,6 +3671,13 @@ def build_bundle_with_weave_content_canary(tmp_path):
             "will_execute_external_actions": True,
             "model": "openai-direct/test-mini",
             "thinking": "low",
+            "nemoclaw": {
+                "required": True,
+                "enabled": True,
+                "bin": "nemoclaw",
+                "sandbox": "nejumi-taiwan",
+                "workdir": "/sandbox",
+            },
             "agent_name": "nejumi-taiwan-openclaw",
             "entity": "llm-leaderboard",
             "project": "tc-leaderboard",
@@ -3841,6 +3850,13 @@ def build_bundle_with_weave_content_canary(tmp_path):
             "agent_name": "nejumi-taiwan-openclaw",
             "entity": "llm-leaderboard",
             "project": "tc-leaderboard",
+            "nemoclaw": {
+                "required": True,
+                "enabled": True,
+                "bin": "nemoclaw",
+                "sandbox": "nejumi-taiwan",
+                "workdir": "/sandbox",
+            },
             "weave_verifier_ok": True,
             "weave_verifier_schema_version": 1,
             "weave_verifier_latest_trace_id": "trace-1",
@@ -13623,6 +13639,42 @@ def test_verify_release_evidence_bundle_rejects_weave_canary_without_approval_so
     assert any(
         "runs run_weave_agents_content_canary.py --execute without "
         "--external-action-approval-source-packet-json"
+        in error
+        for error in payload["errors"]
+    )
+
+
+def test_verify_release_evidence_bundle_rejects_weave_canary_without_nemoclaw_sandbox(tmp_path):
+    bundle = build_bundle_with_operator_weave_content_canary_command(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    operator_plan_path = bundle / "operator_plan.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    operator_plan = json.loads(operator_plan_path.read_text(encoding="utf-8"))
+    nemoclaw_flag = " --nemoclaw-sandbox nejumi-taiwan"
+    operator_plan["operator_next_steps"]["steps"][0]["commands"][1] = operator_plan[
+        "operator_next_steps"
+    ]["steps"][0]["commands"][1].replace(nemoclaw_flag, "")
+    manifest["current_gate"]["operator_next_steps"] = operator_plan["operator_next_steps"]
+    manifest["current_gate"]["remediation_plan"][0]["commands"][1] = manifest[
+        "current_gate"
+    ]["remediation_plan"][0]["commands"][1].replace(nemoclaw_flag, "")
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    operator_plan_path.write_text(json.dumps(operator_plan), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, "operator_plan.json")
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "runs run_weave_agents_content_canary.py --execute without --nemoclaw-sandbox"
         in error
         for error in payload["errors"]
     )

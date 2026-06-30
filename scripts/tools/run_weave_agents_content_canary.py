@@ -356,6 +356,17 @@ def build_run_command(args: argparse.Namespace, paths: CanaryPaths) -> list[str]
     return command
 
 
+def build_nemoclaw_metadata(args: argparse.Namespace) -> dict[str, Any]:
+    enabled = bool(args.nemoclaw_sandbox)
+    return {
+        "required": enabled,
+        "enabled": enabled,
+        "bin": args.nemoclaw_bin if enabled else "",
+        "sandbox": args.nemoclaw_sandbox or "",
+        "workdir": args.nemoclaw_workdir if enabled else "",
+    }
+
+
 def _sidecar_get_agent_meta(sidecar: dict[str, Any]) -> dict[str, Any]:
     stdout_json = sidecar.get("stdout_json")
     candidates: list[dict[str, Any]] = []
@@ -502,6 +513,7 @@ def write_canary_files(
         "agent_name": args.agent_name,
         "entity": args.entity,
         "project": args.project,
+        "nemoclaw": build_nemoclaw_metadata(args),
         "external_action_approval": external_action_approval,
     }
     paths.plan_file.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -665,6 +677,8 @@ def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     if args.execute and not args.model:
         raise SystemExit("--model is required with --execute")
+    if args.execute and not args.nemoclaw_sandbox:
+        raise SystemExit("--nemoclaw-sandbox is required with --execute")
     canary_id = args.canary_id or utc_canary_id()
     paths = canary_paths(args.output_dir, canary_id)
     run_command = build_run_command(args, paths)

@@ -46,7 +46,7 @@ def write_operator_plan(path: Path) -> Path:
                     "requires_nemoclaw_install": False,
                     "requires_scope_confirmation": False,
                     "commands": [
-                        "uv run python scripts/tools/run_weave_agents_content_canary.py --execute --canary-id CONTENT_CANARY_YYYYMMDDTHHMM --external-action-approval-source-packet-json temp/external_action_approval_packet.json --external-action-approval-report-json temp/external_action_approval.verify.json"
+                        "uv run python scripts/tools/run_weave_agents_content_canary.py --execute --canary-id CONTENT_CANARY_YYYYMMDDTHHMM --nemoclaw-sandbox nejumi-taiwan --external-action-approval-source-packet-json temp/external_action_approval_packet.json --external-action-approval-report-json temp/external_action_approval.verify.json"
                     ],
                     "evidence_to_produce": [
                         "outputs/weave_agents_content_canary/plans/weave_agents_content_canary_CONTENT_CANARY_YYYYMMDDTHHMM.gate.json"
@@ -136,6 +136,13 @@ def native_weave_content_canary_gate_payload() -> dict:
         "agent_name": "nejumi-taiwan-openclaw",
         "entity": "llm-leaderboard",
         "project": "tc-leaderboard",
+        "nemoclaw": {
+            "required": True,
+            "enabled": True,
+            "bin": "nemoclaw",
+            "sandbox": "nejumi-taiwan",
+            "workdir": "/sandbox",
+        },
         "paid_api_attempted": True,
         "command_ok": True,
         "command_returncode": 0,
@@ -876,3 +883,85 @@ def test_render_operator_execution_plan_accepts_native_weave_content_canary_gate
     assert rendered["all_ready_for_external_execution"] is True
     assert rendered["command_policy"]["valid"] is True
     assert rendered["command_policy"]["error_count"] == 0
+
+
+def test_render_operator_execution_plan_rejects_weave_canary_without_nemoclaw(tmp_path):
+    source_packet = write_source_packet(tmp_path / "external_action_approval_packet.json")
+    approval_report = write_external_action_approval_report(
+        tmp_path / "approval.verify.json",
+        source_packet,
+    )
+    gate_json = write_native_weave_content_canary_gate(
+        tmp_path / "native_content_canary.gate.json",
+    )
+    operator_plan = write_agentic_batch_operator_plan(
+        tmp_path / "operator_plan.json",
+        source_packet=source_packet,
+        approval_report=approval_report,
+        gate_json=gate_json,
+    )
+    payload = json.loads(operator_plan.read_text(encoding="utf-8"))
+    payload["operator_next_steps"]["steps"].append(
+        {
+            "order": 99,
+            "gate": "weave_content_canary",
+            "status": "failed",
+            "commands": [
+                (
+                    "uv run python scripts/tools/run_weave_agents_content_canary.py "
+                    "--execute --canary-id CONTENT_CANARY_TEST "
+                    "--model openai-direct/gpt-4.1-nano-2025-04-14 "
+                    "--thinking off --timeout 180 "
+                    "--nemoclaw-sandbox nejumi-taiwan "
+                    f"--external-action-approval-source-packet-json {source_packet} "
+                    f"--external-action-approval-report-json {approval_report}"
+                )
+            ],
+            "evidence_to_produce": [str(gate_json)],
+        }
+    )
+    replaced = False
+    for step in payload["operator_next_steps"]["steps"]:
+        for index, command in enumerate(step.get("commands") or []):
+            if "run_weave_agents_content_canary.py --execute" not in command:
+                continue
+            step["commands"][index] = command.replace(
+                " --nemoclaw-sandbox nejumi-taiwan",
+                "",
+            )
+            replaced = True
+    assert replaced
+    operator_plan.write_text(json.dumps(payload), encoding="utf-8")
+    output_json = tmp_path / "execution_plan.json"
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--operator-plan-json",
+            str(operator_plan),
+            "--gate",
+            "weave_content_canary",
+            "--external-action-approval-source-packet-json",
+            str(source_packet),
+            "--external-action-approval-report-json",
+            str(approval_report),
+            "--weave-content-canary-gate",
+            str(gate_json),
+            "--output-json",
+            str(output_json),
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    rendered = json.loads(output_json.read_text(encoding="utf-8"))
+    assert rendered["command_policy"]["valid"] is False
+    assert any(
+        "run_weave_agents_content_canary.py --execute is missing --nemoclaw-sandbox"
+        in error
+        for error in rendered["command_policy"]["errors"]
+    )
