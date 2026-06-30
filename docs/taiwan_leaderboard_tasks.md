@@ -1,6 +1,6 @@
 # Taiwan Leaderboard Task Status
 
-Last updated: 2026-07-01 01:59 JST
+Last updated: 2026-07-01 02:02 JST
 
 This file is the persistent progress ledger for the Taiwan leaderboard work.
 Update it at every meaningful milestone so progress is visible even when chat
@@ -19,7 +19,7 @@ docs/taiwan_leaderboard_overview_ja.md
 ```text
 branch: dev-zh-TW
 remote: origin/dev-zh-TW
-latest pushed implementation commit: df8b585 Add run_eval preflight mode
+latest pushed implementation commit: ac91dc4 Keep run_eval preflight lightweight
 
 pushed implementation/docs commits this cycle before this ledger update:
   ebe5dcd Ignore local evaluation scratch dirs
@@ -30,6 +30,7 @@ pushed implementation/docs commits this cycle before this ledger update:
   db35f11 Update Taiwan progress ledger
   5b3c610 Wire Taiwan agentic benchmarks into run_eval
   df8b585 Add run_eval preflight mode
+  ac91dc4 Keep run_eval preflight lightweight
 
 validated before push:
   NeMoClaw/OpenClaw setup tests: 47 passed
@@ -48,6 +49,11 @@ validated before push:
     py_compile scripts/run_eval.py and tests/test_run_eval_preflight.py: passed
     pytest tests/test_run_eval_preflight.py: 2 passed
     real OpenAI-direct Agentic NeMoClaw canary config preflight: passed
+    run_eval --help plus canary readiness/batch runner regression tests: 46 passed
+  run_eval lightweight preflight checks after ac91dc4:
+    preflight no longer imports W&B/Weave/LLM/vLLM/progress tracker path before exit
+    pytest tests/test_run_eval_preflight.py: 2 passed
+    real OpenAI-direct Agentic NeMoClaw canary config preflight: passed with no sandbox-client warning
     run_eval --help plus canary readiness/batch runner regression tests: 46 passed
 
 cost/API state for these commits:
