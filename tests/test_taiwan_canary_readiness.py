@@ -55,6 +55,12 @@ if [ "$1" = "--version" ]; then
   echo "nemoclaw 0.0.test"
   exit 0
 fi
+if [ "$1" = "status" ] && [ "$2" = "--json" ]; then
+  cat <<'JSON'
+{"sandboxes":[{"name":"nejumi-taiwan","provider":"compatible-endpoint","model":"test-model","connected":false,"policies":["wandb-weave-egress"]}]}
+JSON
+  exit 0
+fi
 if [ "$1" = "sandbox" ] && [ "$2" = "status" ]; then
   echo "sandbox ok"
   exit 0
@@ -89,6 +95,68 @@ exit 1
         and "openclaw" in check.detail
         for check in checks
     )
+    policy_check = next(
+        check
+        for check in checks
+        if check.name == "NeMoClaw sandbox runtime policy is introspectable: nejumi-taiwan"
+    )
+    assert '"policy_count": 1' in policy_check.detail
+    assert "wandb-weave-egress" in policy_check.detail
+
+
+def test_nemoclaw_required_readiness_reports_empty_runtime_policy_without_failing(tmp_path):
+    module = load_module()
+    nemoclaw = tmp_path / "nemoclaw"
+    openshell = tmp_path / "openshell"
+    nemoclaw.write_text(
+        """#!/usr/bin/env sh
+if [ "$1" = "--version" ]; then
+  echo "nemoclaw 0.0.test"
+  exit 0
+fi
+if [ "$1" = "status" ] && [ "$2" = "--json" ]; then
+  cat <<'JSON'
+{"sandboxes":[{"name":"nejumi-taiwan","provider":"compatible-endpoint","model":"test-model","connected":false,"policies":[]}]}
+JSON
+  exit 0
+fi
+if [ "$1" = "sandbox" ] && [ "$2" = "status" ]; then
+  echo "sandbox ok"
+  exit 0
+fi
+if [ "$1" = "sandbox" ] && [ "$2" = "exec" ]; then
+  echo "openclaw 2026.6.9"
+  exit 0
+fi
+echo "unexpected $*" >&2
+exit 1
+""",
+        encoding="utf-8",
+    )
+    openshell.write_text("#!/usr/bin/env sh\necho openshell 0.0.test\n", encoding="utf-8")
+    nemoclaw.chmod(0o755)
+    openshell.chmod(0o755)
+    env = {
+        "PATH": str(tmp_path) + os.pathsep + os.environ.get("PATH", ""),
+        **{key: value for key, value in os.environ.items() if key.startswith("HOME")},
+    }
+
+    checks = module.check_nemoclaw(
+        env,
+        nemoclaw_bin="nemoclaw",
+        sandbox="nejumi-taiwan",
+        require=True,
+    )
+
+    assert all(check.ok for check in checks)
+    policy_check = next(
+        check
+        for check in checks
+        if check.name == "NeMoClaw sandbox runtime policy is introspectable: nejumi-taiwan"
+    )
+    assert '"policy_count": 0' in policy_check.detail
+    assert '"policy_configured": false' in policy_check.detail
+    assert "OpenClaw deny_tool" in policy_check.detail
 
 
 def test_weave_content_canary_gate_passes_only_with_passed_json(tmp_path):

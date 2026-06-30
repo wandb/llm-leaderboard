@@ -12409,6 +12409,43 @@ def test_verify_release_evidence_bundle_rejects_canary_readiness_script_missing_
     ) in payload["errors"]
 
 
+def test_verify_release_evidence_bundle_rejects_canary_readiness_script_missing_runtime_policy_contract(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_weave_content_canary_command(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path") == "scripts/tools/check_taiwan_canary_readiness.py"
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace("def _run_json_status(", "def _removed_json_status("),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "NeMoClaw canary readiness script missing source contract "
+        "NeMoClaw status JSON introspection: "
+        "scripts/tools/check_taiwan_canary_readiness.py: def _run_json_status("
+    ) in payload["errors"]
+
+
 def test_verify_release_evidence_bundle_accepts_existing_results_relog_command_scripts(tmp_path):
     bundle = build_bundle_with_existing_results_relog_command_scripts(tmp_path)
 

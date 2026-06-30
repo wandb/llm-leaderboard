@@ -14,7 +14,7 @@ References:
 
 ## Current Status
 
-As of 2026-06-30 21:33 JST:
+As of 2026-07-01 07:54 JST:
 
 - Host prerequisites are present: Docker, Node.js, npm, zstd, and OpenClaw.
 - `nemoclaw v0.0.55` and `openshell 0.0.44` are installed on this machine.
@@ -48,8 +48,14 @@ As of 2026-06-30 21:33 JST:
   plugin/config/policy/secret all OK and writes the latest local evidence to
   `temp/nemoclaw_weave_config_check_after_tests.json`.
 - `configs/nemoclaw/policies/wandb_weave.yaml` is the W&B/Weave egress policy
-  for the sandbox. No provider-pricing/router egress policy is part of the
-  current NeMoClaw sandbox policy.
+  template for the sandbox. The latest host evidence
+  `temp/nemoclaw_setup_check_20260701T075249.json` reports
+  `policies: []` from `nemoclaw status --json`, so the current runtime sandbox
+  policy should be treated as not observed/configured. Agentic benchmark
+  anti-cheat still relies on generated OpenClaw `deny_tool` and
+  `deny_argument_pattern` guards until a NeMoClaw runtime policy is visibly
+  attached and re-verified. No provider-pricing/router egress policy is part of
+  the current NeMoClaw sandbox policy.
 - The repo now includes a reproducible setup/check script:
   `scripts/setup/install_nemoclaw.sh`.
 - Setup plans and remediation commands include `--json` output paths for

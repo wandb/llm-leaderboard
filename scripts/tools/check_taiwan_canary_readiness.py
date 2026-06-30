@@ -281,6 +281,63 @@ def _run_status(command: list[str], env: dict[str, str], timeout: int = 60) -> t
     return result.returncode == 0, detail
 
 
+def _run_json_status(
+    command: list[str],
+    env: dict[str, str],
+    timeout: int = 60,
+) -> tuple[bool, dict[str, Any] | None, str]:
+    try:
+        result = subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            env=env,
+            timeout=timeout,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        return False, None, str(exc)
+    detail = (result.stdout + result.stderr).strip()
+    if result.returncode != 0:
+        return False, None, detail[:500] + ("..." if len(detail) > 500 else "")
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        return False, None, f"invalid JSON: {exc}; output={detail[:300]}"
+    if not isinstance(payload, dict):
+        return False, None, "JSON output is not an object"
+    return True, payload, ""
+
+
+def _sandbox_record_from_status(payload: dict[str, Any], sandbox: str) -> dict[str, Any] | None:
+    sandboxes = payload.get("sandboxes")
+    if not isinstance(sandboxes, list):
+        return None
+    for item in sandboxes:
+        if isinstance(item, dict) and item.get("name") == sandbox:
+            return item
+    return None
+
+
+def _sandbox_policy_detail(payload: dict[str, Any] | None, sandbox: str) -> dict[str, Any]:
+    record = _sandbox_record_from_status(payload or {}, sandbox)
+    policies = record.get("policies") if isinstance(record, dict) else None
+    if not isinstance(policies, list):
+        policies = []
+    permissions = record.get("permissions") if isinstance(record, dict) else None
+    return {
+        "sandbox": sandbox,
+        "sandbox_found": isinstance(record, dict),
+        "policy_count": len(policies),
+        "policies": policies,
+        "policy_configured": bool(policies),
+        "permissions": permissions if isinstance(permissions, (dict, str, list)) else None,
+        "provider": record.get("provider") if isinstance(record, dict) else None,
+        "model": record.get("model") if isinstance(record, dict) else None,
+        "connected": record.get("connected") if isinstance(record, dict) else None,
+    }
+
+
 def check_nemoclaw(
     env: dict[str, str],
     *,
@@ -328,6 +385,32 @@ def check_nemoclaw(
             f"NeMoClaw sandbox status succeeds: {sandbox}",
             status_ok or not require,
             status_detail or "no output",
+        )
+    )
+
+    status_json_ok, status_json, status_json_detail = _run_json_status(
+        [resolved_nemoclaw, "status", "--json"],
+        env,
+    )
+    policy_detail = _sandbox_policy_detail(status_json, sandbox)
+    checks.append(
+        Check(
+            f"NeMoClaw sandbox runtime policy is introspectable: {sandbox}",
+            (status_json_ok and bool(policy_detail["sandbox_found"])) or not require,
+            json.dumps(
+                {
+                    **policy_detail,
+                    "status_json_ok": status_json_ok,
+                    "error": "" if status_json_ok else status_json_detail,
+                    "anti_cheat_note": (
+                        "policy_count=0 means this evidence did not observe a "
+                        "NeMoClaw sandbox policy; Agentic benchmark network "
+                        "guards still depend on generated OpenClaw deny_tool "
+                        "and deny_argument_pattern settings."
+                    ),
+                },
+                ensure_ascii=False,
+            ),
         )
     )
 
