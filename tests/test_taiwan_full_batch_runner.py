@@ -154,6 +154,33 @@ def test_build_wandb_verify_command_can_write_json_with_env_file(tmp_path):
     assert command[-4:] == ["--env-file", str(env_file), "--json", str(output)]
 
 
+def test_build_run_eval_preflight_records_include_nonexecuting_command(tmp_path):
+    module = load_module()
+    config = tmp_path / "config-taiwan-full-gpt-4_1-mini.yaml"
+    config.write_text("run:\n  agentic_math: true\n", encoding="utf-8")
+
+    records = module.build_run_eval_preflight_records(
+        [config],
+        phase="agentic",
+        python="python3",
+        base_config="base_config_taiwan.yaml",
+        output_root=tmp_path / "outputs",
+    )
+
+    assert len(records) == 1
+    record = records[0]
+    assert record["config"] == str(config.resolve())
+    assert record["required_before_run_eval"] is True
+    assert record["output_json"].endswith(
+        "run_eval_preflight/agentic-gpt-4_1-mini.json"
+    )
+    command = record["command"]
+    assert command[:2] == ["python3", "scripts/run_eval.py"]
+    assert "--preflight" in command
+    assert "--preflight-json" in command
+    assert "base_config_taiwan.yaml" in command
+
+
 def test_build_wandb_verify_command_adds_expected_run_metadata():
     module = load_module()
 
@@ -804,6 +831,24 @@ def test_prepare_only_review_records_completion_requirements(tmp_path, monkeypat
         "wandb_entity and wandb_project for successful W&B-verified runs"
         in requirements["runs"]["required_fields"]
     )
+    assert "preflight_json" in requirements["runs"]["required_fields"]
+    assert "preflight_returncode" in requirements["runs"]["required_fields"]
+    assert "preflight_ok" in requirements["runs"]["required_fields"]
+    assert requirements["run_eval_preflight"]["required"] is True
+    assert requirements["run_eval_preflight"]["required_before_run_eval"] is True
+    assert requirements["run_eval_preflight"]["expected_record_count"] == 1
+    assert (
+        "will_initialize_wandb=false"
+        in requirements["run_eval_preflight"]["required_fields"]
+    )
+    assert (
+        "will_start_inference_engine=false"
+        in requirements["run_eval_preflight"]["required_fields"]
+    )
+    assert (
+        "will_run_evaluators=false"
+        in requirements["run_eval_preflight"]["required_fields"]
+    )
     assert requirements["wandb_completion"]["required"] is True
     assert requirements["wandb_completion"]["benchmarks"] == [
         "agentic_math",
@@ -840,6 +885,14 @@ def test_prepare_only_review_records_completion_requirements(tmp_path, monkeypat
     assert guard["records"][0]["agentic_math_use_task_agent"] is True
     assert guard["records"][0]["swebench_pro_nemoclaw_sandbox"] == "nejumi-taiwan"
     assert guard["records"][0]["swebench_pro_nemoclaw_checkout_transfer_mode"] == "copy"
+    preflights = review["run_eval_preflights"]
+    assert len(preflights) == 1
+    assert preflights[0]["required_before_run_eval"] is True
+    assert preflights[0]["output_json"].endswith(
+        "run_eval_preflight/agentic-gpt-4_1-mini-openai-direct-canary.json"
+    )
+    assert "--preflight" in preflights[0]["command"]
+    assert "--preflight-json" in preflights[0]["command"]
 
 
 def test_prepare_only_can_require_nemoclaw_agentic_config(tmp_path, monkeypatch):

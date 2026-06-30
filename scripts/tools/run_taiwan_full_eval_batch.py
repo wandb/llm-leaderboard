@@ -827,6 +827,75 @@ def build_weave_agents_verify_command(
     return command
 
 
+def build_run_eval_command(
+    *,
+    python: str,
+    base_config: str,
+    config: str,
+    yes: bool,
+) -> list[str]:
+    command = [
+        python,
+        "scripts/run_eval.py",
+        "--base-config",
+        base_config,
+        "--config",
+        config,
+    ]
+    if yes:
+        command.append("--yes")
+    return command
+
+
+def build_run_eval_preflight_command(
+    *,
+    python: str,
+    base_config: str,
+    config: str,
+    output_json: Path,
+) -> list[str]:
+    return [
+        python,
+        "scripts/run_eval.py",
+        "--base-config",
+        base_config,
+        "--config",
+        config,
+        "--preflight",
+        "--preflight-json",
+        str(output_json),
+    ]
+
+
+def build_run_eval_preflight_records(
+    config_paths: list[Path],
+    *,
+    phase: str,
+    python: str,
+    base_config: str,
+    output_root: Path,
+) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    for config_path in config_paths:
+        rel_config = config_arg(config_path)
+        slug = config_path.stem.replace("config-taiwan-full-", "")
+        output_json = output_root / "run_eval_preflight" / f"{phase}-{slug}.json"
+        records.append(
+            {
+                "config": rel_config,
+                "output_json": str(output_json),
+                "required_before_run_eval": True,
+                "command": build_run_eval_preflight_command(
+                    python=python,
+                    base_config=base_config,
+                    config=rel_config,
+                    output_json=output_json,
+                ),
+            }
+        )
+    return records
+
+
 def run_weave_agents_verification(
     *,
     python: str,
@@ -1102,6 +1171,13 @@ def main() -> None:
         required_before_external_action=will_execute_external_actions,
         expected_source_packet_path=args.external_action_approval_source_packet_json,
     )
+    run_eval_preflights = build_run_eval_preflight_records(
+        configs,
+        phase=args.phase,
+        python=args.python,
+        base_config=args.base_config,
+        output_root=args.output_root,
+    )
     execution_plan = {
         "phase": args.phase,
         "prepare_only": bool(args.prepare_only),
@@ -1128,6 +1204,7 @@ def main() -> None:
         "weave_agents_require_usage": bool(args.weave_agents_require_usage),
         "weave_agents_conversation_id_contains": args.weave_agents_conversation_id_contains or "",
         "weave_content_canary_gate": weave_content_canary_gate,
+        "run_eval_preflights": run_eval_preflights,
         "pre_run_budget_estimate": pre_run_budget_estimate,
         "external_action_approval": external_action_approval,
         "created_at": time.time(),
@@ -1166,6 +1243,7 @@ def main() -> None:
         "weave_agents_require_usage": bool(args.weave_agents_require_usage),
         "weave_agents_conversation_id_contains": args.weave_agents_conversation_id_contains or "",
         "weave_content_canary_gate": weave_content_canary_gate,
+        "run_eval_preflights": run_eval_preflights,
         "pre_run_budget_estimate": pre_run_budget_estimate,
         "external_action_approval": external_action_approval,
         "completion_requirements": {
@@ -1212,12 +1290,30 @@ def main() -> None:
                 "count_must_equal_model_count": True,
                 "required_fields": [
                     "config",
+                    "preflight_json",
+                    "preflight_returncode",
+                    "preflight_ok",
                     "log_path",
                     "returncode",
                     "started_at",
                     "ended_at",
                     "wandb_run_id for successful runs",
                     "wandb_entity and wandb_project for successful W&B-verified runs",
+                ],
+            },
+            "run_eval_preflight": {
+                "required": True,
+                "required_before_run_eval": True,
+                "expected_record_count": len(configs),
+                "required_fields": [
+                    "config",
+                    "command",
+                    "output_json",
+                    "ok=true",
+                    "status=passed",
+                    "will_initialize_wandb=false",
+                    "will_start_inference_engine=false",
+                    "will_run_evaluators=false",
                 ],
             },
             "wandb_completion": {
@@ -1360,16 +1456,19 @@ def main() -> None:
         rel_config = config_arg(config_path)
         slug = config_path.stem.replace("config-taiwan-full-", "")
         log_path = args.output_root / "logs" / f"{args.phase}-{slug}.log"
-        command = [
-            args.python,
-            "scripts/run_eval.py",
-            "--base-config",
-            args.base_config,
-            "--config",
-            rel_config,
-        ]
-        if args.yes:
-            command.append("--yes")
+        preflight_json = args.output_root / "run_eval_preflight" / f"{args.phase}-{slug}.json"
+        preflight_command = build_run_eval_preflight_command(
+            python=args.python,
+            base_config=args.base_config,
+            config=rel_config,
+            output_json=preflight_json,
+        )
+        command = build_run_eval_command(
+            python=args.python,
+            base_config=args.base_config,
+            config=rel_config,
+            yes=bool(args.yes),
+        )
         started_at = time.time()
         print(f"\n[{index}/{len(configs)}] {rel_config}")
         run_env = env.copy()
@@ -1380,9 +1479,56 @@ def main() -> None:
             review_record["started_at"] = started_at
         review_record["status"] = "running"
         write_json(review_path, review_record)
+        preflight_log_path = args.output_root / "logs" / f"{args.phase}-{slug}.preflight.log"
+        preflight_returncode = stream_run(preflight_command, preflight_log_path, run_env)
+        preflight_ok = preflight_returncode == 0
+        preflight_status = ""
+        if preflight_json.exists():
+            preflight_payload, preflight_error = load_json_object(preflight_json)
+            if preflight_payload is not None:
+                preflight_ok = preflight_ok and preflight_payload.get("ok") is True
+                preflight_status = str(preflight_payload.get("status") or "")
+            else:
+                preflight_status = preflight_error or "preflight JSON could not be read"
+                preflight_ok = False
+        else:
+            preflight_status = "preflight JSON was not written"
+            preflight_ok = False
+        if not preflight_ok:
+            row = {
+                "config": rel_config,
+                "preflight_command": preflight_command,
+                "preflight_log_path": str(preflight_log_path),
+                "preflight_json": str(preflight_json),
+                "preflight_returncode": preflight_returncode,
+                "preflight_ok": False,
+                "preflight_status": preflight_status,
+                "phase": args.phase,
+                "wandb_run_id": run_env.get("WANDB_RUN_ID", ""),
+                "wandb_entity": run_env.get("WANDB_ENTITY", ""),
+                "wandb_project": run_env.get("WANDB_PROJECT", ""),
+                "returncode": preflight_returncode,
+                "started_at": started_at,
+                "ended_at": time.time(),
+            }
+            manifest_rows.append(row)
+            review_record["runs"].append(row)
+            review_record["status"] = "run_eval_preflight_failed"
+            review_record["ended_at"] = time.time()
+            write_json(batch_manifest_path, manifest_rows)
+            write_json(review_path, review_record)
+            raise SystemExit(
+                f"run_eval preflight failed for {rel_config}: {preflight_status}"
+            )
         returncode = stream_run(command, log_path, run_env)
         row = {
             "config": rel_config,
+            "preflight_command": preflight_command,
+            "preflight_log_path": str(preflight_log_path),
+            "preflight_json": str(preflight_json),
+            "preflight_returncode": preflight_returncode,
+            "preflight_ok": preflight_ok,
+            "preflight_status": preflight_status,
             "log_path": str(log_path),
             "phase": args.phase,
             "wandb_run_id": run_env.get("WANDB_RUN_ID", ""),
