@@ -123,6 +123,115 @@ def write_weave_content_canary_gate(
     return path
 
 
+def native_weave_content_canary_gate_payload() -> dict:
+    return {
+        "schema_version": 1,
+        "ok": True,
+        "gate": "weave_agents_content_canary",
+        "status": "passed",
+        "generated_at": 9_999_999_999.0,
+        "model": "openai-direct/test-mini",
+        "canary_id": "CONTENT_CANARY_TEST",
+        "task_id": "weave_agents_content_canary_CONTENT_CANARY_TEST",
+        "agent_name": "nejumi-taiwan-openclaw",
+        "entity": "llm-leaderboard",
+        "project": "tc-leaderboard",
+        "paid_api_attempted": True,
+        "command_ok": True,
+        "command_returncode": 0,
+        "weave_verifier_ok": True,
+        "weave_verifier_schema_version": 1,
+        "weave_verifier_latest_trace_id": "trace-1",
+        "weave_verifier_validation_issues": [],
+        "agents_diagnostic_ok": True,
+        "agents_diagnostic_schema_version": 1,
+        "agents_diagnostic_latest_trace_id": "trace-1",
+        "agents_diagnostic_validation_issues": [],
+        "content_capture_health": {
+            "message_spans_with_input": 1,
+            "tool_spans_with_content": 1,
+            "spans_with_valid_timestamps": 3,
+            "spans_with_invalid_timestamps": 0,
+        },
+        "failed_checks": [],
+        "paths": {
+            "plan_file": "outputs/weave_agents_content_canary/plans/canary.json",
+            "command_result_file": "outputs/weave_agents_content_canary/plans/canary.command_result.json",
+            "command_result_exists": True,
+            "verifier_json": "outputs/weave_agents_content_canary/verifier/canary/attempt_001.json",
+            "verifier_json_exists": True,
+            "agents_diagnostic_json": "outputs/weave_agents_content_canary/agents_diagnostics/canary.agents.json",
+            "agents_diagnostic_json_exists": True,
+            "expected_sidecar": "outputs/weave_agents_content_canary/agentic_math/canary/openclaw_result.json",
+            "prompt_file": "outputs/weave_agents_content_canary/prompts/canary.md",
+        },
+    }
+
+
+def write_native_weave_content_canary_gate(path: Path) -> Path:
+    path.write_text(
+        json.dumps(native_weave_content_canary_gate_payload()),
+        encoding="utf-8",
+    )
+    return path
+
+
+def write_agentic_batch_operator_plan(
+    path: Path,
+    *,
+    source_packet: Path,
+    approval_report: Path,
+    gate_json: Path,
+) -> Path:
+    payload = {
+        "schema_version": 1,
+        "status": "pending",
+        "operator_next_steps": {
+            "steps": [
+                {
+                    "order": 1,
+                    "gate": "paid_run_review_package",
+                    "status": "incomplete_reviews",
+                    "next_action": "Run agentic command.",
+                    "requires_paid_api": True,
+                    "requires_wandb_access": True,
+                    "requires_wandb_write": True,
+                    "requires_third_party_acceptance": False,
+                    "requires_nemoclaw_install": False,
+                    "requires_scope_confirmation": False,
+                    "commands": [
+                        (
+                            "uv run python scripts/tools/run_taiwan_full_eval_batch.py "
+                            "--phase agentic --yes "
+                            "--external-action-approval-source-packet-json "
+                            f"{source_packet} "
+                            "--external-action-approval-report-json "
+                            f"{approval_report} "
+                            "--require-nemoclaw-agentic-config "
+                            "--agentic-math-nemoclaw-sandbox nejumi-taiwan "
+                            "--swebench-pro-nemoclaw-sandbox nejumi-taiwan "
+                            "--swebench-pro-nemoclaw-checkout-transfer-mode copy "
+                            "--verify-wandb-completion "
+                            "--verify-weave-agents "
+                            "--wandb-run-id-prefix twcanary-test "
+                            "--weave-agents-require-tool-span "
+                            "--weave-agents-require-tool-content "
+                            f"--weave-content-canary-gate {gate_json} "
+                            "--require-weave-content-canary"
+                        )
+                    ],
+                    "evidence_to_produce": [
+                        "outputs/taiwan_full_eval/canary_agentic_paid_run_review.json"
+                    ],
+                    "warnings": [],
+                }
+            ]
+        },
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
 def test_render_operator_execution_plan_resolves_placeholders_and_shell(tmp_path):
     operator_plan = write_operator_plan(tmp_path / "operator_plan.json")
     source_packet = write_source_packet(tmp_path / "external_action_approval_packet.json")
@@ -626,53 +735,12 @@ def test_render_operator_execution_plan_rejects_failed_weave_content_canary_gate
         status="provider_failure",
         failure_kind="provider_quota",
     )
-    operator_plan = tmp_path / "operator_plan.json"
-    payload = {
-        "schema_version": 1,
-        "status": "pending",
-        "operator_next_steps": {
-            "steps": [
-                {
-                    "order": 1,
-                    "gate": "paid_run_review_package",
-                    "status": "incomplete_reviews",
-                    "next_action": "Run agentic command.",
-                    "requires_paid_api": True,
-                    "requires_wandb_access": True,
-                    "requires_wandb_write": True,
-                    "requires_third_party_acceptance": False,
-                    "requires_nemoclaw_install": False,
-                    "requires_scope_confirmation": False,
-                    "commands": [
-                        (
-                            "uv run python scripts/tools/run_taiwan_full_eval_batch.py "
-                            "--phase agentic --yes "
-                            "--external-action-approval-source-packet-json "
-                            f"{source_packet} "
-                            "--external-action-approval-report-json "
-                            f"{approval_report} "
-                            "--require-nemoclaw-agentic-config "
-                            "--agentic-math-nemoclaw-sandbox nejumi-taiwan "
-                            "--swebench-pro-nemoclaw-sandbox nejumi-taiwan "
-                            "--swebench-pro-nemoclaw-checkout-transfer-mode copy "
-                            "--verify-wandb-completion "
-                            "--verify-weave-agents "
-                            "--wandb-run-id-prefix twcanary-test "
-                            "--weave-agents-require-tool-span "
-                            "--weave-agents-require-tool-content "
-                            f"--weave-content-canary-gate {gate_json} "
-                            "--require-weave-content-canary"
-                        )
-                    ],
-                    "evidence_to_produce": [
-                        "outputs/taiwan_full_eval/canary_agentic_paid_run_review.json"
-                    ],
-                    "warnings": [],
-                }
-            ]
-        },
-    }
-    operator_plan.write_text(json.dumps(payload), encoding="utf-8")
+    operator_plan = write_agentic_batch_operator_plan(
+        tmp_path / "operator_plan.json",
+        source_packet=source_packet,
+        approval_report=approval_report,
+        gate_json=gate_json,
+    )
     output_json = tmp_path / "execution_plan.json"
 
     result = subprocess.run(
@@ -708,3 +776,103 @@ def test_render_operator_execution_plan_rejects_failed_weave_content_canary_gate
         and "provider_quota" in error
         for error in policy["errors"]
     )
+
+
+def test_render_operator_execution_plan_rejects_hand_edited_passed_weave_content_canary_gate(tmp_path):
+    source_packet = write_source_packet(tmp_path / "external_action_approval_packet.json")
+    approval_report = write_external_action_approval_report(
+        tmp_path / "approval.verify.json",
+        source_packet,
+    )
+    gate_json = write_weave_content_canary_gate(
+        tmp_path / "hand_edited_content_canary.gate.json",
+    )
+    operator_plan = write_agentic_batch_operator_plan(
+        tmp_path / "operator_plan.json",
+        source_packet=source_packet,
+        approval_report=approval_report,
+        gate_json=gate_json,
+    )
+    output_json = tmp_path / "execution_plan.json"
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--operator-plan-json",
+            str(operator_plan),
+            "--gate",
+            "paid_run_review_package",
+            "--external-action-approval-source-packet-json",
+            str(source_packet),
+            "--external-action-approval-report-json",
+            str(approval_report),
+            "--output-json",
+            str(output_json),
+            "--require-ready",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    rendered = json.loads(output_json.read_text(encoding="utf-8"))
+    assert rendered["all_ready_to_execute_without_placeholder"] is True
+    assert rendered["all_ready_for_external_execution"] is False
+    policy = rendered["command_policy"]
+    assert policy["valid"] is False
+    assert any(
+        "missing native Weave verifier contract evidence" in error
+        and "weave_verifier_ok must be true" in error
+        and "paths must be an object" in error
+        for error in policy["errors"]
+    )
+
+
+def test_render_operator_execution_plan_accepts_native_weave_content_canary_gate(tmp_path):
+    source_packet = write_source_packet(tmp_path / "external_action_approval_packet.json")
+    approval_report = write_external_action_approval_report(
+        tmp_path / "approval.verify.json",
+        source_packet,
+    )
+    gate_json = write_native_weave_content_canary_gate(
+        tmp_path / "native_content_canary.gate.json",
+    )
+    operator_plan = write_agentic_batch_operator_plan(
+        tmp_path / "operator_plan.json",
+        source_packet=source_packet,
+        approval_report=approval_report,
+        gate_json=gate_json,
+    )
+    output_json = tmp_path / "execution_plan.json"
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--operator-plan-json",
+            str(operator_plan),
+            "--gate",
+            "paid_run_review_package",
+            "--external-action-approval-source-packet-json",
+            str(source_packet),
+            "--external-action-approval-report-json",
+            str(approval_report),
+            "--output-json",
+            str(output_json),
+            "--require-ready",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    rendered = json.loads(output_json.read_text(encoding="utf-8"))
+    assert rendered["all_ready_to_execute_without_placeholder"] is True
+    assert rendered["all_ready_for_external_execution"] is True
+    assert rendered["command_policy"]["valid"] is True
+    assert rendered["command_policy"]["error_count"] == 0

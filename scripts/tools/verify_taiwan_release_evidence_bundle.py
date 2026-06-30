@@ -69,6 +69,23 @@ OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
         "DEFAULT_WEAVE_CONTENT_CANARY_MAX_AGE_SECONDS",
     ),
     (
+        "native Weave content canary contract validator",
+        "def weave_content_canary_gate_contract_issues(",
+    ),
+    ("native Weave content canary gate name", "WEAVE_CONTENT_CANARY_GATE_NAME"),
+    (
+        "native Weave verifier schema contract",
+        "WEAVE_AGENTS_VERIFIER_SCHEMA_VERSION = 1",
+    ),
+    (
+        "Agents diagnostic schema contract",
+        "AGENTS_DIAGNOSTIC_SCHEMA_VERSION = 1",
+    ),
+    ("native Weave verifier status field", '"weave_verifier_ok"'),
+    ("Agents diagnostic status field", '"agents_diagnostic_ok"'),
+    ("Weave verifier artifact existence proof", '"verifier_json_exists"'),
+    ("Agents diagnostic artifact existence proof", '"agents_diagnostic_json_exists"'),
+    (
         "Weave content canary command-policy call",
         "validate_weave_content_canary_gate_option(",
     ),
