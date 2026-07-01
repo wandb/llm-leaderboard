@@ -1023,6 +1023,7 @@ def refresh_bundle_release_gate_pointer(result: dict[str, Any]) -> None:
         manifest,
         json_bundle_path=approval_json,
         markdown_bundle_path=approval_md,
+        bundle_dir_template=path_display(bundle_dir),
     )
     write_json(bundle_dir / approval_json, approval_packet)
     write_text(
@@ -1039,6 +1040,7 @@ def refresh_bundle_release_gate_pointer(result: dict[str, Any]) -> None:
         "all_required_approvals_granted": approval_packet["all_required_approvals_granted"],
         "approval_verifier": approval_packet["approval_verifier"],
         "approval_template_renderer": approval_packet["approval_template_renderer"],
+        "approval_handoff_preparer": approval_packet["approval_handoff_preparer"],
     }
     upsert_generated_bundle_record(
         manifest,

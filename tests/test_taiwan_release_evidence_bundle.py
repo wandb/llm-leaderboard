@@ -1125,6 +1125,9 @@ def test_release_evidence_bundle_copies_report_references(tmp_path):
     assert manifest["external_action_approval_packet"]["json"] == "external_action_approval_packet.json"
     assert manifest["external_action_approval_packet"]["markdown"] == "external_action_approval_packet.md"
     assert manifest["external_action_approval_packet"]["status"] == "pending_approval"
+    assert manifest["external_action_approval_packet"]["approval_handoff_preparer"]["script"] == (
+        "scripts/tools/prepare_taiwan_external_action_approval.py"
+    )
     operator_plan_json = output_dir / "operator_plan.json"
     operator_plan_md = output_dir / "operator_plan.md"
     approval_packet_json = output_dir / "external_action_approval_packet.json"
@@ -1196,13 +1199,21 @@ def test_release_evidence_bundle_copies_report_references(tmp_path):
         "scripts/tools/render_external_action_approval_template.py"
     )
     assert "--output-json" in approval_packet["approval_template_renderer"]["command_template"]
+    assert approval_packet["approval_handoff_preparer"]["script"] == (
+        "scripts/tools/prepare_taiwan_external_action_approval.py"
+    )
+    assert "--bundle-dir" in approval_packet["approval_handoff_preparer"]["command_template"]
+    assert "--timestamp" in approval_packet["approval_handoff_preparer"]["command_template"]
+    assert "--output-dir" in approval_packet["approval_handoff_preparer"]["command_template"]
     approval_markdown = approval_packet_md.read_text(encoding="utf-8")
     assert "Taiwan External Action Approval Packet" in approval_markdown
     assert "## Approval Requirements" in approval_markdown
     assert "## Approval Template Renderer" in approval_markdown
     assert "## Approval Verifier" in approval_markdown
+    assert "## Approval Handoff Preparer" in approval_markdown
     assert "render_external_action_approval_template.py" in approval_markdown
     assert "verify_external_action_approval_packet.py" in approval_markdown
+    assert "prepare_taiwan_external_action_approval.py" in approval_markdown
     current_gate = manifest["current_gate"]
     assert current_gate["readiness_report_source"] == str(report)
     assert current_gate["blocking_gates"] == ["wandb_completion"]

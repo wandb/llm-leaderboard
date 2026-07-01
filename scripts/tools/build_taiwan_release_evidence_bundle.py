@@ -3623,6 +3623,7 @@ def build_external_action_approval_packet(
     *,
     json_bundle_path: Path,
     markdown_bundle_path: Path,
+    bundle_dir_template: str,
 ) -> dict[str, Any]:
     current_gate = (
         manifest.get("current_gate")
@@ -3659,6 +3660,17 @@ def build_external_action_approval_packet(
     verifier_report_template = (
         "temp/taiwan_external_action_approval_REVIEWED_YYYYMMDDTHHMM.verify.json"
     )
+    handoff_json_template = (
+        "temp/taiwan_external_action_approval_REVIEWED_YYYYMMDDTHHMM.handoff.json"
+    )
+    handoff_markdown_template = (
+        "temp/taiwan_external_action_approval_REVIEWED_YYYYMMDDTHHMM.handoff.md"
+    )
+    bundle_name = Path(bundle_dir_template).name
+    timestamp_from_bundle = (
+        bundle_name.removeprefix("bundle_") if bundle_name.startswith("bundle_") else bundle_name
+    )
+    timestamp = str(manifest.get("timestamp") or timestamp_from_bundle or "YYYYMMDDTHHMMSSZ")
     return {
         "schema_version": 1,
         "generated_at": time.time(),
@@ -3715,6 +3727,36 @@ def build_external_action_approval_packet(
                 f"--approval-packet-json {json_bundle_path} "
                 f"--output-json {reviewed_packet_template} "
                 f"--markdown {reviewed_markdown_template}"
+            ),
+            "safety": {
+                "executes_external_action": False,
+                "queries_wandb": False,
+                "writes_wandb": False,
+                "installs_third_party": False,
+                "launches_model_inference": False,
+            },
+        },
+        "approval_handoff_preparer": {
+            "schema_version": 1,
+            "status": "available",
+            "script": EXTERNAL_ACTION_APPROVAL_HANDOFF_PREPARER_SCRIPT,
+            "required_before_external_action": external_item_count > 0,
+            "bundle_dir_template": bundle_dir_template,
+            "timestamp_template": timestamp,
+            "reviewed_packet_json_template": reviewed_packet_template,
+            "reviewed_packet_markdown_template": reviewed_markdown_template,
+            "render_report_json_template": (
+                "temp/taiwan_external_action_approval_REVIEWED_YYYYMMDDTHHMM.render.json"
+            ),
+            "verify_report_json_template": verifier_report_template,
+            "handoff_json_template": handoff_json_template,
+            "handoff_markdown_template": handoff_markdown_template,
+            "command_template": (
+                "uv run python "
+                f"{EXTERNAL_ACTION_APPROVAL_HANDOFF_PREPARER_SCRIPT} "
+                f"--bundle-dir {bundle_dir_template} "
+                f"--timestamp {timestamp} "
+                "--output-dir temp"
             ),
             "safety": {
                 "executes_external_action": False,
@@ -3808,6 +3850,26 @@ def external_action_approval_packet_markdown(packet: dict[str, Any]) -> str:
                 "",
                 "```bash",
                 str(renderer.get("command_template") or ""),
+                "```",
+            ]
+        )
+
+    handoff = packet.get("approval_handoff_preparer")
+    if isinstance(handoff, dict):
+        lines.extend(
+            [
+                "",
+                "## Approval Handoff Preparer",
+                "",
+                f"- Script: `{handoff.get('script') or ''}`",
+                f"- Required before external action: `{format_bool(handoff.get('required_before_external_action'))}`",
+                f"- Bundle dir template: `{handoff.get('bundle_dir_template') or ''}`",
+                f"- Timestamp template: `{handoff.get('timestamp_template') or ''}`",
+                f"- Handoff JSON template: `{handoff.get('handoff_json_template') or ''}`",
+                f"- Handoff markdown template: `{handoff.get('handoff_markdown_template') or ''}`",
+                "",
+                "```bash",
+                str(handoff.get("command_template") or ""),
                 "```",
             ]
         )
@@ -4189,6 +4251,7 @@ def add_external_action_approval_packet_files(output_dir: Path, manifest: dict[s
         manifest,
         json_bundle_path=json_relative,
         markdown_bundle_path=markdown_relative,
+        bundle_dir_template=path_display(output_dir),
     )
     write_json(json_path, packet)
     markdown_path.write_text(
@@ -4214,6 +4277,7 @@ def add_external_action_approval_packet_files(output_dir: Path, manifest: dict[s
         "all_required_approvals_granted": packet["all_required_approvals_granted"],
         "approval_verifier": packet["approval_verifier"],
         "approval_template_renderer": packet["approval_template_renderer"],
+        "approval_handoff_preparer": packet["approval_handoff_preparer"],
     }
     files = manifest.get("files")
     if not isinstance(files, list):

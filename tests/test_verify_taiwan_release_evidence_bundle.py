@@ -5783,6 +5783,69 @@ def test_verify_release_evidence_bundle_rejects_external_action_approval_rendere
     )
 
 
+def test_verify_release_evidence_bundle_rejects_external_action_approval_handoff_command_mismatch(tmp_path):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    packet_path = bundle / "external_action_approval_packet.json"
+    packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    packet["approval_handoff_preparer"]["command_template"] = packet[
+        "approval_handoff_preparer"
+    ]["command_template"].replace(" --bundle-dir ", " --bundle_dir ")
+    packet_path.write_text(json.dumps(packet), encoding="utf-8")
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["external_action_approval_packet"]["approval_handoff_preparer"] = packet[
+        "approval_handoff_preparer"
+    ]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, "external_action_approval_packet.json")
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "external_action_approval_packet approval_handoff_preparer command missing --bundle-dir"
+        in payload["errors"]
+    )
+
+
+def test_verify_release_evidence_bundle_rejects_external_action_approval_handoff_markdown_missing(tmp_path):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    markdown_path = bundle / "external_action_approval_packet.md"
+    markdown_text = markdown_path.read_text(encoding="utf-8")
+    markdown_path.write_text(
+        markdown_text.replace(
+            "## Approval Handoff Preparer",
+            "## Approval Handoff Helper",
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, "external_action_approval_packet.md")
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "external_action_approval_packet markdown missing content: "
+        "## Approval Handoff Preparer"
+    ) in payload["errors"]
+
+
 def test_verify_release_evidence_bundle_rejects_missing_external_action_approval_handoff_preparer(tmp_path):
     bundle = build_bundle_with_operator_command_script(tmp_path)
     manifest_path = bundle / "manifest.json"

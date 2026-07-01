@@ -3055,6 +3055,89 @@ def validate_external_action_approval_packet_payload(
                         f"{field} must be false"
                     )
 
+    handoff = packet.get("approval_handoff_preparer")
+    manifest_handoff = packet_ref.get("approval_handoff_preparer")
+    if not isinstance(handoff, dict):
+        errors.append("external_action_approval_packet approval_handoff_preparer is not an object")
+    else:
+        if manifest_handoff != handoff:
+            errors.append(
+                "external_action_approval_packet approval_handoff_preparer does not match manifest"
+            )
+        if handoff.get("schema_version") != 1:
+            errors.append(
+                "external_action_approval_packet approval_handoff_preparer schema_version must be 1"
+            )
+        if handoff.get("status") != "available":
+            errors.append(
+                "external_action_approval_packet approval_handoff_preparer status must be available"
+            )
+        if handoff.get("script") != EXTERNAL_ACTION_APPROVAL_HANDOFF_PREPARER_SCRIPT:
+            errors.append(
+                "external_action_approval_packet approval_handoff_preparer script mismatch"
+            )
+        if handoff.get("required_before_external_action") is not (external_item_count > 0):
+            errors.append(
+                "external_action_approval_packet approval_handoff_preparer "
+                "required_before_external_action mismatch"
+            )
+        bundle_dir_template = handoff.get("bundle_dir_template")
+        if isinstance(bundle_dir_template, str) and bundle_dir_template:
+            if repo_path(bundle_dir_template).resolve() != bundle_dir.resolve():
+                errors.append(
+                    "external_action_approval_packet approval_handoff_preparer "
+                    "bundle_dir_template mismatch"
+                )
+        for key in (
+            "bundle_dir_template",
+            "timestamp_template",
+            "reviewed_packet_json_template",
+            "reviewed_packet_markdown_template",
+            "render_report_json_template",
+            "verify_report_json_template",
+            "handoff_json_template",
+            "handoff_markdown_template",
+            "command_template",
+        ):
+            value = handoff.get(key)
+            if not isinstance(value, str) or not value:
+                errors.append(
+                    f"external_action_approval_packet approval_handoff_preparer {key} is missing"
+                )
+        command = handoff.get("command_template")
+        if isinstance(command, str):
+            for required in (
+                EXTERNAL_ACTION_APPROVAL_HANDOFF_PREPARER_SCRIPT,
+                "--bundle-dir",
+                str(handoff.get("bundle_dir_template") or ""),
+                "--timestamp",
+                str(handoff.get("timestamp_template") or ""),
+                "--output-dir",
+            ):
+                if required not in command:
+                    errors.append(
+                        "external_action_approval_packet approval_handoff_preparer "
+                        f"command missing {required}"
+                    )
+        safety = handoff.get("safety")
+        if not isinstance(safety, dict):
+            errors.append(
+                "external_action_approval_packet approval_handoff_preparer safety is not an object"
+            )
+        else:
+            for field in (
+                "executes_external_action",
+                "queries_wandb",
+                "writes_wandb",
+                "installs_third_party",
+                "launches_model_inference",
+            ):
+                if safety.get(field) is not False:
+                    errors.append(
+                        "external_action_approval_packet approval_handoff_preparer safety "
+                        f"{field} must be false"
+                    )
+
     source = packet.get("source")
     if not isinstance(source, dict):
         errors.append("external_action_approval_packet source is not an object")
@@ -3112,11 +3195,13 @@ def validate_external_action_approval_packet_payload(
                 "## Approval Requirements",
                 "## Approval Template Renderer",
                 "## Approval Verifier",
+                "## Approval Handoff Preparer",
                 "## Execution Policy",
                 "## External Action Checklist",
                 str(expected_hash),
                 EXTERNAL_ACTION_APPROVAL_TEMPLATE_RENDERER_SCRIPT,
                 EXTERNAL_ACTION_APPROVAL_PACKET_VERIFIER_SCRIPT,
+                EXTERNAL_ACTION_APPROVAL_HANDOFF_PREPARER_SCRIPT,
             ):
                 if snippet not in markdown_text:
                     errors.append(
