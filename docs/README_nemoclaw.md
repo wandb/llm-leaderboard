@@ -14,7 +14,7 @@ References:
 
 ## Current Status
 
-As of 2026-07-01 21:55 JST:
+As of 2026-07-01 22:06 JST:
 
 - Host prerequisites are present: Docker, Node.js, npm, zstd, and OpenClaw.
 - `nemoclaw v0.0.55` and `openshell 0.0.44` are installed on this machine.
@@ -77,7 +77,9 @@ As of 2026-07-01 21:55 JST:
   be left defined but omitted from the adoption decision. A631 adds the same
   posture to post-install command safety: setup, protocol preflight, canary
   readiness, and adoption-check handoffs must retain explicit sandbox-selection
-  tokens in both the verifier output and release-bundle validation.
+  tokens in both the verifier output and release-bundle validation. A632 also
+  binds those handoffs to exact sandbox/config values, so evidence pointing at a
+  different sandbox or OpenClaw config path is rejected.
 - `configs/nemoclaw/policies/wandb_weave.yaml` is the W&B/Weave egress policy
   template for the sandbox. It was applied with
   `nemoclaw nejumi-taiwan policy-add --from-file ... --yes`; the command

@@ -108,6 +108,17 @@ def python_command(value: str) -> list[str]:
     return parts or [sys.executable]
 
 
+def command_flag_value(parts: list[str], flag: str) -> tuple[str | None, bool]:
+    for index, part in enumerate(parts):
+        if part == flag:
+            if index + 1 < len(parts):
+                return parts[index + 1], True
+            return None, True
+        if part.startswith(flag + "="):
+            return part.split("=", 1)[1], True
+    return None, False
+
+
 def extend_optional_path(command: list[str], flag: str, value: Path | None) -> None:
     if value is not None:
         command.extend([flag, str(repo_path(value))])
@@ -405,8 +416,22 @@ def command_record(
     }
 
 
-def command_safety_report(steps: list[dict[str, Any]]) -> dict[str, Any]:
+def command_safety_report(
+    steps: list[dict[str, Any]],
+    *,
+    sandbox: str,
+    nemoclaw_openclaw_config_path: str,
+) -> dict[str, Any]:
     records: list[dict[str, Any]] = []
+    required_step_flag_values = {
+        "setup_check": {"--sandbox": sandbox},
+        "protocol_preflight": {"--nemoclaw-sandbox": sandbox},
+        "canary_readiness": {
+            "--nemoclaw-sandbox": sandbox,
+            "--nemoclaw-openclaw-config-path": nemoclaw_openclaw_config_path,
+        },
+        "adoption_check": {"--sandbox": sandbox},
+    }
     for step in steps:
         name = str(step.get("name") or "")
         command = step.get("command")
@@ -418,23 +443,38 @@ def command_safety_report(steps: list[dict[str, Any]]) -> dict[str, Any]:
             for token in REQUIRED_POST_INSTALL_COMMAND_TOKENS.get(name, ())
             if token not in command_text
         ]
+        required_value_errors = []
+        for flag, expected_value in required_step_flag_values.get(name, {}).items():
+            actual_value, present = command_flag_value(command_tokens, flag)
+            if present and actual_value != expected_value:
+                required_value_errors.append(
+                    f"{flag}={actual_value or ''} expected {expected_value}"
+                )
         records.append(
             {
                 "name": name,
-                "ok": bool(command_tokens) and not forbidden_tokens and not missing_required_tokens,
+                "ok": (
+                    bool(command_tokens)
+                    and not forbidden_tokens
+                    and not missing_required_tokens
+                    and not required_value_errors
+                ),
                 "forbidden_tokens": forbidden_tokens,
                 "missing_required_tokens": missing_required_tokens,
+                "required_value_errors": required_value_errors,
             }
         )
     forbidden_token_count = sum(len(record["forbidden_tokens"]) for record in records)
     missing_required_token_count = sum(
         len(record["missing_required_tokens"]) for record in records
     )
+    value_error_count = sum(len(record["required_value_errors"]) for record in records)
     missing_command_count = sum(1 for record in records if not record["name"])
     return {
         "ok": (
             forbidden_token_count == 0
             and missing_required_token_count == 0
+            and value_error_count == 0
             and missing_command_count == 0
             and len(records) == len(REQUIRED_POST_INSTALL_COMMAND_TOKENS)
         ),
@@ -445,8 +485,10 @@ def command_safety_report(steps: list[dict[str, Any]]) -> dict[str, Any]:
             name: list(tokens)
             for name, tokens in sorted(REQUIRED_POST_INSTALL_COMMAND_TOKENS.items())
         },
+        "required_step_flag_values": required_step_flag_values,
         "forbidden_token_count": forbidden_token_count,
         "missing_required_token_count": missing_required_token_count,
+        "value_error_count": value_error_count,
         "missing_command_count": missing_command_count,
         "records": records,
     }
@@ -653,7 +695,11 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
             sandbox=args.sandbox,
         ),
     ]
-    command_safety = command_safety_report(steps)
+    command_safety = command_safety_report(
+        steps,
+        sandbox=args.sandbox,
+        nemoclaw_openclaw_config_path=args.nemoclaw_openclaw_config_path,
+    )
     ok = all(step["ok"] for step in steps) and bool(command_safety["ok"])
     outputs = {
         "setup_json": path_display(setup_json),

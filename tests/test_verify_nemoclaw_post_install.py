@@ -2,10 +2,15 @@ import json
 import subprocess
 from pathlib import Path
 import re
+import importlib.util
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "setup" / "verify_nemoclaw_post_install.py"
+SPEC = importlib.util.spec_from_file_location("verify_nemoclaw_post_install", SCRIPT)
+VERIFIER = importlib.util.module_from_spec(SPEC)
+assert SPEC and SPEC.loader
+SPEC.loader.exec_module(VERIFIER)
 
 
 def write_executable(path: Path, text: str) -> Path:
@@ -228,6 +233,16 @@ def test_verify_nemoclaw_post_install_passes_with_all_steps_ok(tmp_path):
     assert payload["command_safety"]["ok"] is True
     assert payload["command_safety"]["forbidden_token_count"] == 0
     assert payload["command_safety"]["missing_required_token_count"] == 0
+    assert payload["command_safety"]["value_error_count"] == 0
+    assert payload["command_safety"]["required_step_flag_values"] == {
+        "adoption_check": {"--sandbox": "nejumi-taiwan"},
+        "canary_readiness": {
+            "--nemoclaw-openclaw-config-path": "/sandbox/.openclaw/openclaw.json",
+            "--nemoclaw-sandbox": "nejumi-taiwan",
+        },
+        "protocol_preflight": {"--nemoclaw-sandbox": "nejumi-taiwan"},
+        "setup_check": {"--sandbox": "nejumi-taiwan"},
+    }
     assert set(payload["outputs_sha256"]) == {
         "setup_json",
         "preflight_json",
@@ -596,6 +611,87 @@ time.sleep(10)
     assert preflight["returncode_ok"] is False
     assert preflight["timed_out"] is True
     assert preflight["ok"] is False
+
+
+def test_command_safety_rejects_mismatched_sandbox_and_config_values():
+    steps = [
+        {
+            "name": "setup_check",
+            "command": [
+                "scripts/setup/install_nemoclaw.sh",
+                "--check-only",
+                "--sandbox",
+                "other-sandbox",
+                "--json",
+                "setup.json",
+            ],
+        },
+        {
+            "name": "protocol_preflight",
+            "command": [
+                "uv",
+                "run",
+                "python",
+                "scripts/tools/run_openclaw_agent_protocol.py",
+                "preflight",
+                "--nemoclaw-sandbox",
+                "nejumi-taiwan",
+            ],
+        },
+        {
+            "name": "canary_readiness",
+            "command": [
+                "uv",
+                "run",
+                "python",
+                "scripts/tools/check_taiwan_canary_readiness.py",
+                "--require-nemoclaw",
+                "--nemoclaw-sandbox",
+                "nejumi-taiwan",
+                "--nemoclaw-openclaw-config-path",
+                "/wrong/openclaw.json",
+                "--json",
+                "readiness.json",
+            ],
+        },
+        {
+            "name": "adoption_check",
+            "command": [
+                "uv",
+                "run",
+                "python",
+                "scripts/tools/check_taiwan_nemoclaw_adoption.py",
+                "--setup-json",
+                "setup.json",
+                "--readiness-json",
+                "readiness.json",
+                "--sandbox",
+                "nejumi-taiwan",
+                "--json",
+                "adoption.json",
+                "--markdown",
+                "adoption.md",
+            ],
+        },
+    ]
+
+    report = VERIFIER.command_safety_report(
+        steps,
+        sandbox="nejumi-taiwan",
+        nemoclaw_openclaw_config_path="/sandbox/.openclaw/openclaw.json",
+    )
+
+    assert report["ok"] is False
+    assert report["forbidden_token_count"] == 0
+    assert report["missing_required_token_count"] == 0
+    assert report["value_error_count"] == 2
+    by_name = {record["name"]: record for record in report["records"]}
+    assert by_name["setup_check"]["required_value_errors"] == [
+        "--sandbox=other-sandbox expected nejumi-taiwan"
+    ]
+    assert by_name["canary_readiness"]["required_value_errors"] == [
+        "--nemoclaw-openclaw-config-path=/wrong/openclaw.json expected /sandbox/.openclaw/openclaw.json"
+    ]
 
 
 def test_verify_nemoclaw_post_install_marks_forbidden_command_tokens_unsafe(tmp_path):

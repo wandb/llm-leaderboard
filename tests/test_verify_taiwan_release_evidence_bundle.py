@@ -3186,8 +3186,18 @@ def build_bundle_with_nemoclaw_post_install(tmp_path):
                         "--markdown",
                     ],
                 },
+                "required_step_flag_values": {
+                    "setup_check": {"--sandbox": "nejumi-taiwan"},
+                    "protocol_preflight": {"--nemoclaw-sandbox": "nejumi-taiwan"},
+                    "canary_readiness": {
+                        "--nemoclaw-sandbox": "nejumi-taiwan",
+                        "--nemoclaw-openclaw-config-path": "/sandbox/.openclaw/openclaw.json",
+                    },
+                    "adoption_check": {"--sandbox": "nejumi-taiwan"},
+                },
                 "forbidden_token_count": 0,
                 "missing_required_token_count": 0,
+                "value_error_count": 0,
                 "missing_command_count": 0,
                 "records": [
                     {
@@ -3195,24 +3205,28 @@ def build_bundle_with_nemoclaw_post_install(tmp_path):
                         "ok": True,
                         "forbidden_tokens": [],
                         "missing_required_tokens": [],
+                        "required_value_errors": [],
                     },
                     {
                         "name": "protocol_preflight",
                         "ok": True,
                         "forbidden_tokens": [],
                         "missing_required_tokens": [],
+                        "required_value_errors": [],
                     },
                     {
                         "name": "canary_readiness",
                         "ok": True,
                         "forbidden_tokens": [],
                         "missing_required_tokens": [],
+                        "required_value_errors": [],
                     },
                     {
                         "name": "adoption_check",
                         "ok": True,
                         "forbidden_tokens": [],
                         "missing_required_tokens": [],
+                        "required_value_errors": [],
                     },
                 ],
             },
@@ -11662,6 +11676,50 @@ def test_verify_release_evidence_bundle_rejects_nemoclaw_post_install_missing_po
     assert any(
         "NeMoClaw post-install verification command_safety "
         "required_step_tokens adoption_check missing required token --markdown" in error
+        for error in payload["errors"]
+    )
+
+
+def test_verify_release_evidence_bundle_rejects_nemoclaw_post_install_mismatched_sandbox_values(tmp_path):
+    bundle, post_install = build_bundle_with_nemoclaw_post_install(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    post_install_record = next(
+        record for record in manifest["files"] if record["source_path"] == str(post_install)
+    )
+    bundled_post_install = bundle / post_install_record["bundle_path"]
+    payload = json.loads(bundled_post_install.read_text(encoding="utf-8"))
+    payload["command_safety"]["required_step_flag_values"]["canary_readiness"][
+        "--nemoclaw-sandbox"
+    ] = "other-sandbox"
+    canary_step = next(
+        step for step in payload["steps"] if step["name"] == "canary_readiness"
+    )
+    command = canary_step["command"]
+    sandbox_index = command.index("--nemoclaw-sandbox") + 1
+    command[sandbox_index] = "other-sandbox"
+    bundled_post_install.write_text(json.dumps(payload), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, post_install_record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "NeMoClaw post-install verification command_safety "
+        "required_step_flag_values canary_readiness --nemoclaw-sandbox "
+        "must be nejumi-taiwan" in error
+        for error in payload["errors"]
+    )
+    assert any(
+        "NeMoClaw post-install verification step canary_readiness command "
+        "--nemoclaw-sandbox must be nejumi-taiwan" in error
         for error in payload["errors"]
     )
 

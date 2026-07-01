@@ -1249,6 +1249,33 @@ def validate_required_step_tokens(
                 )
 
 
+def validate_required_step_flag_values(
+    *,
+    errors: list[str],
+    payload: dict[str, Any],
+    field: str,
+    required_steps: dict[str, dict[str, str]],
+    label: str,
+) -> None:
+    step_values = payload.get(field)
+    if not isinstance(step_values, dict):
+        errors.append(f"{label} {field} is not an object")
+        return
+    for step_name, required_values in sorted(required_steps.items()):
+        values = step_values.get(step_name)
+        if not isinstance(values, dict) or not all(
+            isinstance(flag, str) and isinstance(value, str)
+            for flag, value in values.items()
+        ):
+            errors.append(f"{label} {field} {step_name} is not a string map")
+            continue
+        for flag, expected_value in sorted(required_values.items()):
+            if values.get(flag) != expected_value:
+                errors.append(
+                    f"{label} {field} {step_name} {flag} must be {expected_value}"
+                )
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -8473,6 +8500,19 @@ def validate_nemoclaw_post_install_verification_evidence(
 
     if payload.get("schema_version") != 1:
         errors.append("NeMoClaw post-install verification schema_version must be 1")
+    sandbox = payload.get("sandbox")
+    if not isinstance(sandbox, str) or not sandbox.strip():
+        errors.append("NeMoClaw post-install verification sandbox is missing")
+        sandbox = "nejumi-taiwan"
+    required_command_flag_values = {
+        "setup_check": {"--sandbox": sandbox},
+        "protocol_preflight": {"--nemoclaw-sandbox": sandbox},
+        "canary_readiness": {
+            "--nemoclaw-sandbox": sandbox,
+            "--nemoclaw-openclaw-config-path": NEMOCLAW_OPENCLAW_CONFIG_PATH,
+        },
+        "adoption_check": {"--sandbox": sandbox},
+    }
     payload_path = payload.get("path")
     if isinstance(payload_path, str) and payload_path.strip():
         if source_path_key(post_install.get("path")) != source_path_key(payload_path):
@@ -8536,9 +8576,17 @@ def validate_nemoclaw_post_install_verification_evidence(
             required_steps=REQUIRED_NEMOCLAW_POST_INSTALL_COMMAND_TOKENS,
             label=safety_label,
         )
+        validate_required_step_flag_values(
+            errors=errors,
+            payload=command_safety,
+            field="required_step_flag_values",
+            required_steps=required_command_flag_values,
+            label=safety_label,
+        )
         for field in (
             "forbidden_token_count",
             "missing_required_token_count",
+            "value_error_count",
             "missing_command_count",
         ):
             if command_safety.get(field) != 0:
@@ -8582,6 +8630,11 @@ def validate_nemoclaw_post_install_verification_evidence(
                     errors.append(
                         "NeMoClaw post-install verification command_safety "
                         f"record {required_step_name} missing_required_tokens must be empty"
+                    )
+                if record.get("required_value_errors") not in ([], None):
+                    errors.append(
+                        "NeMoClaw post-install verification command_safety "
+                        f"record {required_step_name} required_value_errors must be empty"
                     )
     if "ok" in post_install and post_install.get("ok") is not None:
         if bool(payload.get("ok")) != bool(post_install.get("ok")):
@@ -8746,6 +8799,13 @@ def validate_nemoclaw_post_install_verification_evidence(
                     errors.append(
                         f"NeMoClaw post-install verification step {step_name} "
                         f"command missing required token {required_token}"
+                    )
+            for flag, expected_value in required_command_flag_values.get(step_name, {}).items():
+                value, present = command_flag_value(command_tokens, flag)
+                if present and value != expected_value:
+                    errors.append(
+                        f"NeMoClaw post-install verification step {step_name} "
+                        f"command {flag} must be {expected_value}"
                     )
         if not isinstance(step.get("returncode"), int):
             errors.append(f"NeMoClaw post-install verification step {step_name} returncode is not an int")
