@@ -615,6 +615,32 @@ def test_weave_content_gate_points_to_verifier_regeneration_for_schema_invalid(t
     assert "required_evidence.trace_final_answer_order_required=true" in result["requirement"]
 
 
+def test_weave_content_gate_explains_prepare_only_candidate_as_not_executed(tmp_path):
+    module = load_module()
+    gate = write_json(
+        tmp_path / "canary.gate.json",
+        {
+            "ok": False,
+            "status": "not_run",
+            "detail": "prepare-only canary; no paid model call was attempted",
+            "recommended_next_action": "Run the content canary with --execute when paid inference is intentionally approved.",
+            "paid_api_attempted": False,
+            "will_call_paid_model_api": False,
+            "generated_at": time.time(),
+        },
+    )
+
+    result = module.evaluate_weave_content_gate([gate], require=True)
+
+    assert result["ok"] is False
+    assert result["status"] == "failed"
+    assert result["latest_candidate"]["status"] == "not_run"
+    assert result["latest_candidate"]["paid_api_attempted"] is False
+    assert "--execute" in result["next_action"]
+    assert "paid inference" in result["next_action"]
+    assert "provider/runtime issue" not in result["next_action"]
+
+
 def test_nemoclaw_readiness_requires_all_sandbox_checks(tmp_path):
     module = load_module()
     failed = write_json(tmp_path / "failed.json", readiness_payload(nemoclaw_ok=False, report_ok=False))

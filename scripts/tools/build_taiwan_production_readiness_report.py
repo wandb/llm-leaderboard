@@ -872,8 +872,13 @@ def evaluate_weave_content_gate(
     def failed_next_action(latest: dict[str, Any] | None) -> str:
         if not latest:
             return "Fix the provider/runtime issue shown in the latest gate JSON and rerun the content canary."
+        recommended_next_action = latest.get("recommended_next_action")
+        if isinstance(recommended_next_action, str) and recommended_next_action.strip():
+            return recommended_next_action.strip()
         failure_kind = latest.get("failure_kind")
         status_value = latest.get("status")
+        if status_value in {"not_run", "prepared", "prepare_only"}:
+            return "Run the content canary with --execute when paid inference is intentionally approved."
         if failure_kind == "provider_quota":
             return "Use an approved provider/model with available quota, then rerun the live content canary."
         if failure_kind == "provider_auth":
@@ -911,6 +916,8 @@ def evaluate_weave_content_gate(
             "failure_kind": payload.get("failure_kind"),
             "detail": payload.get("detail"),
             "recommended_next_action": payload.get("recommended_next_action"),
+            "paid_api_attempted": payload.get("paid_api_attempted"),
+            "will_call_paid_model_api": payload.get("will_call_paid_model_api"),
             "model": payload.get("model"),
             "canary_id": payload.get("canary_id"),
             "generated_at": generated_at,
