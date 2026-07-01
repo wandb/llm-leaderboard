@@ -1,6 +1,6 @@
 # Taiwan Leaderboard Task Status
 
-Last updated: 2026-07-02 08:37 JST
+Last updated: 2026-07-02 08:48 JST
 
 This file is the persistent progress ledger for the Taiwan leaderboard work.
 Update it at every meaningful milestone so progress is visible even when chat
@@ -19,7 +19,7 @@ docs/taiwan_leaderboard_overview_ja.md
 ```text
 branch: dev-zh-TW
 remote: origin/dev-zh-TW
-latest pushed implementation/docs commit before this ledger update: e615963 Sync Taiwan progress after content canary trace proof
+latest pushed implementation/docs commit before this ledger update: de0ccab Sync Taiwan progress after blocked canary proof
 
 pushed implementation/docs commits this cycle before this ledger update:
   ebe5dcd Ignore local evaluation scratch dirs
@@ -178,6 +178,7 @@ pushed implementation/docs commits this cycle before this ledger update:
   7177cbb Record agentic prepare-only Weave text proof
   3b21f3c Require config source in content canary traces
   e615963 Sync Taiwan progress after content canary trace proof
+  de0ccab Sync Taiwan progress after blocked canary proof
 
 validated before push:
   NeMoClaw/OpenClaw setup tests: 47 passed
@@ -208,6 +209,9 @@ validated before push:
     prepare_taiwan_external_action_approval.py generated temp/taiwan_external_action_approval_REVIEWED_20260701T233345Z.handoff.{json,md} from outputs/taiwan_release_evidence/bundle_20260701T233345Z with status=pending_human_approval, source_binding_bound=true, will_execute_external_actions=false, required_approval_count=3, granted_approval_count=0, and paid_api.minimum_approved_budget_usd=166.46495879999998
     run_weave_agents_content_canary.py --execute with canary-id BLOCKED_APPROVAL_A681_RELEASE and NeMoClaw sandbox/config path exited 2 before OpenClaw/provider execution because source-bound external action approval was not granted; command_result and gate JSON were written under outputs/weave_agents_content_canary/plans, paid_api_attempted=false, status=external_action_approval_missing, run_command retains --openclaw-config-source /sandbox/.openclaw/openclaw.json, expected_required_texts include 'openclaw_config_source: /sandbox/.openclaw/openclaw.json', and plan_required_text_validation_issues=[]
     run_taiwan_release_gate.py --quiet: latest formal gate 20260701T233345Z, status=not_ready, checked_file_count=724, verification_error_count=0, blockers=[weave_content_canary, wandb_completion, paid_run_review_package, one_model_full_canary]
+  Human-readable overview sync A682:
+    docs/taiwan_leaderboard_overview_ja.md now points first-time readers to release gate 20260701T233345Z, checked_file_count=724, the latest 233345Z operator plan/evidence bundle/approval packet/adoption/post-install evidence, and the A680/A681 NeMoClaw content-canary config-source plus approval-blocked pre-OpenClaw proof
+    rg checks confirm no stale 145711Z/23:58/668/609-file current-state references remain in docs/taiwan_leaderboard_overview_ja.md; markdown fence count is balanced; git diff --check passed for docs/taiwan_leaderboard_overview_ja.md
   NeMoClaw generated-config OpenClaw path default checks after A652:
     py_compile scripts/tools/prepare_taiwan_full_eval_configs.py and tests/test_taiwan_full_config_generation.py: passed
     pytest tests/test_taiwan_full_config_generation.py: 12 passed
@@ -1028,7 +1032,7 @@ cost/API state for these commits:
 ## Latest Machine State
 
 ```text
-as of: 2026-07-02 08:37 JST
+as of: 2026-07-02 08:48 JST
 release gate: temp/taiwan_release_gate_20260701T233345Z.json
 latest pointer: temp/latest_taiwan_release_gate.json
 latest pointer verification: temp/latest_taiwan_release_gate_verify_20260701T233345Z.json
@@ -1124,6 +1128,8 @@ cost/API state addendum 14: 9e50f6b used only local/offline evaluator command ha
 cost/API state addendum 15: 3b21f3c used only local/offline Weave content-canary config-source trace-text hardening, prepare-only canary plan generation, py_compile, pytest, release-gate regeneration, evidence-bundle verification, and latest-pointer verification for the latest 20260701T232526Z bundle. It did not write to W&B, call OpenRouter, launch benchmark model inference, perform paid provider completion, install/onboard NeMoClaw, execute a live content canary, or run a full evaluation.
 
 cost/API state addendum 16: A681 used only local/offline source-bound external-action approval handoff generation, a deliberately unapproved live-runner refusal before OpenClaw/provider execution, release-gate regeneration, evidence-bundle verification, and latest-pointer verification for the latest 20260701T233345Z bundle. It did not write to W&B, call OpenRouter, launch benchmark model inference, perform paid provider completion, install/onboard NeMoClaw, approve external actions, execute a scoreable live content canary, or run a full evaluation.
+
+cost/API state addendum 17: A682 used only local/offline documentation synchronization for docs/taiwan_leaderboard_overview_ja.md and this ledger. It did not query W&B, write W&B, call OpenRouter, launch benchmark model inference, perform paid provider completion, install/onboard NeMoClaw, approve external actions, execute a live content canary, or run a full evaluation.
 
 ## 日本語サマリ
 
@@ -3095,6 +3101,7 @@ A678  Weave Agents NeMoClaw config-source trace text proof scripts/tools/run_tai
 A679  Agentic prepare-only Weave required-text handoff proof temp/generated_agentic_nemoclaw_A679/config-taiwan-full-gpt-4_1-mini-openai-direct-canary.yaml, temp/taiwan_full_eval_agentic_prepare_A679/canary_agentic_execution_plan.json, temp/taiwan_full_eval_agentic_prepare_A679/canary_agentic_paid_run_review.json, temp/taiwan_release_gate_20260701T231228Z.json, temp/latest_taiwan_release_gate_verify_20260701T231228Z.json; prepare-only command using configs/taiwan_openai_canary_models.yaml, --phase agentic, --canary, NeMoClaw Math/SWE sandbox paths, --verify-wandb-completion, --verify-weave-agents, --weave-agents-require-tool-span, --weave-agents-require-tool-content, and --weave-agents-require-usage passed without model API calls or W&B/Weave queries; generated config keeps agentic_math and swebench_pro openclaw_model=openai-direct/gpt-4.1-mini-2025-04-14 and nemoclaw_openclaw_config_path=/sandbox/.openclaw/openclaw.json; execution plan and paid-run review now carry weave_agents_required_texts=['openclaw_config_source: /sandbox/.openclaw/openclaw.json'], and paid-run review completion_requirements.weave_agents_completion.required_texts carries the same value; run_taiwan_release_gate.py --quiet passed with latest formal gate 20260701T231228Z/status=not_ready/blockers [weave_content_canary, wandb_completion, paid_run_review_package, one_model_full_canary]/bundle_integrity_ok=true/checked_file_count=717/verification_error_count=0/latest_pointer_verification_ok=true; no W&B write, OpenRouter, benchmark model inference, paid provider completion, install/onboard action, approved live content canary, or full evaluation run was launched.
 A680  Weave content-canary config-source required-text proof scripts/tools/run_weave_agents_content_canary.py, scripts/tools/verify_weave_agents_content_canary_result.py, scripts/tools/verify_taiwan_release_evidence_bundle.py, scripts/tools/weave_content_canary_gate_contract.py, tests/test_weave_agents_content_canary.py, tests/test_verify_weave_agents_content_canary_result.py, tests/test_verify_taiwan_release_evidence_bundle.py; implementation commit 3b21f3c Require config source in content canary traces is pushed to origin/dev-zh-TW; live NeMoClaw content-canary handoff now passes --openclaw-config-source /sandbox/.openclaw/openclaw.json into run_openclaw_agent_protocol.py, the canary plan and gate compute required_texts from the NeMoClaw config path, and verifier/release-bundle checks reject passed evidence that omits the config-source text; checks: py_compile matching scripts passed; tests/test_weave_agents_content_canary.py tests/test_verify_weave_agents_content_canary_result.py passed 38 tests; tests/test_verify_taiwan_release_evidence_bundle.py -k 'weave_content_canary' passed 11 tests with 372 deselected; tests/test_verify_taiwan_release_evidence_bundle.py passed 383 tests; prepare-only canary temp/weave_content_canary_prepare_A680 proved the run_command and plan/gate required_texts without paid API calls; run_taiwan_release_gate.py --quiet passed with latest formal gate 20260701T232526Z/status=not_ready/blockers [weave_content_canary, wandb_completion, paid_run_review_package, one_model_full_canary]/bundle_integrity_ok=true/checked_file_count=718/verification_error_count=0/latest_pointer_verification_ok=true; no W&B write, OpenRouter, benchmark model inference, paid provider completion, install/onboard action, approved live content canary, or full evaluation run was launched.
 A681  Weave content-canary unapproved live-runner blocked proof docs/taiwan_leaderboard_tasks.md, outputs/weave_agents_content_canary/plans/weave_agents_content_canary_BLOCKED_APPROVAL_A681_RELEASE.command_result.json, outputs/weave_agents_content_canary/plans/weave_agents_content_canary_BLOCKED_APPROVAL_A681_RELEASE.gate.json, temp/taiwan_external_action_approval_REVIEWED_20260701T233345Z.handoff.json, temp/taiwan_external_action_approval_REVIEWED_20260701T233345Z.handoff.md, temp/taiwan_release_gate_20260701T233345Z.json, temp/latest_taiwan_release_gate_verify_20260701T233345Z.json, temp/taiwan_release_evidence_bundle_verify_20260701T233345Z.json, outputs/taiwan_release_evidence/bundle_20260701T233345Z/manifest.json, outputs/taiwan_release_evidence/bundle_20260701T233345Z/summary.md; checks: prepare_taiwan_external_action_approval.py generated the latest 233345Z handoff with ok=true/status=pending_human_approval/source_binding_bound=true/will_execute_external_actions=false/required_approval_count=3/granted_approval_count=0; run_weave_agents_content_canary.py --execute with canary-id BLOCKED_APPROVAL_A681_RELEASE and NeMoClaw sandbox/config path exited 2 before OpenClaw/provider execution because source-bound external action approval was not granted, wrote command_result and gate JSON, recorded status=external_action_approval_missing and paid_api_attempted=false, preserved --openclaw-config-source /sandbox/.openclaw/openclaw.json in run_command, and kept plan_required_text_validation_issues=[]; run_taiwan_release_gate.py --quiet passed with latest formal gate 20260701T233345Z/status=not_ready/blockers [weave_content_canary, wandb_completion, paid_run_review_package, one_model_full_canary]/bundle_integrity_ok=true/checked_file_count=724/verification_error_count=0/latest_pointer_verification_ok=true; no W&B write, OpenRouter, benchmark model inference, paid provider completion, install/onboard action, approved live content canary, or full evaluation run was launched.
+A682  Human-readable overview sync docs/taiwan_leaderboard_overview_ja.md, docs/taiwan_leaderboard_tasks.md; checks: docs/taiwan_leaderboard_overview_ja.md now uses latest formal gate 20260701T233345Z, checked_file_count=724, bundle/operator/approval/adoption/post-install paths for 233345Z, and A680/A681 content-canary config-source/pre-OpenClaw approval-block proof in the first-reader summary; rg confirms no stale current-state 145711Z, 23:58, 668, or 609-file references remain; markdown fence count is balanced; git diff --check passed for docs/taiwan_leaderboard_overview_ja.md; no W&B query/write, OpenRouter call, benchmark model inference, paid provider completion, install/onboard action, approved live content canary, or full evaluation run was launched.
 ```
 
 ## Production Gates
