@@ -394,6 +394,14 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "--require-nemoclaw-agentic-config",
             ),
             (
+                "Agentic production evidence requires Math NeMoClaw OpenClaw config path",
+                "--agentic-math-nemoclaw-openclaw-config-path",
+            ),
+            (
+                "Agentic production evidence requires SWE NeMoClaw OpenClaw config path",
+                "--swebench-pro-nemoclaw-openclaw-config-path",
+            ),
+            (
                 "Agentic production evidence requires tool content",
                 "--weave-agents-require-tool-content",
             ),
@@ -3384,6 +3392,8 @@ def validate_taiwan_full_batch_agentic_production_evidence_command(
         return
     for option in (
         "--require-nemoclaw-agentic-config",
+        "--agentic-math-nemoclaw-openclaw-config-path",
+        "--swebench-pro-nemoclaw-openclaw-config-path",
         "--weave-content-canary-gate",
         "--require-weave-content-canary",
         "--verify-wandb-completion",
@@ -3397,6 +3407,16 @@ def validate_taiwan_full_batch_agentic_production_evidence_command(
             errors.append(
                 f"{label} runs paid {phase} run_taiwan_full_eval_batch.py "
                 f"without {option}"
+            )
+    for option in (
+        "--agentic-math-nemoclaw-openclaw-config-path",
+        "--swebench-pro-nemoclaw-openclaw-config-path",
+    ):
+        value = operator_command_flag_value(parts, option)
+        if value and value != "/sandbox/.openclaw/openclaw.json":
+            errors.append(
+                f"{label} runs paid {phase} run_taiwan_full_eval_batch.py "
+                f"with {option} other than /sandbox/.openclaw/openclaw.json"
             )
 
 

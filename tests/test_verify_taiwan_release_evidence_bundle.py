@@ -825,12 +825,20 @@ def build_bundle_with_operator_batch_command(tmp_path):
                             "--generated-config-dir configs/taiwan_full/generated_openai_canary_agentic_nemoclaw "
                             "--output-root outputs/taiwan_full_eval "
                             "--wandb-run-id-prefix twcanary-openai-mini-YYYYMMDD "
+                            "--require-nemoclaw-agentic-config "
+                            "--agentic-math-nemoclaw-sandbox nejumi-taiwan "
+                            "--swebench-pro-nemoclaw-sandbox nejumi-taiwan "
+                            "--swebench-pro-nemoclaw-checkout-transfer-mode copy "
                             "--verify-wandb-completion --verify-weave-agents "
                             "--weave-agents-require-tool-span "
                             "--weave-agents-require-tool-content "
                             "--weave-agents-require-usage "
                             "--weave-content-canary-gate WEAVE_CONTENT_CANARY_GATE "
                             "--require-weave-content-canary --yes "
+                            "--agentic-math-nemoclaw-openclaw-config-path "
+                            "/sandbox/.openclaw/openclaw.json "
+                            "--swebench-pro-nemoclaw-openclaw-config-path "
+                            "/sandbox/.openclaw/openclaw.json "
                             "--run-purpose 'OpenAI-direct one-model agentic phase' "
                             "--expected-cost-band 'approved canary cap' "
                             "--external-action-approval-source-packet-json "
@@ -14527,6 +14535,95 @@ def test_verify_release_evidence_bundle_rejects_batch_command_without_weave_usag
     assert any(
         "runs paid agentic run_taiwan_full_eval_batch.py without "
         "--weave-agents-require-usage"
+        in error
+        for error in payload["errors"]
+    )
+
+
+def test_verify_release_evidence_bundle_rejects_batch_command_without_agentic_math_nemoclaw_config_path(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_batch_command(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    operator_plan_path = bundle / "operator_plan.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    operator_plan = json.loads(operator_plan_path.read_text(encoding="utf-8"))
+    config_flag = (
+        " --agentic-math-nemoclaw-openclaw-config-path "
+        "/sandbox/.openclaw/openclaw.json"
+    )
+    operator_plan["operator_next_steps"]["steps"][0]["commands"][0] = operator_plan[
+        "operator_next_steps"
+    ]["steps"][0]["commands"][0].replace(config_flag, "")
+    manifest["current_gate"]["operator_next_steps"] = operator_plan["operator_next_steps"]
+    manifest["current_gate"]["remediation_plan"][0]["commands"][0] = manifest[
+        "current_gate"
+    ]["remediation_plan"][0]["commands"][0].replace(config_flag, "")
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    operator_plan_path.write_text(json.dumps(operator_plan), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, "operator_plan.json")
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "runs paid agentic run_taiwan_full_eval_batch.py without "
+        "--agentic-math-nemoclaw-openclaw-config-path"
+        in error
+        for error in payload["errors"]
+    )
+
+
+def test_verify_release_evidence_bundle_rejects_batch_command_with_wrong_swe_nemoclaw_config_path(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_batch_command(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    operator_plan_path = bundle / "operator_plan.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    operator_plan = json.loads(operator_plan_path.read_text(encoding="utf-8"))
+    expected_flag = (
+        "--swebench-pro-nemoclaw-openclaw-config-path "
+        "/sandbox/.openclaw/openclaw.json"
+    )
+    wrong_flag = (
+        "--swebench-pro-nemoclaw-openclaw-config-path "
+        "/tmp/openclaw.json"
+    )
+    operator_plan["operator_next_steps"]["steps"][0]["commands"][0] = operator_plan[
+        "operator_next_steps"
+    ]["steps"][0]["commands"][0].replace(expected_flag, wrong_flag)
+    manifest["current_gate"]["operator_next_steps"] = operator_plan["operator_next_steps"]
+    manifest["current_gate"]["remediation_plan"][0]["commands"][0] = manifest[
+        "current_gate"
+    ]["remediation_plan"][0]["commands"][0].replace(expected_flag, wrong_flag)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    operator_plan_path.write_text(json.dumps(operator_plan), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, "operator_plan.json")
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "runs paid agentic run_taiwan_full_eval_batch.py with "
+        "--swebench-pro-nemoclaw-openclaw-config-path other than "
+        "/sandbox/.openclaw/openclaw.json"
         in error
         for error in payload["errors"]
     )

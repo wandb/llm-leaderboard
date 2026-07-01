@@ -45,6 +45,7 @@ DEFAULT_EXPECTED_TOTALS = {
     "agentic_math": 100,
     "agentic_swe": 80,
 }
+CANONICAL_NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 BENCHMARK_RUN_FLAG_EXPECTATIONS = {
     "agentic_math": "run.agentic_math",
     "agentic_swe": "run.swebench_pro",
@@ -57,12 +58,14 @@ BENCHMARK_MODEL_CONFIG_EXPECTATIONS = {
 BENCHMARK_NEMOCLAW_CONFIG_EXPECTATIONS = {
     "agentic_math": [
         "agentic_math.nemoclaw_sandbox",
+        "agentic_math.nemoclaw_openclaw_config_path",
         "agentic_math.use_task_agent",
         "agentic_math.deny_tool",
         "agentic_math.deny_argument_pattern",
     ],
     "agentic_swe": [
         "swebench_pro.nemoclaw_sandbox",
+        "swebench_pro.nemoclaw_openclaw_config_path",
         "swebench_pro.nemoclaw_checkout_transfer_mode",
         "swebench_pro.nemoclaw_checkout_sandbox_root",
         "swebench_pro.deny_tool",
@@ -79,6 +82,8 @@ REQUIRED_NEMOCLAW_AGENTIC_DENIED_ARGUMENT_PATTERNS = set(
 REQUIRED_NEMOCLAW_AGENTIC_ALLOWED_LOCAL_TOOLS = {"exec"}
 AGENTIC_PRODUCTION_EVIDENCE_REQUIREMENTS = {
     "--require-nemoclaw-agentic-config": "Agentic Math/SWE generated configs must route through NeMoClaw with deny-policy guards.",
+    "--agentic-math-nemoclaw-openclaw-config-path": "Agentic Math must bind NeMoClaw to the reviewed OpenClaw config inside the sandbox.",
+    "--swebench-pro-nemoclaw-openclaw-config-path": "SWE-Bench Pro must bind NeMoClaw to the reviewed OpenClaw config inside the sandbox.",
     "--require-weave-content-canary": "A fresh native Weave content canary must pass before paid agentic execution.",
     "--weave-content-canary-gate": "The paid run must be bound to the reviewed content-canary gate JSON.",
     "--verify-wandb-completion": "W&B scalar/table/artifact completion verification is mandatory.",
@@ -93,6 +98,10 @@ AGENTIC_PRODUCTION_EVIDENCE_REQUIREMENTS = {
 
 def nonempty_string(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def canonical_nemoclaw_openclaw_config_path(value: object) -> bool:
+    return value == CANONICAL_NEMOCLAW_OPENCLAW_CONFIG_PATH
 
 
 def load_env_file(env: dict[str, str], path: Path) -> dict[str, str]:
@@ -328,10 +337,12 @@ def build_nemoclaw_agentic_config_guard(
         run_agentic_math = lookup("run.agentic_math") is True
         run_swebench_pro = lookup("run.swebench_pro") is True
         math_sandbox = lookup("agentic_math.nemoclaw_sandbox")
+        math_config_path = lookup("agentic_math.nemoclaw_openclaw_config_path")
         math_use_task_agent = lookup("agentic_math.use_task_agent")
         math_deny_tools = lookup("agentic_math.deny_tool")
         math_deny_argument_patterns = lookup("agentic_math.deny_argument_pattern")
         swe_sandbox = lookup("swebench_pro.nemoclaw_sandbox")
+        swe_config_path = lookup("swebench_pro.nemoclaw_openclaw_config_path")
         swe_transfer_mode = lookup("swebench_pro.nemoclaw_checkout_transfer_mode")
         swe_checkout_root = lookup("swebench_pro.nemoclaw_checkout_sandbox_root")
         swe_deny_tools = lookup("swebench_pro.deny_tool")
@@ -342,6 +353,9 @@ def build_nemoclaw_agentic_config_guard(
                 "run_agentic_math": run_agentic_math,
                 "run_swebench_pro": run_swebench_pro,
                 "agentic_math_nemoclaw_sandbox": math_sandbox if isinstance(math_sandbox, str) else "",
+                "agentic_math_nemoclaw_openclaw_config_path": (
+                    math_config_path if isinstance(math_config_path, str) else ""
+                ),
                 "agentic_math_use_task_agent": math_use_task_agent,
                 "agentic_math_deny_tool": string_list(math_deny_tools) or [],
                 "agentic_math_local_exec_blocking_patterns": local_exec_blocking_patterns(
@@ -354,6 +368,9 @@ def build_nemoclaw_agentic_config_guard(
                     string_list(math_deny_argument_patterns) or []
                 ),
                 "swebench_pro_nemoclaw_sandbox": swe_sandbox if isinstance(swe_sandbox, str) else "",
+                "swebench_pro_nemoclaw_openclaw_config_path": (
+                    swe_config_path if isinstance(swe_config_path, str) else ""
+                ),
                 "swebench_pro_nemoclaw_checkout_transfer_mode": (
                     swe_transfer_mode if isinstance(swe_transfer_mode, str) else ""
                 ),
@@ -379,6 +396,11 @@ def build_nemoclaw_agentic_config_guard(
                 issues.append("run.swebench_pro must be true")
             if not nonempty_string(math_sandbox):
                 issues.append("agentic_math.nemoclaw_sandbox must be set")
+            if not canonical_nemoclaw_openclaw_config_path(math_config_path):
+                issues.append(
+                    "agentic_math.nemoclaw_openclaw_config_path must be "
+                    f"{CANONICAL_NEMOCLAW_OPENCLAW_CONFIG_PATH}"
+                )
             if math_use_task_agent is False:
                 issues.append("agentic_math.use_task_agent must not be false")
             require_string_superset(
@@ -396,6 +418,11 @@ def build_nemoclaw_agentic_config_guard(
             )
             if not nonempty_string(swe_sandbox):
                 issues.append("swebench_pro.nemoclaw_sandbox must be set")
+            if not canonical_nemoclaw_openclaw_config_path(swe_config_path):
+                issues.append(
+                    "swebench_pro.nemoclaw_openclaw_config_path must be "
+                    f"{CANONICAL_NEMOCLAW_OPENCLAW_CONFIG_PATH}"
+                )
             if not (
                 swe_transfer_mode == "copy"
                 or nonempty_string(swe_checkout_root)
@@ -440,8 +467,16 @@ def build_agentic_production_evidence_guard(
     will_call_paid_model_api: bool,
 ) -> dict[str, object]:
     enforced = bool(will_call_paid_model_api and phase in AGENTIC_GENERATION_PHASES)
+    math_config_path = getattr(args, "agentic_math_nemoclaw_openclaw_config_path", None)
+    swe_config_path = getattr(args, "swebench_pro_nemoclaw_openclaw_config_path", None)
     observations = {
         "--require-nemoclaw-agentic-config": bool(args.require_nemoclaw_agentic_config),
+        "--agentic-math-nemoclaw-openclaw-config-path": nonempty_string(
+            math_config_path
+        ),
+        "--swebench-pro-nemoclaw-openclaw-config-path": nonempty_string(
+            swe_config_path
+        ),
         "--require-weave-content-canary": bool(args.require_weave_content_canary),
         "--weave-content-canary-gate": bool(args.weave_content_canary_gate),
         "--verify-wandb-completion": bool(args.verify_wandb_completion),
@@ -453,16 +488,31 @@ def build_agentic_production_evidence_guard(
         "--weave-agents-require-usage": bool(args.weave_agents_require_usage),
     }
     missing = [flag for flag, present in observations.items() if not present]
+    invalid_values = {
+        flag: value
+        for flag, value in {
+            "--agentic-math-nemoclaw-openclaw-config-path": math_config_path,
+            "--swebench-pro-nemoclaw-openclaw-config-path": swe_config_path,
+        }.items()
+        if nonempty_string(value)
+        and not canonical_nemoclaw_openclaw_config_path(value)
+    }
     errors = [
         f"{flag} is required for paid {phase} execution: {AGENTIC_PRODUCTION_EVIDENCE_REQUIREMENTS[flag]}"
         for flag in missing
     ] if enforced else []
+    if enforced:
+        errors.extend(
+            f"{flag} must be {CANONICAL_NEMOCLAW_OPENCLAW_CONFIG_PATH} for paid {phase} execution"
+            for flag in sorted(invalid_values)
+        )
     return {
         "required": phase in AGENTIC_GENERATION_PHASES,
         "enforced": enforced,
         "phase": phase,
         "ok": not errors,
         "missing_flags": missing if enforced else [],
+        "invalid_values": invalid_values if enforced else {},
         "errors": errors,
         "observations": observations,
         "requirements": AGENTIC_PRODUCTION_EVIDENCE_REQUIREMENTS,

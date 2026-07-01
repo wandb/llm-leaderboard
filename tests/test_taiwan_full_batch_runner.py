@@ -119,6 +119,36 @@ def passing_weave_content_canary_gate_payload() -> dict:
             "sandbox": "nejumi-taiwan",
             "workdir": "/sandbox",
         },
+        "nemoclaw_openclaw_config_preflight": {
+            "required_before_openclaw": True,
+            "ran": True,
+            "ok": True,
+            "model": "openai-direct/test-mini",
+            "provider": "openai-direct",
+            "model_id": "test-mini",
+            "config_path": "/sandbox/.openclaw/openclaw.json",
+            "command": [
+                "nemoclaw",
+                "sandbox",
+                "exec",
+                "nejumi-taiwan",
+                "--no-tty",
+                "--timeout",
+                "30",
+                "--",
+                "cat",
+                "/sandbox/.openclaw/openclaw.json",
+            ],
+            "returncode": 0,
+            "checks": [
+                {
+                    "name": "NeMoClaw sandbox OpenClaw config is readable",
+                    "ok": True,
+                    "detail": "bytes=1234",
+                }
+            ],
+            "errors": [],
+        },
         "will_call_paid_model_api": True,
         "paid_api_attempted": True,
         "command_ok": True,
@@ -311,6 +341,7 @@ def test_wandb_verify_config_expectations_read_generated_config(tmp_path):
                 "agentic_math:",
                 "  openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14",
                 "  nemoclaw_sandbox: nejumi-taiwan",
+                "  nemoclaw_openclaw_config_path: /sandbox/.openclaw/openclaw.json",
                 "  use_task_agent: true",
                 "  deny_tool:",
                 "    - web_search",
@@ -320,6 +351,7 @@ def test_wandb_verify_config_expectations_read_generated_config(tmp_path):
                 "swebench_pro:",
                 "  openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14",
                 "  nemoclaw_sandbox: nejumi-taiwan",
+                "  nemoclaw_openclaw_config_path: /sandbox/.openclaw/openclaw.json",
                 "  nemoclaw_checkout_transfer_mode: copy",
                 "  deny_tool:",
                 "    - web_search",
@@ -344,6 +376,7 @@ def test_wandb_verify_config_expectations_read_generated_config(tmp_path):
     assert math_expectations == {
         "agentic_math.deny_argument_pattern": ["https?://"],
         "agentic_math.deny_tool": ["web_search", "web_fetch"],
+        "agentic_math.nemoclaw_openclaw_config_path": "/sandbox/.openclaw/openclaw.json",
         "agentic_math.nemoclaw_sandbox": "nejumi-taiwan",
         "agentic_math.openclaw_model": "openai-direct/gpt-4.1-mini-2025-04-14",
         "agentic_math.use_task_agent": True,
@@ -357,6 +390,7 @@ def test_wandb_verify_config_expectations_read_generated_config(tmp_path):
         "swebench_pro.deny_argument_pattern": ["https?://"],
         "swebench_pro.deny_tool": ["web_search", "web_fetch"],
         "swebench_pro.nemoclaw_checkout_transfer_mode": "copy",
+        "swebench_pro.nemoclaw_openclaw_config_path": "/sandbox/.openclaw/openclaw.json",
         "swebench_pro.nemoclaw_sandbox": "nejumi-taiwan",
         "swebench_pro.openclaw_model": "openai-direct/gpt-4.1-mini-2025-04-14",
         "wandb.run_name": "taiwan/full/openai/gpt-4.1-mini: canary",
@@ -814,8 +848,12 @@ def test_paid_agentic_run_rejects_hand_edited_weave_gate_before_run_eval(
             str(output_root),
             "--agentic-math-nemoclaw-sandbox",
             "nejumi-taiwan",
+            "--agentic-math-nemoclaw-openclaw-config-path",
+            "/sandbox/.openclaw/openclaw.json",
             "--swebench-pro-nemoclaw-sandbox",
             "nejumi-taiwan",
+            "--swebench-pro-nemoclaw-openclaw-config-path",
+            "/sandbox/.openclaw/openclaw.json",
             "--swebench-pro-nemoclaw-checkout-transfer-mode",
             "copy",
             "--require-nemoclaw-agentic-config",
@@ -1075,8 +1113,12 @@ def test_prepare_only_review_records_completion_requirements(tmp_path, monkeypat
             str(output_root),
             "--agentic-math-nemoclaw-sandbox",
             "nejumi-taiwan",
+            "--agentic-math-nemoclaw-openclaw-config-path",
+            "/sandbox/.openclaw/openclaw.json",
             "--swebench-pro-nemoclaw-sandbox",
             "nejumi-taiwan",
+            "--swebench-pro-nemoclaw-openclaw-config-path",
+            "/sandbox/.openclaw/openclaw.json",
             "--swebench-pro-nemoclaw-checkout-transfer-mode",
             "copy",
             "--require-nemoclaw-agentic-config",
@@ -1174,12 +1216,20 @@ def test_prepare_only_review_records_completion_requirements(tmp_path, monkeypat
     assert guard["enforced"] is True
     assert guard["ok"] is True
     assert guard["records"][0]["agentic_math_nemoclaw_sandbox"] == "nejumi-taiwan"
+    assert (
+        guard["records"][0]["agentic_math_nemoclaw_openclaw_config_path"]
+        == "/sandbox/.openclaw/openclaw.json"
+    )
     assert guard["records"][0]["agentic_math_use_task_agent"] is True
     assert "web_search" in guard["records"][0]["agentic_math_deny_tool"]
     assert "https?://" in guard["records"][0]["agentic_math_deny_argument_pattern"]
     assert guard["records"][0]["agentic_math_local_exec_allowed"] is True
     assert guard["records"][0]["agentic_math_local_exec_blocking_patterns"] == []
     assert guard["records"][0]["swebench_pro_nemoclaw_sandbox"] == "nejumi-taiwan"
+    assert (
+        guard["records"][0]["swebench_pro_nemoclaw_openclaw_config_path"]
+        == "/sandbox/.openclaw/openclaw.json"
+    )
     assert guard["records"][0]["swebench_pro_nemoclaw_checkout_transfer_mode"] == "copy"
     assert "web_search" in guard["records"][0]["swebench_pro_deny_tool"]
     assert "https?://" in guard["records"][0]["swebench_pro_deny_argument_pattern"]
@@ -1382,6 +1432,8 @@ def test_agentic_production_evidence_guard_requires_wandb_weave_and_nemoclaw(tmp
     module = load_module()
     args = SimpleNamespace(
         require_nemoclaw_agentic_config=False,
+        agentic_math_nemoclaw_openclaw_config_path=None,
+        swebench_pro_nemoclaw_openclaw_config_path=None,
         require_weave_content_canary=False,
         weave_content_canary_gate=None,
         verify_wandb_completion=False,
@@ -1414,11 +1466,51 @@ def test_agentic_production_evidence_guard_requires_wandb_weave_and_nemoclaw(tmp
     assert "--verify-wandb-completion" in blocked["missing_flags"]
     assert "--verify-weave-agents" in blocked["missing_flags"]
     assert "--require-nemoclaw-agentic-config" in blocked["missing_flags"]
+    assert "--agentic-math-nemoclaw-openclaw-config-path" in blocked["missing_flags"]
+    assert "--swebench-pro-nemoclaw-openclaw-config-path" in blocked["missing_flags"]
     assert "--weave-content-canary-gate" in blocked["missing_flags"]
     assert prepare_only["enforced"] is False
     assert prepare_only["ok"] is True
     assert nonagentic["enforced"] is False
     assert nonagentic["ok"] is True
+
+
+def test_agentic_production_evidence_guard_rejects_wrong_nemoclaw_openclaw_config_path(
+    tmp_path,
+):
+    module = load_module()
+    args = SimpleNamespace(
+        require_nemoclaw_agentic_config=True,
+        agentic_math_nemoclaw_openclaw_config_path="/tmp/openclaw.json",
+        swebench_pro_nemoclaw_openclaw_config_path="/sandbox/.openclaw/openclaw.json",
+        require_weave_content_canary=True,
+        weave_content_canary_gate=tmp_path / "gate.json",
+        verify_wandb_completion=True,
+        verify_weave_agents=True,
+        wandb_run_id_prefix="twcanary-test",
+        weave_agents_no_require_content=False,
+        weave_agents_require_tool_span=True,
+        weave_agents_require_tool_content=True,
+        weave_agents_require_usage=True,
+    )
+
+    guard = module.build_agentic_production_evidence_guard(
+        args,
+        phase="agentic",
+        will_call_paid_model_api=True,
+    )
+
+    assert guard["ok"] is False
+    assert guard["missing_flags"] == []
+    assert guard["invalid_values"] == {
+        "--agentic-math-nemoclaw-openclaw-config-path": "/tmp/openclaw.json"
+    }
+    assert any(
+        "--agentic-math-nemoclaw-openclaw-config-path must be "
+        "/sandbox/.openclaw/openclaw.json"
+        in error
+        for error in guard["errors"]
+    )
 
 
 def test_paid_run_executes_run_eval_preflight_before_run_eval(tmp_path, monkeypatch):
@@ -1496,8 +1588,12 @@ def test_paid_run_executes_run_eval_preflight_before_run_eval(tmp_path, monkeypa
             str(output_root),
             "--agentic-math-nemoclaw-sandbox",
             "nejumi-taiwan",
+            "--agentic-math-nemoclaw-openclaw-config-path",
+            "/sandbox/.openclaw/openclaw.json",
             "--swebench-pro-nemoclaw-sandbox",
             "nejumi-taiwan",
+            "--swebench-pro-nemoclaw-openclaw-config-path",
+            "/sandbox/.openclaw/openclaw.json",
             "--swebench-pro-nemoclaw-checkout-transfer-mode",
             "copy",
             "--require-nemoclaw-agentic-config",
@@ -1621,8 +1717,12 @@ def test_paid_run_stops_before_run_eval_when_preflight_fails(tmp_path, monkeypat
             str(output_root),
             "--agentic-math-nemoclaw-sandbox",
             "nejumi-taiwan",
+            "--agentic-math-nemoclaw-openclaw-config-path",
+            "/sandbox/.openclaw/openclaw.json",
             "--swebench-pro-nemoclaw-sandbox",
             "nejumi-taiwan",
+            "--swebench-pro-nemoclaw-openclaw-config-path",
+            "/sandbox/.openclaw/openclaw.json",
             "--swebench-pro-nemoclaw-checkout-transfer-mode",
             "copy",
             "--require-nemoclaw-agentic-config",

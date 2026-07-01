@@ -579,10 +579,22 @@ def validate_command_policy(
                         "--require-nemoclaw-agentic-config",
                         "--agentic-math-nemoclaw-sandbox",
                         "--swebench-pro-nemoclaw-sandbox",
+                        "--agentic-math-nemoclaw-openclaw-config-path",
+                        "--swebench-pro-nemoclaw-openclaw-config-path",
                     ):
                         if not option_present(parts, option):
                             command_errors.append(
                                 f"run_taiwan_full_eval_batch.py {phase} command is missing {option}"
+                            )
+                    for option in (
+                        "--agentic-math-nemoclaw-openclaw-config-path",
+                        "--swebench-pro-nemoclaw-openclaw-config-path",
+                    ):
+                        value = option_value(parts, option)
+                        if value and value != "/sandbox/.openclaw/openclaw.json":
+                            command_errors.append(
+                                f"run_taiwan_full_eval_batch.py {phase} command "
+                                f"{option} must be /sandbox/.openclaw/openclaw.json"
                             )
                     transfer_mode = option_value(
                         parts,

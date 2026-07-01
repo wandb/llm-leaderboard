@@ -2870,7 +2870,11 @@ def test_build_report_surfaces_blockers(tmp_path):
         "--manifest configs/taiwan_openai_canary_models.yaml" in command
         and "--phase agentic" in command
         and "--agentic-math-nemoclaw-sandbox nejumi-taiwan" in command
+        and "--agentic-math-nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json"
+        in command
         and "--swebench-pro-nemoclaw-sandbox nejumi-taiwan" in command
+        and "--swebench-pro-nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json"
+        in command
         and "--swebench-pro-nemoclaw-checkout-transfer-mode copy" in command
         and "--require-nemoclaw-agentic-config" in command
         for command in remediation_by_gate["paid_run_review_package"]
@@ -2932,6 +2936,22 @@ def test_build_report_surfaces_blockers(tmp_path):
         "temp/taiwan_external_action_approval_REVIEWED_YYYYMMDDTHHMM.verify.json"
         in command
         for command in one_model_execution_batch_commands
+    )
+    agentic_one_model_commands = [
+        command
+        for command in one_model_execution_batch_commands
+        if "--phase agentic " in command
+    ]
+    assert agentic_one_model_commands
+    assert all(
+        "--agentic-math-nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json"
+        in command
+        for command in agentic_one_model_commands
+    )
+    assert all(
+        "--swebench-pro-nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json"
+        in command
+        for command in agentic_one_model_commands
     )
     assert any(
         "sync_wandb_completion_to_paid_review.py" in command

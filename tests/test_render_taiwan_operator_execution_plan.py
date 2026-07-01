@@ -162,6 +162,36 @@ def native_weave_content_canary_gate_payload() -> dict:
             "sandbox": "nejumi-taiwan",
             "workdir": "/sandbox",
         },
+        "nemoclaw_openclaw_config_preflight": {
+            "required_before_openclaw": True,
+            "ran": True,
+            "ok": True,
+            "model": "openai-direct/test-mini",
+            "provider": "openai-direct",
+            "model_id": "test-mini",
+            "config_path": "/sandbox/.openclaw/openclaw.json",
+            "command": [
+                "nemoclaw",
+                "sandbox",
+                "exec",
+                "nejumi-taiwan",
+                "--no-tty",
+                "--timeout",
+                "30",
+                "--",
+                "cat",
+                "/sandbox/.openclaw/openclaw.json",
+            ],
+            "returncode": 0,
+            "checks": [
+                {
+                    "name": "NeMoClaw sandbox OpenClaw config is readable",
+                    "ok": True,
+                    "detail": "bytes=1234",
+                }
+            ],
+            "errors": [],
+        },
         "paid_api_attempted": True,
         "command_ok": True,
         "command_returncode": 0,
@@ -236,7 +266,11 @@ def write_agentic_batch_operator_plan(
                             f"{approval_report} "
                             "--require-nemoclaw-agentic-config "
                             "--agentic-math-nemoclaw-sandbox nejumi-taiwan "
+                            "--agentic-math-nemoclaw-openclaw-config-path "
+                            "/sandbox/.openclaw/openclaw.json "
                             "--swebench-pro-nemoclaw-sandbox nejumi-taiwan "
+                            "--swebench-pro-nemoclaw-openclaw-config-path "
+                            "/sandbox/.openclaw/openclaw.json "
                             "--swebench-pro-nemoclaw-checkout-transfer-mode copy "
                             "--verify-wandb-completion "
                             "--verify-weave-agents "
@@ -1323,6 +1357,127 @@ def test_render_operator_execution_plan_accepts_native_weave_content_canary_gate
     assert rendered["all_ready_for_external_execution"] is True
     assert rendered["command_policy"]["valid"] is True
     assert rendered["command_policy"]["error_count"] == 0
+
+
+def test_render_operator_execution_plan_rejects_agentic_batch_missing_nemoclaw_config_path(
+    tmp_path,
+):
+    source_packet = write_source_packet(tmp_path / "external_action_approval_packet.json")
+    approval_report = write_external_action_approval_report(
+        tmp_path / "approval.verify.json",
+        source_packet,
+    )
+    gate_json = write_native_weave_content_canary_gate(
+        tmp_path / "native_content_canary.gate.json",
+    )
+    operator_plan = write_agentic_batch_operator_plan(
+        tmp_path / "operator_plan.json",
+        source_packet=source_packet,
+        approval_report=approval_report,
+        gate_json=gate_json,
+    )
+    payload = json.loads(operator_plan.read_text(encoding="utf-8"))
+    command = payload["operator_next_steps"]["steps"][0]["commands"][0]
+    payload["operator_next_steps"]["steps"][0]["commands"][0] = command.replace(
+        " --agentic-math-nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json",
+        "",
+    )
+    operator_plan.write_text(json.dumps(payload), encoding="utf-8")
+    output_json = tmp_path / "execution_plan.json"
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--operator-plan-json",
+            str(operator_plan),
+            "--gate",
+            "paid_run_review_package",
+            "--external-action-approval-source-packet-json",
+            str(source_packet),
+            "--external-action-approval-report-json",
+            str(approval_report),
+            "--output-json",
+            str(output_json),
+            "--require-ready",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    rendered = json.loads(output_json.read_text(encoding="utf-8"))
+    policy = rendered["command_policy"]
+    assert policy["valid"] is False
+    assert any(
+        "run_taiwan_full_eval_batch.py agentic command is missing "
+        "--agentic-math-nemoclaw-openclaw-config-path"
+        in error
+        for error in policy["errors"]
+    )
+
+
+def test_render_operator_execution_plan_rejects_agentic_batch_wrong_nemoclaw_config_path(
+    tmp_path,
+):
+    source_packet = write_source_packet(tmp_path / "external_action_approval_packet.json")
+    approval_report = write_external_action_approval_report(
+        tmp_path / "approval.verify.json",
+        source_packet,
+    )
+    gate_json = write_native_weave_content_canary_gate(
+        tmp_path / "native_content_canary.gate.json",
+    )
+    operator_plan = write_agentic_batch_operator_plan(
+        tmp_path / "operator_plan.json",
+        source_packet=source_packet,
+        approval_report=approval_report,
+        gate_json=gate_json,
+    )
+    payload = json.loads(operator_plan.read_text(encoding="utf-8"))
+    command = payload["operator_next_steps"]["steps"][0]["commands"][0]
+    payload["operator_next_steps"]["steps"][0]["commands"][0] = command.replace(
+        "--swebench-pro-nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json",
+        "--swebench-pro-nemoclaw-openclaw-config-path /tmp/openclaw.json",
+    )
+    operator_plan.write_text(json.dumps(payload), encoding="utf-8")
+    output_json = tmp_path / "execution_plan.json"
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--operator-plan-json",
+            str(operator_plan),
+            "--gate",
+            "paid_run_review_package",
+            "--external-action-approval-source-packet-json",
+            str(source_packet),
+            "--external-action-approval-report-json",
+            str(approval_report),
+            "--output-json",
+            str(output_json),
+            "--require-ready",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    rendered = json.loads(output_json.read_text(encoding="utf-8"))
+    policy = rendered["command_policy"]
+    assert policy["valid"] is False
+    assert any(
+        "run_taiwan_full_eval_batch.py agentic command "
+        "--swebench-pro-nemoclaw-openclaw-config-path must be "
+        "/sandbox/.openclaw/openclaw.json"
+        in error
+        for error in policy["errors"]
+    )
 
 
 def test_render_operator_execution_plan_rejects_weave_canary_without_nemoclaw(tmp_path):
