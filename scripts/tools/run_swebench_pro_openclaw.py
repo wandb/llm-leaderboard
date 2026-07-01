@@ -148,6 +148,10 @@ def cache_key_matches(record: dict[str, Any], cache_key: dict[str, Any]) -> bool
     return record.get("cache_key") == cache_key
 
 
+def cache_requires_nemoclaw_session_audit(cache_key: dict[str, Any]) -> bool:
+    return bool(cache_key.get("nemoclaw_sandbox"))
+
+
 def sidecar_identity_matches_cache(sidecar: dict[str, Any], cache_key: dict[str, Any]) -> bool:
     metadata = sidecar.get("metadata") if isinstance(sidecar.get("metadata"), dict) else {}
     policy = sidecar.get("tool_policy") if isinstance(sidecar.get("tool_policy"), dict) else {}
@@ -166,8 +170,7 @@ def sidecar_identity_matches_cache(sidecar: dict[str, Any], cache_key: dict[str,
 
 def sidecar_nemoclaw_session_audit_matches_cache(sidecar: dict[str, Any], cache_key: dict[str, Any]) -> bool:
     audit = sidecar.get("nemoclaw_session_audit")
-    cache_requires_nemoclaw = bool(cache_key.get("nemoclaw_sandbox"))
-    if cache_requires_nemoclaw:
+    if cache_requires_nemoclaw_session_audit(cache_key):
         return (
             isinstance(audit, dict)
             and audit.get("required") is True
@@ -175,6 +178,20 @@ def sidecar_nemoclaw_session_audit_matches_cache(sidecar: dict[str, Any], cache_
         )
     if isinstance(audit, dict) and audit.get("required") is True:
         return audit.get("ok") is True
+    return True
+
+
+def patch_record_nemoclaw_session_audit_matches_cache(record: dict[str, Any], cache_key: dict[str, Any]) -> bool:
+    audit = record.get("nemoclaw_session_audit")
+    if cache_requires_nemoclaw_session_audit(cache_key):
+        return (
+            isinstance(audit, dict)
+            and audit.get("required") is True
+            and audit.get("ok") is True
+            and record.get("nemoclaw_session_audit_ok") is True
+        )
+    if isinstance(audit, dict) and audit.get("required") is True:
+        return audit.get("ok") is True and record.get("nemoclaw_session_audit_ok") is True
     return True
 
 
@@ -203,6 +220,8 @@ def load_cached_patch_record(
     if not isinstance(record, dict) or not cache_key_matches(record, cache_key):
         return None
     if record.get("instance_id") != cache_key["instance_id"] or "patch" not in record:
+        return None
+    if not patch_record_nemoclaw_session_audit_matches_cache(record, cache_key):
         return None
     if not record.get("patch") and record.get("patch_capture_version") != PATCH_CAPTURE_VERSION:
         return None

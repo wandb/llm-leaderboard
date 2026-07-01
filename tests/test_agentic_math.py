@@ -148,6 +148,29 @@ def test_cached_non_transient_openclaw_error_is_reusable():
     assert module.cached_result_is_reusable(record)
 
 
+def test_cached_nemoclaw_result_requires_session_audit():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    cache_key = {
+        "task_id": "task_1",
+        "prompt_hash": "prompt-hash",
+        "agent_runtime": "nemoclaw",
+        "nemoclaw_sandbox": "nejumi-taiwan",
+    }
+    record = {
+        "task_id": "task_1",
+        "cache_key": cache_key,
+        "correct": True,
+    }
+
+    assert not module.cached_result_matches_cache(record, cache_key)
+    record["nemoclaw_session_audit"] = {"required": True, "ok": False}
+    record["nemoclaw_session_audit_ok"] = False
+    assert not module.cached_result_matches_cache(record, cache_key)
+    record["nemoclaw_session_audit"] = {"required": True, "ok": True}
+    record["nemoclaw_session_audit_ok"] = True
+    assert module.cached_result_matches_cache(record, cache_key)
+
+
 def test_transient_openclaw_failure_ignores_tool_policy_violation():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
     completed = subprocess.CompletedProcess(

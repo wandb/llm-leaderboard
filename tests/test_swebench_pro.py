@@ -1107,6 +1107,49 @@ def test_swebench_patch_cache_rejects_nemoclaw_config_source_change(tmp_path):
     assert module.load_cached_patch_record(task_dir, changed_key, "new-prefix") is None
 
 
+def test_swebench_patch_cache_rejects_nemoclaw_record_without_session_audit(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    row = sample_row()
+    args = SimpleNamespace(
+        model="openai-direct/example-model",
+        thinking="high",
+        deny_tool=None,
+        deny_argument_pattern=None,
+        max_input_tokens=1_000_000,
+        max_tool_calls=60,
+        nemoclaw_sandbox="nejumi-taiwan",
+        nemoclaw_openclaw_config_path="/sandbox/.openclaw/openclaw.json",
+        nemoclaw_checkout_sandbox_root="/sandbox/checkouts",
+        nemoclaw_checkout_transfer_mode="copy",
+        session_prefix=None,
+    )
+    prompt = module.build_prompt(row)
+    cache_key = module.build_cache_key(row, prompt, args)
+    task_dir = tmp_path / "task"
+    task_dir.mkdir()
+    record = {
+        "instance_id": row["instance_id"],
+        "patch": "diff --git a/x b/x\n",
+        "cache_key": cache_key,
+        "patch_capture_version": module.PATCH_CAPTURE_VERSION,
+    }
+    record_path = task_dir / "patch_record.json"
+    record_path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+
+    assert module.load_cached_patch_record(task_dir, cache_key, "new-prefix") is None
+    record["nemoclaw_session_audit"] = {"required": True, "ok": False}
+    record["nemoclaw_session_audit_ok"] = False
+    record_path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+    assert module.load_cached_patch_record(task_dir, cache_key, "new-prefix") is None
+    record["nemoclaw_session_audit"] = {"required": True, "ok": True}
+    record["nemoclaw_session_audit_ok"] = True
+    record_path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+
+    cached = module.load_cached_patch_record(task_dir, cache_key, "new-prefix")
+    assert cached is not None
+    assert cached["prefix"] == "new-prefix"
+
+
 def test_swebench_session_prefix_is_bound_to_wandb_run_id(monkeypatch):
     monkeypatch.setenv("WANDB_RUN_ID", "twcanary-run-1")
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")

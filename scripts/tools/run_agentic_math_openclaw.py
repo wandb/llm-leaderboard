@@ -154,6 +154,13 @@ def cache_key_matches(record: dict[str, Any], cache_key: dict[str, Any]) -> bool
     return record.get("cache_key") == cache_key
 
 
+def cache_requires_nemoclaw_session_audit(cache_key: dict[str, Any]) -> bool:
+    return (
+        cache_key.get("agent_runtime") == "nemoclaw"
+        or bool(cache_key.get("nemoclaw_sandbox"))
+    )
+
+
 def default_openclaw_config_template() -> Path:
     return Path(os.environ.get("OPENCLAW_CONFIG_PATH", "~/.openclaw/openclaw.json")).expanduser()
 
@@ -531,6 +538,28 @@ def cached_result_is_reusable(record: dict[str, Any]) -> bool:
     return not any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in TRANSIENT_OPENCLAW_FAILURE_PATTERNS)
 
 
+def record_nemoclaw_session_audit_matches_cache(record: dict[str, Any], cache_key: dict[str, Any]) -> bool:
+    audit = record.get("nemoclaw_session_audit")
+    if cache_requires_nemoclaw_session_audit(cache_key):
+        return (
+            isinstance(audit, dict)
+            and audit.get("required") is True
+            and audit.get("ok") is True
+            and record.get("nemoclaw_session_audit_ok") is True
+        )
+    if isinstance(audit, dict) and audit.get("required") is True:
+        return audit.get("ok") is True and record.get("nemoclaw_session_audit_ok") is True
+    return True
+
+
+def cached_result_matches_cache(record: dict[str, Any], cache_key: dict[str, Any]) -> bool:
+    return (
+        cache_key_matches(record, cache_key)
+        and cached_result_is_reusable(record)
+        and record_nemoclaw_session_audit_matches_cache(record, cache_key)
+    )
+
+
 def append_transient_failure(task_dir: Path, payload: dict[str, Any]) -> None:
     log_path = task_dir / "openclaw_transient_failures.jsonl"
     with log_path.open("a", encoding="utf-8") as f:
@@ -682,11 +711,7 @@ def is_weave_sidecar_failure(sidecar: dict[str, Any] | None) -> bool:
 
 def sidecar_nemoclaw_session_audit_matches_cache(sidecar: dict[str, Any], cache_key: dict[str, Any]) -> bool:
     audit = sidecar.get("nemoclaw_session_audit")
-    cache_requires_nemoclaw = (
-        cache_key.get("agent_runtime") == "nemoclaw"
-        or bool(cache_key.get("nemoclaw_sandbox"))
-    )
-    if cache_requires_nemoclaw:
+    if cache_requires_nemoclaw_session_audit(cache_key):
         return (
             isinstance(audit, dict)
             and audit.get("required") is True
@@ -1195,7 +1220,7 @@ def run_openclaw_for_task(
     cache_key = build_cache_key(row, prompt_text, args)
     if result_path.exists() and not args.redo:
         existing = json.loads(result_path.read_text(encoding="utf-8"))
-        if cache_key_matches(existing, cache_key) and cached_result_is_reusable(existing):
+        if cached_result_matches_cache(existing, cache_key):
             print(f"Reusing existing Agentic Math result: {row['task_id']}", flush=True)
             return existing
         print(
@@ -1337,7 +1362,7 @@ def run_openclaw_for_task(
 
         if result_path.exists() and not args.redo:
             existing = json.loads(result_path.read_text(encoding="utf-8"))
-            if cache_key_matches(existing, cache_key) and cached_result_is_reusable(existing):
+            if cached_result_matches_cache(existing, cache_key):
                 print(
                     f"OpenClaw returned {result.returncode} for {row['task_id']}, "
                     "but a matching result.json is available; reusing it.",
