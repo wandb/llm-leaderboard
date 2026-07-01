@@ -60,7 +60,7 @@ def command_flag_values(command: list[str], flag: str) -> list[str]:
 
 def protocol_sidecar_identity(module, command: list[str], instance_id: str) -> dict:
     prompt_text = Path(command_flag_value(command, "--prompt-file")).read_text(encoding="utf-8")
-    return {
+    sidecar = {
         "metadata": {
             "task_id": instance_id,
             "prompt_hash": module.sha256_text(prompt_text),
@@ -72,6 +72,10 @@ def protocol_sidecar_identity(module, command: list[str], instance_id: str) -> d
             "deny_argument_patterns": command_flag_values(command, "--deny-argument-pattern"),
         },
     }
+    if "--nemoclaw-sandbox" in command:
+        sidecar["conversation_order"] = {"ok": True, "checked": True}
+        sidecar["nemoclaw_session_audit"] = {"required": True, "ok": True}
+    return sidecar
 
 
 def test_agentic_prompt_does_not_embed_code_context():
@@ -590,6 +594,67 @@ def test_swebench_rejects_sidecar_config_source_mismatch(tmp_path, monkeypatch):
     )
 
     with pytest.raises(RuntimeError, match="OpenClaw sidecar metadata mismatch"):
+        module.run_openclaw_for_task(row, checkout_dir, task_dir, args)
+
+
+def test_swebench_rejects_required_nemoclaw_audit_failure(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    row = sample_row()
+    checkout_dir = tmp_path / "checkout"
+    checkout_dir.mkdir()
+    task_dir = tmp_path / "task"
+
+    def fake_run_command(command, cwd=None, timeout=None, check=True):
+        output_dir = Path(command[command.index("--output-dir") + 1])
+        sidecar_path = module.task_sidecar_path(output_dir, row["instance_id"])
+        sidecar_path.parent.mkdir(parents=True, exist_ok=True)
+        sidecar_path.write_text(
+            json.dumps(
+                {
+                    **protocol_sidecar_identity(module, command, row["instance_id"]),
+                    "returncode": 0,
+                    "tool_policy_ok": True,
+                    "tool_policy_violations": [],
+                    "tool_call_count": 1,
+                    "tool_error_count": 0,
+                    "runtime_budget": {"ok": True},
+                    "weave_sidecar": {"ok": True},
+                    "nemoclaw_session_audit": {"required": True, "ok": False},
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, stdout=str(sidecar_path), stderr="")
+
+    monkeypatch.setattr(module, "run_command", fake_run_command)
+    monkeypatch.setattr(module, "ensure_nemoclaw_checkout_ready", lambda checkout_dir, task_dir, args: None)
+    args = SimpleNamespace(
+        agent="test-agent",
+        allow_failed_preflight=False,
+        deny_argument_pattern=None,
+        deny_tool=None,
+        dry_run=False,
+        max_input_tokens=1_000_000,
+        max_tool_calls=60,
+        model="openai-direct/example-model",
+        no_local=False,
+        nemoclaw_bin="nemoclaw",
+        nemoclaw_checkout_sandbox_root="/sandbox/checkouts",
+        nemoclaw_checkout_transfer_mode="copy",
+        nemoclaw_sandbox="nejumi-taiwan",
+        nemoclaw_workdir=None,
+        openclaw_max_attempts=1,
+        openclaw_retry_base_seconds=0,
+        openclaw_timeout=30,
+        profile=None,
+        session_prefix=None,
+        thinking="high",
+        use_task_agent=False,
+        weave_sidecar=False,
+        weave_sidecar_strict=False,
+    )
+
+    with pytest.raises(RuntimeError, match="OpenClaw NeMoClaw session audit mismatch"):
         module.run_openclaw_for_task(row, checkout_dir, task_dir, args)
 
 

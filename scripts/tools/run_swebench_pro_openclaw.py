@@ -164,6 +164,20 @@ def sidecar_identity_matches_cache(sidecar: dict[str, Any], cache_key: dict[str,
     )
 
 
+def sidecar_nemoclaw_session_audit_matches_cache(sidecar: dict[str, Any], cache_key: dict[str, Any]) -> bool:
+    audit = sidecar.get("nemoclaw_session_audit")
+    cache_requires_nemoclaw = bool(cache_key.get("nemoclaw_sandbox"))
+    if cache_requires_nemoclaw:
+        return (
+            isinstance(audit, dict)
+            and audit.get("required") is True
+            and audit.get("ok") is True
+        )
+    if isinstance(audit, dict) and audit.get("required") is True:
+        return audit.get("ok") is True
+    return True
+
+
 def patch_mentions_paths(patch: str, paths: list[str]) -> bool:
     for path in paths:
         if f" a/{path} " in patch or f" b/{path}" in patch:
@@ -1150,6 +1164,11 @@ def run_openclaw_for_task(
     if not sidecar_identity_matches_cache(sidecar, cache_key):
         raise RuntimeError(
             f"OpenClaw sidecar metadata mismatch for {row['instance_id']}: "
+            f"{sidecar_path}"
+        )
+    if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):
+        raise RuntimeError(
+            f"OpenClaw NeMoClaw session audit mismatch for {row['instance_id']}: "
             f"{sidecar_path}"
         )
     if is_weave_sidecar_failure(sidecar):

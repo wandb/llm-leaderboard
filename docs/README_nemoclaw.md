@@ -14,7 +14,7 @@ References:
 
 ## Current Status
 
-As of 2026-07-01 08:48 JST:
+As of 2026-07-01 16:58 JST:
 
 - Host prerequisites are present: Docker, Node.js, npm, zstd, and OpenClaw.
 - `nemoclaw v0.0.55` and `openshell 0.0.44` are installed on this machine.
@@ -364,7 +364,10 @@ source used to create the per-task sandbox-visible config. A run prepared with
 one NeMoClaw OpenClaw config path is therefore not reused after the config
 source path changes. The runner also rejects newly produced sidecars before
 patch capture when their task, prompt, model, tool policy, or config source
-metadata does not match the active patch cache key.
+metadata does not match the active patch cache key. When the active patch cache
+key is NeMoClaw-scoped, the sidecar must also carry a passing required
+NeMoClaw session audit before it can become a patch record, including
+disqualified empty-patch records.
 
 These code paths are covered by unit tests and config-generation tests.
 `nemoclaw`, `openshell`, the `nejumi-taiwan` sandbox, and native
@@ -558,7 +561,9 @@ runner cache key and in the OpenClaw protocol sidecar metadata, so changing the
 sandbox OpenClaw config source cannot silently reuse an older Agentic Math
 result. Fresh successful sidecars are also rejected before scoring when their
 task, prompt, model, tool policy, or config source metadata does not match the
-current runner cache key.
+current runner cache key. When the cache key is NeMoClaw-scoped, a missing or
+failed required NeMoClaw session audit also blocks scoring instead of becoming a
+valid benchmark answer.
 
 For generated Taiwan full-evaluation configs, opt Agentic Math into NeMoClaw
 first:

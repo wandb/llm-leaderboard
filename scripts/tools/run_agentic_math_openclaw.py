@@ -680,6 +680,23 @@ def is_weave_sidecar_failure(sidecar: dict[str, Any] | None) -> bool:
     )
 
 
+def sidecar_nemoclaw_session_audit_matches_cache(sidecar: dict[str, Any], cache_key: dict[str, Any]) -> bool:
+    audit = sidecar.get("nemoclaw_session_audit")
+    cache_requires_nemoclaw = (
+        cache_key.get("agent_runtime") == "nemoclaw"
+        or bool(cache_key.get("nemoclaw_sandbox"))
+    )
+    if cache_requires_nemoclaw:
+        return (
+            isinstance(audit, dict)
+            and audit.get("required") is True
+            and audit.get("ok") is True
+        )
+    if isinstance(audit, dict) and audit.get("required") is True:
+        return audit.get("ok") is True
+    return True
+
+
 def sidecar_matches_cache(sidecar: dict[str, Any], cache_key: dict[str, Any]) -> bool:
     metadata = sidecar.get("metadata") if isinstance(sidecar.get("metadata"), dict) else {}
     policy = sidecar.get("tool_policy") if isinstance(sidecar.get("tool_policy"), dict) else {}
@@ -697,6 +714,7 @@ def sidecar_matches_cache(sidecar: dict[str, Any], cache_key: dict[str, Any]) ->
         and sidecar.get("tool_policy_ok") is not False
         and not sidecar.get("tool_policy_violations")
         and (not isinstance(sidecar.get("conversation_order"), dict) or sidecar["conversation_order"].get("ok") is not False)
+        and sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key)
     )
 
 
@@ -1422,6 +1440,11 @@ def run_openclaw_for_task(
     attempt_metadata = last_attempt_metadata
 
     sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):
+        raise RuntimeError(
+            f"OpenClaw NeMoClaw session audit mismatch for {row['task_id']}: "
+            f"{sidecar_path}"
+        )
     if not sidecar_matches_cache(sidecar, cache_key):
         raise RuntimeError(
             f"OpenClaw sidecar metadata mismatch for {row['task_id']}: "
