@@ -108,6 +108,13 @@ exit 1
         if check.name == "NeMoClaw W&B/Weave runtime policy is present: nejumi-taiwan"
     )
     assert weave_check.ok
+    allowlist_check = next(
+        check
+        for check in checks
+        if check.name == "NeMoClaw runtime network policies are allowlisted: nejumi-taiwan"
+    )
+    assert allowlist_check.ok
+    assert '"unknown_runtime_network_policies": []' in allowlist_check.detail
 
 
 def test_nemoclaw_required_readiness_accepts_detailed_status_runtime_policy(tmp_path):
@@ -177,6 +184,77 @@ exit 1
         if check.name == "NeMoClaw W&B/Weave runtime policy is present: nejumi-taiwan"
     )
     assert weave_check.ok
+    allowlist_check = next(
+        check
+        for check in checks
+        if check.name == "NeMoClaw runtime network policies are allowlisted: nejumi-taiwan"
+    )
+    assert allowlist_check.ok
+    assert '"runtime_network_policy_allowlist_ok": true' in allowlist_check.detail
+
+
+def test_nemoclaw_required_readiness_fails_unknown_runtime_network_policy(tmp_path):
+    module = load_module()
+    nemoclaw = tmp_path / "nemoclaw"
+    openshell = tmp_path / "openshell"
+    nemoclaw.write_text(
+        """#!/usr/bin/env sh
+if [ "$1" = "--version" ]; then
+  echo "nemoclaw 0.0.test"
+  exit 0
+fi
+if [ "$1" = "status" ] && [ "$2" = "--json" ]; then
+  cat <<'JSON'
+{"sandboxes":[{"name":"nejumi-taiwan","provider":"compatible-endpoint","model":"test-model","connected":false,"policies":[]}]}
+JSON
+  exit 0
+fi
+if [ "$1" = "sandbox" ] && [ "$2" = "status" ]; then
+  cat <<'TEXT'
+Sandbox: nejumi-taiwan
+Policy:
+  network_policies:
+    clawhub:
+      name: clawhub
+    general_web:
+      name: general_web
+    wandb-weave:
+      name: wandb-weave
+TEXT
+  exit 0
+fi
+if [ "$1" = "sandbox" ] && [ "$2" = "exec" ]; then
+  echo "openclaw 2026.6.9"
+  exit 0
+fi
+echo "unexpected $*" >&2
+exit 1
+""",
+        encoding="utf-8",
+    )
+    openshell.write_text("#!/usr/bin/env sh\necho openshell 0.0.test\n", encoding="utf-8")
+    nemoclaw.chmod(0o755)
+    openshell.chmod(0o755)
+    env = {
+        "PATH": str(tmp_path) + os.pathsep + os.environ.get("PATH", ""),
+        **{key: value for key, value in os.environ.items() if key.startswith("HOME")},
+    }
+
+    checks = module.check_nemoclaw(
+        env,
+        nemoclaw_bin="nemoclaw",
+        sandbox="nejumi-taiwan",
+        require=True,
+    )
+
+    assert not all(check.ok for check in checks)
+    allowlist_check = next(
+        check
+        for check in checks
+        if check.name == "NeMoClaw runtime network policies are allowlisted: nejumi-taiwan"
+    )
+    assert not allowlist_check.ok
+    assert '"unknown_runtime_network_policies": ["general_web"]' in allowlist_check.detail
 
 
 def test_nemoclaw_required_readiness_fails_without_wandb_weave_runtime_policy(tmp_path):
@@ -238,6 +316,12 @@ exit 1
         if check.name == "NeMoClaw W&B/Weave runtime policy is present: nejumi-taiwan"
     )
     assert not weave_check.ok
+    allowlist_check = next(
+        check
+        for check in checks
+        if check.name == "NeMoClaw runtime network policies are allowlisted: nejumi-taiwan"
+    )
+    assert allowlist_check.ok
 
 
 def test_weave_content_canary_gate_passes_only_with_passed_json(tmp_path):

@@ -101,6 +101,9 @@ policy_detail = {{
   "summary_policies": [],
   "detailed_status_network_policy_count": 7,
   "detailed_status_network_policies": ["clawhub", "managed_inference", "npm_registry", "nvidia", "openclaw_api", "openclaw_docs", "wandb-weave"],
+  "allowed_runtime_network_policies": ["clawhub", "managed_inference", "npm_registry", "nvidia", "openclaw_api", "openclaw_docs", "wandb-weave"],
+  "runtime_network_policy_allowlist_ok": True,
+  "unknown_runtime_network_policies": [],
   "wandb_weave_policy_present": True,
   "non_wandb_network_policies": ["clawhub", "managed_inference", "npm_registry", "nvidia", "openclaw_api", "openclaw_docs"]
 }}
@@ -113,7 +116,8 @@ payload = {{
     {{"name": "NeMoClaw sandbox status succeeds: nejumi-taiwan", "ok": {py_bool}}},
     {{"name": "OpenClaw runs inside NeMoClaw sandbox: nejumi-taiwan", "ok": {py_bool}}},
     {{"name": "NeMoClaw sandbox runtime policy is introspectable: nejumi-taiwan", "ok": {py_bool}, "detail": json.dumps(policy_detail)}},
-    {{"name": "NeMoClaw W&B/Weave runtime policy is present: nejumi-taiwan", "ok": {py_bool}, "detail": json.dumps(policy_detail)}}
+    {{"name": "NeMoClaw W&B/Weave runtime policy is present: nejumi-taiwan", "ok": {py_bool}, "detail": json.dumps(policy_detail)}},
+    {{"name": "NeMoClaw runtime network policies are allowlisted: nejumi-taiwan", "ok": {py_bool}, "detail": json.dumps(policy_detail)}}
   ]
 }}
 open(args.json, 'w', encoding='utf-8').write(json.dumps(payload) + '\\n')
@@ -146,7 +150,8 @@ payload = {{
     "blockers": []
   }},
   "criteria": [
-    {{"name": "runtime_wandb_weave_policy", "ok": {py_bool}}}
+    {{"name": "runtime_wandb_weave_policy", "ok": {py_bool}}},
+    {{"name": "runtime_network_policy_allowlist", "ok": {py_bool}}}
   ]
 }}
 open(args.json, 'w', encoding='utf-8').write(json.dumps(payload) + '\\n')
@@ -273,7 +278,8 @@ payload = {
     "blockers": []
   },
   "criteria": [
-    {"name": "runtime_wandb_weave_policy", "ok": True}
+    {"name": "runtime_wandb_weave_policy", "ok": True},
+    {"name": "runtime_network_policy_allowlist", "ok": True}
   ]
 }
 open(args.json, 'w', encoding='utf-8').write(json.dumps(payload) + '\\n')

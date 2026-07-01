@@ -96,6 +96,53 @@ preflight_json = output_dir / f"fake_post_install_preflight_{timestamp}.json"
 readiness_json = output_dir / f"fake_post_install_readiness_{timestamp}.json"
 adoption_json = output_dir / f"fake_post_install_adoption_{timestamp}.json"
 adoption_markdown = output_dir / f"fake_post_install_adoption_{timestamp}.md"
+policy_detail = {
+    "sandbox": "nejumi-taiwan",
+    "sandbox_found": True,
+    "policy_count": 7,
+    "policies": [
+        "clawhub",
+        "managed_inference",
+        "npm_registry",
+        "nvidia",
+        "openclaw_api",
+        "openclaw_docs",
+        "wandb-weave",
+    ],
+    "policy_configured": True,
+    "summary_policy_count": 0,
+    "summary_policies": [],
+    "detailed_status_network_policy_count": 7,
+    "detailed_status_network_policies": [
+        "clawhub",
+        "managed_inference",
+        "npm_registry",
+        "nvidia",
+        "openclaw_api",
+        "openclaw_docs",
+        "wandb-weave",
+    ],
+    "allowed_runtime_network_policies": [
+        "clawhub",
+        "managed_inference",
+        "npm_registry",
+        "nvidia",
+        "openclaw_api",
+        "openclaw_docs",
+        "wandb-weave",
+    ],
+    "runtime_network_policy_allowlist_ok": True,
+    "unknown_runtime_network_policies": [],
+    "wandb_weave_policy_present": True,
+    "non_wandb_network_policies": [
+        "clawhub",
+        "managed_inference",
+        "npm_registry",
+        "nvidia",
+        "openclaw_api",
+        "openclaw_docs",
+    ],
+}
 
 payloads = {
     setup_json: {"ok": True, "status": "passed"},
@@ -110,6 +157,87 @@ payloads = {
             {"name": "NeMoClaw version command succeeds", "ok": True},
             {"name": "NeMoClaw sandbox status succeeds: nejumi-taiwan", "ok": True},
             {"name": "OpenClaw runs inside NeMoClaw sandbox: nejumi-taiwan", "ok": True},
+            {
+                "name": "NeMoClaw sandbox runtime policy is introspectable: nejumi-taiwan",
+                "ok": True,
+                "detail": json.dumps(policy_detail),
+            },
+            {
+                "name": "NeMoClaw W&B/Weave runtime policy is present: nejumi-taiwan",
+                "ok": True,
+                "detail": json.dumps(policy_detail),
+            },
+            {
+                "name": "NeMoClaw runtime network policies are allowlisted: nejumi-taiwan",
+                "ok": True,
+                "detail": json.dumps(policy_detail),
+            },
+            {
+                "name": "agentic Math denies remote lookup via deny_tool",
+                "ok": True,
+                "detail": json.dumps(
+                    {
+                        "section": "agentic_math",
+                        "missing": [],
+                        "observed": [
+                            "*search*",
+                            "browser",
+                            "browser_*",
+                            "code_execution",
+                            "web_fetch",
+                            "web_search",
+                        ],
+                    }
+                ),
+            },
+            {
+                "name": "agentic SWE denies remote lookup via deny_tool",
+                "ok": True,
+                "detail": json.dumps(
+                    {
+                        "section": "swebench_pro",
+                        "missing": [],
+                        "observed": [
+                            "*search*",
+                            "browser",
+                            "browser_*",
+                            "code_execution",
+                            "web_fetch",
+                            "web_search",
+                        ],
+                    }
+                ),
+            },
+            {
+                "name": "agentic Math denies remote lookup via deny_argument_pattern",
+                "ok": True,
+                "detail": json.dumps(
+                    {
+                        "section": "agentic_math",
+                        "missing": [],
+                        "observed": [
+                            r"\b(curl|wget)\b",
+                            r"\b(requests|urllib|httpx)\.",
+                            "https?://",
+                        ],
+                    }
+                ),
+            },
+            {
+                "name": "agentic SWE denies remote lookup via deny_argument_pattern",
+                "ok": True,
+                "detail": json.dumps(
+                    {
+                        "section": "swebench_pro",
+                        "missing": [],
+                        "observed": [
+                            r"\b(curl|wget)\b",
+                            r"\b(requests|urllib|httpx)\.",
+                            "https?://",
+                        ],
+                    }
+                ),
+            },
         ],
     },
     adoption_json: {
@@ -117,6 +245,42 @@ payloads = {
         "status": "adoptable_for_agentic_benchmarks",
         "path": str(adoption_json),
         "markdown_path": str(adoption_markdown),
+        "criteria": [
+            {"name": "runtime_wandb_weave_policy", "ok": True, "wandb_weave_policy_present": True},
+            {
+                "name": "runtime_network_policy_allowlist",
+                "ok": True,
+                "runtime_network_policy_allowlist_ok": True,
+                "unknown_runtime_network_policies": [],
+                "allowed_runtime_network_policies": [
+                    "clawhub",
+                    "managed_inference",
+                    "npm_registry",
+                    "nvidia",
+                    "openclaw_api",
+                    "openclaw_docs",
+                    "wandb-weave",
+                ],
+                "detailed_status_network_policy_count": 7,
+                "detailed_status_network_policies": [
+                    "clawhub",
+                    "managed_inference",
+                    "npm_registry",
+                    "nvidia",
+                    "openclaw_api",
+                    "openclaw_docs",
+                    "wandb-weave",
+                ],
+                "non_wandb_network_policies": [
+                    "clawhub",
+                    "managed_inference",
+                    "npm_registry",
+                    "nvidia",
+                    "openclaw_api",
+                    "openclaw_docs",
+                ],
+            },
+        ],
     },
 }
 for file_path, payload in payloads.items():

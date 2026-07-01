@@ -413,6 +413,10 @@ def readiness_payload(*, nemoclaw_ok=True, report_ok=True):
         {"name": "NeMoClaw version command succeeds", "ok": nemoclaw_ok},
         {"name": "NeMoClaw sandbox status succeeds: nejumi-taiwan", "ok": nemoclaw_ok},
         {"name": "OpenClaw runs inside NeMoClaw sandbox: nejumi-taiwan", "ok": nemoclaw_ok},
+        {
+            "name": "NeMoClaw runtime network policies are allowlisted: nejumi-taiwan",
+            "ok": nemoclaw_ok,
+        },
     ]
     return {"ok": report_ok, "checks": checks}
 

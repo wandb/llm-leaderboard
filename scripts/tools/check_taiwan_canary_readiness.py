@@ -50,6 +50,15 @@ AGENTIC_REQUIRED_DENIED_ARGUMENT_PATTERNS = {
     r"\b(requests|urllib|httpx)\.",
     r"https?://",
 }
+NEMOCLAW_ALLOWED_RUNTIME_NETWORK_POLICIES = {
+    "clawhub",
+    "managed_inference",
+    "npm_registry",
+    "nvidia",
+    "openclaw_api",
+    "openclaw_docs",
+    "wandb-weave",
+}
 
 
 @dataclass
@@ -358,6 +367,11 @@ def _sandbox_policy_detail(
     summary_policy_names = sorted(str(item) for item in summary_policies if str(item))
     network_policy_names = _network_policy_names_from_status_detail(status_text)
     combined_policies = sorted(set(summary_policy_names) | set(network_policy_names))
+    unknown_runtime_network_policies = [
+        name
+        for name in network_policy_names
+        if name not in NEMOCLAW_ALLOWED_RUNTIME_NETWORK_POLICIES
+    ]
     permissions = record.get("permissions") if isinstance(record, dict) else None
     return {
         "sandbox": sandbox,
@@ -369,6 +383,9 @@ def _sandbox_policy_detail(
         "summary_policies": summary_policy_names,
         "detailed_status_network_policy_count": len(network_policy_names),
         "detailed_status_network_policies": network_policy_names,
+        "allowed_runtime_network_policies": sorted(NEMOCLAW_ALLOWED_RUNTIME_NETWORK_POLICIES),
+        "runtime_network_policy_allowlist_ok": not unknown_runtime_network_policies,
+        "unknown_runtime_network_policies": unknown_runtime_network_policies,
         "wandb_weave_policy_present": "wandb-weave" in combined_policies,
         "non_wandb_network_policies": [
             name for name in network_policy_names if name != "wandb-weave"
@@ -462,6 +479,25 @@ def check_nemoclaw(
             f"NeMoClaw W&B/Weave runtime policy is present: {sandbox}",
             bool(policy_detail["wandb_weave_policy_present"]) or not require,
             json.dumps(policy_detail, ensure_ascii=False),
+        )
+    )
+    checks.append(
+        Check(
+            f"NeMoClaw runtime network policies are allowlisted: {sandbox}",
+            bool(policy_detail["runtime_network_policy_allowlist_ok"]) or not require,
+            json.dumps(
+                {
+                    **policy_detail,
+                    "allowlist_note": (
+                        "The allowlist is intentionally limited to NeMoClaw/OpenClaw "
+                        "platform, managed inference, NVIDIA endpoint, npm bootstrap, "
+                        "and W&B/Weave telemetry policies. Generated OpenClaw "
+                        "deny_tool and deny_argument_pattern settings remain the "
+                        "per-task anti-cheat guard against web/search/browser usage."
+                    ),
+                },
+                ensure_ascii=False,
+            ),
         )
     )
 

@@ -2505,6 +2505,18 @@ def nemoclaw_adoption_summary(report: dict[str, Any]) -> dict[str, Any]:
                 criterion["missing_required_commands"] = row.get("missing_required_commands")
             if isinstance(row.get("missing_components"), list):
                 criterion["missing_components"] = row.get("missing_components")
+            for key in (
+                "wandb_weave_policy_present",
+                "runtime_network_policy_allowlist_ok",
+                "unknown_runtime_network_policies",
+                "allowed_runtime_network_policies",
+                "detailed_status_network_policy_count",
+                "detailed_status_network_policies",
+                "non_wandb_network_policies",
+            ):
+                value = row.get(key)
+                if isinstance(value, (bool, int, str)) or isinstance(value, list):
+                    criterion[key] = value
             result["criteria"].append(criterion)
     return result
 

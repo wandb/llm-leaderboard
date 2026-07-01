@@ -29,6 +29,88 @@ def load_module():
     return module
 
 
+def test_nemoclaw_adoption_summary_preserves_runtime_policy_criteria(tmp_path):
+    module = load_module()
+    adoption_json = write_json(
+        tmp_path / "nemoclaw_adoption.json",
+        {
+            "schema_version": 1,
+            "ok": True,
+            "status": "adoptable_for_agentic_benchmarks",
+            "path": str(tmp_path / "nemoclaw_adoption.json"),
+            "markdown_path": str(tmp_path / "nemoclaw_adoption.md"),
+            "criteria": [
+                {
+                    "name": "runtime_wandb_weave_policy",
+                    "ok": True,
+                    "wandb_weave_policy_present": True,
+                },
+                {
+                    "name": "runtime_network_policy_allowlist",
+                    "ok": True,
+                    "runtime_network_policy_allowlist_ok": True,
+                    "unknown_runtime_network_policies": [],
+                    "allowed_runtime_network_policies": [
+                        "clawhub",
+                        "managed_inference",
+                        "npm_registry",
+                        "nvidia",
+                        "openclaw_api",
+                        "openclaw_docs",
+                        "wandb-weave",
+                    ],
+                    "detailed_status_network_policy_count": 7,
+                    "detailed_status_network_policies": [
+                        "clawhub",
+                        "managed_inference",
+                        "npm_registry",
+                        "nvidia",
+                        "openclaw_api",
+                        "openclaw_docs",
+                        "wandb-weave",
+                    ],
+                    "non_wandb_network_policies": [
+                        "clawhub",
+                        "managed_inference",
+                        "npm_registry",
+                        "nvidia",
+                        "openclaw_api",
+                        "openclaw_docs",
+                    ],
+                },
+            ],
+        },
+    )
+    (tmp_path / "nemoclaw_adoption.md").write_text("# adoption\n", encoding="utf-8")
+
+    summary = module.nemoclaw_adoption_summary(
+        {"runner": {"nemoclaw_adoption_check": {"path": str(adoption_json)}}}
+    )
+
+    weave_criterion = next(
+        row
+        for row in summary["criteria"]
+        if row["name"] == "runtime_wandb_weave_policy"
+    )
+    allowlist_criterion = next(
+        row
+        for row in summary["criteria"]
+        if row["name"] == "runtime_network_policy_allowlist"
+    )
+    assert weave_criterion["wandb_weave_policy_present"] is True
+    assert allowlist_criterion["runtime_network_policy_allowlist_ok"] is True
+    assert allowlist_criterion["unknown_runtime_network_policies"] == []
+    assert allowlist_criterion["detailed_status_network_policy_count"] == 7
+    assert allowlist_criterion["non_wandb_network_policies"] == [
+        "clawhub",
+        "managed_inference",
+        "npm_registry",
+        "nvidia",
+        "openclaw_api",
+        "openclaw_docs",
+    ]
+
+
 def test_release_evidence_bundle_copies_report_references(tmp_path):
     taxonomy = tmp_path / "nejumi45_taiwan.yaml"
     taxonomy.write_text("version: test\nunits: []\n", encoding="utf-8")

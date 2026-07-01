@@ -134,6 +134,7 @@ NEMOCLAW_REQUIRED_CHECKS = (
     "NeMoClaw version command succeeds",
     "NeMoClaw sandbox status succeeds",
     "OpenClaw runs inside NeMoClaw sandbox",
+    "NeMoClaw runtime network policies are allowlisted",
 )
 
 

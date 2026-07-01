@@ -100,10 +100,22 @@ NEMOCLAW_CANARY_READINESS_SCRIPT_SOURCE_TOKENS = (
     ("NeMoClaw status JSON introspection", "def _run_json_status("),
     ("NeMoClaw detailed status policy parser", "def _network_policy_names_from_status_detail("),
     ("NeMoClaw sandbox policy detail parser", "def _sandbox_policy_detail("),
+    (
+        "NeMoClaw runtime network policy allowlist constant",
+        "NEMOCLAW_ALLOWED_RUNTIME_NETWORK_POLICIES",
+    ),
     ("NeMoClaw runtime policy check", "NeMoClaw sandbox runtime policy is introspectable"),
     ("NeMoClaw runtime policy count evidence", '"policy_count"'),
     ("NeMoClaw W&B/Weave runtime policy check", "NeMoClaw W&B/Weave runtime policy is present"),
     ("NeMoClaw W&B/Weave policy evidence", "wandb_weave_policy_present"),
+    (
+        "NeMoClaw runtime network allowlist check",
+        "NeMoClaw runtime network policies are allowlisted",
+    ),
+    (
+        "NeMoClaw unknown runtime network policies evidence",
+        "unknown_runtime_network_policies",
+    ),
     ("NeMoClaw runtime policy anti-cheat note", "OpenClaw deny_tool"),
 )
 NEMOCLAW_ADOPTION_SCRIPT_SOURCE_TOKENS = (
@@ -111,6 +123,22 @@ NEMOCLAW_ADOPTION_SCRIPT_SOURCE_TOKENS = (
     ("W&B/Weave runtime policy blocker", '"runtime_wandb_weave_policy"'),
     ("W&B/Weave canary check parser", "NeMoClaw W&B/Weave runtime policy is present"),
     ("W&B/Weave policy evidence field", "wandb_weave_policy_present"),
+    (
+        "runtime network policy allowlist criterion",
+        "def runtime_network_policy_allowlist(",
+    ),
+    (
+        "runtime network policy allowlist blocker",
+        '"runtime_network_policy_allowlist"',
+    ),
+    (
+        "runtime network allowlist canary check parser",
+        "NeMoClaw runtime network policies are allowlisted",
+    ),
+    (
+        "unknown runtime network policies evidence field",
+        "unknown_runtime_network_policies",
+    ),
 )
 OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
     (
@@ -4421,6 +4449,7 @@ def validate_nemoclaw_canary_readiness_runtime_policy_checks(
     required = (
         "NeMoClaw sandbox runtime policy is introspectable: nejumi-taiwan",
         "NeMoClaw W&B/Weave runtime policy is present: nejumi-taiwan",
+        "NeMoClaw runtime network policies are allowlisted: nejumi-taiwan",
     )
     for name in required:
         check = checks_by_name.get(name)
@@ -4441,6 +4470,23 @@ def validate_nemoclaw_canary_readiness_runtime_policy_checks(
             "wandb_weave_policy_present"
         ) is not True:
             errors.append("NeMoClaw canary readiness W&B/Weave policy evidence is not true")
+        if name.startswith("NeMoClaw runtime network policies are allowlisted"):
+            if detail_payload.get("runtime_network_policy_allowlist_ok") is not True:
+                errors.append(
+                    "NeMoClaw canary readiness runtime network policy allowlist "
+                    "evidence is not true"
+                )
+            unknown_policies = detail_payload.get("unknown_runtime_network_policies")
+            if not isinstance(unknown_policies, list):
+                errors.append(
+                    "NeMoClaw canary readiness unknown_runtime_network_policies "
+                    "is not a list"
+                )
+            elif unknown_policies:
+                errors.append(
+                    "NeMoClaw canary readiness has unknown runtime network "
+                    f"policies: {unknown_policies}"
+                )
     return errors
 
 
@@ -4452,18 +4498,41 @@ def validate_nemoclaw_adoption_runtime_policy_criterion(
     criteria = payload.get("criteria")
     if not isinstance(criteria, list):
         return ["NeMoClaw adoption JSON criteria is not a list"]
-    for row in criteria:
-        if isinstance(row, dict) and row.get("name") == "runtime_wandb_weave_policy":
-            if row.get("ok") is not True:
-                return [
-                    "NeMoClaw adoption JSON runtime_wandb_weave_policy criterion is not ok"
-                ]
-            if row.get("wandb_weave_policy_present") is not True:
-                return [
-                    "NeMoClaw adoption JSON runtime_wandb_weave_policy evidence is not true"
-                ]
-            return []
-    return ["NeMoClaw adoption JSON missing runtime_wandb_weave_policy criterion"]
+    by_name = {
+        row.get("name"): row
+        for row in criteria
+        if isinstance(row, dict) and isinstance(row.get("name"), str)
+    }
+    wandb_policy = by_name.get("runtime_wandb_weave_policy")
+    if not isinstance(wandb_policy, dict):
+        return ["NeMoClaw adoption JSON missing runtime_wandb_weave_policy criterion"]
+    if wandb_policy.get("ok") is not True:
+        return ["NeMoClaw adoption JSON runtime_wandb_weave_policy criterion is not ok"]
+    if wandb_policy.get("wandb_weave_policy_present") is not True:
+        return ["NeMoClaw adoption JSON runtime_wandb_weave_policy evidence is not true"]
+
+    allowlist_policy = by_name.get("runtime_network_policy_allowlist")
+    if not isinstance(allowlist_policy, dict):
+        return ["NeMoClaw adoption JSON missing runtime_network_policy_allowlist criterion"]
+    if allowlist_policy.get("ok") is not True:
+        return [
+            "NeMoClaw adoption JSON runtime_network_policy_allowlist criterion is not ok"
+        ]
+    if allowlist_policy.get("runtime_network_policy_allowlist_ok") is not True:
+        return [
+            "NeMoClaw adoption JSON runtime_network_policy_allowlist evidence is not true"
+        ]
+    unknown_policies = allowlist_policy.get("unknown_runtime_network_policies")
+    if not isinstance(unknown_policies, list):
+        return [
+            "NeMoClaw adoption JSON unknown_runtime_network_policies is not a list"
+        ]
+    if unknown_policies:
+        return [
+            "NeMoClaw adoption JSON has unknown runtime network policies: "
+            f"{unknown_policies}"
+        ]
+    return []
 
 
 def file_records_by_source(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -6929,6 +6998,18 @@ def summarize_nemoclaw_adoption_criteria(criteria: Any) -> list[dict[str, Any]]:
             criterion["missing_required_commands"] = row.get("missing_required_commands")
         if isinstance(row.get("missing_components"), list):
             criterion["missing_components"] = row.get("missing_components")
+        for key in (
+            "wandb_weave_policy_present",
+            "runtime_network_policy_allowlist_ok",
+            "unknown_runtime_network_policies",
+            "allowed_runtime_network_policies",
+            "detailed_status_network_policy_count",
+            "detailed_status_network_policies",
+            "non_wandb_network_policies",
+        ):
+            value = row.get(key)
+            if isinstance(value, (bool, int, str)) or isinstance(value, list):
+                criterion[key] = value
         result.append(criterion)
     return result
 

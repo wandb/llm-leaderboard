@@ -364,6 +364,17 @@ def readiness_payload() -> dict:
             "openclaw_docs",
             "wandb-weave",
         ],
+        "allowed_runtime_network_policies": [
+            "clawhub",
+            "managed_inference",
+            "npm_registry",
+            "nvidia",
+            "openclaw_api",
+            "openclaw_docs",
+            "wandb-weave",
+        ],
+        "runtime_network_policy_allowlist_ok": True,
+        "unknown_runtime_network_policies": [],
         "wandb_weave_policy_present": True,
         "non_wandb_network_policies": [
             "clawhub",
@@ -389,6 +400,11 @@ def readiness_payload() -> dict:
             },
             {
                 "name": "NeMoClaw W&B/Weave runtime policy is present: nejumi-taiwan",
+                "ok": True,
+                "detail": json.dumps(policy_detail),
+            },
+            {
+                "name": "NeMoClaw runtime network policies are allowlisted: nejumi-taiwan",
                 "ok": True,
                 "detail": json.dumps(policy_detail),
             },
@@ -428,6 +444,7 @@ def test_nemoclaw_adoption_doctor_reports_not_installed(tmp_path):
         "setup_installed",
         "sandbox_readiness",
         "runtime_wandb_weave_policy",
+        "runtime_network_policy_allowlist",
     ]
     assert payload["adoption_decision"]["design_blockers"] == []
     assert payload["ready_for_use"] is False
@@ -438,11 +455,13 @@ def test_nemoclaw_adoption_doctor_reports_not_installed(tmp_path):
         "setup_installed",
         "sandbox_readiness",
         "runtime_wandb_weave_policy",
+        "runtime_network_policy_allowlist",
     ]
     assert payload["runtime_blockers"] == [
         "setup_installed",
         "sandbox_readiness",
         "runtime_wandb_weave_policy",
+        "runtime_network_policy_allowlist",
     ]
     assert payload["design_blockers"] == []
     assert payload["other_blockers"] == []
@@ -1460,9 +1479,16 @@ def test_nemoclaw_adoption_doctor_accepts_agentic_math_only_config(tmp_path):
     assert policy_gate["wandb_weave_policy_present"] is True
     assert policy_gate["policy_count"] == 7
     assert "wandb-weave" in policy_gate["policies"]
+    allowlist_gate = next(
+        row for row in payload["criteria"] if row["name"] == "runtime_network_policy_allowlist"
+    )
+    assert allowlist_gate["ok"] is True
+    assert allowlist_gate["runtime_network_policy_allowlist_ok"] is True
+    assert allowlist_gate["unknown_runtime_network_policies"] == []
     markdown = output_md.read_text(encoding="utf-8")
     assert "Operator Handoff" in markdown
     assert "runtime_wandb_weave_policy" in markdown
+    assert "runtime_network_policy_allowlist" in markdown
     assert "swebench_pro_non_adoption_guard" in markdown
 
 
@@ -1505,6 +1531,56 @@ def test_nemoclaw_adoption_doctor_rejects_missing_wandb_weave_policy_evidence(tm
     assert policy_gate["ok"] is False
     assert policy_gate["status"] == "missing_or_invalid_policy_evidence"
     assert policy_gate["wandb_weave_policy_present"] is None
+
+
+def test_nemoclaw_adoption_doctor_rejects_unknown_runtime_network_policy(tmp_path):
+    setup = write_json(tmp_path / "setup.json", setup_payload(ok=True))
+    readiness_doc = readiness_payload()
+    allowlist_check = next(
+        row
+        for row in readiness_doc["checks"]
+        if row["name"] == "NeMoClaw runtime network policies are allowlisted: nejumi-taiwan"
+    )
+    detail = json.loads(allowlist_check["detail"])
+    detail["runtime_network_policy_allowlist_ok"] = False
+    detail["unknown_runtime_network_policies"] = ["general_web"]
+    detail["detailed_status_network_policies"].append("general_web")
+    detail["detailed_status_network_policy_count"] = len(
+        detail["detailed_status_network_policies"]
+    )
+    allowlist_check["ok"] = True
+    allowlist_check["detail"] = json.dumps(detail)
+    readiness = write_json(tmp_path / "readiness.json", readiness_doc)
+    config = write_config(tmp_path / "config.yaml")
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--setup-json",
+            str(setup),
+            "--readiness-json",
+            str(readiness),
+            "--agentic-config",
+            str(config),
+            "--fail-on-not-adoptable",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "not_adoptable"
+    assert payload["runtime_blockers"] == ["runtime_network_policy_allowlist"]
+    allowlist_gate = next(
+        row for row in payload["criteria"] if row["name"] == "runtime_network_policy_allowlist"
+    )
+    assert allowlist_gate["ok"] is False
+    assert allowlist_gate["status"] == "unknown_runtime_network_policy"
+    assert allowlist_gate["unknown_runtime_network_policies"] == ["general_web"]
 
 
 def test_nemoclaw_adoption_doctor_accepts_agentic_config_glob(tmp_path):

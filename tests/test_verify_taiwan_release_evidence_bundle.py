@@ -12503,6 +12503,63 @@ def test_verify_release_evidence_bundle_rejects_adoption_script_missing_runtime_
     ) in payload["errors"]
 
 
+def test_verify_release_evidence_bundle_rejects_adoption_script_missing_policy_allowlist_contract(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_weave_content_canary_command(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    source = REPO_ROOT / "scripts" / "tools" / "check_taiwan_nemoclaw_adoption.py"
+    bundle_path = Path("scripts/tools/check_taiwan_nemoclaw_adoption.py")
+    target = bundle / bundle_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(source.read_bytes())
+    manifest["files"].append(
+        {
+            "source_path": "scripts/tools/check_taiwan_nemoclaw_adoption.py",
+            "roles": ["operator_plan:command_script"],
+            "exists": True,
+            "bundle_path": str(bundle_path),
+            "size_bytes": target.stat().st_size,
+            "sha256": sha256(target),
+        }
+    )
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path") == "scripts/tools/check_taiwan_nemoclaw_adoption.py"
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace(
+            "def runtime_network_policy_allowlist(",
+            "def removed_runtime_network_policy_allowlist(",
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "NeMoClaw adoption script missing source contract "
+        "runtime network policy allowlist criterion: "
+        "scripts/tools/check_taiwan_nemoclaw_adoption.py: "
+        "def runtime_network_policy_allowlist("
+    ) in payload["errors"]
+
+
 def test_verify_release_evidence_bundle_accepts_existing_results_relog_command_scripts(tmp_path):
     bundle = build_bundle_with_existing_results_relog_command_scripts(tmp_path)
 

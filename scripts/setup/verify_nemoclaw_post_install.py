@@ -332,6 +332,7 @@ def validate_step_payload_contract(
         require_empty_list(errors, payload, "adoption_decision.blockers")
         require_empty_list(errors, payload, "summary.blockers")
         require_criterion_ok(errors, payload, "runtime_wandb_weave_policy")
+        require_criterion_ok(errors, payload, "runtime_network_policy_allowlist")
     else:
         errors.append(f"unknown post-install step {name!r}")
 
