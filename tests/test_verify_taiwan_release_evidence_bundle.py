@@ -11,6 +11,16 @@ BUILD_SCRIPT = REPO_ROOT / "scripts" / "tools" / "build_taiwan_release_evidence_
 VERIFY_SCRIPT = REPO_ROOT / "scripts" / "tools" / "verify_taiwan_release_evidence_bundle.py"
 INSTALLER_LOCK_JSON = "scripts/setup/nemoclaw_installer_lock.json"
 INSTALLER_SHA256 = "a4ebc5710dfd8b10035968fd25562773ad56ec4c73ecf9bfe5c78c77724000e7"
+AGENTIC_MATH_OUTPUT_COLUMNS = [
+    "nemoclaw_session_audit_ok",
+    "nemoclaw_session_audit",
+    "conversation_order_ok",
+    "conversation_order",
+    "tool_policy_ok",
+    "tool_policy_violations",
+    "weave_sidecar_ok",
+    "weave_sidecar",
+]
 WANDB_SCOPE_REQUIRED_HUMAN_FIELDS = [
     "scope_attestation_json.confirmed",
     "scope_attestation_json.confirmed_by",
@@ -282,6 +292,7 @@ def agentic_math_wandb_completion_payload():
                 {
                     "name": "agentic_math_output_table",
                     "row_count": "must equal total metric",
+                    "required_columns": AGENTIC_MATH_OUTPUT_COLUMNS,
                 },
             ],
             "artifacts": [
@@ -329,6 +340,11 @@ def agentic_math_wandb_completion_payload():
                     "name": "agentic_math_output_table",
                     "ok": True,
                     "nrows": 100,
+                    "columns_ok": True,
+                    "columns": AGENTIC_MATH_OUTPUT_COLUMNS,
+                    "required_columns": AGENTIC_MATH_OUTPUT_COLUMNS,
+                    "missing_columns": [],
+                    "columns_source": "summary",
                 },
             ],
             "artifacts": [
@@ -363,6 +379,16 @@ def agentic_math_wandb_completion_payload():
                 "ok": True,
                 "detail": "agentic_math_output_table row count matches total metric",
                 "nrows": 100,
+            },
+            {
+                "name": "output_table_columns",
+                "ok": True,
+                "detail": "agentic_math_output_table contains required observability columns",
+                "table_name": "agentic_math_output_table",
+                "required_columns": AGENTIC_MATH_OUTPUT_COLUMNS,
+                "columns": AGENTIC_MATH_OUTPUT_COLUMNS,
+                "missing_columns": [],
+                "source": "summary",
             },
             {
                 "name": "answered_metric",
@@ -2643,6 +2669,58 @@ def test_validate_wandb_completion_payload_rejects_agentic_without_nemoclaw_audi
 
     assert "proof required_evidence.nemoclaw_session_audit is not an object" in errors
     assert "proof observed_evidence.nemoclaw_session_audit is not an object" in errors
+
+
+def test_validate_wandb_completion_payload_rejects_agentic_missing_required_output_columns():
+    module = load_verify_module()
+    payload = agentic_math_wandb_completion_payload()
+    output_table = payload["required_evidence"]["tables"][1]
+    output_table["required_columns"] = [
+        column
+        for column in AGENTIC_MATH_OUTPUT_COLUMNS
+        if column != "weave_sidecar_ok"
+    ]
+
+    errors = module.validate_wandb_completion_payload(
+        payload,
+        label="proof",
+        expected_benchmark="agentic_math",
+    )
+
+    assert (
+        "proof required_evidence.tables agentic_math_output_table "
+        "required_columns mismatch"
+    ) in errors
+    assert "proof checks output_table_columns required_columns mismatch" in errors
+
+
+def test_validate_wandb_completion_payload_rejects_agentic_missing_observed_output_column():
+    module = load_verify_module()
+    payload = agentic_math_wandb_completion_payload()
+    output_table = payload["observed_evidence"]["tables"][1]
+    output_table["columns"] = [
+        column
+        for column in AGENTIC_MATH_OUTPUT_COLUMNS
+        if column != "tool_policy_violations"
+    ]
+    output_table["missing_columns"] = ["tool_policy_violations"]
+    output_table["columns_ok"] = False
+    output_check = next(
+        check for check in payload["checks"] if check["name"] == "output_table_columns"
+    )
+    output_check["columns"] = output_table["columns"]
+    output_check["missing_columns"] = ["tool_policy_violations"]
+    output_check["ok"] = False
+
+    errors = module.validate_wandb_completion_payload(
+        payload,
+        label="proof",
+        expected_benchmark="agentic_math",
+    )
+
+    assert "proof observed_evidence.tables agentic_math_output_table missing tool_policy_violations" in errors
+    assert "proof observed_evidence.tables agentic_math_output_table columns_ok is not true" in errors
+    assert "proof checks contains failing check: output_table_columns" in errors
 
 
 def nemoclaw_operator_handoff_payload(setup_path, setup_payload):
@@ -13424,6 +13502,48 @@ def test_verify_release_evidence_bundle_rejects_agentic_runner_missing_session_s
     assert (
         "agentic runner script missing source contract W&B session-scope resolver: "
         "scripts/tools/run_agentic_math_openclaw.py: def resolve_session_prefix("
+    ) in payload["errors"]
+
+
+def test_verify_release_evidence_bundle_rejects_wandb_completion_verifier_missing_output_column_contract(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path") == "scripts/tools/verify_taiwan_wandb_completion.py"
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace(
+            "AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (",
+            "AGENTIC_MATH_OUTPUT_TABLE_COLUMNS = (",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "agentic runner script missing source contract "
+        "Agentic Math W&B output required columns: "
+        "scripts/tools/verify_taiwan_wandb_completion.py: "
+        "AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = ("
     ) in payload["errors"]
 
 

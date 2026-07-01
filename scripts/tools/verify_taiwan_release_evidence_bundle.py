@@ -524,6 +524,22 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ),
         ),
     },
+    "scripts/tools/verify_taiwan_wandb_completion.py": {
+        "role": "agentic_runner:wandb_completion_verifier_script",
+        "tokens": (
+            (
+                "Agentic Math W&B output required columns",
+                "AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (",
+            ),
+            (
+                "Agentic SWE W&B output required columns",
+                "AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (",
+            ),
+            ("W&B output table column check", "output_table_columns"),
+            ("W&B table file column loader", "def _download_wandb_table_json("),
+            ("W&B observed table column evidence", '"columns_ok": bool(check.get("ok"))'),
+        ),
+    },
     "scripts/tools/weave_content_canary_gate_contract.py": {
         "role": "agentic_runner:weave_content_canary_gate_contract_script",
         "tokens": (
@@ -653,6 +669,28 @@ EXTERNAL_ACTION_REQUIREMENT_LABELS = {
 SCOPE_ATTESTATION_SCHEMA_VERSION = 1
 MIN_SCOPE_CONFIRMATION_LENGTH = 20
 NEMOCLAW_AUDIT_REQUIRED_BENCHMARKS = {"agentic_math", "agentic_swe"}
+AGENTIC_WANDB_OUTPUT_TABLE_REQUIRED_COLUMNS = {
+    "agentic_math": (
+        "nemoclaw_session_audit_ok",
+        "nemoclaw_session_audit",
+        "conversation_order_ok",
+        "conversation_order",
+        "tool_policy_ok",
+        "tool_policy_violations",
+        "weave_sidecar_ok",
+        "weave_sidecar",
+    ),
+    "agentic_swe": (
+        "nemoclaw_session_audit_ok",
+        "nemoclaw_session_audit_required",
+        "conversation_order_ok",
+        "conversation_order",
+        "tool_policy_ok",
+        "tool_policy_violations",
+        "weave_sidecar_ok",
+        "weave_sidecar",
+    ),
+}
 SCOPE_ATTESTATION_RENDER_SAFETY_FIELDS = (
     "executes_external_action",
     "queries_wandb",
@@ -9237,6 +9275,14 @@ def validate_wandb_completion_payload(
         )
     )
     errors.extend(
+        validate_wandb_completion_agentic_output_columns(
+            payload=payload,
+            required=required_evidence,
+            observed=observed,
+            label=label,
+        )
+    )
+    errors.extend(
         validate_wandb_observed_evidence(
             required=required_evidence,
             observed=observed,
@@ -9251,6 +9297,57 @@ def validate_wandb_completion_payload(
             label=label,
         )
     )
+    return errors
+
+
+def _row_by_name(rows: Any, name: str, *, key: str = "name") -> dict[str, Any] | None:
+    if not isinstance(rows, list):
+        return None
+    for row in rows:
+        if isinstance(row, dict) and row.get(key) == name:
+            return row
+    return None
+
+
+def validate_wandb_completion_agentic_output_columns(
+    *,
+    payload: dict[str, Any],
+    required: dict[str, Any],
+    observed: dict[str, Any],
+    label: str,
+) -> list[str]:
+    benchmark = payload.get("benchmark")
+    expected_columns = AGENTIC_WANDB_OUTPUT_TABLE_REQUIRED_COLUMNS.get(str(benchmark))
+    if not expected_columns:
+        return []
+    table_name = f"{benchmark}_output_table"
+    errors: list[str] = []
+    required_table = _row_by_name(required.get("tables"), table_name)
+    if not isinstance(required_table, dict):
+        errors.append(f"{label} required_evidence.tables missing {table_name}")
+        return errors
+    required_columns = _string_list_or_empty(required_table.get("required_columns"))
+    if required_columns != list(expected_columns):
+        errors.append(
+            f"{label} required_evidence.tables {table_name} required_columns mismatch"
+        )
+    observed_table = _row_by_name(observed.get("tables"), table_name)
+    if not isinstance(observed_table, dict):
+        errors.append(f"{label} observed_evidence.tables missing {table_name}")
+        return errors
+    observed_required_columns = _string_list_or_empty(observed_table.get("required_columns"))
+    if observed_required_columns != list(expected_columns):
+        errors.append(
+            f"{label} observed_evidence.tables {table_name} required_columns mismatch"
+        )
+    observed_columns = _string_list_or_empty(observed_table.get("columns"))
+    for column in expected_columns:
+        if column not in observed_columns:
+            errors.append(f"{label} observed_evidence.tables {table_name} missing {column}")
+    if observed_table.get("columns_ok") is not True:
+        errors.append(f"{label} observed_evidence.tables {table_name} columns_ok is not true")
+    if observed_table.get("missing_columns") not in ([], None):
+        errors.append(f"{label} observed_evidence.tables {table_name} missing_columns is not empty")
     return errors
 
 
@@ -9556,6 +9653,13 @@ def required_wandb_completion_check_names(required: dict[str, Any]) -> set[str]:
     tables = required.get("tables")
     if isinstance(tables, list) and tables:
         names.update({"leaderboard_table", "output_table"})
+        if any(
+            isinstance(table, dict)
+            and isinstance(table.get("required_columns"), list)
+            and table.get("required_columns")
+            for table in tables
+        ):
+            names.add("output_table_columns")
     taxonomy_tables = required.get("taxonomy_tables")
     if isinstance(taxonomy_tables, list) and taxonomy_tables:
         names.add("taxonomy_table")
@@ -9605,6 +9709,7 @@ def validate_wandb_completion_checks(
         "accuracy_metric",
         "leaderboard_table",
         "output_table",
+        "output_table_columns",
         "result_artifact",
         "nemoclaw_session_audit",
         "run_group",
@@ -9741,6 +9846,64 @@ def _validate_named_table_check(
     return errors
 
 
+def _string_list_or_empty(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str) and item]
+
+
+def _validate_output_table_column_check(
+    *,
+    check: dict[str, Any] | None,
+    table_spec: dict[str, Any],
+    observed_row: dict[str, Any] | None,
+    table_name: str,
+    label: str,
+) -> list[str]:
+    errors: list[str] = []
+    required_columns = _string_list_or_empty(table_spec.get("required_columns"))
+    if not required_columns:
+        return errors
+    if not isinstance(check, dict):
+        errors.append(f"{label} checks output_table_columns missing for {table_name}")
+        return errors
+    if not isinstance(observed_row, dict):
+        return errors
+    if check.get("table_name") != table_name:
+        errors.append(f"{label} checks output_table_columns table_name does not match {table_name}")
+    observed_columns = _string_list_or_empty(observed_row.get("columns"))
+    check_columns = _string_list_or_empty(check.get("columns"))
+    if check.get("columns_ok") is not None:
+        errors.append(f"{label} checks output_table_columns must not use columns_ok field")
+    if check.get("ok") is not True:
+        errors.append(f"{label} checks output_table_columns is not ok for {table_name}")
+    if observed_row.get("columns_ok") is not True:
+        errors.append(f"{label} observed_evidence table {table_name} columns_ok is not true")
+    for column in required_columns:
+        if column not in observed_columns:
+            errors.append(
+                f"{label} observed_evidence table {table_name} missing required column {column}"
+            )
+        if column not in check_columns:
+            errors.append(f"{label} checks output_table_columns missing required column {column}")
+    missing_columns = check.get("missing_columns")
+    if missing_columns not in ([], None):
+        errors.append(f"{label} checks output_table_columns has non-empty missing_columns")
+    observed_missing = observed_row.get("missing_columns")
+    if observed_missing not in ([], None):
+        errors.append(f"{label} observed_evidence table {table_name} has non-empty missing_columns")
+    required_from_check = _string_list_or_empty(check.get("required_columns"))
+    if required_from_check != required_columns:
+        errors.append(f"{label} checks output_table_columns required_columns mismatch")
+    required_from_observed = _string_list_or_empty(observed_row.get("required_columns"))
+    if required_from_observed != required_columns:
+        errors.append(f"{label} observed_evidence table {table_name} required_columns mismatch")
+    source = observed_row.get("columns_source")
+    if not isinstance(source, str) or not source:
+        errors.append(f"{label} observed_evidence table {table_name} columns_source is missing")
+    return errors
+
+
 def validate_wandb_completion_table_checks_against_observed(
     *,
     checks_by_name: dict[str, list[dict[str, Any]]],
@@ -9771,6 +9934,16 @@ def validate_wandb_completion_table_checks_against_observed(
                     label=label,
                 )
             )
+            if check_name == "output_table":
+                errors.extend(
+                    _validate_output_table_column_check(
+                        check=_first_check(checks_by_name, "output_table_columns"),
+                        table_spec=table_spec,
+                        observed_row=observed_tables.get(table_name),
+                        table_name=table_name,
+                        label=label,
+                    )
+                )
 
     for check_name, required_field, observed_field, observed_key in (
         ("taxonomy_table", "taxonomy_tables", "taxonomy_tables", "table_name"),
@@ -10185,6 +10358,31 @@ def validate_wandb_observed_tables(
                 f"{label} observed_evidence.{observed_field} {table_name} "
                 f"nrows must equal expected_total {expected_total}, got {nrows}"
             )
+        required_columns = _string_list_or_empty(table.get("required_columns"))
+        if required_columns:
+            observed_columns = _string_list_or_empty(row.get("columns"))
+            if row.get("columns_ok") is not True:
+                errors.append(
+                    f"{label} observed_evidence.{observed_field} {table_name} "
+                    "columns_ok is not true"
+                )
+            if not observed_columns:
+                errors.append(
+                    f"{label} observed_evidence.{observed_field} {table_name} "
+                    "columns is not a non-empty list"
+                )
+            for column in required_columns:
+                if column not in observed_columns:
+                    errors.append(
+                        f"{label} observed_evidence.{observed_field} {table_name} "
+                        f"missing required column {column}"
+                    )
+            missing_columns = row.get("missing_columns")
+            if missing_columns not in ([], None):
+                errors.append(
+                    f"{label} observed_evidence.{observed_field} {table_name} "
+                    "has non-empty missing_columns"
+                )
     return errors
 
 

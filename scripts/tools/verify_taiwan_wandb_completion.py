@@ -13,6 +13,7 @@ import argparse
 import json
 import math
 import os
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +28,26 @@ DEFAULT_ENV_FILE = REPO_ROOT / ".env"
 VERIFICATION_SCHEMA_VERSION = 1
 WANDB_API_TIMEOUT_SECONDS = 60
 WANDB_QUERY_SOURCE_KIND = "wandb_sdk"
+AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (
+    "nemoclaw_session_audit_ok",
+    "nemoclaw_session_audit",
+    "conversation_order_ok",
+    "conversation_order",
+    "tool_policy_ok",
+    "tool_policy_violations",
+    "weave_sidecar_ok",
+    "weave_sidecar",
+)
+AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (
+    "nemoclaw_session_audit_ok",
+    "nemoclaw_session_audit_required",
+    "conversation_order_ok",
+    "conversation_order",
+    "tool_policy_ok",
+    "tool_policy_violations",
+    "weave_sidecar_ok",
+    "weave_sidecar",
+)
 
 
 @dataclass(frozen=True)
@@ -43,6 +64,7 @@ class BenchmarkSpec:
     nemoclaw_audit_required_metric: str | None = None
     nemoclaw_audit_passed_metric: str | None = None
     nemoclaw_audit_failed_metric: str | None = None
+    output_table_required_columns: tuple[str, ...] = ()
 
 
 BENCHMARK_SPECS: dict[str, BenchmarkSpec] = {
@@ -59,6 +81,7 @@ BENCHMARK_SPECS: dict[str, BenchmarkSpec] = {
         nemoclaw_audit_required_metric="agentic_math/nemoclaw_session_audit_required_instances",
         nemoclaw_audit_passed_metric="agentic_math/nemoclaw_session_audit_passed_instances",
         nemoclaw_audit_failed_metric="agentic_math/nemoclaw_session_audit_failed_instances",
+        output_table_required_columns=AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS,
     ),
     "agentic_swe": BenchmarkSpec(
         id="agentic_swe",
@@ -72,6 +95,7 @@ BENCHMARK_SPECS: dict[str, BenchmarkSpec] = {
         nemoclaw_audit_required_metric="agentic_swe/nemoclaw_session_audit_required_patches",
         nemoclaw_audit_passed_metric="agentic_swe/nemoclaw_session_audit_passed_patches",
         nemoclaw_audit_failed_metric="agentic_swe/nemoclaw_session_audit_failed_patches",
+        output_table_required_columns=AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS,
     ),
 }
 
@@ -154,6 +178,96 @@ def _table_check(summary: dict[str, Any], key: str, *, name: str) -> dict[str, A
     if nrows < 1:
         return _fail_check(name, f"{key} has no rows", table_name=key, nrows=nrows)
     return _ok_check(name, f"{key} has rows", table_name=key, nrows=nrows)
+
+
+def _string_list(value: Any) -> list[str] | None:
+    if not isinstance(value, list):
+        return None
+    result = [str(item) for item in value if isinstance(item, str) and item]
+    return result if len(result) == len(value) else None
+
+
+def _table_columns_from_payload(payload: Any) -> list[str] | None:
+    if not isinstance(payload, dict):
+        return None
+    return _string_list(payload.get("columns"))
+
+
+def _download_wandb_table_json(run: Any, table_path: str) -> Any:
+    file_getter = getattr(run, "file", None)
+    if not callable(file_getter):
+        raise RuntimeError("run.file API is not available")
+    with tempfile.TemporaryDirectory(prefix="taiwan-wandb-table-") as tmpdir:
+        file_ref = file_getter(table_path)
+        downloaded = file_ref.download(root=tmpdir, replace=True)
+        downloaded_name = getattr(downloaded, "name", None)
+        local_path = Path(downloaded_name) if downloaded_name else Path(tmpdir) / table_path
+        return json.loads(local_path.read_text(encoding="utf-8"))
+
+
+def _table_columns(
+    run: Any,
+    summary: dict[str, Any],
+    key: str,
+) -> tuple[list[str] | None, str, str | None]:
+    value = summary.get(key)
+    if not isinstance(value, dict):
+        return None, "summary", f"missing or invalid W&B table summary for {key}"
+    columns = _table_columns_from_payload(value)
+    if columns is not None:
+        return columns, "summary", None
+    table_path = value.get("path")
+    if not isinstance(table_path, str) or not table_path:
+        return None, "summary", f"{key} table summary has no columns or path"
+    try:
+        payload = _download_wandb_table_json(run, table_path)
+    except (OSError, json.JSONDecodeError, RuntimeError, AttributeError) as exc:
+        return None, "wandb_file", f"could not read W&B table file for {key}: {exc}"
+    columns = _table_columns_from_payload(payload)
+    if columns is None:
+        return None, "wandb_file", f"W&B table file for {key} has no valid columns"
+    return columns, "wandb_file", None
+
+
+def _output_table_columns_check(
+    run: Any,
+    summary: dict[str, Any],
+    spec: BenchmarkSpec,
+) -> dict[str, Any] | None:
+    required_columns = list(spec.output_table_required_columns)
+    if not required_columns:
+        return None
+    columns, source, error = _table_columns(run, summary, spec.output_table)
+    if columns is None:
+        return _fail_check(
+            "output_table_columns",
+            error or f"could not inspect columns for {spec.output_table}",
+            table_name=spec.output_table,
+            required_columns=required_columns,
+            columns=None,
+            missing_columns=required_columns,
+            source=source,
+        )
+    missing_columns = [column for column in required_columns if column not in columns]
+    if missing_columns:
+        return _fail_check(
+            "output_table_columns",
+            f"{spec.output_table} is missing required observability columns",
+            table_name=spec.output_table,
+            required_columns=required_columns,
+            columns=columns,
+            missing_columns=missing_columns,
+            source=source,
+        )
+    return _ok_check(
+        "output_table_columns",
+        f"{spec.output_table} contains required observability columns",
+        table_name=spec.output_table,
+        required_columns=required_columns,
+        columns=columns,
+        missing_columns=[],
+        source=source,
+    )
 
 
 def _int_metric(summary: dict[str, Any], key: str | None) -> tuple[int | None, Any]:
@@ -404,6 +518,7 @@ def _benchmark_required_evidence(
             {
                 "name": spec.output_table,
                 "row_count": "must equal total metric",
+                "required_columns": list(spec.output_table_required_columns),
             },
         ],
         "artifacts": artifacts,
@@ -511,6 +626,33 @@ def _observed_benchmark_evidence(
                     "ok": bool(check.get("ok")),
                     "nrows": check.get("nrows"),
                     "expected": check.get("expected"),
+                }
+            )
+            continue
+        if name == "output_table_columns":
+            output_table_row = next(
+                (
+                    row
+                    for row in observed["tables"]
+                    if row.get("name") == spec.output_table
+                ),
+                None,
+            )
+            if output_table_row is None:
+                output_table_row = {
+                    "name": spec.output_table,
+                    "ok": bool(check.get("ok")),
+                    "nrows": None,
+                    "expected": None,
+                }
+                observed["tables"].append(output_table_row)
+            output_table_row.update(
+                {
+                    "columns_ok": bool(check.get("ok")),
+                    "columns": check.get("columns"),
+                    "required_columns": check.get("required_columns"),
+                    "missing_columns": check.get("missing_columns"),
+                    "columns_source": check.get("source"),
                 }
             )
             continue
@@ -732,6 +874,9 @@ def verify_run(
                 nrows=output_rows,
             )
         )
+    output_table_columns_check = _output_table_columns_check(run, summary, spec)
+    if output_table_columns_check is not None:
+        checks.append(output_table_columns_check)
 
     if spec.answered_metric:
         answered = _metric(summary, spec.answered_metric)

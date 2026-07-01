@@ -5,6 +5,26 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+AGENTIC_MATH_OUTPUT_COLUMNS = [
+    "nemoclaw_session_audit_ok",
+    "nemoclaw_session_audit",
+    "conversation_order_ok",
+    "conversation_order",
+    "tool_policy_ok",
+    "tool_policy_violations",
+    "weave_sidecar_ok",
+    "weave_sidecar",
+]
+AGENTIC_SWE_OUTPUT_COLUMNS = [
+    "nemoclaw_session_audit_ok",
+    "nemoclaw_session_audit_required",
+    "conversation_order_ok",
+    "conversation_order",
+    "tool_policy_ok",
+    "tool_policy_violations",
+    "weave_sidecar_ok",
+    "weave_sidecar",
+]
 
 
 class FakeArtifact:
@@ -12,6 +32,24 @@ class FakeArtifact:
         self.name = name
         self.type = type_
         self.aliases = aliases
+
+
+class FakeWandbFile:
+    def __init__(self, path, payload):
+        self.path = path
+        self.payload = payload
+
+    def download(self, root, replace=True):
+        target = Path(root) / self.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(self.payload), encoding="utf-8")
+
+        class Downloaded:
+            pass
+
+        downloaded = Downloaded()
+        downloaded.name = str(target)
+        return downloaded
 
 
 class FakeRun:
@@ -28,6 +66,7 @@ class FakeRun:
         tags=None,
         group="",
         job_type="evaluation",
+        table_files=None,
     ):
         self.summary_metrics = summary
         self.state = state
@@ -36,9 +75,15 @@ class FakeRun:
         self.tags = tags or []
         self.group = group
         self.job_type = job_type
+        self._table_files = table_files or {}
 
     def logged_artifacts(self):
         return self._artifacts
+
+    def file(self, path):
+        if path not in self._table_files:
+            raise FileNotFoundError(path)
+        return FakeWandbFile(path, self._table_files[path])
 
 
 def load_module():
@@ -61,7 +106,11 @@ def complete_agentic_math_summary():
         "agentic_math/nemoclaw_session_audit_passed_instances": 100,
         "agentic_math/nemoclaw_session_audit_failed_instances": 0,
         "agentic_math_leaderboard_table": {"_type": "table-file", "nrows": 1},
-        "agentic_math_output_table": {"_type": "table-file", "nrows": 100},
+        "agentic_math_output_table": {
+            "_type": "table-file",
+            "nrows": 100,
+            "columns": AGENTIC_MATH_OUTPUT_COLUMNS,
+        },
     }
 
 
@@ -83,7 +132,11 @@ def complete_agentic_swe_summary():
         "agentic_swe/nemoclaw_session_audit_passed_patches": 80,
         "agentic_swe/nemoclaw_session_audit_failed_patches": 0,
         "agentic_swe_leaderboard_table": {"_type": "table-file", "nrows": 1},
-        "agentic_swe_output_table": {"_type": "table-file", "nrows": 80},
+        "agentic_swe_output_table": {
+            "_type": "table-file",
+            "nrows": 80,
+            "columns": AGENTIC_SWE_OUTPUT_COLUMNS,
+        },
     }
 
 
@@ -153,6 +206,11 @@ def test_verify_agentic_math_wandb_completion_accepts_complete_run():
             "ok": True,
             "nrows": 100,
             "expected": None,
+            "columns_ok": True,
+            "columns": AGENTIC_MATH_OUTPUT_COLUMNS,
+            "required_columns": AGENTIC_MATH_OUTPUT_COLUMNS,
+            "missing_columns": [],
+            "columns_source": "summary",
         },
     ]
     assert result["observed_evidence"]["artifacts"][0]["aliases"] == ["latest", "production"]
@@ -161,6 +219,7 @@ def test_verify_agentic_math_wandb_completion_accepts_complete_run():
         "total_metric",
         "leaderboard_table",
         "output_table",
+        "output_table_columns",
         "answered_metric",
         "correct_metric",
         "accuracy_metric",
@@ -181,6 +240,67 @@ def test_verify_agentic_math_wandb_completion_rejects_missing_output_table():
     assert result["verification_schema_version"] == module.VERIFICATION_SCHEMA_VERSION
     assert result["status"] == "failed"
     assert any(check["name"] == "output_table" and not check["ok"] for check in result["checks"])
+
+
+def test_verify_agentic_math_wandb_completion_rejects_missing_output_observability_column():
+    module = load_module()
+    summary = complete_agentic_math_summary()
+    summary["agentic_math_output_table"]["columns"] = [
+        column
+        for column in AGENTIC_MATH_OUTPUT_COLUMNS
+        if column != "weave_sidecar_ok"
+    ]
+    run = FakeRun(summary=summary, artifacts=[complete_result_artifact()])
+
+    result = module.verify_run(run, module.BENCHMARK_SPECS["agentic_math"])
+
+    assert result["ok"] is False
+    column_check = next(
+        check for check in result["checks"] if check["name"] == "output_table_columns"
+    )
+    assert column_check["ok"] is False
+    assert column_check["missing_columns"] == ["weave_sidecar_ok"]
+    output_table = next(
+        table
+        for table in result["observed_evidence"]["tables"]
+        if table["name"] == "agentic_math_output_table"
+    )
+    assert output_table["columns_ok"] is False
+    assert output_table["missing_columns"] == ["weave_sidecar_ok"]
+
+
+def test_verify_agentic_math_wandb_completion_loads_output_columns_from_table_file():
+    module = load_module()
+    summary = complete_agentic_math_summary()
+    summary["agentic_math_output_table"] = {
+        "_type": "table-file",
+        "nrows": 100,
+        "path": "media/table/agentic_math_output_table_0.table.json",
+    }
+    run = FakeRun(
+        summary=summary,
+        artifacts=[complete_result_artifact()],
+        table_files={
+            "media/table/agentic_math_output_table_0.table.json": {
+                "columns": AGENTIC_MATH_OUTPUT_COLUMNS,
+                "data": [],
+            }
+        },
+    )
+
+    result = module.verify_run(run, module.BENCHMARK_SPECS["agentic_math"])
+
+    assert result["ok"] is True
+    column_check = next(
+        check for check in result["checks"] if check["name"] == "output_table_columns"
+    )
+    assert column_check["source"] == "wandb_file"
+    output_table = next(
+        table
+        for table in result["observed_evidence"]["tables"]
+        if table["name"] == "agentic_math_output_table"
+    )
+    assert output_table["columns_source"] == "wandb_file"
 
 
 def test_verify_agentic_math_wandb_completion_requires_nemoclaw_session_audit():
@@ -385,7 +505,11 @@ def test_verify_agentic_swe_wandb_completion_requires_nemoclaw_session_audit():
 def test_verify_agentic_swe_wandb_completion_rejects_output_row_mismatch():
     module = load_module()
     summary = complete_agentic_swe_summary()
-    summary["agentic_swe_output_table"] = {"_type": "table-file", "nrows": 79}
+    summary["agentic_swe_output_table"] = {
+        "_type": "table-file",
+        "nrows": 79,
+        "columns": AGENTIC_SWE_OUTPUT_COLUMNS,
+    }
     run = FakeRun(summary=summary, artifacts=[complete_swe_result_artifact()])
 
     result = module.verify_run(run, module.BENCHMARK_SPECS["agentic_swe"])
@@ -393,6 +517,26 @@ def test_verify_agentic_swe_wandb_completion_rejects_output_row_mismatch():
     assert result["ok"] is False
     assert any(
         check["name"] == "output_table" and not check["ok"]
+        for check in result["checks"]
+    )
+
+
+def test_verify_agentic_swe_wandb_completion_rejects_missing_output_observability_column():
+    module = load_module()
+    summary = complete_agentic_swe_summary()
+    summary["agentic_swe_output_table"]["columns"] = [
+        column
+        for column in AGENTIC_SWE_OUTPUT_COLUMNS
+        if column != "nemoclaw_session_audit_required"
+    ]
+    run = FakeRun(summary=summary, artifacts=[complete_swe_result_artifact()])
+
+    result = module.verify_run(run, module.BENCHMARK_SPECS["agentic_swe"])
+
+    assert result["ok"] is False
+    assert any(
+        check["name"] == "output_table_columns"
+        and check["missing_columns"] == ["nemoclaw_session_audit_required"]
         for check in result["checks"]
     )
 
