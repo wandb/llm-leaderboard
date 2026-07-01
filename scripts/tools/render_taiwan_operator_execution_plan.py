@@ -49,6 +49,17 @@ CANARY_FORBIDDEN_PROVIDER_MARKERS = (
     "sonnet",
 )
 OPENAI_DIRECT_CANARY_APPROVAL_SCOPE_MARKER = "openai-direct/gpt-4.1-mini"
+WEAVE_CONTENT_CANARY_BLOCKED_NEXT_ACTIONS = {
+    "external_action_approval_missing": (
+        "approve the source-bound external-action packet before rerunning; "
+        "OpenClaw/provider execution was blocked before any paid API attempt"
+    ),
+    "nemoclaw_config_preflight_failed": (
+        "fix the NeMoClaw sandbox OpenClaw config path/provider/model mapping "
+        "before rerunning; OpenClaw/provider execution was blocked before any "
+        "paid API attempt"
+    ),
+}
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -280,12 +291,7 @@ def validate_weave_content_canary_gate_option(
         return errors
 
     if payload.get("ok") is not True or payload.get("status") != "passed":
-        errors.append(
-            "Weave content canary gate must have ok=true and status=passed: "
-            f"{gate_value} has ok={payload.get('ok')!r}, "
-            f"status={payload.get('status')!r}, "
-            f"failure_kind={payload.get('failure_kind')!r}"
-        )
+        errors.append(failed_weave_content_canary_gate_error(payload, gate_value))
         return errors
 
     contract_issues = weave_content_canary_gate_contract_issues(payload)
@@ -320,6 +326,41 @@ def validate_weave_content_canary_gate_option(
             f"max_age_seconds={max_age_seconds}"
         )
     return errors
+
+
+def failed_weave_content_canary_gate_error(payload: dict[str, Any], gate_value: str) -> str:
+    status = payload.get("status")
+    failure_kind = payload.get("failure_kind")
+    detail_parts = [
+        f"{gate_value} has ok={payload.get('ok')!r}",
+        f"status={status!r}",
+        f"failure_kind={failure_kind!r}",
+    ]
+    paid_api_attempted = payload.get("paid_api_attempted")
+    if isinstance(paid_api_attempted, bool):
+        detail_parts.append(f"paid_api_attempted={paid_api_attempted!r}")
+    recommended_next_action = payload.get("recommended_next_action")
+    if isinstance(recommended_next_action, str) and recommended_next_action.strip():
+        detail_parts.append(
+            f"recommended_next_action={recommended_next_action.strip()!r}"
+        )
+    status_action = (
+        WEAVE_CONTENT_CANARY_BLOCKED_NEXT_ACTIONS.get(status)
+        if isinstance(status, str)
+        else None
+    )
+    failure_action = (
+        WEAVE_CONTENT_CANARY_BLOCKED_NEXT_ACTIONS.get(failure_kind)
+        if isinstance(failure_kind, str)
+        else None
+    )
+    next_action = status_action or failure_action
+    if next_action:
+        detail_parts.append(f"next_action={next_action!r}")
+    return (
+        "Weave content canary gate must have ok=true and status=passed: "
+        + ", ".join(detail_parts)
+    )
 
 
 def validate_external_action_source_packet_option(

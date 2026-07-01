@@ -67,6 +67,18 @@ NEMOCLAW_AUDIT_REQUIRED_BENCHMARKS = {"agentic_math", "agentic_swe"}
 WEAVE_AGENTS_CANARY_COMPLETION_PHASES = {"agentic", "full"}
 DEFAULT_WEAVE_CONTENT_CANARY_MAX_AGE_SECONDS = 24 * 60 * 60
 DEFAULT_WANDB_COMPLETION_MAX_AGE_SECONDS = 24 * 60 * 60
+WEAVE_CONTENT_CANARY_BLOCKED_NEXT_ACTIONS = {
+    "external_action_approval_missing": (
+        "Review and approve the source-bound external-action packet, then "
+        "rerun the live content canary. OpenClaw/provider execution was "
+        "blocked before any paid API attempt."
+    ),
+    "nemoclaw_config_preflight_failed": (
+        "Fix the NeMoClaw sandbox OpenClaw config path/provider/model mapping, "
+        "then rerun the live content canary. OpenClaw/provider execution was "
+        "blocked before any paid API attempt."
+    ),
+}
 WANDB_COMPLETION_SCHEMA_VERSION = 1
 WANDB_COMPLETION_QUERY_SOURCE_KIND = "wandb_sdk"
 WANDB_COMPLETION_API_TIMEOUT_SECONDS = 60
@@ -898,6 +910,10 @@ def evaluate_weave_content_gate(
         status_value = latest.get("status")
         if status_value in {"not_run", "prepared", "prepare_only"}:
             return "Run the content canary with --execute when paid inference is intentionally approved."
+        if isinstance(status_value, str) and status_value in WEAVE_CONTENT_CANARY_BLOCKED_NEXT_ACTIONS:
+            return WEAVE_CONTENT_CANARY_BLOCKED_NEXT_ACTIONS[status_value]
+        if isinstance(failure_kind, str) and failure_kind in WEAVE_CONTENT_CANARY_BLOCKED_NEXT_ACTIONS:
+            return WEAVE_CONTENT_CANARY_BLOCKED_NEXT_ACTIONS[failure_kind]
         if failure_kind == "provider_quota":
             return "Use an approved provider/model with available quota, then rerun the live content canary."
         if failure_kind == "provider_auth":
@@ -978,6 +994,11 @@ def evaluate_weave_content_gate(
             for part in (latest_status, latest_failure, latest_detail)
             if part
         ]
+        latest_paid_attempted = latest_candidate.get("paid_api_attempted")
+        if isinstance(latest_paid_attempted, bool):
+            latest_bits.append(
+                f"paid_api_attempted={str(latest_paid_attempted).lower()}"
+            )
         if latest_bits:
             detail = f"{detail} Latest gate: {' / '.join(latest_bits)}."
     return gate_record(

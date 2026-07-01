@@ -121,20 +121,22 @@ def write_weave_content_canary_gate(
     status: str = "passed",
     generated_at: float = 9_999_999_999.0,
     failure_kind: str = "",
+    paid_api_attempted: bool | None = None,
+    recommended_next_action: str = "",
 ) -> Path:
-    path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "ok": ok,
-                "status": status,
-                "generated_at": generated_at,
-                "failure_kind": failure_kind,
-                "canary_id": "CONTENT_CANARY_TEST",
-            }
-        ),
-        encoding="utf-8",
-    )
+    payload = {
+        "schema_version": 1,
+        "ok": ok,
+        "status": status,
+        "generated_at": generated_at,
+        "failure_kind": failure_kind,
+        "canary_id": "CONTENT_CANARY_TEST",
+    }
+    if paid_api_attempted is not None:
+        payload["paid_api_attempted"] = paid_api_attempted
+    if recommended_next_action:
+        payload["recommended_next_action"] = recommended_next_action
+    path.write_text(json.dumps(payload), encoding="utf-8")
     return path
 
 
@@ -1255,6 +1257,118 @@ def test_render_operator_execution_plan_rejects_failed_weave_content_canary_gate
     assert any(
         "Weave content canary gate must have ok=true and status=passed" in error
         and "provider_quota" in error
+        for error in policy["errors"]
+    )
+
+
+def test_render_operator_execution_plan_explains_external_action_blocked_weave_gate(tmp_path):
+    source_packet = write_source_packet(tmp_path / "external_action_approval_packet.json")
+    approval_report = write_external_action_approval_report(
+        tmp_path / "approval.verify.json",
+        source_packet,
+    )
+    gate_json = write_weave_content_canary_gate(
+        tmp_path / "blocked_content_canary.gate.json",
+        ok=False,
+        status="external_action_approval_missing",
+        failure_kind="external_action_approval_missing",
+        paid_api_attempted=False,
+    )
+    operator_plan = write_agentic_batch_operator_plan(
+        tmp_path / "operator_plan.json",
+        source_packet=source_packet,
+        approval_report=approval_report,
+        gate_json=gate_json,
+    )
+    output_json = tmp_path / "execution_plan.json"
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--operator-plan-json",
+            str(operator_plan),
+            "--gate",
+            "paid_run_review_package",
+            "--external-action-approval-source-packet-json",
+            str(source_packet),
+            "--external-action-approval-report-json",
+            str(approval_report),
+            "--output-json",
+            str(output_json),
+            "--require-ready",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    rendered = json.loads(output_json.read_text(encoding="utf-8"))
+    policy = rendered["command_policy"]
+    assert policy["valid"] is False
+    assert any(
+        "external_action_approval_missing" in error
+        and "paid_api_attempted=False" in error
+        and "approve the source-bound external-action packet" in error
+        and "before any paid API attempt" in error
+        for error in policy["errors"]
+    )
+
+
+def test_render_operator_execution_plan_explains_nemoclaw_preflight_blocked_weave_gate(tmp_path):
+    source_packet = write_source_packet(tmp_path / "external_action_approval_packet.json")
+    approval_report = write_external_action_approval_report(
+        tmp_path / "approval.verify.json",
+        source_packet,
+    )
+    gate_json = write_weave_content_canary_gate(
+        tmp_path / "blocked_content_canary.gate.json",
+        ok=False,
+        status="nemoclaw_config_preflight_failed",
+        failure_kind="nemoclaw_config_preflight_failed",
+        paid_api_attempted=False,
+    )
+    operator_plan = write_agentic_batch_operator_plan(
+        tmp_path / "operator_plan.json",
+        source_packet=source_packet,
+        approval_report=approval_report,
+        gate_json=gate_json,
+    )
+    output_json = tmp_path / "execution_plan.json"
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--operator-plan-json",
+            str(operator_plan),
+            "--gate",
+            "paid_run_review_package",
+            "--external-action-approval-source-packet-json",
+            str(source_packet),
+            "--external-action-approval-report-json",
+            str(approval_report),
+            "--output-json",
+            str(output_json),
+            "--require-ready",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    rendered = json.loads(output_json.read_text(encoding="utf-8"))
+    policy = rendered["command_policy"]
+    assert policy["valid"] is False
+    assert any(
+        "nemoclaw_config_preflight_failed" in error
+        and "paid_api_attempted=False" in error
+        and "NeMoClaw sandbox OpenClaw config" in error
+        and "before any paid API attempt" in error
         for error in policy["errors"]
     )
 

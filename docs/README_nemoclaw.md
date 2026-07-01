@@ -14,7 +14,7 @@ References:
 
 ## Current Status
 
-As of 2026-07-01 23:29 JST:
+As of 2026-07-01 23:42 JST:
 
 - Host prerequisites are present: Docker, Node.js, npm, zstd, and OpenClaw.
 - `nemoclaw v0.0.55` and `openshell 0.0.44` are installed on this machine.
@@ -100,8 +100,12 @@ As of 2026-07-01 23:29 JST:
   and gate summarizer handoff. A639 requires blocked live attempts to write
   command_result plus gate JSON with `paid_api_attempted=false` and explicit
   `external_action_approval_missing` or `nemoclaw_config_preflight_failed`
-  status before OpenClaw/provider execution can start. These contracts cannot
-  be removed while stale-looking evidence still passes.
+  status before OpenClaw/provider execution can start. A640 also makes
+  production readiness and operator execution-plan refusal messages classify
+  those statuses as pre-OpenClaw blocked states, so operators are directed to
+  approve the source-bound external-action packet or fix the NeMoClaw sandbox
+  OpenClaw config instead of chasing a generic provider/runtime failure. These
+  contracts cannot be removed while stale-looking evidence still passes.
 - `configs/nemoclaw/policies/wandb_weave.yaml` is the W&B/Weave egress policy
   template for the sandbox. It was applied with
   `nemoclaw nejumi-taiwan policy-add --from-file ... --yes`; the command

@@ -664,6 +664,57 @@ def test_weave_content_gate_explains_prepare_only_candidate_as_not_executed(tmp_
     assert "provider/runtime issue" not in result["next_action"]
 
 
+def test_weave_content_gate_explains_external_action_block_without_recommendation(tmp_path):
+    module = load_module()
+    gate = write_json(
+        tmp_path / "canary.gate.json",
+        {
+            "ok": False,
+            "status": "external_action_approval_missing",
+            "failure_kind": "external_action_approval_missing",
+            "detail": "approval missing; OpenClaw was not started",
+            "paid_api_attempted": False,
+            "will_call_paid_model_api": True,
+            "generated_at": time.time(),
+        },
+    )
+
+    result = module.evaluate_weave_content_gate([gate], require=True)
+
+    assert result["ok"] is False
+    assert result["status"] == "failed"
+    assert result["latest_candidate"]["status"] == "external_action_approval_missing"
+    assert result["latest_candidate"]["paid_api_attempted"] is False
+    assert "external-action packet" in result["next_action"]
+    assert "before any paid API attempt" in result["next_action"]
+    assert "paid_api_attempted=false" in result["detail"]
+    assert "provider/runtime issue" not in result["next_action"]
+
+
+def test_weave_content_gate_explains_nemoclaw_config_preflight_block(tmp_path):
+    module = load_module()
+    gate = write_json(
+        tmp_path / "canary.gate.json",
+        {
+            "ok": False,
+            "status": "nemoclaw_config_preflight_failed",
+            "failure_kind": "nemoclaw_config_preflight_failed",
+            "detail": "sandbox config missing provider",
+            "paid_api_attempted": False,
+            "will_call_paid_model_api": True,
+            "generated_at": time.time(),
+        },
+    )
+
+    result = module.evaluate_weave_content_gate([gate], require=True)
+
+    assert result["ok"] is False
+    assert result["latest_candidate"]["status"] == "nemoclaw_config_preflight_failed"
+    assert "NeMoClaw sandbox OpenClaw config" in result["next_action"]
+    assert "before any paid API attempt" in result["next_action"]
+    assert "provider/runtime issue" not in result["next_action"]
+
+
 def test_nemoclaw_readiness_requires_all_sandbox_checks(tmp_path):
     module = load_module()
     failed = write_json(tmp_path / "failed.json", readiness_payload(nemoclaw_ok=False, report_ok=False))
