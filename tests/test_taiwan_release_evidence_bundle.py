@@ -1600,6 +1600,10 @@ def test_release_evidence_bundle_copies_report_references(tmp_path):
     assert "external_action_approval_template_renderer:script" in sources[renderer_script][
         "roles"
     ]
+    handoff_script = "scripts/tools/prepare_taiwan_external_action_approval.py"
+    assert "external_action_approval_handoff_preparer:script" in sources[handoff_script][
+        "roles"
+    ]
     assert any(
         role.endswith(":pre_run_budget_estimate")
         for role in sources[str(pre_run_budget)]["roles"]

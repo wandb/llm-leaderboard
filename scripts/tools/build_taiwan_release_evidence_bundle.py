@@ -35,6 +35,9 @@ EXTERNAL_ACTION_APPROVAL_PACKET_VERIFIER_SCRIPT = (
 EXTERNAL_ACTION_APPROVAL_TEMPLATE_RENDERER_SCRIPT = (
     "scripts/tools/render_external_action_approval_template.py"
 )
+EXTERNAL_ACTION_APPROVAL_HANDOFF_PREPARER_SCRIPT = (
+    "scripts/tools/prepare_taiwan_external_action_approval.py"
+)
 WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT = (
     "scripts/tools/weave_content_canary_gate_contract.py"
 )
@@ -4179,6 +4182,9 @@ def add_external_action_approval_packet_files(output_dir: Path, manifest: dict[s
     renderer_source = repo_path(EXTERNAL_ACTION_APPROVAL_TEMPLATE_RENDERER_SCRIPT)
     renderer_bundle_path = safe_bundle_path(renderer_source)
     renderer_destination = output_dir / renderer_bundle_path
+    handoff_source = repo_path(EXTERNAL_ACTION_APPROVAL_HANDOFF_PREPARER_SCRIPT)
+    handoff_bundle_path = safe_bundle_path(handoff_source)
+    handoff_destination = output_dir / handoff_bundle_path
     packet = build_external_action_approval_packet(
         manifest,
         json_bundle_path=json_relative,
@@ -4195,6 +4201,9 @@ def add_external_action_approval_packet_files(output_dir: Path, manifest: dict[s
     if renderer_source.exists() and renderer_source.is_file():
         renderer_destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(renderer_source, renderer_destination)
+    if handoff_source.exists() and handoff_source.is_file():
+        handoff_destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(handoff_source, handoff_destination)
     manifest["external_action_approval_packet"] = {
         "json": str(json_relative),
         "markdown": str(markdown_relative),
@@ -4244,6 +4253,15 @@ def add_external_action_approval_packet_files(output_dir: Path, manifest: dict[s
                     "external_action_approval_packet",
                     "external_action_approval_template_renderer",
                     "external_action_approval_template_renderer:script",
+                ],
+            ),
+            generated_bundle_file_record(
+                handoff_source,
+                bundle_path=handoff_bundle_path,
+                roles=[
+                    "external_action_approval_packet",
+                    "external_action_approval_handoff_preparer",
+                    "external_action_approval_handoff_preparer:script",
                 ],
             ),
         ]
