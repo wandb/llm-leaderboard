@@ -37,7 +37,7 @@ WANDB_COMPLETION_VERIFY_RUNNER = REPO_ROOT / "scripts" / "tools" / "verify_taiwa
 WEAVE_AGENTS_VERIFY_RUNNER = REPO_ROOT / "scripts" / "tools" / "verify_taiwan_weave_agents.py"
 DEFAULT_WEAVE_AGENT_NAME = "nejumi-taiwan-openclaw"
 DEFAULT_WANDB_VERIFY_BENCHMARKS = {
-    "full": ["taiwan_full"],
+    "full": ["agentic_math", "agentic_swe", "taiwan_full"],
     "agentic": ["agentic_math", "agentic_swe"],
     "agentic_aggregate": ["taiwan_full"],
 }
@@ -911,6 +911,7 @@ def build_wandb_verify_command(
     expected_run_tags: list[str] | None = None,
     expected_run_group: str | None = None,
     expected_run_job_type: str | None = None,
+    require_nemoclaw_session_audit: bool = False,
     env_file: Path | None = None,
     json_path: Path | None = None,
 ) -> list[str]:
@@ -939,6 +940,8 @@ def build_wandb_verify_command(
         command.extend(["--expected-run-group", expected_run_group])
     if expected_run_job_type:
         command.extend(["--expected-run-job-type", expected_run_job_type])
+    if require_nemoclaw_session_audit and benchmark in {"agentic_math", "agentic_swe"}:
+        command.append("--require-nemoclaw-session-audit")
     if env_file:
         command.extend(["--env-file", str(env_file)])
     if json_path:
@@ -960,6 +963,7 @@ def run_wandb_completion_verification(
     expected_run_tags: list[str] | None = None,
     expected_run_group: str | None = None,
     expected_run_job_type: str | None = None,
+    require_nemoclaw_session_audit: bool = False,
     env_file: Path | None = None,
 ) -> dict:
     command = build_wandb_verify_command(
@@ -973,6 +977,7 @@ def run_wandb_completion_verification(
         expected_run_tags=expected_run_tags,
         expected_run_group=expected_run_group,
         expected_run_job_type=expected_run_job_type,
+        require_nemoclaw_session_audit=require_nemoclaw_session_audit,
         env_file=env_file,
         json_path=output_path,
     )
@@ -1548,6 +1553,9 @@ def main() -> None:
                 or default_wandb_verify_benchmarks(args.phase),
                 "schema_version": 1,
                 "observed_evidence_required": True,
+                "nemoclaw_session_audit_required_for_agentic_benchmarks": bool(
+                    args.require_nemoclaw_agentic_config
+                ),
             },
             "weave_agents_completion": {
                 "required": bool(args.verify_weave_agents),
@@ -1806,6 +1814,10 @@ def main() -> None:
                             benchmark=benchmark,
                         ),
                         expected_run_job_type="evaluation",
+                        require_nemoclaw_session_audit=bool(
+                            args.require_nemoclaw_agentic_config
+                            and benchmark in {"agentic_math", "agentic_swe"}
+                        ),
                         env_file=args.env_file,
                     )
                 )

@@ -57,6 +57,9 @@ def complete_agentic_math_summary():
         "agentic_math/answered_instances": 99,
         "agentic_math/correct_instances": 86,
         "agentic_math/accuracy": 0.86,
+        "agentic_math/nemoclaw_session_audit_required_instances": 100,
+        "agentic_math/nemoclaw_session_audit_passed_instances": 100,
+        "agentic_math/nemoclaw_session_audit_failed_instances": 0,
         "agentic_math_leaderboard_table": {"_type": "table-file", "nrows": 1},
         "agentic_math_output_table": {"_type": "table-file", "nrows": 100},
     }
@@ -76,6 +79,9 @@ def complete_agentic_swe_summary():
         "agentic_swe/resolved_instances": 24,
         "agentic_swe/unresolved_instances": 56,
         "agentic_swe/pass_at_1": 0.3,
+        "agentic_swe/nemoclaw_session_audit_required_patches": 80,
+        "agentic_swe/nemoclaw_session_audit_passed_patches": 80,
+        "agentic_swe/nemoclaw_session_audit_failed_patches": 0,
         "agentic_swe_leaderboard_table": {"_type": "table-file", "nrows": 1},
         "agentic_swe_output_table": {"_type": "table-file", "nrows": 80},
     }
@@ -175,6 +181,55 @@ def test_verify_agentic_math_wandb_completion_rejects_missing_output_table():
     assert result["verification_schema_version"] == module.VERIFICATION_SCHEMA_VERSION
     assert result["status"] == "failed"
     assert any(check["name"] == "output_table" and not check["ok"] for check in result["checks"])
+
+
+def test_verify_agentic_math_wandb_completion_requires_nemoclaw_session_audit():
+    module = load_module()
+    run = FakeRun(
+        summary=complete_agentic_math_summary(),
+        artifacts=[complete_result_artifact()],
+    )
+
+    result = module.verify_run(
+        run,
+        module.BENCHMARK_SPECS["agentic_math"],
+        expected_total=100,
+        require_nemoclaw_session_audit=True,
+    )
+
+    assert result["ok"] is True
+    assert result["required_evidence"]["nemoclaw_session_audit"]["required"] is True
+    assert result["observed_evidence"]["nemoclaw_session_audit"] == {
+        "ok": True,
+        "required": 100,
+        "passed": 100,
+        "failed": 0,
+        "expected_total": 100,
+        "required_metric": "agentic_math/nemoclaw_session_audit_required_instances",
+        "passed_metric": "agentic_math/nemoclaw_session_audit_passed_instances",
+        "failed_metric": "agentic_math/nemoclaw_session_audit_failed_instances",
+    }
+
+
+def test_verify_agentic_math_wandb_completion_rejects_failed_nemoclaw_session_audit():
+    module = load_module()
+    summary = complete_agentic_math_summary()
+    summary["agentic_math/nemoclaw_session_audit_passed_instances"] = 99
+    summary["agentic_math/nemoclaw_session_audit_failed_instances"] = 1
+    run = FakeRun(summary=summary, artifacts=[complete_result_artifact()])
+
+    result = module.verify_run(
+        run,
+        module.BENCHMARK_SPECS["agentic_math"],
+        expected_total=100,
+        require_nemoclaw_session_audit=True,
+    )
+
+    assert result["ok"] is False
+    assert any(
+        check["name"] == "nemoclaw_session_audit" and not check["ok"]
+        for check in result["checks"]
+    )
 
 
 def test_verify_agentic_math_wandb_completion_rejects_accuracy_mismatch():
@@ -307,6 +362,24 @@ def test_verify_agentic_swe_wandb_completion_accepts_complete_run():
         check["name"] == "accuracy_metric" and check["value"] == 0.3
         for check in result["checks"]
     )
+
+
+def test_verify_agentic_swe_wandb_completion_requires_nemoclaw_session_audit():
+    module = load_module()
+    run = FakeRun(
+        summary=complete_agentic_swe_summary(),
+        artifacts=[complete_swe_result_artifact()],
+    )
+
+    result = module.verify_run(
+        run,
+        module.BENCHMARK_SPECS["agentic_swe"],
+        expected_total=80,
+        require_nemoclaw_session_audit=True,
+    )
+
+    assert result["ok"] is True
+    assert result["observed_evidence"]["nemoclaw_session_audit"]["required"] == 80
 
 
 def test_verify_agentic_swe_wandb_completion_rejects_output_row_mismatch():

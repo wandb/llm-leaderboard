@@ -172,6 +172,20 @@ def _load_results(output_dir: Path) -> tuple[dict[str, Any], pd.DataFrame]:
     return summary, pd.DataFrame(rows)
 
 
+def _nemoclaw_audit_metrics(summary: dict[str, Any]) -> dict[str, int]:
+    return {
+        "agentic_math/nemoclaw_session_audit_required_instances": int(
+            summary.get("nemoclaw_session_audit_required_instances") or 0
+        ),
+        "agentic_math/nemoclaw_session_audit_passed_instances": int(
+            summary.get("nemoclaw_session_audit_passed_instances") or 0
+        ),
+        "agentic_math/nemoclaw_session_audit_failed_instances": int(
+            summary.get("nemoclaw_session_audit_failed_instances") or 0
+        ),
+    }
+
+
 def _log_summary(run, cfg, summary: dict[str, Any], output_df: pd.DataFrame) -> None:
     model_name = _cfg_get(cfg.model, "pretrained_model_name_or_path", "openclaw")
     leaderboard = pd.DataFrame(
@@ -191,6 +205,11 @@ def _log_summary(run, cfg, summary: dict[str, Any], output_df: pd.DataFrame) -> 
             "agentic_math_leaderboard_table": wandb.Table(dataframe=leaderboard),
             "agentic_math_output_table": wandb.Table(dataframe=output_df),
             "agentic_math_results": summary,
+            "agentic_math/accuracy": float(summary["accuracy"]),
+            "agentic_math/correct_instances": int(summary["correct_instances"]),
+            "agentic_math/total_instances": int(summary["total_instances"]),
+            "agentic_math/answered_instances": int(summary["answered_instances"]),
+            **_nemoclaw_audit_metrics(summary),
         }
     )
 

@@ -43,11 +43,29 @@ def test_validate_summary_accepts_consistent_rows():
         "incorrect_instances": 1,
         "accuracy": 2 / 3,
         "correctness": 2 / 3,
+        "nemoclaw_session_audit_required_instances": 3,
+        "nemoclaw_session_audit_passed_instances": 3,
+        "nemoclaw_session_audit_failed_instances": 0,
     }
     rows = [
-        {"correct": True, "predicted_answer": "1"},
-        {"correct": True, "predicted_answer": "2"},
-        {"correct": False, "predicted_answer": None},
+        {
+            "correct": True,
+            "predicted_answer": "1",
+            "nemoclaw_session_audit_ok": True,
+            "nemoclaw_session_audit": {"required": True, "ok": True},
+        },
+        {
+            "correct": True,
+            "predicted_answer": "2",
+            "nemoclaw_session_audit_ok": True,
+            "nemoclaw_session_audit": {"required": True, "ok": True},
+        },
+        {
+            "correct": False,
+            "predicted_answer": None,
+            "nemoclaw_session_audit_ok": True,
+            "nemoclaw_session_audit": {"required": True, "ok": True},
+        },
     ]
 
     module.validate_summary(summary, rows)
@@ -62,10 +80,23 @@ def test_validate_summary_rejects_mismatched_counts():
         "incorrect_instances": 0,
         "accuracy": 1.0,
         "correctness": 1.0,
+        "nemoclaw_session_audit_required_instances": 2,
+        "nemoclaw_session_audit_passed_instances": 2,
+        "nemoclaw_session_audit_failed_instances": 0,
     }
     rows = [
-        {"correct": True, "predicted_answer": "1"},
-        {"correct": False, "predicted_answer": "2"},
+        {
+            "correct": True,
+            "predicted_answer": "1",
+            "nemoclaw_session_audit_ok": True,
+            "nemoclaw_session_audit": {"required": True, "ok": True},
+        },
+        {
+            "correct": False,
+            "predicted_answer": "2",
+            "nemoclaw_session_audit_ok": True,
+            "nemoclaw_session_audit": {"required": True, "ok": True},
+        },
     ]
 
     with pytest.raises(ValueError, match="correct_instances=2"):
@@ -127,13 +158,28 @@ def test_main_dry_run_writes_plan_without_wandb_login(tmp_path, monkeypatch, cap
         "incorrect_instances": 1,
         "accuracy": 0.5,
         "correctness": 0.5,
+        "nemoclaw_session_audit_required_instances": 2,
+        "nemoclaw_session_audit_passed_instances": 2,
+        "nemoclaw_session_audit_failed_instances": 0,
         "runner_version": "test",
         "model": "test/model",
         "thinking": "enabled",
     }
     rows = [
-        {"id": "m1", "correct": True, "predicted_answer": "1"},
-        {"id": "m2", "correct": False, "predicted_answer": "2"},
+        {
+            "id": "m1",
+            "correct": True,
+            "predicted_answer": "1",
+            "nemoclaw_session_audit_ok": True,
+            "nemoclaw_session_audit": {"required": True, "ok": True},
+        },
+        {
+            "id": "m2",
+            "correct": False,
+            "predicted_answer": "2",
+            "nemoclaw_session_audit_ok": True,
+            "nemoclaw_session_audit": {"required": True, "ok": True},
+        },
     ]
     (results_dir / "summary.json").write_text(
         json.dumps(summary),
@@ -172,6 +218,12 @@ def test_main_dry_run_writes_plan_without_wandb_login(tmp_path, monkeypatch, cap
     assert set(plan["source"]["source_sha256"]) == {"summary_json", "results_jsonl"}
     assert plan["config"]["relog"]["source_sha256"] == plan["source"]["source_sha256"]
     assert plan["would_log"]["tables"]["agentic_math_output_table"] == 2
+    assert (
+        plan["would_log"]["summary_metrics"][
+            "agentic_math/nemoclaw_session_audit_required_instances"
+        ]
+        == 2
+    )
     assert plan["would_log"]["artifact"]["aliases"] == ["latest", "production"]
     assert plan["external_action_approval"] == {
         "required_before_wandb_write": True,
@@ -194,6 +246,7 @@ def test_main_dry_run_writes_plan_without_wandb_login(tmp_path, monkeypatch, cap
         "--expected-run-config relog.source_sha256.results_jsonl="
         in plan["post_log_verifier_command_template"]
     )
+    assert "--require-nemoclaw-session-audit" in plan["post_log_verifier_command_template"]
 
 
 def test_main_write_requires_validated_dry_run_plan_before_wandb_login(
@@ -210,10 +263,13 @@ def test_main_write_requires_validated_dry_run_plan_before_wandb_login(
         "incorrect_instances": 0,
         "accuracy": 1.0,
         "correctness": 1.0,
+        "nemoclaw_session_audit_required_instances": 1,
+        "nemoclaw_session_audit_passed_instances": 1,
+        "nemoclaw_session_audit_failed_instances": 0,
     }
     (results_dir / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
     (results_dir / "results.jsonl").write_text(
-        json.dumps({"correct": True, "predicted_answer": "1"}) + "\n",
+        json.dumps({"correct": True, "predicted_answer": "1", "nemoclaw_session_audit_ok": True, "nemoclaw_session_audit": {"required": True, "ok": True}}) + "\n",
         encoding="utf-8",
     )
 
@@ -251,10 +307,13 @@ def test_main_write_rejects_mismatched_validated_plan_before_wandb_login(
         "incorrect_instances": 0,
         "accuracy": 1.0,
         "correctness": 1.0,
+        "nemoclaw_session_audit_required_instances": 1,
+        "nemoclaw_session_audit_passed_instances": 1,
+        "nemoclaw_session_audit_failed_instances": 0,
     }
     (results_dir / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
     (results_dir / "results.jsonl").write_text(
-        json.dumps({"correct": True, "predicted_answer": "1"}) + "\n",
+        json.dumps({"correct": True, "predicted_answer": "1", "nemoclaw_session_audit_ok": True, "nemoclaw_session_audit": {"required": True, "ok": True}}) + "\n",
         encoding="utf-8",
     )
     plan_json = tmp_path / "plan.json"
@@ -315,11 +374,14 @@ def test_main_write_rejects_source_file_drift_after_validated_plan(
         "incorrect_instances": 0,
         "accuracy": 1.0,
         "correctness": 1.0,
+        "nemoclaw_session_audit_required_instances": 1,
+        "nemoclaw_session_audit_passed_instances": 1,
+        "nemoclaw_session_audit_failed_instances": 0,
     }
     (results_dir / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
     results_path = results_dir / "results.jsonl"
     results_path.write_text(
-        json.dumps({"correct": True, "predicted_answer": "1"}) + "\n",
+        json.dumps({"correct": True, "predicted_answer": "1", "nemoclaw_session_audit_ok": True, "nemoclaw_session_audit": {"required": True, "ok": True}}) + "\n",
         encoding="utf-8",
     )
     plan_json = tmp_path / "plan.json"
@@ -340,7 +402,7 @@ def test_main_write_rejects_source_file_drift_after_validated_plan(
     module.main()
 
     results_path.write_text(
-        json.dumps({"correct": True, "predicted_answer": "2"}) + "\n",
+        json.dumps({"correct": True, "predicted_answer": "2", "nemoclaw_session_audit_ok": True, "nemoclaw_session_audit": {"required": True, "ok": True}}) + "\n",
         encoding="utf-8",
     )
 
@@ -380,10 +442,13 @@ def test_main_write_requires_external_action_approval_before_wandb_login(
         "incorrect_instances": 0,
         "accuracy": 1.0,
         "correctness": 1.0,
+        "nemoclaw_session_audit_required_instances": 1,
+        "nemoclaw_session_audit_passed_instances": 1,
+        "nemoclaw_session_audit_failed_instances": 0,
     }
     (results_dir / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
     (results_dir / "results.jsonl").write_text(
-        json.dumps({"correct": True, "predicted_answer": "1"}) + "\n",
+        json.dumps({"correct": True, "predicted_answer": "1", "nemoclaw_session_audit_ok": True, "nemoclaw_session_audit": {"required": True, "ok": True}}) + "\n",
         encoding="utf-8",
     )
     plan_json = tmp_path / "plan.json"
@@ -439,10 +504,13 @@ def test_main_write_requires_external_action_approval_source_packet_before_wandb
         "incorrect_instances": 0,
         "accuracy": 1.0,
         "correctness": 1.0,
+        "nemoclaw_session_audit_required_instances": 1,
+        "nemoclaw_session_audit_passed_instances": 1,
+        "nemoclaw_session_audit_failed_instances": 0,
     }
     (results_dir / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
     (results_dir / "results.jsonl").write_text(
-        json.dumps({"correct": True, "predicted_answer": "1"}) + "\n",
+        json.dumps({"correct": True, "predicted_answer": "1", "nemoclaw_session_audit_ok": True, "nemoclaw_session_audit": {"required": True, "ok": True}}) + "\n",
         encoding="utf-8",
     )
     plan_json = tmp_path / "plan.json"

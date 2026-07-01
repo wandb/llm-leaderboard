@@ -40,6 +40,9 @@ class BenchmarkSpec:
     accuracy_metric: str | None = None
     result_artifact_type: str | None = None
     production_artifact_alias_required: bool = False
+    nemoclaw_audit_required_metric: str | None = None
+    nemoclaw_audit_passed_metric: str | None = None
+    nemoclaw_audit_failed_metric: str | None = None
 
 
 BENCHMARK_SPECS: dict[str, BenchmarkSpec] = {
@@ -53,6 +56,9 @@ BENCHMARK_SPECS: dict[str, BenchmarkSpec] = {
         accuracy_metric="agentic_math/accuracy",
         result_artifact_type="evaluation-results",
         production_artifact_alias_required=True,
+        nemoclaw_audit_required_metric="agentic_math/nemoclaw_session_audit_required_instances",
+        nemoclaw_audit_passed_metric="agentic_math/nemoclaw_session_audit_passed_instances",
+        nemoclaw_audit_failed_metric="agentic_math/nemoclaw_session_audit_failed_instances",
     ),
     "agentic_swe": BenchmarkSpec(
         id="agentic_swe",
@@ -63,6 +69,9 @@ BENCHMARK_SPECS: dict[str, BenchmarkSpec] = {
         accuracy_metric="agentic_swe/pass_at_1",
         result_artifact_type="evaluation-results",
         production_artifact_alias_required=True,
+        nemoclaw_audit_required_metric="agentic_swe/nemoclaw_session_audit_required_patches",
+        nemoclaw_audit_passed_metric="agentic_swe/nemoclaw_session_audit_passed_patches",
+        nemoclaw_audit_failed_metric="agentic_swe/nemoclaw_session_audit_failed_patches",
     ),
 }
 
@@ -145,6 +154,16 @@ def _table_check(summary: dict[str, Any], key: str, *, name: str) -> dict[str, A
     if nrows < 1:
         return _fail_check(name, f"{key} has no rows", table_name=key, nrows=nrows)
     return _ok_check(name, f"{key} has rows", table_name=key, nrows=nrows)
+
+
+def _int_metric(summary: dict[str, Any], key: str | None) -> tuple[int | None, Any]:
+    if not key:
+        return None, None
+    raw = _metric(summary, key)
+    try:
+        return int(raw), raw
+    except (TypeError, ValueError):
+        return None, raw
 
 
 def _artifact_summaries(run: Any) -> list[dict[str, Any]]:
@@ -354,6 +373,7 @@ def _benchmark_required_evidence(
     spec: BenchmarkSpec,
     *,
     expected_total: int | None,
+    require_nemoclaw_session_audit: bool,
 ) -> dict[str, Any]:
     metrics = [spec.total_metric]
     if spec.answered_metric:
@@ -372,7 +392,7 @@ def _benchmark_required_evidence(
                 else [],
             }
         )
-    return {
+    required_evidence = {
         "run_state": "finished",
         "expected_total": expected_total,
         "summary_metrics": metrics,
@@ -388,6 +408,19 @@ def _benchmark_required_evidence(
         ],
         "artifacts": artifacts,
     }
+    if require_nemoclaw_session_audit:
+        required_evidence["nemoclaw_session_audit"] = {
+            "required": True,
+            "required_metric": spec.nemoclaw_audit_required_metric,
+            "passed_metric": spec.nemoclaw_audit_passed_metric,
+            "failed_metric": spec.nemoclaw_audit_failed_metric,
+            "expected_required_equals_total": True,
+            "expected_passed_equals_total": True,
+            "expected_failed": 0,
+        }
+    else:
+        required_evidence["nemoclaw_session_audit"] = {"required": False}
+    return required_evidence
 
 
 def _full_required_evidence(
@@ -454,6 +487,7 @@ def _observed_benchmark_evidence(
         "summary_metrics": {},
         "tables": [],
         "artifacts": [],
+        "nemoclaw_session_audit": {},
     }
     for check in checks:
         name = check.get("name")
@@ -482,7 +516,88 @@ def _observed_benchmark_evidence(
             continue
         if name == "result_artifact":
             observed["artifacts"] = check.get("artifacts", [])
+            continue
+        if name == "nemoclaw_session_audit":
+            observed["nemoclaw_session_audit"] = {
+                "ok": bool(check.get("ok")),
+                "required": check.get("required"),
+                "passed": check.get("passed"),
+                "failed": check.get("failed"),
+                "expected_total": check.get("expected_total"),
+                "required_metric": spec.nemoclaw_audit_required_metric,
+                "passed_metric": spec.nemoclaw_audit_passed_metric,
+                "failed_metric": spec.nemoclaw_audit_failed_metric,
+            }
     return observed
+
+
+def _nemoclaw_session_audit_check(
+    summary: dict[str, Any],
+    spec: BenchmarkSpec,
+    *,
+    total: int | None,
+    required: bool,
+) -> dict[str, Any] | None:
+    if not required:
+        return None
+    metric_names = [
+        spec.nemoclaw_audit_required_metric,
+        spec.nemoclaw_audit_passed_metric,
+        spec.nemoclaw_audit_failed_metric,
+    ]
+    if not all(metric_names):
+        return _fail_check(
+            "nemoclaw_session_audit",
+            f"{spec.id} does not define required NeMoClaw session audit metrics",
+            expected_total=total,
+        )
+    required_count, required_raw = _int_metric(summary, spec.nemoclaw_audit_required_metric)
+    passed_count, passed_raw = _int_metric(summary, spec.nemoclaw_audit_passed_metric)
+    failed_count, failed_raw = _int_metric(summary, spec.nemoclaw_audit_failed_metric)
+    if required_count is None or passed_count is None or failed_count is None:
+        return _fail_check(
+            "nemoclaw_session_audit",
+            "missing or invalid NeMoClaw session audit summary metrics",
+            required=required_raw,
+            passed=passed_raw,
+            failed=failed_raw,
+            expected_total=total,
+        )
+    if total is not None and required_count != total:
+        return _fail_check(
+            "nemoclaw_session_audit",
+            "NeMoClaw session audit required count does not match total metric",
+            required=required_count,
+            passed=passed_count,
+            failed=failed_count,
+            expected_total=total,
+        )
+    if total is not None and passed_count != total:
+        return _fail_check(
+            "nemoclaw_session_audit",
+            "NeMoClaw session audit passed count does not match total metric",
+            required=required_count,
+            passed=passed_count,
+            failed=failed_count,
+            expected_total=total,
+        )
+    if failed_count != 0:
+        return _fail_check(
+            "nemoclaw_session_audit",
+            "NeMoClaw session audit has failed tasks",
+            required=required_count,
+            passed=passed_count,
+            failed=failed_count,
+            expected_total=total,
+        )
+    return _ok_check(
+        "nemoclaw_session_audit",
+        "NeMoClaw session audit metrics prove every evaluated task passed",
+        required=required_count,
+        passed=passed_count,
+        failed=failed_count,
+        expected_total=total,
+    )
 
 
 def _observed_full_evidence(checks: list[dict[str, Any]]) -> dict[str, Any]:
@@ -529,6 +644,7 @@ def verify_run(
     spec: BenchmarkSpec,
     *,
     expected_total: int | None = None,
+    require_nemoclaw_session_audit: bool = False,
     expected_config: dict[str, Any] | None = None,
     expected_tags: list[str] | None = None,
     expected_group: str | None = None,
@@ -724,6 +840,15 @@ def verify_run(
                 )
             )
 
+    nemoclaw_audit_check = _nemoclaw_session_audit_check(
+        summary,
+        spec,
+        total=total,
+        required=require_nemoclaw_session_audit,
+    )
+    if nemoclaw_audit_check is not None:
+        checks.append(nemoclaw_audit_check)
+
     artifacts = _artifact_summaries(run)
     if spec.result_artifact_type:
         matching = [
@@ -768,6 +893,7 @@ def verify_run(
         "required_evidence": _benchmark_required_evidence(
             spec,
             expected_total=expected_total,
+            require_nemoclaw_session_audit=require_nemoclaw_session_audit,
         ),
         "observed_evidence": _observed_benchmark_evidence(
             checks,
@@ -988,6 +1114,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--expected-run-group", help="Require a W&B run group.")
     parser.add_argument("--expected-run-job-type", help="Require a W&B run job_type.")
+    parser.add_argument(
+        "--require-nemoclaw-session-audit",
+        action="store_true",
+        help=(
+            "For Agentic Math/SWE completion, require W&B summary metrics proving "
+            "that every evaluated NeMoClaw task copied and passed its OpenClaw "
+            "session audit."
+        ),
+    )
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
     parser.add_argument("--json", type=Path, help="Optional path to write verifier JSON.")
     return parser.parse_args(argv)
@@ -1018,6 +1153,7 @@ def main(argv: list[str] | None = None) -> None:
             run,
             BENCHMARK_SPECS[args.benchmark],
             expected_total=args.expected_total,
+            require_nemoclaw_session_audit=bool(args.require_nemoclaw_session_audit),
             expected_config=expected_config,
             expected_tags=args.expected_run_tag,
             expected_group=args.expected_run_group,

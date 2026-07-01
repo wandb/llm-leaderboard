@@ -196,6 +196,10 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("Agentic Math runner path", "run_agentic_math_openclaw.py"),
             ("Agentic Math session-prefix config lookup", 'session_prefix = _cfg_get(cfg.agentic_math, "session_prefix")'),
             ("Agentic Math session-prefix pass-through", 'command.extend(["--session-prefix", str(session_prefix)])'),
+            (
+                "Agentic Math W&B audit metric logging",
+                "agentic_math/nemoclaw_session_audit_required_instances",
+            ),
         ),
     },
     "scripts/evaluator/swebench_pro.py": {
@@ -204,6 +208,11 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("SWE-Bench Pro runner path", "run_swebench_pro_openclaw.py"),
             ("SWE-Bench Pro session-prefix config lookup", 'session_prefix = _cfg_get(cfg.swebench_pro, "session_prefix")'),
             ("SWE-Bench Pro session-prefix pass-through", 'command.extend(["--session-prefix", str(session_prefix)])'),
+            ("SWE-Bench Pro patch audit row loading", "def _read_patch_rows("),
+            (
+                "SWE-Bench Pro W&B audit metric logging",
+                "agentic_swe/nemoclaw_session_audit_required_patches",
+            ),
         ),
     },
     "scripts/tools/run_openclaw_agent_protocol.py": {
@@ -368,6 +377,14 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "Weave request-model verifier pass-through",
                 "expected_request_models=weave_expected_request_models(",
             ),
+            (
+                "W&B completion requires NeMoClaw session audit",
+                "--require-nemoclaw-session-audit",
+            ),
+            (
+                "W&B completion audit requirement flag",
+                "require_nemoclaw_session_audit",
+            ),
         ),
     },
     "scripts/tools/verify_taiwan_weave_agents.py": {
@@ -424,6 +441,14 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("Agentic Math relog source validation", "validate_summary(summary, rows)"),
             ("Agentic Math output table", "agentic_math_output_table"),
             ("Agentic Math NeMoClaw audit field passthrough", "nemoclaw_session_audit_ok"),
+            (
+                "Agentic Math relog audit metric logging",
+                "agentic_math/nemoclaw_session_audit_required_instances",
+            ),
+            (
+                "Agentic Math relog verifier audit flag",
+                "--require-nemoclaw-session-audit",
+            ),
         ),
     },
     "scripts/tools/log_agentic_swe_results_to_wandb.py": {
@@ -432,6 +457,14 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("SWE relog conversation-order field", "conversation_order_ok"),
             ("SWE relog NeMoClaw audit field", "nemoclaw_session_audit_ok"),
             ("SWE output table", "agentic_swe_output_table"),
+            (
+                "SWE relog audit metric logging",
+                "agentic_swe/nemoclaw_session_audit_required_patches",
+            ),
+            (
+                "SWE relog verifier audit flag",
+                "--require-nemoclaw-session-audit",
+            ),
         ),
     },
 }

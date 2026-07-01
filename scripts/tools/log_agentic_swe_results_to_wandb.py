@@ -136,6 +136,39 @@ def validate_summary(
         raise ValueError("; ".join(mismatches))
 
 
+def validate_nemoclaw_session_audit(
+    summary: dict[str, Any],
+    patch_rows: list[dict[str, Any]],
+) -> None:
+    expected_ids = set(map(str, summary["resolved_ids"] + summary["unresolved_ids"]))
+    patch_by_instance = {
+        str(row.get("instance_id")): row
+        for row in patch_rows
+        if row.get("instance_id") is not None
+    }
+    missing_patch_rows = sorted(expected_ids - set(patch_by_instance))
+    counts = nemoclaw_audit_summary_metrics(patch_rows)
+    required = counts["agentic_swe/nemoclaw_session_audit_required_patches"]
+    passed = counts["agentic_swe/nemoclaw_session_audit_passed_patches"]
+    failed = counts["agentic_swe/nemoclaw_session_audit_failed_patches"]
+    total = int(summary["total_instances"])
+    mismatches: list[str] = []
+    if missing_patch_rows:
+        mismatches.append(f"patch rows missing instance ids: {missing_patch_rows[:5]}")
+    if required != total:
+        mismatches.append(
+            "agentic_swe/nemoclaw_session_audit_required_patches must equal total_instances"
+        )
+    if passed != total:
+        mismatches.append(
+            "agentic_swe/nemoclaw_session_audit_passed_patches must equal total_instances"
+        )
+    if failed != 0:
+        mismatches.append("agentic_swe/nemoclaw_session_audit_failed_patches must be 0")
+    if mismatches:
+        raise ValueError("; ".join(mismatches))
+
+
 def build_leaderboard(
     *,
     model_name: str,
@@ -186,6 +219,22 @@ def build_output_table(summary: dict[str, Any], patch_rows: list[dict[str, Any]]
             }
         )
     return pd.DataFrame(output_rows)
+
+
+def nemoclaw_audit_summary_metrics(patch_rows: list[dict[str, Any]]) -> dict[str, int]:
+    required = [
+        row
+        for row in patch_rows
+        if isinstance(row.get("nemoclaw_session_audit"), dict)
+        and row["nemoclaw_session_audit"].get("required") is True
+    ]
+    passed = [row for row in required if row.get("nemoclaw_session_audit_ok") is True]
+    failed = [row for row in required if row.get("nemoclaw_session_audit_ok") is False]
+    return {
+        "agentic_swe/nemoclaw_session_audit_required_patches": len(required),
+        "agentic_swe/nemoclaw_session_audit_passed_patches": len(passed),
+        "agentic_swe/nemoclaw_session_audit_failed_patches": len(failed),
+    }
 
 
 def make_artifact(
@@ -296,6 +345,7 @@ def build_dry_run_plan(
     official_eval_dir: Path,
     patch_path: Path,
     summary: dict[str, Any],
+    patch_rows: list[dict[str, Any]],
     row_count: int,
     expected_total: int | None,
     tags: list[str],
@@ -342,6 +392,7 @@ def build_dry_run_plan(
                 "agentic_swe/resolved_instances": int(summary["resolved_instances"]),
                 "agentic_swe/total_instances": int(summary["total_instances"]),
                 "agentic_swe/unresolved_instances": int(summary["unresolved_instances"]),
+                **nemoclaw_audit_summary_metrics(patch_rows),
             },
             "artifact": {
                 "name": artifact_name,
@@ -361,6 +412,7 @@ def build_dry_run_plan(
             f"--expected-run-config model.pretrained_model_name_or_path={model_name} "
             f"{source_hash_config_args}"
             "--expected-run-job-type evaluation-relog "
+            "--require-nemoclaw-session-audit "
             "--json outputs/taiwan_full_eval/wandb_completion/agentic_swe-RUN_ID_AFTER_WANDB_LOG.json"
         ),
     }
@@ -526,6 +578,7 @@ def main() -> None:
             eval_results=eval_results,
             expected_total=args.expected_total,
         )
+        validate_nemoclaw_session_audit(summary, patch_rows)
     except ValueError as exc:
         if dry_run_requested:
             emit_plan(
@@ -579,6 +632,7 @@ def main() -> None:
         official_eval_dir=official_eval_dir,
         patch_path=patch_path,
         summary=summary,
+        patch_rows=patch_rows,
         row_count=len(output_df),
         expected_total=args.expected_total,
         tags=tags,
@@ -639,6 +693,7 @@ def main() -> None:
                 "agentic_swe/resolved_instances": int(summary["resolved_instances"]),
                 "agentic_swe/total_instances": int(summary["total_instances"]),
                 "agentic_swe/unresolved_instances": int(summary["unresolved_instances"]),
+                **nemoclaw_audit_summary_metrics(patch_rows),
             }
         )
         run.log_artifact(

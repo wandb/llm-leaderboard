@@ -35,6 +35,9 @@ REQUIRED_SUMMARY_KEYS = {
     "incorrect_instances",
     "accuracy",
     "correctness",
+    "nemoclaw_session_audit_required_instances",
+    "nemoclaw_session_audit_passed_instances",
+    "nemoclaw_session_audit_failed_instances",
 }
 NEMOCLAW_SESSION_AUDIT_COLUMNS = ("nemoclaw_session_audit_ok", "nemoclaw_session_audit")
 
@@ -109,6 +112,52 @@ def validate_summary(summary: dict[str, Any], rows: list[dict[str, Any]]) -> Non
             f"accuracy={actual_accuracy} but correct/total={expected_accuracy}"
         )
 
+    audit_required = int(summary["nemoclaw_session_audit_required_instances"])
+    audit_passed = int(summary["nemoclaw_session_audit_passed_instances"])
+    audit_failed = int(summary["nemoclaw_session_audit_failed_instances"])
+    row_audit_required = sum(
+        1
+        for row in rows
+        if isinstance(row.get("nemoclaw_session_audit"), dict)
+        and row["nemoclaw_session_audit"].get("required") is True
+    )
+    row_audit_passed = sum(1 for row in rows if row.get("nemoclaw_session_audit_ok") is True)
+    row_audit_failed = sum(
+        1
+        for row in rows
+        if isinstance(row.get("nemoclaw_session_audit"), dict)
+        and row["nemoclaw_session_audit"].get("required") is True
+        and row.get("nemoclaw_session_audit_ok") is False
+    )
+    audit_mismatches = []
+    if audit_required != row_audit_required:
+        audit_mismatches.append(
+            f"nemoclaw_session_audit_required_instances={audit_required} "
+            f"but row audit required={row_audit_required}"
+        )
+    if audit_passed != row_audit_passed:
+        audit_mismatches.append(
+            f"nemoclaw_session_audit_passed_instances={audit_passed} "
+            f"but row audit passed={row_audit_passed}"
+        )
+    if audit_failed != row_audit_failed:
+        audit_mismatches.append(
+            f"nemoclaw_session_audit_failed_instances={audit_failed} "
+            f"but row audit failed={row_audit_failed}"
+        )
+    if audit_required != total:
+        audit_mismatches.append(
+            "nemoclaw_session_audit_required_instances must equal total_instances"
+        )
+    if audit_passed != total:
+        audit_mismatches.append(
+            "nemoclaw_session_audit_passed_instances must equal total_instances"
+        )
+    if audit_failed != 0:
+        audit_mismatches.append("nemoclaw_session_audit_failed_instances must be 0")
+    if audit_mismatches:
+        raise ValueError("; ".join(audit_mismatches))
+
 
 def build_leaderboard(
     *,
@@ -138,6 +187,20 @@ def ensure_output_observability_columns(output_df: pd.DataFrame) -> pd.DataFrame
         if column not in output_df.columns:
             output_df[column] = None
     return output_df
+
+
+def nemoclaw_audit_summary_metrics(summary: dict[str, Any]) -> dict[str, int]:
+    return {
+        "agentic_math/nemoclaw_session_audit_required_instances": int(
+            summary.get("nemoclaw_session_audit_required_instances") or 0
+        ),
+        "agentic_math/nemoclaw_session_audit_passed_instances": int(
+            summary.get("nemoclaw_session_audit_passed_instances") or 0
+        ),
+        "agentic_math/nemoclaw_session_audit_failed_instances": int(
+            summary.get("nemoclaw_session_audit_failed_instances") or 0
+        ),
+    }
 
 
 def make_artifact(
@@ -261,6 +324,7 @@ def build_dry_run_plan(
                 "agentic_math/correct_instances": int(summary["correct_instances"]),
                 "agentic_math/total_instances": int(summary["total_instances"]),
                 "agentic_math/answered_instances": int(summary["answered_instances"]),
+                **nemoclaw_audit_summary_metrics(summary),
             },
             "artifact": {
                 "name": artifact_name,
@@ -281,6 +345,7 @@ def build_dry_run_plan(
             f"--expected-run-config relog.source_sha256.summary_json={source_hashes['summary_json']} "
             f"--expected-run-config relog.source_sha256.results_jsonl={source_hashes['results_jsonl']} "
             "--expected-run-job-type evaluation-relog "
+            "--require-nemoclaw-session-audit "
             "--json outputs/taiwan_full_eval/wandb_completion/agentic_math-RUN_ID_AFTER_WANDB_LOG.json"
         ),
     }
@@ -558,6 +623,7 @@ def main() -> None:
                 "agentic_math/correct_instances": int(summary["correct_instances"]),
                 "agentic_math/total_instances": int(summary["total_instances"]),
                 "agentic_math/answered_instances": int(summary["answered_instances"]),
+                **nemoclaw_audit_summary_metrics(summary),
             }
         )
         run.log_artifact(

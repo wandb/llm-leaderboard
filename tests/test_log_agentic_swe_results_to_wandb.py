@@ -30,6 +30,29 @@ def summary_payload():
     }
 
 
+def patch_rows_with_nemoclaw_audit(*, tool_policy_ok: bool = True):
+    return [
+        {
+            "instance_id": "i1",
+            "tool_policy_ok": tool_policy_ok,
+            "nemoclaw_session_audit_ok": True,
+            "nemoclaw_session_audit": {"required": True, "ok": True},
+        },
+        {
+            "instance_id": "i2",
+            "tool_policy_ok": True,
+            "nemoclaw_session_audit_ok": True,
+            "nemoclaw_session_audit": {"required": True, "ok": True},
+        },
+        {
+            "instance_id": "i3",
+            "tool_policy_ok": True,
+            "nemoclaw_session_audit_ok": True,
+            "nemoclaw_session_audit": {"required": True, "ok": True},
+        },
+    ]
+
+
 def test_validate_summary_accepts_consistent_eval_results():
     module = load_module()
 
@@ -129,11 +152,7 @@ def test_main_dry_run_writes_plan_without_wandb_login(tmp_path, monkeypatch, cap
     )
     patch_path.write_text(
         json.dumps(
-            [
-                {"instance_id": "i1", "tool_policy_ok": True},
-                {"instance_id": "i2", "tool_policy_ok": True},
-                {"instance_id": "i3", "tool_policy_ok": True},
-            ]
+            patch_rows_with_nemoclaw_audit()
         ),
         encoding="utf-8",
     )
@@ -174,6 +193,12 @@ def test_main_dry_run_writes_plan_without_wandb_login(tmp_path, monkeypatch, cap
     }
     assert plan["config"]["relog"]["source_sha256"] == plan["source"]["source_sha256"]
     assert plan["would_log"]["tables"]["agentic_swe_output_table"] == 3
+    assert (
+        plan["would_log"]["summary_metrics"][
+            "agentic_swe/nemoclaw_session_audit_required_patches"
+        ]
+        == 3
+    )
     assert plan["would_log"]["artifact"]["aliases"] == ["latest", "production"]
     assert plan["external_action_approval"] == {
         "required_before_wandb_write": True,
@@ -200,6 +225,7 @@ def test_main_dry_run_writes_plan_without_wandb_login(tmp_path, monkeypatch, cap
         "--expected-run-config relog.source_sha256.patch_path="
         in plan["post_log_verifier_command_template"]
     )
+    assert "--require-nemoclaw-session-audit" in plan["post_log_verifier_command_template"]
 
 
 def test_main_dry_run_validation_failure_writes_machine_readable_plan(
@@ -219,7 +245,7 @@ def test_main_dry_run_validation_failure_writes_machine_readable_plan(
         json.dumps({"i1": True, "i2": False, "i3": True}),
         encoding="utf-8",
     )
-    patch_path.write_text(json.dumps([{"instance_id": "i1"}]), encoding="utf-8")
+    patch_path.write_text(json.dumps(patch_rows_with_nemoclaw_audit()), encoding="utf-8")
     plan_json = tmp_path / "validation_failed.json"
 
     def fail_login():
@@ -288,7 +314,7 @@ def test_main_write_requires_validated_dry_run_plan_before_wandb_login(
         json.dumps({"i1": True, "i2": False, "i3": True}),
         encoding="utf-8",
     )
-    patch_path.write_text(json.dumps([{"instance_id": "i1"}]), encoding="utf-8")
+    patch_path.write_text(json.dumps(patch_rows_with_nemoclaw_audit()), encoding="utf-8")
 
     def fail_login():
         raise AssertionError("must reject before W&B login")
@@ -330,7 +356,7 @@ def test_main_write_rejects_mismatched_validated_plan_before_wandb_login(
         json.dumps({"i1": True, "i2": False, "i3": True}),
         encoding="utf-8",
     )
-    patch_path.write_text(json.dumps([{"instance_id": "i1"}]), encoding="utf-8")
+    patch_path.write_text(json.dumps(patch_rows_with_nemoclaw_audit()), encoding="utf-8")
     plan_json = tmp_path / "plan.json"
     plan_json.write_text(
         json.dumps(
@@ -397,11 +423,7 @@ def test_main_write_rejects_source_file_drift_after_validated_plan(
     )
     patch_path.write_text(
         json.dumps(
-            [
-                {"instance_id": "i1", "tool_policy_ok": True},
-                {"instance_id": "i2", "tool_policy_ok": True},
-                {"instance_id": "i3", "tool_policy_ok": True},
-            ]
+            patch_rows_with_nemoclaw_audit()
         ),
         encoding="utf-8",
     )
@@ -428,11 +450,7 @@ def test_main_write_rejects_source_file_drift_after_validated_plan(
 
     patch_path.write_text(
         json.dumps(
-            [
-                {"instance_id": "i1", "tool_policy_ok": False},
-                {"instance_id": "i2", "tool_policy_ok": True},
-                {"instance_id": "i3", "tool_policy_ok": True},
-            ]
+            patch_rows_with_nemoclaw_audit(tool_policy_ok=False)
         ),
         encoding="utf-8",
     )
@@ -481,11 +499,7 @@ def test_main_write_requires_external_action_approval_before_wandb_login(
     )
     patch_path.write_text(
         json.dumps(
-            [
-                {"instance_id": "i1", "tool_policy_ok": True},
-                {"instance_id": "i2", "tool_policy_ok": True},
-                {"instance_id": "i3", "tool_policy_ok": True},
-            ]
+            patch_rows_with_nemoclaw_audit()
         ),
         encoding="utf-8",
     )
@@ -554,11 +568,7 @@ def test_main_write_requires_external_action_approval_source_packet_before_wandb
     )
     patch_path.write_text(
         json.dumps(
-            [
-                {"instance_id": "i1", "tool_policy_ok": True},
-                {"instance_id": "i2", "tool_policy_ok": True},
-                {"instance_id": "i3", "tool_policy_ok": True},
-            ]
+            patch_rows_with_nemoclaw_audit()
         ),
         encoding="utf-8",
     )

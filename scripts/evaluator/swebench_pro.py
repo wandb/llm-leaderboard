@@ -262,6 +262,36 @@ def _run_official_eval(cfg, csv_path: Path, patch_path: Path, output_dir: Path) 
     return json.loads(summary_path.read_text(encoding="utf-8"))
 
 
+def _read_patch_rows(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError(f"{path} must contain a JSON list")
+    rows: list[dict[str, Any]] = []
+    for index, row in enumerate(payload, start=1):
+        if not isinstance(row, dict):
+            raise ValueError(f"{path}:{index} must contain a JSON object")
+        rows.append(row)
+    return rows
+
+
+def _nemoclaw_audit_counts(patch_rows: list[dict[str, Any]]) -> dict[str, int]:
+    required = [
+        row
+        for row in patch_rows
+        if isinstance(row.get("nemoclaw_session_audit"), dict)
+        and row["nemoclaw_session_audit"].get("required") is True
+    ]
+    passed = [row for row in required if row.get("nemoclaw_session_audit_ok") is True]
+    failed = [row for row in required if row.get("nemoclaw_session_audit_ok") is False]
+    return {
+        "required": len(required),
+        "passed": len(passed),
+        "failed": len(failed),
+    }
+
+
 def _sanitize_artifact_component(value: str) -> str:
     return (
         value.replace("/", "-")
@@ -330,12 +360,34 @@ def _log_summary(run, cfg, summary: dict[str, Any], output_dir: Path, patch_path
         ]
     )
     resolved = set(summary.get("resolved_ids", []))
-    per_instance = pd.DataFrame(
-        [
-            {"instance_id": iid, "resolved": iid in resolved}
-            for iid in sorted(summary.get("resolved_ids", []) + summary.get("unresolved_ids", []))
-        ]
-    )
+    patch_rows = _read_patch_rows(patch_path)
+    patch_by_instance = {
+        str(row.get("instance_id")): row
+        for row in patch_rows
+        if row.get("instance_id") is not None
+    }
+    per_instance_rows = []
+    for iid in sorted(summary.get("resolved_ids", []) + summary.get("unresolved_ids", [])):
+        patch = patch_by_instance.get(iid) or {}
+        audit = patch.get("nemoclaw_session_audit")
+        per_instance_rows.append(
+            {
+                "instance_id": iid,
+                "resolved": iid in resolved,
+                "has_patch_record": bool(patch),
+                "openclaw_returncode": patch.get("openclaw_returncode"),
+                "tool_policy_ok": patch.get("tool_policy_ok"),
+                "conversation_order_ok": patch.get("conversation_order_ok"),
+                "nemoclaw_session_audit_ok": patch.get("nemoclaw_session_audit_ok"),
+                "nemoclaw_session_audit_required": (
+                    audit.get("required") if isinstance(audit, dict) else None
+                ),
+                "openclaw_tool_call_count": patch.get("openclaw_tool_call_count"),
+                "openclaw_result_path": patch.get("openclaw_result_path"),
+            }
+        )
+    per_instance = pd.DataFrame(per_instance_rows)
+    audit_counts = _nemoclaw_audit_counts(patch_rows)
     run.log(
         {
             "agentic_swe_leaderboard_table": wandb.Table(dataframe=leaderboard),
@@ -355,6 +407,9 @@ def _log_summary(run, cfg, summary: dict[str, Any], output_dir: Path, patch_path
             "agentic_swe/resolved_instances": int(summary["resolved_instances"]),
             "agentic_swe/total_instances": int(summary["total_instances"]),
             "agentic_swe/unresolved_instances": int(summary["unresolved_instances"]),
+            "agentic_swe/nemoclaw_session_audit_required_patches": audit_counts["required"],
+            "agentic_swe/nemoclaw_session_audit_passed_patches": audit_counts["passed"],
+            "agentic_swe/nemoclaw_session_audit_failed_patches": audit_counts["failed"],
         }
     )
     run.log_artifact(

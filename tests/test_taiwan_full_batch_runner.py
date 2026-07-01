@@ -165,7 +165,11 @@ def write_passing_weave_content_canary_gate(path: Path) -> Path:
 def test_default_wandb_verify_benchmarks_by_phase():
     module = load_module()
 
-    assert module.default_wandb_verify_benchmarks("full") == ["taiwan_full"]
+    assert module.default_wandb_verify_benchmarks("full") == [
+        "agentic_math",
+        "agentic_swe",
+        "taiwan_full",
+    ]
     assert module.default_wandb_verify_benchmarks("agentic") == [
         "agentic_math",
         "agentic_swe",
@@ -199,6 +203,22 @@ def test_build_wandb_verify_command_adds_expected_totals_and_full_options():
     assert "taiwan_full" in full
     assert ["--num-few-shots", "2"] == full[-4:-2]
     assert full[-2:] == ["--include-pending", "--no-require-aggregate"]
+
+
+def test_build_wandb_verify_command_can_require_nemoclaw_session_audit():
+    module = load_module()
+
+    command = module.build_wandb_verify_command(
+        python="python3",
+        run_id="run-1",
+        benchmark="agentic_math",
+        num_few_shots=2,
+        include_pending=False,
+        require_aggregate=True,
+        require_nemoclaw_session_audit=True,
+    )
+
+    assert "--require-nemoclaw-session-audit" in command
 
 
 def test_build_wandb_verify_command_can_write_json_with_env_file(tmp_path):
@@ -1122,6 +1142,12 @@ def test_prepare_only_review_records_completion_requirements(tmp_path, monkeypat
     ]
     assert requirements["wandb_completion"]["schema_version"] == 1
     assert requirements["wandb_completion"]["observed_evidence_required"] is True
+    assert (
+        requirements["wandb_completion"][
+            "nemoclaw_session_audit_required_for_agentic_benchmarks"
+        ]
+        is True
+    )
     assert requirements["weave_agents_completion"]["required"] is True
     assert requirements["weave_agents_completion"]["content_required"] is True
     assert requirements["weave_agents_completion"]["tool_span_required"] is True
