@@ -1660,6 +1660,7 @@ def test_release_evidence_bundle_copies_report_references(tmp_path):
     assert "external_action_approval_packet.json" in summary
     assert "render_external_action_approval_template.py" in summary
     assert "verify_external_action_approval_packet.py" in summary
+    assert "prepare_taiwan_external_action_approval.py" in summary
     assert "## Current Gate" in summary
     assert "## Required Next Actions" in summary
     assert "## Operator Next Steps" in summary

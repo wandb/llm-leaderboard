@@ -11552,6 +11552,40 @@ def test_verify_release_evidence_bundle_rejects_external_action_summary_count_mi
     ) in payload["errors"]
 
 
+def test_verify_release_evidence_bundle_rejects_missing_external_action_handoff_summary_content(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    summary_path = bundle / "summary.md"
+    summary_text = summary_path.read_text(encoding="utf-8")
+    helper_script = "scripts/tools/prepare_taiwan_external_action_approval.py"
+    assert helper_script in summary_text
+    summary_path.write_text(
+        summary_text.replace(
+            helper_script,
+            "scripts/tools/removed_external_action_approval_handoff.py",
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, "summary.md")
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "summary.md missing external action approval packet content: "
+        "scripts/tools/prepare_taiwan_external_action_approval.py"
+    ) in payload["errors"]
+
+
 def test_verify_release_evidence_bundle_rejects_external_action_summary_row_mismatch(tmp_path):
     bundle = build_bundle_with_operator_command_script(tmp_path)
     summary_path = bundle / "summary.md"

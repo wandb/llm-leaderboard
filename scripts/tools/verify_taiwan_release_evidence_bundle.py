@@ -3268,6 +3268,7 @@ def validate_summary_markdown(
             str(approval_packet.get("external_action_checklist_sha256") or ""),
             EXTERNAL_ACTION_APPROVAL_TEMPLATE_RENDERER_SCRIPT,
             EXTERNAL_ACTION_APPROVAL_PACKET_VERIFIER_SCRIPT,
+            EXTERNAL_ACTION_APPROVAL_HANDOFF_PREPARER_SCRIPT,
         ):
             if snippet and snippet not in summary_text:
                 errors.append(

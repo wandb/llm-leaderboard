@@ -4411,6 +4411,10 @@ def summary_markdown(manifest: dict[str, Any]) -> str:
         f"- Operator plan Markdown: `{operator_plan.get('markdown') or ''}`",
         f"- External action approval packet JSON: `{approval_packet.get('json') or ''}`",
         f"- External action approval packet Markdown: `{approval_packet.get('markdown') or ''}`",
+        (
+            "- External action approval handoff helper: "
+            f"`{EXTERNAL_ACTION_APPROVAL_HANDOFF_PREPARER_SCRIPT}`"
+        ),
         "",
         "| Field | Value |",
         "| --- | --- |",
@@ -4545,6 +4549,7 @@ def summary_markdown(manifest: dict[str, Any]) -> str:
             if isinstance(approval_packet.get("approval_template_renderer"), dict)
             else {}
         )
+        approval_handoff_preparer_script = EXTERNAL_ACTION_APPROVAL_HANDOFF_PREPARER_SCRIPT
         lines.extend(
             [
                 "",
@@ -4562,6 +4567,7 @@ def summary_markdown(manifest: dict[str, Any]) -> str:
                 f"| Approval verifier command | `{md_cell(approval_verifier.get('command_template'))}` |",
                 f"| Approval template renderer script | `{md_cell(approval_template_renderer.get('script'))}` |",
                 f"| Approval template renderer command | `{md_cell(approval_template_renderer.get('command_template'))}` |",
+                f"| Approval handoff helper script | `{md_cell(approval_handoff_preparer_script)}` |",
             ]
         )
     lines.extend(
