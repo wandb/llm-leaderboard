@@ -247,10 +247,62 @@ def validate_weave_content_canary_gate_option(
     return errors
 
 
+def validate_external_action_source_packet_option(
+    parts: list[str],
+    *,
+    base_dir: Path,
+    expected_source_packet_path: Path | None,
+) -> list[str]:
+    """Validate command-level approval source packet against the reviewed packet."""
+
+    if expected_source_packet_path is None:
+        return []
+    value = option_value(parts, "--external-action-approval-source-packet-json")
+    if not value or has_unresolved_placeholder(value):
+        return []
+    observed = Path(value)
+    if not observed.is_absolute():
+        observed = (base_dir / observed).resolve()
+    expected = expected_source_packet_path.resolve()
+    if observed != expected:
+        return [
+            "--external-action-approval-source-packet-json command value "
+            f"does not match reviewed source packet: {value} != {expected}"
+        ]
+    return []
+
+
+def validate_external_action_approval_report_option(
+    parts: list[str],
+    *,
+    base_dir: Path,
+    expected_report_path: Path | None,
+) -> list[str]:
+    """Validate command-level approval verifier report against reviewed report."""
+
+    if expected_report_path is None:
+        return []
+    value = option_value(parts, "--external-action-approval-report-json")
+    if not value or has_unresolved_placeholder(value):
+        return []
+    observed = Path(value)
+    if not observed.is_absolute():
+        observed = (base_dir / observed).resolve()
+    expected = expected_report_path.resolve()
+    if observed != expected:
+        return [
+            "--external-action-approval-report-json command value does not "
+            f"match reviewed verifier report: {value} != {expected}"
+        ]
+    return []
+
+
 def validate_command_policy(
     steps: list[dict[str, Any]],
     *,
     base_dir: Path | None = None,
+    expected_external_action_source_packet_path: Path | None = None,
+    expected_external_action_approval_report_path: Path | None = None,
 ) -> dict[str, Any]:
     """Validate rendered executable commands before producing runnable shell."""
 
@@ -271,6 +323,26 @@ def validate_command_policy(
             lower_command = command.lower()
             if "openrouter" in lower_command:
                 command_errors.append("command must not reference OpenRouter")
+            if option_present(parts, "--external-action-approval-source-packet-json"):
+                command_errors.extend(
+                    validate_external_action_source_packet_option(
+                        parts,
+                        base_dir=base_dir,
+                        expected_source_packet_path=(
+                            expected_external_action_source_packet_path
+                        ),
+                    )
+                )
+            if option_present(parts, "--external-action-approval-report-json"):
+                command_errors.extend(
+                    validate_external_action_approval_report_option(
+                        parts,
+                        base_dir=base_dir,
+                        expected_report_path=(
+                            expected_external_action_approval_report_path
+                        ),
+                    )
+                )
 
             if command_invokes(parts, "run_weave_agents_content_canary.py") and option_present(
                 parts, "--execute"
@@ -702,7 +774,16 @@ def build_execution_plan(
         operator_plan,
         expected_release_gate_json,
     )
-    command_policy = validate_command_policy(steps, base_dir=Path.cwd())
+    command_policy = validate_command_policy(
+        steps,
+        base_dir=Path.cwd(),
+        expected_external_action_source_packet_path=(
+            external_action_approval_source_packet_json
+        ),
+        expected_external_action_approval_report_path=(
+            external_action_approval_report_json
+        ),
+    )
     return {
         "schema_version": 1,
         "generated_at": time.time(),

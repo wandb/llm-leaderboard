@@ -517,6 +517,17 @@ def test_render_operator_execution_plan_resolves_timestamp_canary_tokens(tmp_pat
         tmp_path / "approval.verify.json",
         source_packet,
     )
+    payload = json.loads(operator_plan.read_text(encoding="utf-8"))
+    payload["operator_next_steps"]["steps"][1]["commands"][0] = payload[
+        "operator_next_steps"
+    ]["steps"][1]["commands"][0].replace(
+        "temp/external_action_approval_packet.json",
+        str(source_packet),
+    ).replace(
+        "temp/external_action_approval.verify.json",
+        str(approval_report),
+    )
+    operator_plan.write_text(json.dumps(payload), encoding="utf-8")
     output_json = tmp_path / "execution_plan.json"
 
     result = subprocess.run(
@@ -551,6 +562,114 @@ def test_render_operator_execution_plan_resolves_timestamp_canary_tokens(tmp_pat
     )
     assert "CONTENT_CANARY_20260629T0105" in rendered
     assert "CONTENT_CANARY_YYYYMMDDTHHMM" not in rendered
+
+
+def test_render_operator_execution_plan_rejects_command_source_packet_mismatch(tmp_path):
+    source_packet = write_source_packet(tmp_path / "external_action_approval_packet.json")
+    other_packet = write_source_packet(
+        tmp_path / "other_external_action_approval_packet.json",
+        marker="other",
+    )
+    approval_report = write_external_action_approval_report(
+        tmp_path / "approval.verify.json",
+        source_packet,
+    )
+    gate_json = write_native_weave_content_canary_gate(
+        tmp_path / "native_content_canary.gate.json",
+    )
+    operator_plan = write_agentic_batch_operator_plan(
+        tmp_path / "operator_plan.json",
+        source_packet=other_packet,
+        approval_report=approval_report,
+        gate_json=gate_json,
+    )
+    output_json = tmp_path / "execution_plan.json"
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--operator-plan-json",
+            str(operator_plan),
+            "--gate",
+            "paid_run_review_package",
+            "--external-action-approval-source-packet-json",
+            str(source_packet),
+            "--external-action-approval-report-json",
+            str(approval_report),
+            "--output-json",
+            str(output_json),
+            "--require-ready",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    rendered = json.loads(output_json.read_text(encoding="utf-8"))
+    assert rendered["external_action_approval"]["valid"] is True
+    assert rendered["command_policy"]["valid"] is False
+    assert any(
+        "--external-action-approval-source-packet-json command value does not match"
+        in error
+        for error in rendered["command_policy"]["errors"]
+    )
+
+
+def test_render_operator_execution_plan_rejects_command_approval_report_mismatch(tmp_path):
+    source_packet = write_source_packet(tmp_path / "external_action_approval_packet.json")
+    approval_report = write_external_action_approval_report(
+        tmp_path / "approval.verify.json",
+        source_packet,
+    )
+    other_report = write_external_action_approval_report(
+        tmp_path / "other_approval.verify.json",
+        source_packet,
+    )
+    gate_json = write_native_weave_content_canary_gate(
+        tmp_path / "native_content_canary.gate.json",
+    )
+    operator_plan = write_agentic_batch_operator_plan(
+        tmp_path / "operator_plan.json",
+        source_packet=source_packet,
+        approval_report=other_report,
+        gate_json=gate_json,
+    )
+    output_json = tmp_path / "execution_plan.json"
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--operator-plan-json",
+            str(operator_plan),
+            "--gate",
+            "paid_run_review_package",
+            "--external-action-approval-source-packet-json",
+            str(source_packet),
+            "--external-action-approval-report-json",
+            str(approval_report),
+            "--output-json",
+            str(output_json),
+            "--require-ready",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    rendered = json.loads(output_json.read_text(encoding="utf-8"))
+    assert rendered["external_action_approval"]["valid"] is True
+    assert rendered["command_policy"]["valid"] is False
+    assert any(
+        "--external-action-approval-report-json command value does not match"
+        in error
+        for error in rendered["command_policy"]["errors"]
+    )
 
 
 def test_render_operator_execution_plan_binds_to_source_release_gate(tmp_path):

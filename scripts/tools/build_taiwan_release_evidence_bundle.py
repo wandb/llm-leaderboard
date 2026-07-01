@@ -3338,6 +3338,7 @@ def operator_execution_plan_renderer_summary(
             "writes_shell_script_only_when_placeholders_resolved": True,
             "requires_valid_external_action_approval_for_shell_script": True,
             "requires_source_packet_match_for_shell_script": True,
+            "requires_command_approval_paths_match_for_shell_script": True,
             "requires_release_gate_match_for_shell_script": True,
             "requires_command_policy_validation_for_shell_script": True,
             "requires_weave_content_canary_gate_validation_for_shell_script": True,

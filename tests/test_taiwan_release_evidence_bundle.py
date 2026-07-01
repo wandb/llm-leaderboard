@@ -1144,6 +1144,12 @@ def test_release_evidence_bundle_copies_report_references(tmp_path):
     assert renderer["safety"]["requires_command_policy_validation_for_shell_script"] is True
     assert (
         renderer["safety"][
+            "requires_command_approval_paths_match_for_shell_script"
+        ]
+        is True
+    )
+    assert (
+        renderer["safety"][
             "requires_weave_content_canary_gate_validation_for_shell_script"
         ]
         is True

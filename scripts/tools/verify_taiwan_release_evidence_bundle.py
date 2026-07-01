@@ -172,6 +172,22 @@ OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
     ),
     ("Weave content canary NeMoClaw command policy", "--nemoclaw-sandbox"),
     ("Weave Agents usage command policy", "--weave-agents-require-usage"),
+    (
+        "command approval source packet path validator",
+        "def validate_external_action_source_packet_option(",
+    ),
+    (
+        "command approval report path validator",
+        "def validate_external_action_approval_report_option(",
+    ),
+    (
+        "command approval source packet expectation",
+        "expected_external_action_source_packet_path",
+    ),
+    (
+        "command approval report expectation",
+        "expected_external_action_approval_report_path",
+    ),
 )
 AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
     "scripts/evaluator/agentic_math.py": {
@@ -1822,6 +1838,14 @@ def validate_operator_execution_plan_renderer(
         if safety.get("requires_source_packet_match_for_shell_script") is not True:
             errors.append(
                 "operator_plan renderer safety must require source packet match for shell script"
+            )
+        if (
+            safety.get("requires_command_approval_paths_match_for_shell_script")
+            is not True
+        ):
+            errors.append(
+                "operator_plan renderer safety must require command approval path "
+                "match for shell script"
             )
         if safety.get("requires_release_gate_match_for_shell_script") is not True:
             errors.append(

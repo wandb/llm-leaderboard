@@ -4835,6 +4835,35 @@ def test_verify_release_evidence_bundle_rejects_operator_renderer_missing_comman
     )
 
 
+def test_verify_release_evidence_bundle_rejects_operator_renderer_missing_command_approval_path_safety(tmp_path):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    operator_plan_path = bundle / "operator_plan.json"
+    payload = json.loads(operator_plan_path.read_text(encoding="utf-8"))
+    renderer = payload["operator_execution_plan_renderer"]
+    renderer["safety"].pop(
+        "requires_command_approval_paths_match_for_shell_script",
+        None,
+    )
+    operator_plan_path.write_text(json.dumps(payload), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, "operator_plan.json")
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "operator_plan renderer safety must require command approval path match for shell script"
+        in payload["errors"]
+    )
+
+
 def test_verify_release_evidence_bundle_rejects_operator_renderer_missing_weave_gate_safety(tmp_path):
     bundle = build_bundle_with_operator_command_script(tmp_path)
     operator_plan_path = bundle / "operator_plan.json"
@@ -4899,6 +4928,44 @@ def test_verify_release_evidence_bundle_rejects_operator_renderer_script_missing
         "operator execution plan renderer script missing source contract "
         "Weave content canary gate validator function: "
         "def validate_weave_content_canary_gate_option"
+    ) in payload["errors"]
+
+
+def test_verify_release_evidence_bundle_rejects_operator_renderer_script_missing_command_approval_contract(tmp_path):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path")
+        == "scripts/tools/render_taiwan_operator_execution_plan.py"
+    )
+    renderer_script = bundle / record["bundle_path"]
+    renderer_script.write_text(
+        renderer_script.read_text(encoding="utf-8").replace(
+            "def validate_external_action_source_packet_option(",
+            "def removed_external_action_source_packet_option(",
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "operator execution plan renderer script missing source contract "
+        "command approval source packet path validator: "
+        "def validate_external_action_source_packet_option("
     ) in payload["errors"]
 
 
