@@ -1131,6 +1131,8 @@ def run_openclaw_for_task(
             "tool_policy_violations": sidecar.get("tool_policy_violations", []),
             "conversation_order_ok": (sidecar.get("conversation_order") or {}).get("ok"),
             "conversation_order": sidecar.get("conversation_order", {}),
+            "nemoclaw_session_audit_ok": (sidecar.get("nemoclaw_session_audit") or {}).get("ok"),
+            "nemoclaw_session_audit": sidecar.get("nemoclaw_session_audit", {}),
             "runtime_budget": sidecar.get("runtime_budget", {}),
             "weave_sidecar": sidecar.get("weave_sidecar", {}),
             "openclaw_disqualified_reason": metadata.get("openclaw_disqualified_reason", ""),
@@ -1164,6 +1166,26 @@ def write_outputs(
         "tool_policy_violation_patches": sum(1 for patch in patches if patch.get("tool_policy_violations")),
         "conversation_order_violation_patches": sum(
             1 for patch in patches if patch.get("conversation_order_ok") is False
+        ),
+        "nemoclaw_session_audit_required_patches": sum(
+            1
+            for patch in patches
+            if isinstance(patch.get("nemoclaw_session_audit"), dict)
+            and patch["nemoclaw_session_audit"].get("required") is True
+        ),
+        "nemoclaw_session_audit_passed_patches": sum(
+            1
+            for patch in patches
+            if isinstance(patch.get("nemoclaw_session_audit"), dict)
+            and patch["nemoclaw_session_audit"].get("required") is True
+            and patch.get("nemoclaw_session_audit_ok") is True
+        ),
+        "nemoclaw_session_audit_failed_patches": sum(
+            1
+            for patch in patches
+            if isinstance(patch.get("nemoclaw_session_audit"), dict)
+            and patch["nemoclaw_session_audit"].get("required") is True
+            and patch.get("nemoclaw_session_audit_ok") is False
         ),
         "runtime_budget_exceeded_patches": sum(
             1 for patch in patches if patch.get("openclaw_disqualified_reason") == "runtime_budget_exceeded"
@@ -1391,6 +1413,8 @@ def main() -> None:
                     "tool_policy_violations",
                     "conversation_order_ok",
                     "conversation_order",
+                    "nemoclaw_session_audit_ok",
+                    "nemoclaw_session_audit",
                     "openclaw_disqualified_reason",
                     "nemoclaw_sandbox",
                     "nemoclaw_workdir",

@@ -36,6 +36,7 @@ REQUIRED_SUMMARY_KEYS = {
     "accuracy",
     "correctness",
 }
+NEMOCLAW_SESSION_AUDIT_COLUMNS = ("nemoclaw_session_audit_ok", "nemoclaw_session_audit")
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -130,6 +131,13 @@ def build_leaderboard(
             }
         ]
     )
+
+
+def ensure_output_observability_columns(output_df: pd.DataFrame) -> pd.DataFrame:
+    for column in NEMOCLAW_SESSION_AUDIT_COLUMNS:
+        if column not in output_df.columns:
+            output_df[column] = None
+    return output_df
 
 
 def make_artifact(
@@ -474,7 +482,7 @@ def main() -> None:
         summary=summary,
     )
 
-    output_df = pd.DataFrame(rows)
+    output_df = ensure_output_observability_columns(pd.DataFrame(rows))
     leaderboard = build_leaderboard(
         model_name=args.model_name,
         summary=summary,

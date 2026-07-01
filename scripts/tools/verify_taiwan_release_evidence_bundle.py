@@ -236,6 +236,8 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("NeMoClaw session-audit non-scoreable reason", "nemoclaw_session_audit_failed"),
             ("conversation-order result field", "conversation_order_ok"),
             ("conversation-order summary counter", "conversation_order_violation_instances"),
+            ("NeMoClaw session-audit result field", "nemoclaw_session_audit_ok"),
+            ("NeMoClaw session-audit summary counter", "nemoclaw_session_audit_required_instances"),
         ),
     },
     "scripts/tools/run_swebench_pro_openclaw.py": {
@@ -255,6 +257,8 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("NeMoClaw session-audit non-scoreable reason", "nemoclaw_session_audit_failed"),
             ("conversation-order result field", "conversation_order_ok"),
             ("conversation-order summary counter", "conversation_order_violation_patches"),
+            ("NeMoClaw session-audit result field", "nemoclaw_session_audit_ok"),
+            ("NeMoClaw session-audit summary counter", "nemoclaw_session_audit_required_patches"),
         ),
     },
     "scripts/tools/run_taiwan_full_eval_batch.py": {
@@ -419,12 +423,14 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
         "tokens": (
             ("Agentic Math relog source validation", "validate_summary(summary, rows)"),
             ("Agentic Math output table", "agentic_math_output_table"),
+            ("Agentic Math NeMoClaw audit field passthrough", "nemoclaw_session_audit_ok"),
         ),
     },
     "scripts/tools/log_agentic_swe_results_to_wandb.py": {
         "role": "agentic_runner:swe_relog_script",
         "tokens": (
             ("SWE relog conversation-order field", "conversation_order_ok"),
+            ("SWE relog NeMoClaw audit field", "nemoclaw_session_audit_ok"),
             ("SWE output table", "agentic_swe_output_table"),
         ),
     },

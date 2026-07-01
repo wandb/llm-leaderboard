@@ -175,6 +175,12 @@ def build_output_table(summary: dict[str, Any], patch_rows: list[dict[str, Any]]
                 "openclaw_returncode": patch_row.get("openclaw_returncode"),
                 "tool_policy_ok": patch_row.get("tool_policy_ok"),
                 "conversation_order_ok": patch_row.get("conversation_order_ok"),
+                "nemoclaw_session_audit_ok": patch_row.get("nemoclaw_session_audit_ok"),
+                "nemoclaw_session_audit_required": (
+                    (patch_row.get("nemoclaw_session_audit") or {}).get("required")
+                    if isinstance(patch_row.get("nemoclaw_session_audit"), dict)
+                    else None
+                ),
                 "openclaw_tool_call_count": patch_row.get("openclaw_tool_call_count"),
                 "openclaw_result_path": patch_row.get("openclaw_result_path"),
             }

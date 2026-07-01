@@ -440,6 +440,36 @@ def test_success_sidecar_matches_cache_and_recovers_attempt_metadata(tmp_path):
     assert metadata["openclaw_attempt_output_dir"].endswith("openclaw_attempts/attempt-1")
 
 
+def test_scored_record_preserves_nemoclaw_session_audit(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    sidecar_path = tmp_path / "openclaw_result.json"
+    sidecar = {
+        "returncode": 0,
+        "stdout_json": {"finalAssistantVisibleText": "ANSWER: \\boxed{2}"},
+        "tool_policy_ok": True,
+        "tool_policy_violations": [],
+        "conversation_order": {"ok": True},
+        "nemoclaw_session_audit": {
+            "required": True,
+            "ok": True,
+            "copied_session_file": "outputs/task/nemoclaw_session.jsonl",
+        },
+    }
+
+    record = module.build_scored_record_from_sidecar(
+        {"task_id": "task_1", "answer": "2"},
+        sidecar_path,
+        sidecar,
+        {"prompt_hash": "prompt-hash"},
+        {"openclaw_attempt_number": 1},
+    )
+
+    assert record["correct"] is True
+    assert record["nemoclaw_session_audit_ok"] is True
+    assert record["nemoclaw_session_audit"]["required"] is True
+    assert record["nemoclaw_session_audit"]["copied_session_file"].endswith("nemoclaw_session.jsonl")
+
+
 def test_weave_sidecar_failure_is_observability_failure_not_model_error():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
     assert module.is_weave_sidecar_failure({"returncode": 0, "weave_sidecar": {"ok": False}})
@@ -460,7 +490,15 @@ def test_write_summary_counts_tool_usage(tmp_path):
         },
     )()
     results = [
-        {"task_id": "a", "subject": "algebra", "correct": True, "predicted_answer": "1", "openclaw_tool_call_count": 2},
+        {
+            "task_id": "a",
+            "subject": "algebra",
+            "correct": True,
+            "predicted_answer": "1",
+            "openclaw_tool_call_count": 2,
+            "nemoclaw_session_audit_ok": True,
+            "nemoclaw_session_audit": {"required": True, "ok": True},
+        },
         {
             "task_id": "b",
             "subject": "algebra",
@@ -469,6 +507,8 @@ def test_write_summary_counts_tool_usage(tmp_path):
             "openclaw_tool_call_count": 0,
             "openclaw_tool_error_count": 1,
             "tool_policy_violations": [{"type": "denied_tool"}],
+            "nemoclaw_session_audit_ok": False,
+            "nemoclaw_session_audit": {"required": True, "ok": False},
         },
     ]
 
@@ -480,6 +520,9 @@ def test_write_summary_counts_tool_usage(tmp_path):
     assert summary["tool_called_instances"] == 1
     assert summary["tool_error_instances"] == 1
     assert summary["tool_policy_violation_instances"] == 1
+    assert summary["nemoclaw_session_audit_required_instances"] == 2
+    assert summary["nemoclaw_session_audit_passed_instances"] == 1
+    assert summary["nemoclaw_session_audit_failed_instances"] == 1
 
 
 def test_build_prompt_includes_python_tool_guidance():

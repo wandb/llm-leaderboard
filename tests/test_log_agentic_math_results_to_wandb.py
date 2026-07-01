@@ -104,6 +104,18 @@ def test_build_leaderboard_uses_existing_agentic_math_schema():
     ]
 
 
+def test_math_relog_output_table_keeps_nemoclaw_session_audit_columns():
+    module = load_module()
+
+    output_df = module.ensure_output_observability_columns(
+        module.pd.DataFrame([{"task_id": "m1", "correct": True}])
+    )
+
+    assert "nemoclaw_session_audit_ok" in output_df.columns
+    assert "nemoclaw_session_audit" in output_df.columns
+    assert output_df.to_dict(orient="records")[0]["nemoclaw_session_audit_ok"] is None
+
+
 def test_main_dry_run_writes_plan_without_wandb_login(tmp_path, monkeypatch, capsys):
     module = load_module()
     results_dir = tmp_path / "math"

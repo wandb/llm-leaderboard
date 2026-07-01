@@ -80,6 +80,8 @@ def test_build_output_table_preserves_patch_metadata():
                 "instance_id": "i1",
                 "openclaw_returncode": 0,
                 "tool_policy_ok": True,
+                "nemoclaw_session_audit_ok": True,
+                "nemoclaw_session_audit": {"required": True, "ok": True},
                 "openclaw_tool_call_count": 12,
                 "openclaw_result_path": "path/to/result.json",
             }
@@ -93,6 +95,8 @@ def test_build_output_table_preserves_patch_metadata():
     assert i1["resolved"] is True
     assert i1["has_patch_record"] is True
     assert i1["openclaw_tool_call_count"] == 12
+    assert i1["nemoclaw_session_audit_ok"] is True
+    assert i1["nemoclaw_session_audit_required"] is True
     assert i2["resolved"] is False
     assert i2["has_patch_record"] is False
 

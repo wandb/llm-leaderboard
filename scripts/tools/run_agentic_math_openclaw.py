@@ -601,6 +601,12 @@ def build_openclaw_error_record(
             (sidecar.get("conversation_order") or {}).get("ok") if isinstance(sidecar, dict) else None
         ),
         "conversation_order": sidecar.get("conversation_order", {}) if isinstance(sidecar, dict) else {},
+        "nemoclaw_session_audit_ok": (
+            (sidecar.get("nemoclaw_session_audit") or {}).get("ok") if isinstance(sidecar, dict) else None
+        ),
+        "nemoclaw_session_audit": (
+            sidecar.get("nemoclaw_session_audit", {}) if isinstance(sidecar, dict) else {}
+        ),
         **(attempt_metadata or {}),
         "prompt_hash": cache_key["prompt_hash"],
         "runner_version": RUNNER_VERSION,
@@ -644,6 +650,8 @@ def build_scored_record_from_sidecar(
         "tool_policy_violations": sidecar.get("tool_policy_violations", []),
         "conversation_order_ok": (sidecar.get("conversation_order") or {}).get("ok"),
         "conversation_order": sidecar.get("conversation_order", {}),
+        "nemoclaw_session_audit_ok": (sidecar.get("nemoclaw_session_audit") or {}).get("ok"),
+        "nemoclaw_session_audit": sidecar.get("nemoclaw_session_audit", {}),
         **attempt_metadata,
         "prompt_hash": cache_key["prompt_hash"],
         "runner_version": RUNNER_VERSION,
@@ -1422,6 +1430,14 @@ def write_summary(output_dir: Path, results: list[dict[str, Any]], args: argpars
     tool_errors = [row for row in results if int(row.get("openclaw_tool_error_count") or 0) > 0]
     tool_policy_violations = [row for row in results if row.get("tool_policy_violations")]
     conversation_order_violations = [row for row in results if row.get("conversation_order_ok") is False]
+    session_audit_required = [
+        row
+        for row in results
+        if isinstance(row.get("nemoclaw_session_audit"), dict)
+        and row["nemoclaw_session_audit"].get("required") is True
+    ]
+    session_audit_passed = [row for row in session_audit_required if row.get("nemoclaw_session_audit_ok") is True]
+    session_audit_failed = [row for row in session_audit_required if row.get("nemoclaw_session_audit_ok") is False]
     by_subject: dict[str, dict[str, Any]] = {}
     for row in results:
         subject = str(row.get("subject") or "unknown")
@@ -1449,6 +1465,9 @@ def write_summary(output_dir: Path, results: list[dict[str, Any]], args: argpars
         "tool_error_instances": len(tool_errors),
         "tool_policy_violation_instances": len(tool_policy_violations),
         "conversation_order_violation_instances": len(conversation_order_violations),
+        "nemoclaw_session_audit_required_instances": len(session_audit_required),
+        "nemoclaw_session_audit_passed_instances": len(session_audit_passed),
+        "nemoclaw_session_audit_failed_instances": len(session_audit_failed),
         "dry_run": args.dry_run,
         "by_subject": by_subject,
     }
