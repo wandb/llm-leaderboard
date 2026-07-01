@@ -33,6 +33,21 @@ PLACEHOLDER_TOKENS = (
     "PHASE",
 )
 DEFAULT_WEAVE_CONTENT_CANARY_MAX_AGE_SECONDS = 24 * 60 * 60
+OPENAI_DIRECT_CANARY_MANIFEST = "configs/taiwan_openai_canary_models.yaml"
+OPENAI_DIRECT_CANARY_GENERATED_DIRS = {
+    "configs/taiwan_full/generated_openai_canary",
+    "configs/taiwan_full/generated_openai_canary_nonagentic",
+    "configs/taiwan_full/generated_openai_canary_agentic_nemoclaw",
+    "configs/taiwan_full/generated_openai_canary_agentic_aggregate",
+}
+CANARY_FORBIDDEN_PROVIDER_MARKERS = (
+    "openrouter",
+    "anthropic",
+    "claude",
+    "gemini",
+    "opus",
+    "sonnet",
+)
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -297,6 +312,42 @@ def validate_external_action_approval_report_option(
     return []
 
 
+def validate_openai_direct_canary_batch_command(
+    parts: list[str],
+    *,
+    command: str,
+) -> list[str]:
+    """Keep the current one-model canary on the approved OpenAI-direct path."""
+
+    if not option_present(parts, "--canary"):
+        return []
+    errors: list[str] = []
+    lower_command = command.lower()
+    markers = [
+        marker
+        for marker in CANARY_FORBIDDEN_PROVIDER_MARKERS
+        if marker in lower_command
+    ]
+    if markers:
+        errors.append(
+            "OpenAI-direct canary command uses forbidden provider marker(s): "
+            + ", ".join(sorted(set(markers)))
+        )
+    manifest = option_value(parts, "--manifest")
+    if manifest != OPENAI_DIRECT_CANARY_MANIFEST:
+        errors.append(
+            "OpenAI-direct canary command must use "
+            f"--manifest {OPENAI_DIRECT_CANARY_MANIFEST}"
+        )
+    generated_dir = option_value(parts, "--generated-config-dir")
+    if generated_dir not in OPENAI_DIRECT_CANARY_GENERATED_DIRS:
+        errors.append(
+            "OpenAI-direct canary command must use an approved generated config dir: "
+            f"{sorted(OPENAI_DIRECT_CANARY_GENERATED_DIRS)}"
+        )
+    return errors
+
+
 def validate_command_policy(
     steps: list[dict[str, Any]],
     *,
@@ -358,6 +409,12 @@ def validate_command_policy(
                         )
 
             if command_invokes(parts, "run_taiwan_full_eval_batch.py"):
+                command_errors.extend(
+                    validate_openai_direct_canary_batch_command(
+                        parts,
+                        command=command,
+                    )
+                )
                 phase = option_value(parts, "--phase") or "full"
                 prepare_only = option_present(parts, "--prepare-only")
                 external_phase = phase in {"full", "nonagentic", "agentic", "agentic_aggregate"}

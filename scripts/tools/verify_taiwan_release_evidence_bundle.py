@@ -188,6 +188,18 @@ OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
         "command approval report expectation",
         "expected_external_action_approval_report_path",
     ),
+    (
+        "OpenAI-direct canary manifest guard",
+        "OPENAI_DIRECT_CANARY_MANIFEST",
+    ),
+    (
+        "OpenAI-direct canary forbidden provider guard",
+        "CANARY_FORBIDDEN_PROVIDER_MARKERS",
+    ),
+    (
+        "OpenAI-direct canary batch validator",
+        "def validate_openai_direct_canary_batch_command(",
+    ),
 )
 AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
     "scripts/evaluator/agentic_math.py": {

@@ -1,6 +1,6 @@
 # 台湾版リーダーボード 全体説明
 
-最終更新: 2026-07-01 13:08 JST
+最終更新: 2026-07-01 13:17 JST
 
 ## まず結論
 
@@ -8,7 +8,9 @@
 
 ただし、評価データ、評価runner、W&B/Weave検証、release gate、evidence bundleはかなり実装済みです。残っている中心課題は「1モデルで全ベンチを本番同等に完走し、その結果がW&B/Weave上で監査可能に残り、費用レビューとTotal Scoreまで揃うこと」です。
 
-最新の機械判定は `temp/taiwan_release_gate_20260701T040649Z.json` です。状態は `not_ready`、bundle整合性はOK、checked filesは603、verification errorsは0です。つまり「証跡bundleそのものは壊れていないが、本番公開条件はまだ満たしていない」という状態です。現在の残ブロッカーは `weave_content_canary`、`wandb_completion`、`paid_run_review_package`、`one_model_full_canary` の4つです。
+最新の機械判定は `temp/taiwan_release_gate_20260701T041635Z.json` です。状態は `not_ready`、bundle整合性はOK、checked filesは604、verification errorsは0です。つまり「証跡bundleそのものは壊れていないが、本番公開条件はまだ満たしていない」という状態です。現在の残ブロッカーは `weave_content_canary`、`wandb_completion`、`paid_run_review_package`、`one_model_full_canary` の4つです。
+
+次に実行する1モデルcanaryはOpenAI-direct経路に固定しています。operator shell handoffは、`--canary` のbatch commandがOpenAI-direct canary manifest/generated config dirsから外れたり、openrouter/anthropic/claude/gemini/opus/sonnet系の文字列を含んだりすると、shell生成前に拒否します。
 
 NeMoClawについては、ローカルruntime/sandbox/native weave readinessはrelease gate上で通っており、`nemoclaw_readiness` は現在のブロッカーから外れています。Agentic Math/SWE向けには、NeMoClaw config、task-agent実行経路、SWE-Bench Pro copy-mode checkout transfer、post-install/adoption/canary readiness、operator command policy、release bundle verifierまで実装済みです。さらに、OpenClaw session JSONLで「問題提示前のtool実行」や「最終回答後のtool実行」を検出してnon-scoreableにするガードを入れ、そのrunner source自体もrelease evidence bundleに含めてsource-contract検証するようにしました。
 
@@ -113,7 +115,7 @@ one-model full canary
 
 今は2から3へ進む直前です。コードや検証器はかなり揃っていますが、まだ「1モデルで全ベンチを完走し、W&B/Weave/費用レビュー/Total Scoreまで揃った」という状態ではありません。
 
-2026-07-01 13:08 JST時点では、NeMoClawはローカル環境でAgentic Math/SWE評価のsandbox backendとして使える状態に到達しています。`nemoclaw_readiness` は最新release gateでpassedです。評価runner側も、Agentic Math task-agent経路、SWE-Bench Pro copy-mode checkout transfer、OpenClaw session JSONLの会話順序ガード、W&B/Weave証跡の検証入口、release bundleへのrunner source同梱まで実装済みです。ただし、実ベンチ問題をNeMoClaw経由で本番同等に完走し、native Weave trace、W&B completion、paid-run review、official evaluator結果まで揃えた証跡はまだありません。
+2026-07-01 13:17 JST時点では、NeMoClawはローカル環境でAgentic Math/SWE評価のsandbox backendとして使える状態に到達しています。`nemoclaw_readiness` は最新release gateでpassedです。評価runner側も、Agentic Math task-agent経路、SWE-Bench Pro copy-mode checkout transfer、OpenClaw session JSONLの会話順序ガード、W&B/Weave証跡の検証入口、release bundleへのrunner source同梱まで実装済みです。ただし、実ベンチ問題をNeMoClaw経由で本番同等に完走し、native Weave trace、W&B completion、paid-run review、official evaluator結果まで揃えた証跡はまだありません。
 
 既存W&B runを正式なpaid-run reviewへ採用するための手順も `operator_handoff` として機械検証可能になっています。ただし、`f1veetyb` は現在のNeMoClaw session-audit証跡を満たさないため、今は正式採用候補ではありません。今後、既存runを採用する場合の必要な流れは、scope attestationの人間確認、confirmed attestationのrender、preflight、dry-run、review JSONへのapplyです。`confirmed_by`、`confirmed_at`、`confirmation`、`completion_sha256`、`actual_cost_estimate`、`provider_bill_reference` など人間所有フィールドが未確定のままでは正式採用しません。最新のrelease evidenceでは、古いDeepSeek Agentic Mathローカル完走は `outputs/taiwan_full_eval/existing_results_archive_manifest.json` としてbundleに含まれ、採用ではなく非release候補として監査対象になっています。
 
@@ -175,13 +177,13 @@ tool実行結果を読む
 
 ```text
 release gate: not_ready
-latest gate: temp/taiwan_release_gate_20260701T040649Z.json
+latest gate: temp/taiwan_release_gate_20260701T041635Z.json
 latest pointer: temp/latest_taiwan_release_gate.json
-latest pointer verification: temp/latest_taiwan_release_gate_verify_20260701T040649Z.json
-evidence bundle: outputs/taiwan_release_evidence/bundle_20260701T040649Z
-release gate pointer proof: outputs/taiwan_release_evidence/bundle_20260701T040649Z/release_gate_pointer_proof.json
+latest pointer verification: temp/latest_taiwan_release_gate_verify_20260701T041635Z.json
+evidence bundle: outputs/taiwan_release_evidence/bundle_20260701T041635Z
+release gate pointer proof: outputs/taiwan_release_evidence/bundle_20260701T041635Z/release_gate_pointer_proof.json
 bundle integrity: OK
-checked files: 603
+checked files: 604
 verification errors: 0
 remaining blockers:
   weave_content_canary
@@ -190,18 +192,18 @@ remaining blockers:
   one_model_full_canary
 ```
 
-最新の正式判定ファイルは、常に `temp/latest_taiwan_release_gate.json` から辿れます。2026-07-01 13:08 JST時点の実体は次です。
+最新の正式判定ファイルは、常に `temp/latest_taiwan_release_gate.json` から辿れます。2026-07-01 13:17 JST時点の実体は次です。
 
 ```text
-release gate: temp/taiwan_release_gate_20260701T040649Z.json
+release gate: temp/taiwan_release_gate_20260701T041635Z.json
 latest pointer: temp/latest_taiwan_release_gate.json
-latest pointer verification: temp/latest_taiwan_release_gate_verify_20260701T040649Z.json
-operator plan: temp/taiwan_release_operator_plan_20260701T040649Z.md
-evidence bundle: outputs/taiwan_release_evidence/bundle_20260701T040649Z
-bundle verification: temp/taiwan_release_evidence_bundle_verify_20260701T040649Z.json
-release gate pointer proof: outputs/taiwan_release_evidence/bundle_20260701T040649Z/release_gate_pointer_proof.json
+latest pointer verification: temp/latest_taiwan_release_gate_verify_20260701T041635Z.json
+operator plan: temp/taiwan_release_operator_plan_20260701T041635Z.md
+evidence bundle: outputs/taiwan_release_evidence/bundle_20260701T041635Z
+bundle verification: temp/taiwan_release_evidence_bundle_verify_20260701T041635Z.json
+release gate pointer proof: outputs/taiwan_release_evidence/bundle_20260701T041635Z/release_gate_pointer_proof.json
 status: not_ready
-checked files: 603
+checked files: 604
 verification errors: 0
 remaining blockers:
   weave_content_canary
@@ -219,10 +221,10 @@ remaining blockers:
 2. docs/taiwan_leaderboard_tasks.md
    省略なしの進捗表と最新証跡を見る。
 
-3. temp/taiwan_release_operator_plan_20260701T040649Z.md
+3. temp/taiwan_release_operator_plan_20260701T041635Z.md
    次に人間が実行・承認すべき操作を見る。
 
-4. outputs/taiwan_release_evidence/bundle_20260701T040649Z/summary.md
+4. outputs/taiwan_release_evidence/bundle_20260701T041635Z/summary.md
    release判断に使った証跡一式の人間向け要約を見る。
 
 ここまでが通常の確認順序です。以下は詳細監査が必要なときに見る過去のnegative proofや補助証跡です。
@@ -271,10 +273,10 @@ remaining blockers:
    A449ではW&B adoption draft全体にもpending_scope_confirmation_candidate_count、pending_human_field_count、pending_human_fieldsを出し、候補詳細を開かなくても人間確認待ちの件数とフィールド名が分かるようにした。release bundle verifierもこの集計を元draft JSONから再計算して照合する。
    A450ではNeMoClaw adoptionの元source JSON自体にもready_for_use、adoption_recommendation、blockers、runtime_blockers、setup_runtime、missing_required_commandsをtop-levelで出すようにした。latest pointerだけでなく、`temp/taiwan_nemoclaw_adoption_check_*.json` 単体を開いても採用可否とreadiness理由が読める。
 
-6. outputs/taiwan_release_evidence/bundle_20260701T040649Z/external_action_approval_packet.md
+6. outputs/taiwan_release_evidence/bundle_20260701T041635Z/external_action_approval_packet.md
    有料API、W&B write、NeMoClaw install、scope confirmationの承認要件を見る。
 
-7. outputs/taiwan_release_evidence/bundle_20260701T040649Z/operator_plan.md
+7. outputs/taiwan_release_evidence/bundle_20260701T041635Z/operator_plan.md
    non-prepare batch実行コマンドとlive content canary実行コマンドに `--external-action-approval-source-packet-json` と `--external-action-approval-report-json` の両方が入っていること、W&B completion同期とWeave Agents completion同期がdry-runとvalidated applyの2段になっていることを見る。
 
 8. temp/taiwan_external_action_approval_REVIEWED_A411_TEMPLATE.verify.json
@@ -329,20 +331,20 @@ remaining blockers:
 10. temp/wandb_relog_plans/agentic-swe-deepseek-v4-pro-thinking-max.plan.json
    現在のDeepSeek SWE-Bench Pro証跡が1/80問のpartialであり、正式W&B completionとしてre-logできないことを確認したvalidation_failed planを見る。これもbundle verifierが同梱して再検証する。
 
-11. temp/taiwan_existing_results_audit_20260701T040649Z.json
+11. temp/taiwan_existing_results_audit_20260701T041635Z.json
    既存DeepSeek Agentic Mathローカル完走が `archived_not_release_candidate` として記録され、W&B relog対象やNeMoClaw completion proofとして扱われていないことを見る。
 
 12. outputs/taiwan_full_eval/existing_results_archive_manifest.json
    そのarchive判断がsummary/results/partial resultsのSHA-256に固定され、別内容の結果へ流用できないことを見る。このmanifest本体は最新release bundleにも `existing_results_audit:archive_manifest` として同梱される。
 
-13. temp/taiwan_nemoclaw_adoption_check_20260701T040649Z.md
+13. temp/taiwan_nemoclaw_adoption_check_20260701T041635Z.md
    NeMoClawがAgentic Math/SWE向けにadoptable_for_agentic_benchmarksであることを見る。
-   temp/nemoclaw_setup_check_20260701T040649Z.json は runtime/sandbox状態の最新証跡を示す。
+   temp/nemoclaw_setup_check_20260701T041635Z.json は runtime/sandbox状態の最新証跡を示す。
    setup、post-install、adoptionの各JSONは `schema_version=1` を持ち、release bundle verifierはこのschema markerが欠けた証跡を拒否する。
    同じJSONの setup_plan.installer_review_command は `--expected-sha256 a4ebc5710dfd8b10035968fd25562773ad56ec4c73ecf9bfe5c78c77724000e7` を含み、adoption doctorとrelease bundle verifierはこのSHAがないreview commandを拒否する。
    同じJSONの setup_plan.operator_sequence と setup_plan.expected_evidence_paths で、導入前確認からpost-install、canary、adoption check、production readinessまでのhandoff順序と必要証跡も確認できる。
 
-14. temp/nemoclaw_post_install_verification_20260701T040649Z.json
+14. temp/nemoclaw_post_install_verification_20260701T041635Z.json
    post-install検証が単なる `ok=true` JSONでは通らず、setup、protocol preflight、canary readiness、adoption checkの各payload contractを満たす必要があることを見る。
 ```
 
@@ -534,7 +536,7 @@ W&B完走条件についても、`wandb_completion_contract` のrequired benchma
 
 新しく生成されるW&B completion verifier JSONには、`query_source` として `wandb.Api(timeout=60)`、entity、project、run_id、run_path、benchmark、summary/artifact取得元を記録します。通常の新規run同期ではこの `query_source` がない completion JSON を paid-run review に取り込めないようにし、paid-run review doctorとrelease bundle verifierも同じ条件を再検証します。既存runの採用だけは別途 scope-attestation JSON で人間の確認を必須にしています。release bundle verifierは、`manual_json` や別run pathへの改ざんだけでなく、手編集されたpaid-review JSONがadopted/non-adopted扱いをcurrent gateと食い違わせることも拒否します。
 
-既存W&B結果を採用する場合は、いきなりpaid-run review JSONを書き換えません。現在の運用では、まずscope-attestation JSONにreviewer、timestamp、費用見積、請求参照、completion SHAを具体値で入れ、その後 `sync_wandb_completion_to_paid_review.py` のdry-runを `--report-json` 付きで実行します。dry-run reportを確認してから、同じ入力で `--in-place` と `--validated-dry-run-report-json` を付けたapply commandを実行する順序です。A414以降は既存結果採用に限らず、通常のW&B completion同期でも `--in-place` には `--validated-dry-run-report-json` が必須です。A415以降はWeave Agents completion同期でも同じく、`sync_weave_agents_completion_to_paid_review.py --in-place` には `--validated-dry-run-report-json` が必須です。A416以降はWeave Agents completion同期でもdry-run元review JSONのSHAを `source_review_sha256` として保存し、paid-review entryの `sync_dry_run_source_review_sha256`、dry-run payload、bundle内source review JSONのSHAが一致しなければ正式証跡として拒否します。A417以降はWeave content canaryのpassed証跡も、verifier JSONだけでなくplan、command_result、prompt、OpenClaw sidecarをbundle内で再検証します。A418以降はNeMoClaw post-install証跡も、各出力ファイルと各step output JSONのSHA-256をbundle内ファイルから再計算して確認します。A419以降はNeMoClaw導入ハンドオフのpost-install検証コマンドにも `--fail-on-failed` が必須です。A420以降は、adoption doctorの採用可否判断でも同じフラグ欠落を拒否します。A421以降は、W&B必須ベンチの扱いも `wandb_completion_contract` だけでなく `benchmark_completion.required` としてsource evidenceに残します。A422以降は、W&B adoption候補が参照する既存結果auditのJSON pathとSHAをstable pointer、operator plan、summary.mdから直接確認できます。A423以降は、Weave Agents completion同期とcontent canaryのどちらでもtimestamp品質を必須化し、`trace_timestamp_quality` checkや `spans_with_invalid_timestamps=0` が欠ける証跡、span本体の時刻が壊れている証跡、tool順序が同時刻で証明できない証跡を採用しません。apply側も、dry-run reportのentry、change、review path、review SHA、scope-attestation source SHA、verify flag、unmatched countが現在のsync内容と一致しない場合はJSONを書き換えません。applyに成功した場合、paid-review内のW&B completion entryには `sync_dry_run_report_json`、`sync_dry_run_source_review_json`、`sync_dry_run_source_review_sha256` も保存されます。さらにA390以降は、production readinessとpaid-review doctorもこのdry-run証跡を必須として扱い、手で `adopted_existing_result=true` を入れただけのentryを拒否します。A397では、scope-attestation JSONに `source_audit_json` と `source_audit_sha256` も入れ、draft、candidate、template、sync、release bundleの全段階で同じ既存結果auditに結び付いていることを検証します。A398ではrelease bundle verifierがsource audit JSONの `formalized_records` も読み、candidateと同じbenchmark/entity/project/run_id/completion pathを持つW&B completion recordがなければbundle integrityを落とします。A399では同じsource audit条件をproduction readinessとpaid-run review doctorにも上げ、review entryのscope-attestationに `source_audit_json` と `source_audit_sha256` があり、そのauditの `formalized_records` に同じW&B completion recordがなければpaid-run review自体を通さないようにしました。A488ではrelease bundle verifierもsource audit JSON内の `wandb_completion_records` を読み、同じcandidate行が `ok=true`、`schema_current=true`、`schema_current_issues=[]`、`verification_schema_version=1`、`observed_evidence_present=true` でなければbundle integrityを落とします。A588時点では、`f1veetyb` 由来のAgentic Math候補は現在のNeMoClaw session-audit契約を満たさないため正式採用しません。対応するローカルDeepSeek完走結果は `outputs/taiwan_full_eval/existing_results_archive_manifest.json` のSHA-256付きmanifestで `archived_not_release_candidate` として保存され、最新release gate `temp/taiwan_release_gate_20260701T040649Z.json` では既存結果formalization blockerから除外されています。A430以降はpreflight reportの `source_files` にreview JSON、completion JSON、scope-attestation JSONのpath/readable/sha256が必要で、release bundle verifierは欠落、path不一致、SHA不一致、未読込扱いを拒否します。A431以降は、確認済みscope-attestationでpreflightが通ったreportについても、bundle内に実ファイルがあればsource_files、candidate W&B identity、query_source、scope-attestation source JSON/SHA、bundle内SHA一致まで再検証します。A436以降は、render reportのnext_commandsが実際にそのpreflight reportとsync dry-run reportを作るコマンドであることも検証します。A437以降は、draft-levelの `scope_attestation_render_command` 自体も同じ予定出力先を持つことを確認します。A478以降は、sync-readyなW&B adoption contract行について、scope確認、scope-warning、render/preflight/dry-run/apply command、stale verifier refresh command、placeholderでないrun_idをrelease bundle verifierが独立に検査します。さらにrelease bundle verifierは、この2つのJSONの中身を読み直し、preflight/syncがどちらも `validation_failed` で、sync dry-runが `dry_run=true`、`in_place=false`、`entry_count=0`、`change_count=0` のままreview JSONを変えないことまで検証します。加えて、人間向けの `summary.md` にも採用候補draftのstatus、候補数、attestation template、人間が埋めるべきfield、preflight/dry-run/apply command、未承認テンプレートチェックのstatus、record count、output dir、各レコードのattestation/preflight/sync path、review mutation、W&B write、model inference列が表示されていることを検証するようにしました。A385では外部アクション承認packetのscope_confirmationも強化し、承認済みpacketが通るにはscope-attestation JSONが実在するcompletion JSON、review JSON、completion SHA、benchmark/entity/project/run_idに結び付いている必要があります。dry-run reportが後でbundleに含まれた場合、release verifierは `ok=true`、`status=synced`、`dry_run=true`、`in_place=false`、review path、unmatched count、change対象run id、source review SHA、source attestation SHA、source audit SHA、source audit formalized record対応などを再検証します。
+既存W&B結果を採用する場合は、いきなりpaid-run review JSONを書き換えません。現在の運用では、まずscope-attestation JSONにreviewer、timestamp、費用見積、請求参照、completion SHAを具体値で入れ、その後 `sync_wandb_completion_to_paid_review.py` のdry-runを `--report-json` 付きで実行します。dry-run reportを確認してから、同じ入力で `--in-place` と `--validated-dry-run-report-json` を付けたapply commandを実行する順序です。A414以降は既存結果採用に限らず、通常のW&B completion同期でも `--in-place` には `--validated-dry-run-report-json` が必須です。A415以降はWeave Agents completion同期でも同じく、`sync_weave_agents_completion_to_paid_review.py --in-place` には `--validated-dry-run-report-json` が必須です。A416以降はWeave Agents completion同期でもdry-run元review JSONのSHAを `source_review_sha256` として保存し、paid-review entryの `sync_dry_run_source_review_sha256`、dry-run payload、bundle内source review JSONのSHAが一致しなければ正式証跡として拒否します。A417以降はWeave content canaryのpassed証跡も、verifier JSONだけでなくplan、command_result、prompt、OpenClaw sidecarをbundle内で再検証します。A418以降はNeMoClaw post-install証跡も、各出力ファイルと各step output JSONのSHA-256をbundle内ファイルから再計算して確認します。A419以降はNeMoClaw導入ハンドオフのpost-install検証コマンドにも `--fail-on-failed` が必須です。A420以降は、adoption doctorの採用可否判断でも同じフラグ欠落を拒否します。A421以降は、W&B必須ベンチの扱いも `wandb_completion_contract` だけでなく `benchmark_completion.required` としてsource evidenceに残します。A422以降は、W&B adoption候補が参照する既存結果auditのJSON pathとSHAをstable pointer、operator plan、summary.mdから直接確認できます。A423以降は、Weave Agents completion同期とcontent canaryのどちらでもtimestamp品質を必須化し、`trace_timestamp_quality` checkや `spans_with_invalid_timestamps=0` が欠ける証跡、span本体の時刻が壊れている証跡、tool順序が同時刻で証明できない証跡を採用しません。apply側も、dry-run reportのentry、change、review path、review SHA、scope-attestation source SHA、verify flag、unmatched countが現在のsync内容と一致しない場合はJSONを書き換えません。applyに成功した場合、paid-review内のW&B completion entryには `sync_dry_run_report_json`、`sync_dry_run_source_review_json`、`sync_dry_run_source_review_sha256` も保存されます。さらにA390以降は、production readinessとpaid-review doctorもこのdry-run証跡を必須として扱い、手で `adopted_existing_result=true` を入れただけのentryを拒否します。A397では、scope-attestation JSONに `source_audit_json` と `source_audit_sha256` も入れ、draft、candidate、template、sync、release bundleの全段階で同じ既存結果auditに結び付いていることを検証します。A398ではrelease bundle verifierがsource audit JSONの `formalized_records` も読み、candidateと同じbenchmark/entity/project/run_id/completion pathを持つW&B completion recordがなければbundle integrityを落とします。A399では同じsource audit条件をproduction readinessとpaid-run review doctorにも上げ、review entryのscope-attestationに `source_audit_json` と `source_audit_sha256` があり、そのauditの `formalized_records` に同じW&B completion recordがなければpaid-run review自体を通さないようにしました。A488ではrelease bundle verifierもsource audit JSON内の `wandb_completion_records` を読み、同じcandidate行が `ok=true`、`schema_current=true`、`schema_current_issues=[]`、`verification_schema_version=1`、`observed_evidence_present=true` でなければbundle integrityを落とします。A588以降では、`f1veetyb` 由来のAgentic Math候補は現在のNeMoClaw session-audit契約を満たさないため正式採用しません。対応するローカルDeepSeek完走結果は `outputs/taiwan_full_eval/existing_results_archive_manifest.json` のSHA-256付きmanifestで `archived_not_release_candidate` として保存され、最新release gate `temp/taiwan_release_gate_20260701T041635Z.json` では既存結果formalization blockerから除外されています。A430以降はpreflight reportの `source_files` にreview JSON、completion JSON、scope-attestation JSONのpath/readable/sha256が必要で、release bundle verifierは欠落、path不一致、SHA不一致、未読込扱いを拒否します。A431以降は、確認済みscope-attestationでpreflightが通ったreportについても、bundle内に実ファイルがあればsource_files、candidate W&B identity、query_source、scope-attestation source JSON/SHA、bundle内SHA一致まで再検証します。A436以降は、render reportのnext_commandsが実際にそのpreflight reportとsync dry-run reportを作るコマンドであることも検証します。A437以降は、draft-levelの `scope_attestation_render_command` 自体も同じ予定出力先を持つことを確認します。A478以降は、sync-readyなW&B adoption contract行について、scope確認、scope-warning、render/preflight/dry-run/apply command、stale verifier refresh command、placeholderでないrun_idをrelease bundle verifierが独立に検査します。さらにrelease bundle verifierは、この2つのJSONの中身を読み直し、preflight/syncがどちらも `validation_failed` で、sync dry-runが `dry_run=true`、`in_place=false`、`entry_count=0`、`change_count=0` のままreview JSONを変えないことまで検証します。加えて、人間向けの `summary.md` にも採用候補draftのstatus、候補数、attestation template、人間が埋めるべきfield、preflight/dry-run/apply command、未承認テンプレートチェックのstatus、record count、output dir、各レコードのattestation/preflight/sync path、review mutation、W&B write、model inference列が表示されていることを検証するようにしました。A385では外部アクション承認packetのscope_confirmationも強化し、承認済みpacketが通るにはscope-attestation JSONが実在するcompletion JSON、review JSON、completion SHA、benchmark/entity/project/run_idに結び付いている必要があります。dry-run reportが後でbundleに含まれた場合、release verifierは `ok=true`、`status=synced`、`dry_run=true`、`in_place=false`、review path、unmatched count、change対象run id、source review SHA、source attestation SHA、source audit SHA、source audit formalized record対応などを再検証します。
 
 Weave Agents証跡については、verifier JSONにW&B Agents API query provenanceを含めるようにし、release bundle verifierも `query_source.kind=wandb_agents_api`、API endpoint、project、agent、conversation scope、latest trace span数の整合性を検証します。さらにsync処理とpaid-run review doctorでも同じ `query_source` を必須化したので、手で整形しただけのWeave proof JSONはレビューJSONに取り込む段階、またはレビューpackageを合格させる段階で拒否されます。
 
@@ -565,10 +567,11 @@ NeMoClaw実行基盤:
   本番採用証跡では `setup_plan.production_install_and_onboard_command` を使い、installとonboardを同じJSONに残す単一コマンドで検証する。
 
 release gate / evidence bundle:
-  最新bundleは603ファイルを検証し、integrityはOK。
+  最新bundleは604ファイルを検証し、integrityはOK。
   production readiness reportは schema_version=1 を持ち、release gate / latest pointer / bundle manifestは readiness_report_schema_version=1 を運ぶ。
   正式release gate JSONは schema_version=1 を持ち、latest pointer verifierはschemaなしの旧gateを拒否する。
   `manifest.json` は schema_version=1 / bundle_version=2 を持ち、verifierはschemaなしの旧bundleを拒否する。
+  operator rendererのsource-contractは、current one-model canaryがOpenAI-direct pathから外れたshell handoffにならないことも検証する。
 ```
 
 ## 現在できていないこと
