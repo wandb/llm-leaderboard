@@ -49,6 +49,7 @@ CANARY_FORBIDDEN_PROVIDER_MARKERS = (
     "sonnet",
 )
 OPENAI_DIRECT_CANARY_APPROVAL_SCOPE_MARKER = "openai-direct/gpt-4.1-mini"
+NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 WEAVE_CONTENT_CANARY_BLOCKED_NEXT_ACTIONS = {
     "external_action_approval_missing": (
         "approve the source-bound external-action packet before rerunning; "
@@ -590,11 +591,19 @@ def validate_command_policy(
                     "--external-action-approval-source-packet-json",
                     "--external-action-approval-report-json",
                     "--nemoclaw-sandbox",
+                    "--nemoclaw-openclaw-config-path",
                 ):
                     if not option_present(parts, option):
                         command_errors.append(
                             f"run_weave_agents_content_canary.py --execute is missing {option}"
                         )
+                config_path = option_value(parts, "--nemoclaw-openclaw-config-path")
+                if config_path and config_path != NEMOCLAW_OPENCLAW_CONFIG_PATH:
+                    command_errors.append(
+                        "run_weave_agents_content_canary.py --execute "
+                        "--nemoclaw-openclaw-config-path must be "
+                        f"{NEMOCLAW_OPENCLAW_CONFIG_PATH}"
+                    )
 
             if command_invokes(parts, "run_taiwan_full_eval_batch.py"):
                 command_errors.extend(
@@ -632,10 +641,10 @@ def validate_command_policy(
                         "--swebench-pro-nemoclaw-openclaw-config-path",
                     ):
                         value = option_value(parts, option)
-                        if value and value != "/sandbox/.openclaw/openclaw.json":
+                        if value and value != NEMOCLAW_OPENCLAW_CONFIG_PATH:
                             command_errors.append(
                                 f"run_taiwan_full_eval_batch.py {phase} command "
-                                f"{option} must be /sandbox/.openclaw/openclaw.json"
+                                f"{option} must be {NEMOCLAW_OPENCLAW_CONFIG_PATH}"
                             )
                     transfer_mode = option_value(
                         parts,

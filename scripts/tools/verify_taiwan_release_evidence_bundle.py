@@ -304,6 +304,10 @@ OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
         "before any paid API attempt",
     ),
     ("Weave content canary NeMoClaw command policy", "--nemoclaw-sandbox"),
+    (
+        "Weave content canary NeMoClaw config path command policy",
+        'NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"',
+    ),
     ("Weave Agents usage command policy", "--weave-agents-require-usage"),
     (
         "command approval source packet path validator",
