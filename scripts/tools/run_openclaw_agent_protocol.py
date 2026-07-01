@@ -49,6 +49,37 @@ from pathlib import Path
 
 threshold = float(sys.argv[1])
 rows = []
+
+
+def tool_call_count(message):
+    seen = set()
+    count = 0
+
+    def add_call(value, fallback):
+        nonlocal count
+        if not isinstance(value, dict):
+            return
+        call_id = value.get("id") or value.get("toolCallId") or value.get("tool_use_id")
+        key = str(call_id) if isinstance(call_id, str) and call_id else fallback
+        if key in seen:
+            return
+        seen.add(key)
+        count += 1
+
+    content = message.get("content")
+    if isinstance(content, list):
+        for index, part in enumerate(content):
+            if isinstance(part, dict) and part.get("type") in {"toolCall", "tool_use"}:
+                add_call(part, f"content:{index}")
+
+    for key in ("tool_calls", "toolCalls"):
+        calls = message.get(key)
+        if isinstance(calls, list):
+            for index, call in enumerate(calls):
+                add_call(call, f"{key}:{index}")
+    return count
+
+
 for raw_dir in sys.argv[2:]:
     sessions_dir = Path(raw_dir)
     if not sessions_dir.exists() or not sessions_dir.is_dir():
@@ -75,12 +106,7 @@ for raw_dir in sys.argv[2:]:
             message = event.get("message") if isinstance(event, dict) else None
             if not isinstance(message, dict) or message.get("role") != "assistant":
                 continue
-            content = message.get("content")
-            if not isinstance(content, list):
-                continue
-            for part in content:
-                if isinstance(part, dict) and part.get("type") in {"toolCall", "tool_use"}:
-                    tool_calls += 1
+            tool_calls += tool_call_count(message)
         rows.append(
             {
                 "path": str(path),
@@ -1406,37 +1432,67 @@ def extract_tool_events(sidecar: dict[str, Any]) -> list[dict[str, Any]]:
         timestamp = message.get("timestamp") or event.get("timestamp")
         role = message.get("role")
         if role == "assistant":
+            seen_tool_calls: set[str] = set()
             content = message.get("content")
-            if not isinstance(content, list):
-                continue
-            for part in content:
-                if not isinstance(part, dict):
+            if isinstance(content, list):
+                for part in content:
+                    if not isinstance(part, dict):
+                        continue
+                    if part.get("type") not in {"toolCall", "tool_use"}:
+                        continue
+                    tool_call_id = part.get("id") or part.get("toolCallId") or part.get("tool_use_id")
+                    if isinstance(tool_call_id, str) and tool_call_id:
+                        seen_tool_calls.add(tool_call_id)
+                    tool_name = part.get("name") or part.get("toolName")
+                    arguments = part.get("arguments")
+                    if arguments is None:
+                        arguments = part.get("input")
+                    if arguments is None:
+                        arguments = part.get("partialArgs")
+                    events.append(
+                        {
+                            "type": "tool_call",
+                            "toolCallId": tool_call_id,
+                            "toolName": tool_name or "unknown",
+                            "arguments": arguments,
+                            "timestamp": timestamp,
+                        }
+                    )
+            for key in ("tool_calls", "toolCalls"):
+                calls = message.get(key)
+                if not isinstance(calls, list):
                     continue
-                if part.get("type") not in {"toolCall", "tool_use"}:
-                    continue
-                tool_call_id = part.get("id") or part.get("toolCallId") or part.get("tool_use_id")
-                tool_name = part.get("name") or part.get("toolName")
-                arguments = part.get("arguments")
-                if arguments is None:
-                    arguments = part.get("input")
-                if arguments is None:
-                    arguments = part.get("partialArgs")
-                events.append(
-                    {
-                        "type": "tool_call",
-                        "toolCallId": tool_call_id,
-                        "toolName": tool_name or "unknown",
-                        "arguments": arguments,
-                        "timestamp": timestamp,
-                    }
-                )
-        elif role == "toolResult":
+                for call in calls:
+                    if not isinstance(call, dict):
+                        continue
+                    tool_call_id = call.get("id") or call.get("toolCallId") or call.get("tool_use_id")
+                    if isinstance(tool_call_id, str) and tool_call_id:
+                        if tool_call_id in seen_tool_calls:
+                            continue
+                        seen_tool_calls.add(tool_call_id)
+                    function = call.get("function") if isinstance(call.get("function"), dict) else {}
+                    tool_name = call.get("name") or call.get("toolName") or function.get("name")
+                    arguments = call.get("arguments")
+                    if arguments is None:
+                        arguments = function.get("arguments")
+                    if arguments is None:
+                        arguments = call.get("input")
+                    events.append(
+                        {
+                            "type": "tool_call",
+                            "toolCallId": tool_call_id,
+                            "toolName": tool_name or "unknown",
+                            "arguments": arguments,
+                            "timestamp": timestamp,
+                        }
+                    )
+        elif role in {"toolResult", "tool"}:
             details = message.get("details")
             events.append(
                 {
                     "type": "tool_result",
-                    "toolCallId": message.get("toolCallId"),
-                    "toolName": message.get("toolName") or "unknown",
+                    "toolCallId": message.get("toolCallId") or message.get("tool_call_id"),
+                    "toolName": message.get("toolName") or message.get("name") or "unknown",
                     "content": _extract_content_text(message.get("content")),
                     "details": details if isinstance(details, dict) else None,
                     "isError": bool(message.get("isError")),
@@ -1479,6 +1535,7 @@ def extract_timeline_events(sidecar: dict[str, Any]) -> list[dict[str, Any]]:
                 }
             )
         elif role == "assistant":
+            seen_tool_calls: set[str] = set()
             if not isinstance(content, list):
                 text = _extract_content_text(content)
                 if text.strip():
@@ -1490,62 +1547,93 @@ def extract_timeline_events(sidecar: dict[str, Any]) -> list[dict[str, Any]]:
                             "timestamp": timestamp,
                         }
                     )
-                continue
-            for part in content:
-                if not isinstance(part, dict):
+            else:
+                for part in content:
+                    if not isinstance(part, dict):
+                        continue
+                    part_type = part.get("type")
+                    if part_type in {"toolCall", "tool_use"}:
+                        tool_call_id = part.get("id") or part.get("toolCallId") or part.get("tool_use_id")
+                        if isinstance(tool_call_id, str) and tool_call_id:
+                            seen_tool_calls.add(tool_call_id)
+                        arguments = part.get("arguments")
+                        if arguments is None:
+                            arguments = part.get("input")
+                        if arguments is None:
+                            arguments = part.get("partialArgs")
+                        events.append(
+                            {
+                                "type": "tool_call",
+                                "role": "assistant",
+                                "toolCallId": tool_call_id,
+                                "toolName": part.get("name") or part.get("toolName") or "unknown",
+                                "arguments": arguments,
+                                "timestamp": timestamp,
+                            }
+                        )
+                        continue
+                    reasoning = None
+                    if part_type == "thinking":
+                        reasoning = part.get("thinking")
+                    if reasoning is None and part.get("thinkingSignature") == "reasoning_content":
+                        reasoning = part.get("thinking")
+                    if isinstance(reasoning, str) and reasoning.strip():
+                        events.append(
+                            {
+                                "type": "assistant_reasoning",
+                                "role": "assistant",
+                                "content": reasoning.strip(),
+                                "timestamp": timestamp,
+                            }
+                        )
+                        continue
+                    text = part.get("text") or part.get("content")
+                    if isinstance(text, str) and text.strip():
+                        events.append(
+                            {
+                                "type": "assistant_message",
+                                "role": "assistant",
+                                "content": text,
+                                "timestamp": timestamp,
+                            }
+                        )
+            for key in ("tool_calls", "toolCalls"):
+                calls = message.get(key)
+                if not isinstance(calls, list):
                     continue
-                part_type = part.get("type")
-                if part_type in {"toolCall", "tool_use"}:
-                    tool_call_id = part.get("id") or part.get("toolCallId") or part.get("tool_use_id")
-                    arguments = part.get("arguments")
+                for call in calls:
+                    if not isinstance(call, dict):
+                        continue
+                    tool_call_id = call.get("id") or call.get("toolCallId") or call.get("tool_use_id")
+                    if isinstance(tool_call_id, str) and tool_call_id:
+                        if tool_call_id in seen_tool_calls:
+                            continue
+                        seen_tool_calls.add(tool_call_id)
+                    function = call.get("function") if isinstance(call.get("function"), dict) else {}
+                    tool_name = call.get("name") or call.get("toolName") or function.get("name")
+                    arguments = call.get("arguments")
                     if arguments is None:
-                        arguments = part.get("input")
+                        arguments = function.get("arguments")
                     if arguments is None:
-                        arguments = part.get("partialArgs")
+                        arguments = call.get("input")
                     events.append(
                         {
                             "type": "tool_call",
                             "role": "assistant",
                             "toolCallId": tool_call_id,
-                            "toolName": part.get("name") or part.get("toolName") or "unknown",
+                            "toolName": tool_name or "unknown",
                             "arguments": arguments,
                             "timestamp": timestamp,
                         }
                     )
-                    continue
-                reasoning = None
-                if part_type == "thinking":
-                    reasoning = part.get("thinking")
-                if reasoning is None and part.get("thinkingSignature") == "reasoning_content":
-                    reasoning = part.get("thinking")
-                if isinstance(reasoning, str) and reasoning.strip():
-                    events.append(
-                        {
-                            "type": "assistant_reasoning",
-                            "role": "assistant",
-                            "content": reasoning.strip(),
-                            "timestamp": timestamp,
-                        }
-                    )
-                    continue
-                text = part.get("text") or part.get("content")
-                if isinstance(text, str) and text.strip():
-                    events.append(
-                        {
-                            "type": "assistant_message",
-                            "role": "assistant",
-                            "content": text,
-                            "timestamp": timestamp,
-                        }
-                    )
-        elif role == "toolResult":
+        elif role in {"toolResult", "tool"}:
             details = message.get("details")
             events.append(
                 {
                     "type": "tool_result",
                     "role": "tool",
-                    "toolCallId": message.get("toolCallId"),
-                    "toolName": message.get("toolName") or "unknown",
+                    "toolCallId": message.get("toolCallId") or message.get("tool_call_id"),
+                    "toolName": message.get("toolName") or message.get("name") or "unknown",
                     "content": _extract_content_text(content),
                     "details": details if isinstance(details, dict) else None,
                     "isError": bool(message.get("isError")),

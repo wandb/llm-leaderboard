@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import subprocess
+import sys
 import time
 from argparse import Namespace
 from pathlib import Path
@@ -276,6 +277,72 @@ def test_extract_tool_events_from_live_session_file_fallback(tmp_path):
     assert events[0]["toolName"] == "exec"
 
 
+def test_extract_tool_events_from_openai_tool_calls_shape(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    session = tmp_path / "session.jsonl"
+    session.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "timestamp": 123,
+                            "content": "I will check this with Python.",
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "exec",
+                                        "arguments": '{"cmd":"python3 check.py"}',
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ),
+                json.dumps(
+                    {
+                        "message": {
+                            "role": "tool",
+                            "timestamp": 124,
+                            "tool_call_id": "call_1",
+                            "name": "exec",
+                            "content": "verified",
+                        }
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    events = module.extract_tool_events({"live_session_file": str(session)})
+
+    assert events == [
+        {
+            "type": "tool_call",
+            "toolCallId": "call_1",
+            "toolName": "exec",
+            "arguments": '{"cmd":"python3 check.py"}',
+            "timestamp": 123,
+            "index": 0,
+        },
+        {
+            "type": "tool_result",
+            "toolCallId": "call_1",
+            "toolName": "exec",
+            "content": "verified",
+            "details": None,
+            "isError": False,
+            "timestamp": 124,
+            "index": 1,
+        },
+    ]
+
+
 def test_extract_tool_events_prefers_copied_nemoclaw_session(tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     host_session = tmp_path / "copied.jsonl"
@@ -312,6 +379,68 @@ def test_extract_tool_events_prefers_copied_nemoclaw_session(tmp_path):
     assert meta["sandboxSessionFile"] == "/sandbox/.openclaw/agents/main/sessions/s1.jsonl"
     assert meta["sessionFile"] == str(host_session)
     assert events[0]["toolName"] == "exec"
+
+
+def test_sandbox_live_session_scan_script_counts_top_level_tool_calls(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    session_dir = tmp_path / "openclaw_agent_state" / "sessions"
+    session_dir.mkdir(parents=True)
+    session = session_dir / "session-1.jsonl"
+    session.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "timestamp": 123,
+                            "content": [
+                                {
+                                    "type": "toolCall",
+                                    "id": "call_1",
+                                    "name": "exec",
+                                    "arguments": {"cmd": "python3 first.py"},
+                                }
+                            ],
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {"name": "exec", "arguments": '{"cmd":"duplicate"}'},
+                                },
+                                {
+                                    "id": "call_2",
+                                    "type": "function",
+                                    "function": {"name": "exec", "arguments": '{"cmd":"second"}'},
+                                },
+                            ],
+                        }
+                    }
+                )
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            module.SANDBOX_LIVE_SESSION_SCAN_SCRIPT,
+            str(time.time() - 1),
+            str(session_dir),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    payload = json.loads(completed.stdout)
+    assert payload["ok"] is True
+    assert payload["sessions"][0]["path"] == str(session)
+    assert payload["sessions"][0]["tool_call_count"] == 2
 
 
 def test_copy_nemoclaw_session_file_writes_host_audit_copy(tmp_path, monkeypatch):
@@ -653,6 +782,84 @@ def test_extract_timeline_events_preserves_openclaw_session_order(tmp_path):
     ]
     assert [event["timelineIndex"] for event in events] == [0, 1, 2, 3, 4]
     assert events[4]["content"] == "ANSWER: \\boxed{11}"
+
+
+def test_extract_timeline_events_from_openai_tool_calls_shape(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    session = tmp_path / "session.jsonl"
+    session.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "message": {
+                            "role": "user",
+                            "timestamp": 100,
+                            "content": "problem",
+                        }
+                    }
+                ),
+                json.dumps(
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "timestamp": 200,
+                            "content": "I will check this.",
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "exec",
+                                        "arguments": '{"cmd":"python3 check.py"}',
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ),
+                json.dumps(
+                    {
+                        "message": {
+                            "role": "tool",
+                            "timestamp": 300,
+                            "tool_call_id": "call_1",
+                            "name": "exec",
+                            "content": "verified",
+                        }
+                    }
+                ),
+                json.dumps(
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "timestamp": 400,
+                            "content": "ANSWER: \\boxed{11}",
+                        }
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sidecar = {"stdout_json": {"meta": {"agentMeta": {"sessionFile": str(session)}}}}
+
+    events = module.extract_timeline_events(sidecar)
+    status = module.conversation_order_status(events)
+
+    assert [event["type"] for event in events] == [
+        "user_message",
+        "assistant_message",
+        "tool_call",
+        "tool_result",
+        "assistant_message",
+    ]
+    assert events[2]["toolName"] == "exec"
+    assert events[3]["toolCallId"] == "call_1"
+    assert status["ok"] is True
+    assert status["tool_call_count"] == 1
+    assert status["tool_result_count"] == 1
 
 
 def test_conversation_order_status_accepts_user_tool_answer_sequence():

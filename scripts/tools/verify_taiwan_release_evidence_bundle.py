@@ -553,6 +553,8 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("explicit sandbox live session directory resolver", "def configured_live_sandbox_session_dirs("),
             ("NeMoClaw sandbox live session scanner", "def scan_nemoclaw_live_sessions("),
             ("NeMoClaw sandbox live scan script", "SANDBOX_LIVE_SESSION_SCAN_SCRIPT"),
+            ("OpenAI-style top-level tool calls parser", 'for key in ("tool_calls", "toolCalls")'),
+            ("OpenAI-style tool result role parser", 'role in {"toolResult", "tool"}'),
             ("live tool budget validator", "def live_tool_budget_status("),
             ("max tool-call budget sidecar issue", "max_tool_calls_exceeded"),
         ),
