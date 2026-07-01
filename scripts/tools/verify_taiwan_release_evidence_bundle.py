@@ -591,6 +591,31 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ),
         ),
     },
+    "scripts/tools/audit_taiwan_existing_results.py": {
+        "role": "agentic_runner:existing_results_audit_script",
+        "tokens": (
+            (
+                "existing-results observability validator",
+                "def agentic_observability_acceptance_issues(",
+            ),
+            (
+                "Agentic Math existing-results observability validation call",
+                'agentic_observability_acceptance_issues(rows, row_label="result row")',
+            ),
+            (
+                "SWE existing-results observability validation call",
+                'agentic_observability_acceptance_issues(rows_for_audit, row_label="patch row")',
+            ),
+            (
+                "Agentic Math existing-results NeMoClaw audit validator",
+                "def agentic_math_local_nemoclaw_audit_issues(",
+            ),
+            (
+                "SWE existing-results NeMoClaw audit validator",
+                "def agentic_swe_local_nemoclaw_audit_issues(",
+            ),
+        ),
+    },
 }
 EXTERNAL_ACTION_APPROVAL_PACKET_VERIFIER_SCRIPT = (
     "scripts/tools/verify_external_action_approval_packet.py"

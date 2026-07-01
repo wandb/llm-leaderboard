@@ -51,6 +51,9 @@ AGENTIC_RUNNER_SCRIPT_ROLES = {
     ),
     "scripts/tools/log_agentic_math_results_to_wandb.py": "agentic_runner:math_relog_script",
     "scripts/tools/log_agentic_swe_results_to_wandb.py": "agentic_runner:swe_relog_script",
+    "scripts/tools/audit_taiwan_existing_results.py": (
+        "agentic_runner:existing_results_audit_script"
+    ),
 }
 BENCHMARK_REVIEW_PHASES = {
     "agentic_math": "canary_agentic",
