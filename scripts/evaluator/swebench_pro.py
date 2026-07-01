@@ -17,6 +17,20 @@ EVAL_RUNNER = REPO_ROOT / "scripts" / "tools" / "evaluate_swebench_pro_patches.p
 DEFAULT_TAIWAN_SUBSET = "leaderboard_compact_80"
 DEFAULT_MAX_INPUT_TOKENS = 1_000_000
 DEFAULT_MAX_TOOL_CALLS = 60
+AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (
+    "nemoclaw_session_audit_ok",
+    "nemoclaw_session_audit_required",
+    "conversation_order_ok",
+    "conversation_order",
+    "tool_policy_ok",
+    "tool_policy_violations",
+    "weave_sidecar_ok",
+    "weave_sidecar",
+    "openclaw_result_path",
+    "openclaw_invocation_path",
+    "openclaw_invocation_sha256",
+    "openclaw_command_sha256",
+)
 
 
 def _cfg_get(cfg_obj: Any, key: str, default: Any = None) -> Any:
@@ -292,6 +306,19 @@ def _nemoclaw_audit_counts(patch_rows: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
+def _validate_output_table_columns(output_df: pd.DataFrame) -> None:
+    missing = [
+        column
+        for column in AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS
+        if column not in output_df.columns
+    ]
+    if missing:
+        raise ValueError(
+            "agentic_swe_output_table is missing required observability columns: "
+            f"{missing}"
+        )
+
+
 def _sanitize_artifact_component(value: str) -> str:
     return (
         value.replace("/", "-")
@@ -377,16 +404,24 @@ def _log_summary(run, cfg, summary: dict[str, Any], output_dir: Path, patch_path
                 "has_patch_record": bool(patch),
                 "openclaw_returncode": patch.get("openclaw_returncode"),
                 "tool_policy_ok": patch.get("tool_policy_ok"),
+                "tool_policy_violations": patch.get("tool_policy_violations"),
                 "conversation_order_ok": patch.get("conversation_order_ok"),
+                "conversation_order": patch.get("conversation_order"),
+                "weave_sidecar_ok": patch.get("weave_sidecar_ok"),
+                "weave_sidecar": patch.get("weave_sidecar"),
                 "nemoclaw_session_audit_ok": patch.get("nemoclaw_session_audit_ok"),
                 "nemoclaw_session_audit_required": (
                     audit.get("required") if isinstance(audit, dict) else None
                 ),
                 "openclaw_tool_call_count": patch.get("openclaw_tool_call_count"),
                 "openclaw_result_path": patch.get("openclaw_result_path"),
+                "openclaw_invocation_path": patch.get("openclaw_invocation_path"),
+                "openclaw_invocation_sha256": patch.get("openclaw_invocation_sha256"),
+                "openclaw_command_sha256": patch.get("openclaw_command_sha256"),
             }
         )
     per_instance = pd.DataFrame(per_instance_rows)
+    _validate_output_table_columns(per_instance)
     audit_counts = _nemoclaw_audit_counts(patch_rows)
     run.log(
         {

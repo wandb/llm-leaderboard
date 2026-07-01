@@ -33,6 +33,16 @@ REQUIRED_SUMMARY_KEYS = {
     "resolved_ids",
     "unresolved_ids",
 }
+INVOCATION_EVIDENCE_COLUMNS = (
+    "openclaw_result_path",
+    "openclaw_invocation_path",
+    "openclaw_invocation_sha256",
+    "openclaw_command_sha256",
+)
+INVOCATION_HASH_COLUMNS = (
+    "openclaw_invocation_sha256",
+    "openclaw_command_sha256",
+)
 
 
 def sanitize_artifact_component(value: str) -> str:
@@ -90,10 +100,38 @@ def source_sha256s(*, official_eval_dir: Path, patch_path: Path) -> dict[str, st
     return result
 
 
+def is_sha256(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(char in "0123456789abcdefABCDEF" for char in value)
+    )
+
+
 def observability_acceptance_issues(patch_rows: list[dict[str, Any]]) -> list[str]:
     issues: list[str] = []
     for index, row in enumerate(patch_rows, start=1):
         instance_id = row.get("instance_id") or index
+        missing_invocation = [
+            column
+            for column in INVOCATION_EVIDENCE_COLUMNS
+            if not isinstance(row.get(column), str) or not row.get(column)
+        ]
+        if missing_invocation:
+            issues.append(
+                f"patch {instance_id} is missing OpenClaw invocation evidence: "
+                f"{missing_invocation}"
+            )
+        invalid_hashes = [
+            column
+            for column in INVOCATION_HASH_COLUMNS
+            if column in row and not is_sha256(row.get(column))
+        ]
+        if invalid_hashes:
+            issues.append(
+                f"patch {instance_id} has invalid OpenClaw invocation hash evidence: "
+                f"{invalid_hashes}"
+            )
         if row.get("conversation_order_ok") is False:
             issues.append(f"patch {instance_id} has conversation_order_ok=false")
         conversation_order = row.get("conversation_order")
@@ -256,6 +294,9 @@ def build_output_table(summary: dict[str, Any], patch_rows: list[dict[str, Any]]
                 ),
                 "openclaw_tool_call_count": patch_row.get("openclaw_tool_call_count"),
                 "openclaw_result_path": patch_row.get("openclaw_result_path"),
+                "openclaw_invocation_path": patch_row.get("openclaw_invocation_path"),
+                "openclaw_invocation_sha256": patch_row.get("openclaw_invocation_sha256"),
+                "openclaw_command_sha256": patch_row.get("openclaw_command_sha256"),
             }
         )
     return pd.DataFrame(output_rows)

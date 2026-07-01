@@ -7,6 +7,7 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+TEST_SHA = "a" * 64
 
 
 def load_module():
@@ -37,18 +38,30 @@ def patch_rows_with_nemoclaw_audit(*, tool_policy_ok: bool = True):
             "tool_policy_ok": tool_policy_ok,
             "nemoclaw_session_audit_ok": True,
             "nemoclaw_session_audit": {"required": True, "ok": True},
+            "openclaw_result_path": "/tmp/i1/openclaw_result.json",
+            "openclaw_invocation_path": "/tmp/i1/openclaw_invocation.json",
+            "openclaw_invocation_sha256": TEST_SHA,
+            "openclaw_command_sha256": "b" * 64,
         },
         {
             "instance_id": "i2",
             "tool_policy_ok": True,
             "nemoclaw_session_audit_ok": True,
             "nemoclaw_session_audit": {"required": True, "ok": True},
+            "openclaw_result_path": "/tmp/i2/openclaw_result.json",
+            "openclaw_invocation_path": "/tmp/i2/openclaw_invocation.json",
+            "openclaw_invocation_sha256": TEST_SHA,
+            "openclaw_command_sha256": "b" * 64,
         },
         {
             "instance_id": "i3",
             "tool_policy_ok": True,
             "nemoclaw_session_audit_ok": True,
             "nemoclaw_session_audit": {"required": True, "ok": True},
+            "openclaw_result_path": "/tmp/i3/openclaw_result.json",
+            "openclaw_invocation_path": "/tmp/i3/openclaw_invocation.json",
+            "openclaw_invocation_sha256": TEST_SHA,
+            "openclaw_command_sha256": "b" * 64,
         },
     ]
 
@@ -109,6 +122,24 @@ def test_validate_nemoclaw_session_audit_rejects_explicit_observability_failures
     assert "patch i3 has weave_sidecar_ok=false" in message
 
 
+def test_validate_nemoclaw_session_audit_rejects_missing_invocation_evidence():
+    module = load_module()
+    patch_rows = patch_rows_with_nemoclaw_audit()
+    del patch_rows[0]["openclaw_invocation_path"]
+
+    with pytest.raises(ValueError, match="missing OpenClaw invocation evidence"):
+        module.validate_nemoclaw_session_audit(summary_payload(), patch_rows)
+
+
+def test_validate_nemoclaw_session_audit_rejects_invalid_invocation_hashes():
+    module = load_module()
+    patch_rows = patch_rows_with_nemoclaw_audit()
+    patch_rows[0]["openclaw_command_sha256"] = "not-a-sha"
+
+    with pytest.raises(ValueError, match="invalid OpenClaw invocation hash evidence"):
+        module.validate_nemoclaw_session_audit(summary_payload(), patch_rows)
+
+
 def test_build_output_table_preserves_patch_metadata():
     module = load_module()
 
@@ -128,6 +159,9 @@ def test_build_output_table_preserves_patch_metadata():
                 "nemoclaw_session_audit": {"required": True, "ok": True},
                 "openclaw_tool_call_count": 12,
                 "openclaw_result_path": "path/to/result.json",
+                "openclaw_invocation_path": "path/to/invocation.json",
+                "openclaw_invocation_sha256": TEST_SHA,
+                "openclaw_command_sha256": "b" * 64,
             }
         ],
     )
@@ -147,6 +181,10 @@ def test_build_output_table_preserves_patch_metadata():
     assert i1["weave_sidecar"] == {"ok": True}
     assert i1["nemoclaw_session_audit_ok"] is True
     assert i1["nemoclaw_session_audit_required"] is True
+    assert i1["openclaw_result_path"] == "path/to/result.json"
+    assert i1["openclaw_invocation_path"] == "path/to/invocation.json"
+    assert i1["openclaw_invocation_sha256"] == TEST_SHA
+    assert i1["openclaw_command_sha256"] == "b" * 64
     assert i2["resolved"] is False
     assert i2["has_patch_record"] is False
 

@@ -13,6 +13,20 @@ from config_singleton import WandbConfigSingleton
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OPENCLAW_RUNNER = REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py"
+AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (
+    "nemoclaw_session_audit_ok",
+    "nemoclaw_session_audit",
+    "conversation_order_ok",
+    "conversation_order",
+    "tool_policy_ok",
+    "tool_policy_violations",
+    "weave_sidecar_ok",
+    "weave_sidecar",
+    "openclaw_result_path",
+    "openclaw_invocation_path",
+    "openclaw_invocation_sha256",
+    "openclaw_command_sha256",
+)
 
 
 def _cfg_get(cfg_obj: Any, key: str, default: Any = None) -> Any:
@@ -186,7 +200,21 @@ def _nemoclaw_audit_metrics(summary: dict[str, Any]) -> dict[str, int]:
     }
 
 
+def _validate_output_table_columns(output_df: pd.DataFrame) -> None:
+    missing = [
+        column
+        for column in AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS
+        if column not in output_df.columns
+    ]
+    if missing:
+        raise ValueError(
+            "agentic_math_output_table is missing required observability columns: "
+            f"{missing}"
+        )
+
+
 def _log_summary(run, cfg, summary: dict[str, Any], output_df: pd.DataFrame) -> None:
+    _validate_output_table_columns(output_df)
     model_name = _cfg_get(cfg.model, "pretrained_model_name_or_path", "openclaw")
     leaderboard = pd.DataFrame(
         [

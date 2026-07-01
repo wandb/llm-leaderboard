@@ -8,6 +8,16 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+TEST_SHA = "a" * 64
+
+
+def invocation_evidence(row_id: str = "m1") -> dict:
+    return {
+        "openclaw_result_path": f"/tmp/{row_id}/openclaw_result.json",
+        "openclaw_invocation_path": f"/tmp/{row_id}/openclaw_invocation.json",
+        "openclaw_invocation_sha256": TEST_SHA,
+        "openclaw_command_sha256": "b" * 64,
+    }
 
 
 def load_module():
@@ -53,18 +63,21 @@ def test_validate_summary_accepts_consistent_rows():
             "predicted_answer": "1",
             "nemoclaw_session_audit_ok": True,
             "nemoclaw_session_audit": {"required": True, "ok": True},
+            **invocation_evidence("m1"),
         },
         {
             "correct": True,
             "predicted_answer": "2",
             "nemoclaw_session_audit_ok": True,
             "nemoclaw_session_audit": {"required": True, "ok": True},
+            **invocation_evidence("m2"),
         },
         {
             "correct": False,
             "predicted_answer": None,
             "nemoclaw_session_audit_ok": True,
             "nemoclaw_session_audit": {"required": True, "ok": True},
+            **invocation_evidence("m3"),
         },
     ]
 
@@ -90,12 +103,14 @@ def test_validate_summary_rejects_mismatched_counts():
             "predicted_answer": "1",
             "nemoclaw_session_audit_ok": True,
             "nemoclaw_session_audit": {"required": True, "ok": True},
+            **invocation_evidence("m1"),
         },
         {
             "correct": False,
             "predicted_answer": "2",
             "nemoclaw_session_audit_ok": True,
             "nemoclaw_session_audit": {"required": True, "ok": True},
+            **invocation_evidence("m2"),
         },
     ]
 
@@ -124,6 +139,7 @@ def test_validate_summary_rejects_explicit_observability_failures():
             "nemoclaw_session_audit_ok": True,
             "nemoclaw_session_audit": {"required": True, "ok": True},
             "conversation_order_ok": False,
+            **invocation_evidence("m1"),
         },
         {
             "task_id": "m2",
@@ -132,6 +148,7 @@ def test_validate_summary_rejects_explicit_observability_failures():
             "nemoclaw_session_audit_ok": True,
             "nemoclaw_session_audit": {"required": True, "ok": True},
             "tool_policy_violations": [{"type": "denied_tool"}],
+            **invocation_evidence("m2"),
         },
         {
             "task_id": "m3",
@@ -140,6 +157,7 @@ def test_validate_summary_rejects_explicit_observability_failures():
             "nemoclaw_session_audit_ok": True,
             "nemoclaw_session_audit": {"required": True, "ok": True},
             "weave_sidecar": {"ok": False},
+            **invocation_evidence("m3"),
         },
     ]
 
@@ -150,6 +168,60 @@ def test_validate_summary_rejects_explicit_observability_failures():
     assert "row m1 has conversation_order_ok=false" in message
     assert "row m2 has tool_policy_violations" in message
     assert "row m3 has weave_sidecar.ok=false" in message
+
+
+def test_validate_summary_rejects_missing_invocation_evidence():
+    module = load_module()
+    summary = {
+        "total_instances": 1,
+        "answered_instances": 1,
+        "correct_instances": 1,
+        "incorrect_instances": 0,
+        "accuracy": 1.0,
+        "correctness": 1.0,
+        "nemoclaw_session_audit_required_instances": 1,
+        "nemoclaw_session_audit_passed_instances": 1,
+        "nemoclaw_session_audit_failed_instances": 0,
+    }
+    rows = [
+        {
+            "task_id": "m1",
+            "correct": True,
+            "predicted_answer": "1",
+            "nemoclaw_session_audit_ok": True,
+            "nemoclaw_session_audit": {"required": True, "ok": True},
+        }
+    ]
+
+    with pytest.raises(ValueError, match="missing OpenClaw invocation evidence"):
+        module.validate_summary(summary, rows)
+
+
+def test_validate_summary_rejects_invalid_invocation_hashes():
+    module = load_module()
+    summary = {
+        "total_instances": 1,
+        "answered_instances": 1,
+        "correct_instances": 1,
+        "incorrect_instances": 0,
+        "accuracy": 1.0,
+        "correctness": 1.0,
+        "nemoclaw_session_audit_required_instances": 1,
+        "nemoclaw_session_audit_passed_instances": 1,
+        "nemoclaw_session_audit_failed_instances": 0,
+    }
+    row = {
+        "task_id": "m1",
+        "correct": True,
+        "predicted_answer": "1",
+        "nemoclaw_session_audit_ok": True,
+        "nemoclaw_session_audit": {"required": True, "ok": True},
+        **invocation_evidence("m1"),
+    }
+    row["openclaw_invocation_sha256"] = "not-a-sha"
+
+    with pytest.raises(ValueError, match="invalid OpenClaw invocation hash evidence"):
+        module.validate_summary(summary, [row])
 
 
 def test_build_leaderboard_uses_existing_agentic_math_schema():
@@ -199,6 +271,10 @@ def test_math_relog_output_table_keeps_observability_columns():
     assert "tool_policy_violations" in output_df.columns
     assert "weave_sidecar_ok" in output_df.columns
     assert "weave_sidecar" in output_df.columns
+    assert "openclaw_result_path" in output_df.columns
+    assert "openclaw_invocation_path" in output_df.columns
+    assert "openclaw_invocation_sha256" in output_df.columns
+    assert "openclaw_command_sha256" in output_df.columns
     assert output_df.to_dict(orient="records")[0]["nemoclaw_session_audit_ok"] is None
     assert output_df.to_dict(orient="records")[0]["tool_policy_violations"] is None
 
@@ -228,6 +304,7 @@ def test_main_dry_run_writes_plan_without_wandb_login(tmp_path, monkeypatch, cap
             "predicted_answer": "1",
             "nemoclaw_session_audit_ok": True,
             "nemoclaw_session_audit": {"required": True, "ok": True},
+            **invocation_evidence("m1"),
         },
         {
             "id": "m2",
@@ -235,6 +312,7 @@ def test_main_dry_run_writes_plan_without_wandb_login(tmp_path, monkeypatch, cap
             "predicted_answer": "2",
             "nemoclaw_session_audit_ok": True,
             "nemoclaw_session_audit": {"required": True, "ok": True},
+            **invocation_evidence("m2"),
         },
     ]
     (results_dir / "summary.json").write_text(
@@ -325,7 +403,15 @@ def test_main_write_requires_validated_dry_run_plan_before_wandb_login(
     }
     (results_dir / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
     (results_dir / "results.jsonl").write_text(
-        json.dumps({"correct": True, "predicted_answer": "1", "nemoclaw_session_audit_ok": True, "nemoclaw_session_audit": {"required": True, "ok": True}}) + "\n",
+        json.dumps(
+            {
+                "correct": True,
+                "predicted_answer": "1",
+                "nemoclaw_session_audit_ok": True,
+                "nemoclaw_session_audit": {"required": True, "ok": True},
+                **invocation_evidence("m1"),
+            }
+        ) + "\n",
         encoding="utf-8",
     )
 
@@ -369,7 +455,15 @@ def test_main_write_rejects_mismatched_validated_plan_before_wandb_login(
     }
     (results_dir / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
     (results_dir / "results.jsonl").write_text(
-        json.dumps({"correct": True, "predicted_answer": "1", "nemoclaw_session_audit_ok": True, "nemoclaw_session_audit": {"required": True, "ok": True}}) + "\n",
+        json.dumps(
+            {
+                "correct": True,
+                "predicted_answer": "1",
+                "nemoclaw_session_audit_ok": True,
+                "nemoclaw_session_audit": {"required": True, "ok": True},
+                **invocation_evidence("m1"),
+            }
+        ) + "\n",
         encoding="utf-8",
     )
     plan_json = tmp_path / "plan.json"
@@ -437,7 +531,15 @@ def test_main_write_rejects_source_file_drift_after_validated_plan(
     (results_dir / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
     results_path = results_dir / "results.jsonl"
     results_path.write_text(
-        json.dumps({"correct": True, "predicted_answer": "1", "nemoclaw_session_audit_ok": True, "nemoclaw_session_audit": {"required": True, "ok": True}}) + "\n",
+        json.dumps(
+            {
+                "correct": True,
+                "predicted_answer": "1",
+                "nemoclaw_session_audit_ok": True,
+                "nemoclaw_session_audit": {"required": True, "ok": True},
+                **invocation_evidence("m1"),
+            }
+        ) + "\n",
         encoding="utf-8",
     )
     plan_json = tmp_path / "plan.json"
@@ -458,7 +560,15 @@ def test_main_write_rejects_source_file_drift_after_validated_plan(
     module.main()
 
     results_path.write_text(
-        json.dumps({"correct": True, "predicted_answer": "2", "nemoclaw_session_audit_ok": True, "nemoclaw_session_audit": {"required": True, "ok": True}}) + "\n",
+        json.dumps(
+            {
+                "correct": True,
+                "predicted_answer": "2",
+                "nemoclaw_session_audit_ok": True,
+                "nemoclaw_session_audit": {"required": True, "ok": True},
+                **invocation_evidence("m1"),
+            }
+        ) + "\n",
         encoding="utf-8",
     )
 
@@ -504,7 +614,15 @@ def test_main_write_requires_external_action_approval_before_wandb_login(
     }
     (results_dir / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
     (results_dir / "results.jsonl").write_text(
-        json.dumps({"correct": True, "predicted_answer": "1", "nemoclaw_session_audit_ok": True, "nemoclaw_session_audit": {"required": True, "ok": True}}) + "\n",
+        json.dumps(
+            {
+                "correct": True,
+                "predicted_answer": "1",
+                "nemoclaw_session_audit_ok": True,
+                "nemoclaw_session_audit": {"required": True, "ok": True},
+                **invocation_evidence("m1"),
+            }
+        ) + "\n",
         encoding="utf-8",
     )
     plan_json = tmp_path / "plan.json"
@@ -566,7 +684,15 @@ def test_main_write_requires_external_action_approval_source_packet_before_wandb
     }
     (results_dir / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
     (results_dir / "results.jsonl").write_text(
-        json.dumps({"correct": True, "predicted_answer": "1", "nemoclaw_session_audit_ok": True, "nemoclaw_session_audit": {"required": True, "ok": True}}) + "\n",
+        json.dumps(
+            {
+                "correct": True,
+                "predicted_answer": "1",
+                "nemoclaw_session_audit_ok": True,
+                "nemoclaw_session_audit": {"required": True, "ok": True},
+                **invocation_evidence("m1"),
+            }
+        ) + "\n",
         encoding="utf-8",
     )
     plan_json = tmp_path / "plan.json"

@@ -505,6 +505,13 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "Agentic Math W&B audit metric logging",
                 "agentic_math/nemoclaw_session_audit_required_instances",
             ),
+            (
+                "Agentic Math W&B output required columns",
+                "AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (",
+            ),
+            ("Agentic Math W&B invocation path column", '"openclaw_invocation_path"'),
+            ("Agentic Math W&B invocation sha256 column", '"openclaw_invocation_sha256"'),
+            ("Agentic Math W&B command sha256 column", '"openclaw_command_sha256"'),
         ),
     },
     "scripts/evaluator/swebench_pro.py": {
@@ -518,6 +525,13 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "SWE-Bench Pro W&B audit metric logging",
                 "agentic_swe/nemoclaw_session_audit_required_patches",
             ),
+            (
+                "SWE-Bench Pro W&B output required columns",
+                "AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (",
+            ),
+            ("SWE-Bench Pro W&B invocation path column", '"openclaw_invocation_path"'),
+            ("SWE-Bench Pro W&B invocation sha256 column", '"openclaw_invocation_sha256"'),
+            ("SWE-Bench Pro W&B command sha256 column", '"openclaw_command_sha256"'),
         ),
     },
     "scripts/tools/run_openclaw_agent_protocol.py": {
@@ -999,6 +1013,9 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("W&B output table column check", "output_table_columns"),
             ("W&B table file column loader", "def _download_wandb_table_json("),
             ("W&B observed table column evidence", '"columns_ok": bool(check.get("ok"))'),
+            ("W&B OpenClaw invocation path column", '"openclaw_invocation_path"'),
+            ("W&B OpenClaw invocation sha256 column", '"openclaw_invocation_sha256"'),
+            ("W&B OpenClaw command sha256 column", '"openclaw_command_sha256"'),
         ),
     },
     "scripts/tools/weave_content_canary_gate_contract.py": {
@@ -1263,6 +1280,9 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("Agentic Math relog output observability columns", "OUTPUT_OBSERVABILITY_COLUMNS = ("),
             ("Agentic Math relog output tool-policy column", '"tool_policy_violations",'),
             ("Agentic Math relog output Weave-sidecar column", '"weave_sidecar_ok",'),
+            ("Agentic Math relog output invocation path column", '"openclaw_invocation_path",'),
+            ("Agentic Math relog output invocation sha256 column", '"openclaw_invocation_sha256",'),
+            ("Agentic Math relog output command sha256 column", '"openclaw_command_sha256",'),
             ("Agentic Math output table", "agentic_math_output_table"),
             ("Agentic Math NeMoClaw audit field passthrough", "nemoclaw_session_audit_ok"),
             (
@@ -1288,6 +1308,18 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             (
                 "SWE relog output Weave-sidecar field",
                 '"weave_sidecar_ok": patch_row.get("weave_sidecar_ok"),',
+            ),
+            (
+                "SWE relog output invocation path field",
+                '"openclaw_invocation_path": patch_row.get("openclaw_invocation_path"),',
+            ),
+            (
+                "SWE relog output invocation sha256 field",
+                '"openclaw_invocation_sha256": patch_row.get("openclaw_invocation_sha256"),',
+            ),
+            (
+                "SWE relog output command sha256 field",
+                '"openclaw_command_sha256": patch_row.get("openclaw_command_sha256"),',
             ),
             ("SWE relog NeMoClaw audit field", "nemoclaw_session_audit_ok"),
             ("SWE output table", "agentic_swe_output_table"),
@@ -1397,6 +1429,10 @@ AGENTIC_WANDB_OUTPUT_TABLE_REQUIRED_COLUMNS = {
         "tool_policy_violations",
         "weave_sidecar_ok",
         "weave_sidecar",
+        "openclaw_result_path",
+        "openclaw_invocation_path",
+        "openclaw_invocation_sha256",
+        "openclaw_command_sha256",
     ),
     "agentic_swe": (
         "nemoclaw_session_audit_ok",
@@ -1407,6 +1443,10 @@ AGENTIC_WANDB_OUTPUT_TABLE_REQUIRED_COLUMNS = {
         "tool_policy_violations",
         "weave_sidecar_ok",
         "weave_sidecar",
+        "openclaw_result_path",
+        "openclaw_invocation_path",
+        "openclaw_invocation_sha256",
+        "openclaw_command_sha256",
     ),
 }
 SCOPE_ATTESTATION_RENDER_SAFETY_FIELDS = (

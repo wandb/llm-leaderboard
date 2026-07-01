@@ -20,6 +20,10 @@ AGENTIC_MATH_OUTPUT_COLUMNS = [
     "tool_policy_violations",
     "weave_sidecar_ok",
     "weave_sidecar",
+    "openclaw_result_path",
+    "openclaw_invocation_path",
+    "openclaw_invocation_sha256",
+    "openclaw_command_sha256",
 ]
 WANDB_SCOPE_REQUIRED_HUMAN_FIELDS = [
     "scope_attestation_json.confirmed",

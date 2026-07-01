@@ -37,6 +37,10 @@ AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "tool_policy_violations",
     "weave_sidecar_ok",
     "weave_sidecar",
+    "openclaw_result_path",
+    "openclaw_invocation_path",
+    "openclaw_invocation_sha256",
+    "openclaw_command_sha256",
 )
 AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "nemoclaw_session_audit_ok",
@@ -47,6 +51,10 @@ AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "tool_policy_violations",
     "weave_sidecar_ok",
     "weave_sidecar",
+    "openclaw_result_path",
+    "openclaw_invocation_path",
+    "openclaw_invocation_sha256",
+    "openclaw_command_sha256",
 )
 
 
