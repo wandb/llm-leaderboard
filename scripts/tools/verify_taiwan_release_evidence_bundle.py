@@ -3419,6 +3419,12 @@ def validate_weave_content_canary_external_approval_command(
             f"{label} runs run_weave_agents_content_canary.py --execute without "
             "--nemoclaw-sandbox"
         )
+    config_path = operator_command_flag_value(parts, "--nemoclaw-openclaw-config-path")
+    if config_path != "/sandbox/.openclaw/openclaw.json":
+        errors.append(
+            f"{label} runs run_weave_agents_content_canary.py --execute without "
+            "--nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json"
+        )
 
 
 def command_invokes_wandb_completion_sync_apply(parts: list[str]) -> bool:

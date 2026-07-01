@@ -898,7 +898,8 @@ def build_bundle_with_operator_weave_content_canary_command(tmp_path):
                             "uv run python scripts/tools/run_weave_agents_content_canary.py "
                             "--canary-id PREPARE_ONLY "
                             "--model openai-direct/gpt-4.1-nano-2025-04-14 --thinking off "
-                            "--nemoclaw-sandbox nejumi-taiwan"
+                            "--nemoclaw-sandbox nejumi-taiwan "
+                            "--nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json"
                         ),
                         (
                             "uv run python scripts/tools/run_weave_agents_content_canary.py "
@@ -906,6 +907,7 @@ def build_bundle_with_operator_weave_content_canary_command(tmp_path):
                             "--model openai-direct/gpt-4.1-nano-2025-04-14 "
                             "--thinking off --timeout 180 "
                             "--nemoclaw-sandbox nejumi-taiwan "
+                            "--nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json "
                             "--external-action-approval-source-packet-json "
                             "outputs/taiwan_release_evidence/bundle_YYYYMMDDTHHMM/"
                             "external_action_approval_packet.json "
@@ -14642,6 +14644,45 @@ def test_verify_release_evidence_bundle_rejects_weave_canary_without_nemoclaw_sa
     assert payload["integrity_ok"] is False
     assert any(
         "runs run_weave_agents_content_canary.py --execute without --nemoclaw-sandbox"
+        in error
+        for error in payload["errors"]
+    )
+
+
+def test_verify_release_evidence_bundle_rejects_weave_canary_without_nemoclaw_openclaw_config_path(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_weave_content_canary_command(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    operator_plan_path = bundle / "operator_plan.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    operator_plan = json.loads(operator_plan_path.read_text(encoding="utf-8"))
+    config_flag = " --nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json"
+    operator_plan["operator_next_steps"]["steps"][0]["commands"][1] = operator_plan[
+        "operator_next_steps"
+    ]["steps"][0]["commands"][1].replace(config_flag, "")
+    manifest["current_gate"]["operator_next_steps"] = operator_plan["operator_next_steps"]
+    manifest["current_gate"]["remediation_plan"][0]["commands"][1] = manifest[
+        "current_gate"
+    ]["remediation_plan"][0]["commands"][1].replace(config_flag, "")
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    operator_plan_path.write_text(json.dumps(operator_plan), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, "operator_plan.json")
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "runs run_weave_agents_content_canary.py --execute without "
+        "--nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json"
         in error
         for error in payload["errors"]
     )

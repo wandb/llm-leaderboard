@@ -28,6 +28,7 @@ OPENAI_CANARY_AGENTIC_DIR = "configs/taiwan_full/generated_openai_canary_agentic
 OPENAI_CANARY_AGENTIC_NEMOCLAW_DIR = "configs/taiwan_full/generated_openai_canary_agentic_nemoclaw"
 OPENAI_CANARY_AGENTIC_AGGREGATE_DIR = "configs/taiwan_full/generated_openai_canary_agentic_aggregate"
 OPENAI_CANARY_BUDGET_ESTIMATE_JSON = "outputs/taiwan_full_eval/openai_canary_budget_estimate.json"
+NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 EXTERNAL_ACTION_APPROVAL_REPORT_TEMPLATE = (
     "temp/taiwan_external_action_approval_REVIEWED_YYYYMMDDTHHMM.verify.json"
 )
@@ -151,13 +152,15 @@ def weave_content_canary_commands() -> list[str]:
             "uv run python scripts/tools/run_weave_agents_content_canary.py "
             "--canary-id PREPARE_ONLY "
             "--model openai-direct/gpt-4.1-nano-2025-04-14 --thinking off "
-            "--nemoclaw-sandbox nejumi-taiwan"
+            "--nemoclaw-sandbox nejumi-taiwan "
+            f"--nemoclaw-openclaw-config-path {NEMOCLAW_OPENCLAW_CONFIG_PATH}"
         ),
         (
             "uv run python scripts/tools/run_weave_agents_content_canary.py "
             "--execute --canary-id CONTENT_CANARY_YYYYMMDDTHHMM "
             "--model openai-direct/gpt-4.1-nano-2025-04-14 --thinking off --timeout 180 "
             "--nemoclaw-sandbox nejumi-taiwan "
+            f"--nemoclaw-openclaw-config-path {NEMOCLAW_OPENCLAW_CONFIG_PATH} "
             f"{approval_flag}"
         ),
         (

@@ -579,6 +579,10 @@ def test_weave_content_gate_fails_when_no_candidate_passes(tmp_path):
         for command in execute_commands
     )
     assert all(
+        "--nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json" in command
+        for command in execute_commands
+    )
+    assert all(
         "--nemoclaw-sandbox nejumi-taiwan" in command
         for command in execute_commands
     )
