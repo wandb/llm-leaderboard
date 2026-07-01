@@ -6,6 +6,7 @@ Check Taiwan canary readiness without calling paid model APIs.
 from __future__ import annotations
 
 import argparse
+import base64
 import fnmatch
 import json
 import os
@@ -62,6 +63,89 @@ NEMOCLAW_ALLOWED_RUNTIME_NETWORK_POLICIES = {
     "openclaw_docs",
     "wandb-weave",
 }
+NEMOCLAW_SANDBOX_SECRET_REF_PROBE = r"""
+import json
+import stat
+import sys
+from pathlib import Path
+
+config_path = Path(sys.argv[1])
+openclaw_model = sys.argv[2]
+provider_id = openclaw_model.split("/", 1)[0]
+
+
+def json_pointer_get(data, pointer):
+    if not isinstance(pointer, str) or not pointer.startswith("/"):
+        return None
+    current = data
+    for raw_part in pointer.strip("/").split("/"):
+        part = raw_part.replace("~1", "/").replace("~0", "~")
+        if isinstance(current, dict):
+            current = current.get(part)
+        else:
+            return None
+    return current
+
+
+def ref_payload(config, ref, label):
+    if not isinstance(ref, dict):
+        return {"label": label, "ok": False, "detail": "apiKey is not a SecretRef object"}
+    if ref.get("source") != "file":
+        return {"label": label, "ok": False, "detail": "apiKey source is not file"}
+    provider = ref.get("provider")
+    pointer = ref.get("id")
+    providers = config.get("secrets", {}).get("providers", {})
+    provider_cfg = providers.get(provider) if isinstance(providers, dict) else None
+    if not isinstance(provider_cfg, dict):
+        return {"label": label, "ok": False, "detail": "secret provider is not configured"}
+    path = Path(str(provider_cfg.get("path") or ""))
+    if not path.exists():
+        return {"label": label, "ok": False, "detail": f"secret file missing: {path}"}
+    try:
+        secret_data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {"label": label, "ok": False, "detail": f"secret file unreadable: {type(exc).__name__}"}
+    value = json_pointer_get(secret_data, str(pointer or ""))
+    mode = stat.S_IMODE(path.stat().st_mode)
+    return {
+        "label": label,
+        "ok": isinstance(value, str) and bool(value.strip()),
+        "detail": json.dumps(
+            {
+                "source": "file",
+                "provider": provider,
+                "id": pointer,
+                "path": str(path),
+                "mode_octal": oct(mode),
+                "value_present": isinstance(value, str) and bool(value.strip()),
+                "secret_value_in_report": False,
+            },
+            ensure_ascii=False,
+        ),
+    }
+
+
+try:
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+except Exception as exc:
+    print(json.dumps({"ok": False, "error": f"config unreadable: {type(exc).__name__}"}))
+    raise SystemExit(0)
+
+provider = config.get("models", {}).get("providers", {}).get(provider_id, {})
+entries = config.get("plugins", {}).get("entries", {})
+weave = entries.get("weave") if isinstance(entries, dict) else {}
+weave_config = weave.get("config") if isinstance(weave, dict) else {}
+rows = [
+    ref_payload(config, provider.get("apiKey") if isinstance(provider, dict) else None, f"{provider_id} provider"),
+    ref_payload(config, weave_config.get("apiKey") if isinstance(weave_config, dict) else None, "Weave"),
+]
+print(json.dumps({"ok": all(row.get("ok") for row in rows), "checks": rows}, ensure_ascii=False))
+""".strip()
+
+
+def one_line_python_exec(script: str) -> str:
+    encoded = base64.b64encode(script.encode("utf-8")).decode("ascii")
+    return f"import base64; exec(base64.b64decode('{encoded}'))"
 
 
 @dataclass
@@ -273,6 +357,7 @@ def openclaw_config_data_checks(
     openclaw_model: str,
     detail: str,
     label: str = "OpenClaw",
+    require_file_secret_refs: bool = False,
 ) -> list[Check]:
     provider_id, model_id = openclaw_provider_and_model(openclaw_model)
     provider = data.get("models", {}).get("providers", {}).get(provider_id, {})
@@ -280,7 +365,7 @@ def openclaw_config_data_checks(
     model_ids = [model.get("id") for model in models or [] if isinstance(model, dict)]
     entries = data.get("plugins", {}).get("entries", {})
     weave = entries.get("weave") if isinstance(entries, dict) else {}
-    return [
+    checks = [
         Check(f"{label} {provider_id} provider exists", bool(provider), detail),
         Check(f"{label} model is registered: {openclaw_model}", model_id in model_ids, str(model_ids)),
         Check(
@@ -289,6 +374,63 @@ def openclaw_config_data_checks(
             str(weave.get("enabled") if isinstance(weave, dict) else None),
         ),
     ]
+    if not require_file_secret_refs:
+        return checks
+
+    provider_api_key = provider.get("apiKey") if isinstance(provider, dict) else None
+    secrets = data.get("secrets", {}).get("providers", {})
+    provider_secret_configured = (
+        isinstance(provider_api_key, dict)
+        and provider_api_key.get("source") == "file"
+        and nonempty_string(provider_api_key.get("provider"))
+        and nonempty_string(provider_api_key.get("id"))
+        and isinstance(secrets, dict)
+        and isinstance(secrets.get(provider_api_key.get("provider")), dict)
+    )
+    weave_config = weave.get("config") if isinstance(weave, dict) else None
+    weave_api_key = weave_config.get("apiKey") if isinstance(weave_config, dict) else None
+    weave_secret_configured = (
+        isinstance(weave_api_key, dict)
+        and weave_api_key.get("source") == "file"
+        and nonempty_string(weave_api_key.get("provider"))
+        and nonempty_string(weave_api_key.get("id"))
+        and isinstance(secrets, dict)
+        and isinstance(secrets.get(weave_api_key.get("provider")), dict)
+    )
+    checks.insert(
+        2,
+        Check(
+            f"{label} {provider_id} provider apiKey uses file SecretRef",
+            provider_secret_configured,
+            json.dumps(
+                {
+                    "source": provider_api_key.get("source") if isinstance(provider_api_key, dict) else None,
+                    "provider": provider_api_key.get("provider") if isinstance(provider_api_key, dict) else None,
+                    "id": provider_api_key.get("id") if isinstance(provider_api_key, dict) else None,
+                    "secret_provider_configured": provider_secret_configured,
+                    "secret_value_in_report": False,
+                },
+                ensure_ascii=False,
+            ),
+        ),
+    )
+    checks.append(
+        Check(
+            f"{label} Weave apiKey uses file SecretRef",
+            weave_secret_configured,
+            json.dumps(
+                {
+                    "source": weave_api_key.get("source") if isinstance(weave_api_key, dict) else None,
+                    "provider": weave_api_key.get("provider") if isinstance(weave_api_key, dict) else None,
+                    "id": weave_api_key.get("id") if isinstance(weave_api_key, dict) else None,
+                    "secret_provider_configured": weave_secret_configured,
+                    "secret_value_in_report": False,
+                },
+                ensure_ascii=False,
+            ),
+        )
+    )
+    return checks
 
 
 def check_openclaw_config(path: Path, *, openclaw_model: str) -> list[Check]:
@@ -654,6 +796,7 @@ def check_nemoclaw(
                         openclaw_model=openclaw_model,
                         detail=openclaw_config_path,
                         label="NeMoClaw sandbox OpenClaw",
+                        require_file_secret_refs=True,
                     ):
                         checks.append(
                             Check(
@@ -662,6 +805,55 @@ def check_nemoclaw(
                                 config_check.detail,
                             )
                         )
+                    secret_ok, secret_payload, secret_detail = _run_json_status(
+                        [
+                            resolved_nemoclaw,
+                            "sandbox",
+                            "exec",
+                            sandbox,
+                            "--no-tty",
+                            "--timeout",
+                            "30",
+                            "--",
+                            "python3",
+                            "-c",
+                            one_line_python_exec(NEMOCLAW_SANDBOX_SECRET_REF_PROBE),
+                            openclaw_config_path,
+                            openclaw_model,
+                        ],
+                        env,
+                        timeout=90,
+                    )
+                    if not secret_ok or not isinstance(secret_payload, dict):
+                        checks.append(
+                            Check(
+                                "NeMoClaw sandbox OpenClaw SecretRef probe runs",
+                                not require,
+                                secret_detail or "no output",
+                            )
+                        )
+                    else:
+                        secret_rows = secret_payload.get("checks")
+                        if not isinstance(secret_rows, list):
+                            checks.append(
+                                Check(
+                                    "NeMoClaw sandbox OpenClaw SecretRef probe runs",
+                                    not require,
+                                    "checks is not a list",
+                                )
+                            )
+                        else:
+                            for row in secret_rows:
+                                if not isinstance(row, dict):
+                                    continue
+                                label_text = str(row.get("label") or "")
+                                checks.append(
+                                    Check(
+                                        f"NeMoClaw sandbox OpenClaw {label_text} SecretRef resolves",
+                                        bool(row.get("ok")) or not require,
+                                        str(row.get("detail") or ""),
+                                    )
+                                )
     return checks
 
 

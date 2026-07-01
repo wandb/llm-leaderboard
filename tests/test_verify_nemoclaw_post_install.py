@@ -126,7 +126,11 @@ payload = {{
     {{"name": "NeMoClaw sandbox OpenClaw config is readable: /sandbox/.openclaw/openclaw.json", "ok": {py_bool}, "detail": "bytes=7465"}},
     {{"name": "NeMoClaw sandbox OpenClaw openai-direct provider exists", "ok": {py_bool}}},
     {{"name": "NeMoClaw sandbox OpenClaw model is registered: openai-direct/gpt-4.1-mini-2025-04-14", "ok": {py_bool}}},
-    {{"name": "NeMoClaw sandbox OpenClaw Weave plugin is enabled", "ok": {py_bool}}}
+    {{"name": "NeMoClaw sandbox OpenClaw openai-direct provider apiKey uses file SecretRef", "ok": {py_bool}}},
+    {{"name": "NeMoClaw sandbox OpenClaw openai-direct provider SecretRef resolves", "ok": {py_bool}}},
+    {{"name": "NeMoClaw sandbox OpenClaw Weave plugin is enabled", "ok": {py_bool}}},
+    {{"name": "NeMoClaw sandbox OpenClaw Weave apiKey uses file SecretRef", "ok": {py_bool}}},
+    {{"name": "NeMoClaw sandbox OpenClaw Weave SecretRef resolves", "ok": {py_bool}}}
   ]
 }}
 open(args.json, 'w', encoding='utf-8').write(json.dumps(payload) + '\\n')

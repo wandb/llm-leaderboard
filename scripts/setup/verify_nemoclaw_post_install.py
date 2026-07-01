@@ -312,7 +312,11 @@ def validate_step_payload_contract(
             f"NeMoClaw sandbox OpenClaw config is readable: {nemoclaw_openclaw_config_path}",
             "NeMoClaw sandbox OpenClaw openai-direct provider exists",
             "NeMoClaw sandbox OpenClaw model is registered: openai-direct/gpt-4.1-mini-2025-04-14",
+            "NeMoClaw sandbox OpenClaw openai-direct provider apiKey uses file SecretRef",
+            "NeMoClaw sandbox OpenClaw openai-direct provider SecretRef resolves",
             "NeMoClaw sandbox OpenClaw Weave plugin is enabled",
+            "NeMoClaw sandbox OpenClaw Weave apiKey uses file SecretRef",
+            "NeMoClaw sandbox OpenClaw Weave SecretRef resolves",
         ):
             require_check_ok(errors, payload, check_name)
     elif name == "adoption_check":

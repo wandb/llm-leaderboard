@@ -348,12 +348,19 @@ if [ "$1" = "sandbox" ] && [ "$2" = "exec" ] && [ "$8" = "openclaw" ]; then
   echo "openclaw 2026.6.9"
   exit 0
 fi
+if [ "$1" = "sandbox" ] && [ "$2" = "exec" ] && [ "$8" = "python3" ]; then
+  cat <<'JSON'
+{"ok":true,"checks":[{"label":"openai-direct provider","ok":true,"detail":{"secret_value_in_report":false}},{"label":"Weave","ok":true,"detail":{"secret_value_in_report":false}}]}
+JSON
+  exit 0
+fi
 if [ "$1" = "sandbox" ] && [ "$2" = "exec" ] && [ "$8" = "cat" ]; then
   cat <<'JSON'
 {
   "models": {
     "providers": {
       "openai-direct": {
+        "apiKey": {"source": "file", "provider": "nejumi-openai", "id": "/openai/apiKey"},
         "models": [
           {"id": "gpt-4.1-mini-2025-04-14"}
         ]
@@ -362,7 +369,16 @@ if [ "$1" = "sandbox" ] && [ "$2" = "exec" ] && [ "$8" = "cat" ]; then
   },
   "plugins": {
     "entries": {
-      "weave": {"enabled": true}
+      "weave": {
+        "enabled": true,
+        "config": {"apiKey": {"source": "file", "provider": "nejumi-wandb", "id": "/wandb/apiKey"}}
+      }
+    }
+  },
+  "secrets": {
+    "providers": {
+      "nejumi-openai": {"source": "file", "path": "/sandbox/.openclaw/nejumi_secrets.json", "mode": "json"},
+      "nejumi-wandb": {"source": "file", "path": "/sandbox/.openclaw/nejumi_secrets.json", "mode": "json"}
     }
   }
 }
@@ -413,6 +429,118 @@ exit 1
         and check.ok
         for check in checks
     )
+    assert any(
+        check.name == "NeMoClaw sandbox OpenClaw openai-direct provider apiKey uses file SecretRef"
+        and check.ok
+        for check in checks
+    )
+    assert any(
+        check.name == "NeMoClaw sandbox OpenClaw openai-direct provider SecretRef resolves"
+        and check.ok
+        for check in checks
+    )
+    assert any(
+        check.name == "NeMoClaw sandbox OpenClaw Weave apiKey uses file SecretRef"
+        and check.ok
+        for check in checks
+    )
+    assert any(
+        check.name == "NeMoClaw sandbox OpenClaw Weave SecretRef resolves"
+        and check.ok
+        for check in checks
+    )
+
+
+def test_nemoclaw_required_readiness_fails_when_sandbox_secret_ref_does_not_resolve(
+    tmp_path,
+):
+    module = load_module()
+    nemoclaw = tmp_path / "nemoclaw"
+    openshell = tmp_path / "openshell"
+    nemoclaw.write_text(
+        """#!/usr/bin/env sh
+if [ "$1" = "--version" ]; then
+  echo "nemoclaw 0.0.test"
+  exit 0
+fi
+if [ "$1" = "status" ] && [ "$2" = "--json" ]; then
+  cat <<'JSON'
+{"sandboxes":[{"name":"nejumi-taiwan","provider":"compatible-endpoint","model":"test-model","connected":false,"policies":["wandb-weave"]}]}
+JSON
+  exit 0
+fi
+if [ "$1" = "sandbox" ] && [ "$2" = "status" ]; then
+  echo "sandbox ok"
+  exit 0
+fi
+if [ "$1" = "sandbox" ] && [ "$2" = "exec" ] && [ "$8" = "openclaw" ]; then
+  echo "openclaw 2026.6.9"
+  exit 0
+fi
+if [ "$1" = "sandbox" ] && [ "$2" = "exec" ] && [ "$8" = "python3" ]; then
+  cat <<'JSON'
+{"ok":false,"checks":[{"label":"openai-direct provider","ok":false,"detail":{"value_present":false,"secret_value_in_report":false}},{"label":"Weave","ok":true,"detail":{"value_present":true,"secret_value_in_report":false}}]}
+JSON
+  exit 0
+fi
+if [ "$1" = "sandbox" ] && [ "$2" = "exec" ] && [ "$8" = "cat" ]; then
+  cat <<'JSON'
+{
+  "models": {
+    "providers": {
+      "openai-direct": {
+        "apiKey": {"source": "file", "provider": "nejumi-openai", "id": "/openai/apiKey"},
+        "models": [
+          {"id": "gpt-4.1-mini-2025-04-14"}
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "entries": {
+      "weave": {
+        "enabled": true,
+        "config": {"apiKey": {"source": "file", "provider": "nejumi-wandb", "id": "/wandb/apiKey"}}
+      }
+    }
+  },
+  "secrets": {
+    "providers": {
+      "nejumi-openai": {"source": "file", "path": "/sandbox/.openclaw/nejumi_secrets.json", "mode": "json"},
+      "nejumi-wandb": {"source": "file", "path": "/sandbox/.openclaw/nejumi_secrets.json", "mode": "json"}
+    }
+  }
+}
+JSON
+  exit 0
+fi
+echo "unexpected $*" >&2
+exit 1
+""",
+        encoding="utf-8",
+    )
+    openshell.write_text("#!/usr/bin/env sh\necho openshell 0.0.test\n", encoding="utf-8")
+    nemoclaw.chmod(0o755)
+    openshell.chmod(0o755)
+    env = {
+        "PATH": str(tmp_path) + os.pathsep + os.environ.get("PATH", ""),
+        **{key: value for key, value in os.environ.items() if key.startswith("HOME")},
+    }
+
+    checks = module.check_nemoclaw(
+        env,
+        nemoclaw_bin="nemoclaw",
+        sandbox="nejumi-taiwan",
+        require=True,
+        openclaw_model="openai-direct/gpt-4.1-mini-2025-04-14",
+        openclaw_config_path="/sandbox/.openclaw/openclaw.json",
+    )
+
+    failed = {check.name: check for check in checks if not check.ok}
+    assert "NeMoClaw sandbox OpenClaw openai-direct provider SecretRef resolves" in failed
+    assert "secret_value_in_report" in failed[
+        "NeMoClaw sandbox OpenClaw openai-direct provider SecretRef resolves"
+    ].detail
 
 
 def test_nemoclaw_required_readiness_fails_when_sandbox_openclaw_config_disables_weave(
@@ -441,12 +569,19 @@ if [ "$1" = "sandbox" ] && [ "$2" = "exec" ] && [ "$8" = "openclaw" ]; then
   echo "openclaw 2026.6.9"
   exit 0
 fi
+if [ "$1" = "sandbox" ] && [ "$2" = "exec" ] && [ "$8" = "python3" ]; then
+  cat <<'JSON'
+{"ok":true,"checks":[{"label":"openai-direct provider","ok":true,"detail":{"secret_value_in_report":false}},{"label":"Weave","ok":true,"detail":{"secret_value_in_report":false}}]}
+JSON
+  exit 0
+fi
 if [ "$1" = "sandbox" ] && [ "$2" = "exec" ] && [ "$8" = "cat" ]; then
   cat <<'JSON'
 {
   "models": {
     "providers": {
       "openai-direct": {
+        "apiKey": {"source": "file", "provider": "nejumi-openai", "id": "/openai/apiKey"},
         "models": [
           {"id": "gpt-4.1-mini-2025-04-14"}
         ]
@@ -455,7 +590,16 @@ if [ "$1" = "sandbox" ] && [ "$2" = "exec" ] && [ "$8" = "cat" ]; then
   },
   "plugins": {
     "entries": {
-      "weave": {"enabled": false}
+      "weave": {
+        "enabled": false,
+        "config": {"apiKey": {"source": "file", "provider": "nejumi-wandb", "id": "/wandb/apiKey"}}
+      }
+    }
+  },
+  "secrets": {
+    "providers": {
+      "nejumi-openai": {"source": "file", "path": "/sandbox/.openclaw/nejumi_secrets.json", "mode": "json"},
+      "nejumi-wandb": {"source": "file", "path": "/sandbox/.openclaw/nejumi_secrets.json", "mode": "json"}
     }
   }
 }
@@ -553,6 +697,7 @@ def test_openclaw_config_check_is_provider_generic(tmp_path):
   "models": {
     "providers": {
       "openai-direct": {
+        "apiKey": {"source": "file", "provider": "nejumi-openai", "id": "/openai/apiKey"},
         "models": [
           {"id": "gpt-4.1-mini-2025-04-14"}
         ]
@@ -561,7 +706,16 @@ def test_openclaw_config_check_is_provider_generic(tmp_path):
   },
   "plugins": {
     "entries": {
-      "weave": {"enabled": true}
+      "weave": {
+        "enabled": true,
+        "config": {"apiKey": {"source": "file", "provider": "nejumi-wandb", "id": "/wandb/apiKey"}}
+      }
+    }
+  },
+  "secrets": {
+    "providers": {
+      "nejumi-openai": {"source": "file", "path": "/sandbox/.openclaw/nejumi_secrets.json", "mode": "json"},
+      "nejumi-wandb": {"source": "file", "path": "/sandbox/.openclaw/nejumi_secrets.json", "mode": "json"}
     }
   }
 }
@@ -592,6 +746,16 @@ def test_openai_direct_env_check_uses_openai_api_key():
 
     assert all(check.ok for check in checks)
     assert any(check.name.startswith("OPENAI_API_KEY") and not check.ok for check in missing)
+
+
+def test_secret_ref_probe_command_is_single_line_for_nemoclaw_exec():
+    module = load_module()
+
+    command = module.one_line_python_exec(module.NEMOCLAW_SANDBOX_SECRET_REF_PROBE)
+
+    assert "\n" not in command
+    assert "\r" not in command
+    assert command.startswith("import base64; exec(")
 
 
 def test_default_canary_readiness_targets_openai_direct_canary():

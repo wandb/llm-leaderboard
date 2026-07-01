@@ -200,6 +200,26 @@ NEMOCLAW_CANARY_READINESS_SCRIPT_SOURCE_TOKENS = (
         "NeMoClaw sandbox OpenClaw provider/model check",
         'label="NeMoClaw sandbox OpenClaw"',
     ),
+    (
+        "NeMoClaw sandbox OpenClaw SecretRef probe",
+        "NEMOCLAW_SANDBOX_SECRET_REF_PROBE",
+    ),
+    (
+        "NeMoClaw sandbox OpenClaw SecretRef probe one-line command",
+        "one_line_python_exec(NEMOCLAW_SANDBOX_SECRET_REF_PROBE)",
+    ),
+    (
+        "NeMoClaw sandbox OpenClaw provider SecretRef static check",
+        "provider apiKey uses file SecretRef",
+    ),
+    (
+        "NeMoClaw sandbox OpenClaw Weave SecretRef static check",
+        "Weave apiKey uses file SecretRef",
+    ),
+    (
+        "NeMoClaw sandbox OpenClaw SecretRef runtime check",
+        "SecretRef resolves",
+    ),
 )
 NEMOCLAW_ADOPTION_SCRIPT_SOURCE_TOKENS = (
     ("W&B/Weave runtime policy criterion", "def runtime_wandb_weave_policy("),
@@ -6296,7 +6316,11 @@ def validate_nemoclaw_canary_readiness_sandbox_openclaw_config_checks(
             "NeMoClaw sandbox OpenClaw model is registered: "
             "openai-direct/gpt-4.1-mini-2025-04-14"
         ),
+        "NeMoClaw sandbox OpenClaw openai-direct provider apiKey uses file SecretRef",
+        "NeMoClaw sandbox OpenClaw openai-direct provider SecretRef resolves",
         "NeMoClaw sandbox OpenClaw Weave plugin is enabled",
+        "NeMoClaw sandbox OpenClaw Weave apiKey uses file SecretRef",
+        "NeMoClaw sandbox OpenClaw Weave SecretRef resolves",
     )
     errors: list[str] = []
     for name in required:

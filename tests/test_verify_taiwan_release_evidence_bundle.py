@@ -4281,6 +4281,22 @@ def build_bundle_with_weave_content_canary(tmp_path):
                     },
                     {
                         "name": (
+                            "NeMoClaw sandbox OpenClaw openai-direct provider "
+                            "apiKey uses file SecretRef"
+                        ),
+                        "ok": True,
+                        "detail": '{"secret_value_in_report": false}',
+                    },
+                    {
+                        "name": (
+                            "NeMoClaw sandbox OpenClaw openai-direct provider "
+                            "SecretRef resolves"
+                        ),
+                        "ok": True,
+                        "detail": '{"secret_value_in_report": false}',
+                    },
+                    {
+                        "name": (
                             "NeMoClaw sandbox OpenClaw model is registered: "
                             "openai-direct/test-mini"
                         ),
@@ -4291,6 +4307,18 @@ def build_bundle_with_weave_content_canary(tmp_path):
                         "name": "NeMoClaw sandbox OpenClaw Weave plugin is enabled",
                         "ok": True,
                         "detail": "True",
+                    },
+                    {
+                        "name": (
+                            "NeMoClaw sandbox OpenClaw Weave apiKey uses file SecretRef"
+                        ),
+                        "ok": True,
+                        "detail": '{"secret_value_in_report": false}',
+                    },
+                    {
+                        "name": "NeMoClaw sandbox OpenClaw Weave SecretRef resolves",
+                        "ok": True,
+                        "detail": '{"secret_value_in_report": false}',
                     },
                 ],
                 "errors": [],
@@ -4516,6 +4544,22 @@ def build_bundle_with_weave_content_canary(tmp_path):
                     },
                     {
                         "name": (
+                            "NeMoClaw sandbox OpenClaw openai-direct provider "
+                            "apiKey uses file SecretRef"
+                        ),
+                        "ok": True,
+                        "detail": '{"secret_value_in_report": false}',
+                    },
+                    {
+                        "name": (
+                            "NeMoClaw sandbox OpenClaw openai-direct provider "
+                            "SecretRef resolves"
+                        ),
+                        "ok": True,
+                        "detail": '{"secret_value_in_report": false}',
+                    },
+                    {
+                        "name": (
                             "NeMoClaw sandbox OpenClaw model is registered: "
                             "openai-direct/test-mini"
                         ),
@@ -4526,6 +4570,18 @@ def build_bundle_with_weave_content_canary(tmp_path):
                         "name": "NeMoClaw sandbox OpenClaw Weave plugin is enabled",
                         "ok": True,
                         "detail": "True",
+                    },
+                    {
+                        "name": (
+                            "NeMoClaw sandbox OpenClaw Weave apiKey uses file SecretRef"
+                        ),
+                        "ok": True,
+                        "detail": '{"secret_value_in_report": false}',
+                    },
+                    {
+                        "name": "NeMoClaw sandbox OpenClaw Weave SecretRef resolves",
+                        "ok": True,
+                        "detail": '{"secret_value_in_report": false}',
                     },
                 ],
                 "errors": [],
