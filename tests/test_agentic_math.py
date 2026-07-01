@@ -357,12 +357,31 @@ def test_agentic_math_run_passes_wandb_scoped_session_key(tmp_path, monkeypatch)
     def fake_run_command(command, cwd=None, timeout=None, check=True):
         captured_command[:] = command
         output_dir = Path(command[command.index("--output-dir") + 1])
+        prompt_text = Path(command[command.index("--prompt-file") + 1]).read_text(encoding="utf-8")
         sidecar_path = module.task_sidecar_path(output_dir, row["task_id"])
         sidecar_path.parent.mkdir(parents=True, exist_ok=True)
         sidecar_path.write_text(
             json.dumps(
                 {
                     "returncode": 0,
+                    "metadata": {
+                        "task_id": row["task_id"],
+                        "prompt_hash": module.sha256_text(prompt_text),
+                        "model_id": command[command.index("--model") + 1],
+                        "openclaw_config_source": command[command.index("--openclaw-config-source") + 1],
+                    },
+                    "tool_policy": {
+                        "deny_tools": [
+                            command[index + 1]
+                            for index, token in enumerate(command[:-1])
+                            if token == "--deny-tool"
+                        ],
+                        "deny_argument_patterns": [
+                            command[index + 1]
+                            for index, token in enumerate(command[:-1])
+                            if token == "--deny-argument-pattern"
+                        ],
+                    },
                     "stdout": "ANSWER: 2\n",
                     "tool_policy_ok": True,
                     "tool_policy_violations": [],
@@ -411,6 +430,84 @@ def test_agentic_math_run_passes_wandb_scoped_session_key(tmp_path, monkeypatch)
     assert config_source == record["cache_key"]["openclaw_config_source"]
     assert record["correct"] is True
     assert record["cache_key"]["session_prefix"] == "twcanary-run-3:agentic-math"
+
+
+def test_agentic_math_fresh_success_rejects_sidecar_config_source_mismatch(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    row = {
+        "task_id": "math_1",
+        "answer": "2",
+        "question": "1+1?",
+        "subject": "algebra",
+        "answer_format": "math_expression",
+    }
+
+    def fake_run_command(command, cwd=None, timeout=None, check=True):
+        output_dir = Path(command[command.index("--output-dir") + 1])
+        prompt_text = Path(command[command.index("--prompt-file") + 1]).read_text(encoding="utf-8")
+        sidecar_path = module.task_sidecar_path(output_dir, row["task_id"])
+        sidecar_path.parent.mkdir(parents=True, exist_ok=True)
+        sidecar_path.write_text(
+            json.dumps(
+                {
+                    "returncode": 0,
+                    "metadata": {
+                        "task_id": row["task_id"],
+                        "prompt_hash": module.sha256_text(prompt_text),
+                        "model_id": command[command.index("--model") + 1],
+                        "openclaw_config_source": "/sandbox/other-openclaw.json",
+                    },
+                    "tool_policy": {
+                        "deny_tools": [
+                            command[index + 1]
+                            for index, token in enumerate(command[:-1])
+                            if token == "--deny-tool"
+                        ],
+                        "deny_argument_patterns": [
+                            command[index + 1]
+                            for index, token in enumerate(command[:-1])
+                            if token == "--deny-argument-pattern"
+                        ],
+                    },
+                    "stdout": "ANSWER: 2\n",
+                    "tool_policy_ok": True,
+                    "tool_policy_violations": [],
+                    "conversation_order": {"ok": True},
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, stdout=str(sidecar_path), stderr="")
+
+    monkeypatch.setattr(module, "run_command", fake_run_command)
+    args = type(
+        "Args",
+        (),
+        {
+            "agent": "main",
+            "allow_failed_preflight": False,
+            "deny_argument_pattern": None,
+            "deny_tool": None,
+            "dry_run": False,
+            "fail_fast": False,
+            "model": "openai-direct/example-model",
+            "nemoclaw_sandbox": None,
+            "no_local": False,
+            "openclaw_max_attempts": 1,
+            "openclaw_retry_base_seconds": 0,
+            "openclaw_timeout": 30,
+            "profile": None,
+            "redo": False,
+            "session_prefix": None,
+            "thinking": "high",
+            "use_task_agent": False,
+            "weave_sidecar": False,
+            "weave_sidecar_strict": False,
+        },
+    )()
+
+    with pytest.raises(RuntimeError, match="OpenClaw sidecar metadata mismatch"):
+        module.run_openclaw_for_task(row, tmp_path / "task", args)
 
 
 def test_archive_stale_result_moves_active_result_out_of_collection_path(tmp_path):

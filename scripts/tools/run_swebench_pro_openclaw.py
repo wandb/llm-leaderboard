@@ -148,6 +148,22 @@ def cache_key_matches(record: dict[str, Any], cache_key: dict[str, Any]) -> bool
     return record.get("cache_key") == cache_key
 
 
+def sidecar_identity_matches_cache(sidecar: dict[str, Any], cache_key: dict[str, Any]) -> bool:
+    metadata = sidecar.get("metadata") if isinstance(sidecar.get("metadata"), dict) else {}
+    policy = sidecar.get("tool_policy") if isinstance(sidecar.get("tool_policy"), dict) else {}
+    expected_config = cache_key.get("openclaw_config_source")
+    observed_config = metadata.get("openclaw_config_source")
+    return (
+        metadata.get("task_id") == cache_key["instance_id"]
+        and metadata.get("prompt_hash") == cache_key["prompt_hash"]
+        and (not cache_key.get("model") or metadata.get("model_id") == cache_key.get("model"))
+        and (not expected_config or observed_config == expected_config)
+        and sorted(policy.get("deny_tools") or []) == sorted(cache_key.get("deny_tools") or [])
+        and sorted(policy.get("deny_argument_patterns") or [])
+        == sorted(cache_key.get("deny_argument_patterns") or [])
+    )
+
+
 def patch_mentions_paths(patch: str, paths: list[str]) -> bool:
     for path in paths:
         if f" a/{path} " in patch or f" b/{path}" in patch:
@@ -1131,6 +1147,11 @@ def run_openclaw_for_task(
     if not sidecar_path.exists():
         raise RuntimeError(f"OpenClaw completed without sidecar result: {sidecar_path}")
     sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    if not sidecar_identity_matches_cache(sidecar, cache_key):
+        raise RuntimeError(
+            f"OpenClaw sidecar metadata mismatch for {row['instance_id']}: "
+            f"{sidecar_path}"
+        )
     if is_weave_sidecar_failure(sidecar):
         raise RuntimeError(f"Diagnostic Weave sidecar logging failed for {row['instance_id']}")
     metadata.update(

@@ -1422,6 +1422,11 @@ def run_openclaw_for_task(
     attempt_metadata = last_attempt_metadata
 
     sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    if not sidecar_matches_cache(sidecar, cache_key):
+        raise RuntimeError(
+            f"OpenClaw sidecar metadata mismatch for {row['task_id']}: "
+            f"{sidecar_path}"
+        )
     if is_weave_sidecar_failure(sidecar):
         raise RuntimeError(
             f"Diagnostic Weave sidecar logging failed for {row['task_id']}.\n"

@@ -362,7 +362,9 @@ sandbox before returning the patch record to the host.
 SWE-Bench Pro patch records also bind their cache key to the OpenClaw config
 source used to create the per-task sandbox-visible config. A run prepared with
 one NeMoClaw OpenClaw config path is therefore not reused after the config
-source path changes.
+source path changes. The runner also rejects newly produced sidecars before
+patch capture when their task, prompt, model, tool policy, or config source
+metadata does not match the active patch cache key.
 
 These code paths are covered by unit tests and config-generation tests.
 `nemoclaw`, `openshell`, the `nejumi-taiwan` sandbox, and native
@@ -554,7 +556,9 @@ writes the per-task config under the sandbox task workspace, and points OpenClaw
 at that sandbox-visible file. The config source path is also included in the
 runner cache key and in the OpenClaw protocol sidecar metadata, so changing the
 sandbox OpenClaw config source cannot silently reuse an older Agentic Math
-result.
+result. Fresh successful sidecars are also rejected before scoring when their
+task, prompt, model, tool policy, or config source metadata does not match the
+current runner cache key.
 
 For generated Taiwan full-evaluation configs, opt Agentic Math into NeMoClaw
 first:

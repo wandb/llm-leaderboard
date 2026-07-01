@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -41,6 +43,34 @@ def sample_row() -> dict:
             "--- a/src/example.py\n"
             "+++ b/src/example.py\n"
         ),
+    }
+
+
+def command_flag_value(command: list[str], flag: str) -> str:
+    return command[command.index(flag) + 1] if flag in command else ""
+
+
+def command_flag_values(command: list[str], flag: str) -> list[str]:
+    values = []
+    for index, token in enumerate(command[:-1]):
+        if token == flag:
+            values.append(command[index + 1])
+    return values
+
+
+def protocol_sidecar_identity(module, command: list[str], instance_id: str) -> dict:
+    prompt_text = Path(command_flag_value(command, "--prompt-file")).read_text(encoding="utf-8")
+    return {
+        "metadata": {
+            "task_id": instance_id,
+            "prompt_hash": module.sha256_text(prompt_text),
+            "model_id": command_flag_value(command, "--model"),
+            "openclaw_config_source": command_flag_value(command, "--openclaw-config-source"),
+        },
+        "tool_policy": {
+            "deny_tools": command_flag_values(command, "--deny-tool"),
+            "deny_argument_patterns": command_flag_values(command, "--deny-argument-pattern"),
+        },
     }
 
 
@@ -371,6 +401,7 @@ def test_swebench_runtime_budget_exceeded_returns_disqualified_metadata(tmp_path
         sidecar_path.write_text(
             json.dumps(
                 {
+                    **protocol_sidecar_identity(module, command, row["instance_id"]),
                     "returncode": 0,
                     "stderr": "Runtime budget exceeded",
                     "tool_policy_ok": True,
@@ -451,6 +482,7 @@ def test_swebench_nemoclaw_run_forwards_sandbox_command_args(tmp_path, monkeypat
         sidecar_path.write_text(
             json.dumps(
                 {
+                    **protocol_sidecar_identity(module, command, row["instance_id"]),
                     "returncode": 0,
                     "tool_policy_ok": True,
                     "tool_policy_violations": [],
@@ -507,6 +539,58 @@ def test_swebench_nemoclaw_run_forwards_sandbox_command_args(tmp_path, monkeypat
     assert captured_command[captured_command.index("--openclaw-config-source") + 1] == str(template)
     session_key = captured_command[captured_command.index("--session-key") + 1]
     assert session_key.startswith(f"twcanary-swe-run:swebench-pro:{row['instance_id']}:")
+
+
+def test_swebench_rejects_sidecar_config_source_mismatch(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    row = sample_row()
+    checkout_dir = tmp_path / "checkout"
+    checkout_dir.mkdir()
+    task_dir = tmp_path / "task"
+
+    def fake_run_command(command, cwd=None, timeout=None, check=True):
+        output_dir = Path(command[command.index("--output-dir") + 1])
+        sidecar_path = module.task_sidecar_path(output_dir, row["instance_id"])
+        sidecar_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            **protocol_sidecar_identity(module, command, row["instance_id"]),
+            "returncode": 0,
+            "tool_policy_ok": True,
+            "tool_policy_violations": [],
+            "tool_call_count": 1,
+            "tool_error_count": 0,
+            "runtime_budget": {"ok": True},
+            "weave_sidecar": {"ok": True},
+        }
+        payload["metadata"]["openclaw_config_source"] = "/sandbox/other-openclaw.json"
+        sidecar_path.write_text(json.dumps(payload), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout=str(sidecar_path), stderr="")
+
+    monkeypatch.setattr(module, "run_command", fake_run_command)
+    monkeypatch.setattr(module, "ensure_nemoclaw_checkout_ready", lambda checkout_dir, task_dir, args: None)
+    args = SimpleNamespace(
+        agent="test-agent",
+        allow_failed_preflight=False,
+        deny_argument_pattern=None,
+        deny_tool=None,
+        dry_run=False,
+        max_input_tokens=1_000_000,
+        max_tool_calls=60,
+        model="openai-direct/example-model",
+        no_local=False,
+        openclaw_max_attempts=1,
+        openclaw_retry_base_seconds=0,
+        openclaw_timeout=30,
+        profile=None,
+        session_prefix=None,
+        thinking="high",
+        use_task_agent=False,
+        weave_sidecar=False,
+        weave_sidecar_strict=False,
+    )
+
+    with pytest.raises(RuntimeError, match="OpenClaw sidecar metadata mismatch"):
+        module.run_openclaw_for_task(row, checkout_dir, task_dir, args)
 
 
 def test_swebench_nemoclaw_copy_mode_syncs_when_checkout_not_visible(tmp_path, monkeypatch):
@@ -736,6 +820,7 @@ def test_swebench_policy_violation_returns_disqualified_metadata(tmp_path, monke
         sidecar_path.write_text(
             json.dumps(
                 {
+                    **protocol_sidecar_identity(module, command, row["instance_id"]),
                     "returncode": 0,
                     "stderr": "[agent] run ended with stopReason=stop",
                     "tool_policy_ok": False,
@@ -800,6 +885,7 @@ def test_swebench_transient_exhaustion_returns_disqualified_metadata(tmp_path, m
         sidecar_path.write_text(
             json.dumps(
                 {
+                    **protocol_sidecar_identity(module, command, row["instance_id"]),
                     "returncode": 1,
                     "stderr": "FailoverError: LLM request timed out. rawError=terminated",
                     "tool_policy_ok": True,
