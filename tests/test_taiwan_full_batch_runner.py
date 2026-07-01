@@ -175,6 +175,12 @@ def passing_weave_content_canary_gate_payload() -> dict:
         "command_ok": True,
         "command_returncode": 0,
         "command_result_contract_issues": [],
+        "expected_required_texts": [
+            "CANARY",
+            "CANARY_RESULT CANARY 91",
+            "openclaw_config_source: /sandbox/.openclaw/openclaw.json",
+        ],
+        "plan_required_text_validation_issues": [],
         "weave_verifier_ok": True,
         "weave_verifier_schema_version": 1,
         "weave_verifier_latest_trace_id": "trace-1",
