@@ -157,12 +157,20 @@ NEMOCLAW_CANARY_READINESS_SCRIPT_SOURCE_TOKENS = (
 )
 NEMOCLAW_ADOPTION_SCRIPT_SOURCE_TOKENS = (
     ("W&B/Weave runtime policy criterion", "def runtime_wandb_weave_policy("),
+    (
+        "W&B/Weave runtime policy criterion invocation",
+        "        runtime_wandb_weave_policy(readiness_paths, setup_paths),",
+    ),
     ("W&B/Weave runtime policy blocker", '"runtime_wandb_weave_policy"'),
     ("W&B/Weave canary check parser", "NeMoClaw W&B/Weave runtime policy is present"),
     ("W&B/Weave policy evidence field", "wandb_weave_policy_present"),
     (
         "runtime network policy allowlist criterion",
         "def runtime_network_policy_allowlist(",
+    ),
+    (
+        "runtime network policy allowlist criterion invocation",
+        "        runtime_network_policy_allowlist(readiness_paths, setup_paths),",
     ),
     (
         "runtime network policy allowlist blocker",
