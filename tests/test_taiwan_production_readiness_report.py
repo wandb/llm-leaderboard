@@ -108,6 +108,41 @@ def add_wandb_run_metadata(payload, *, benchmark="agentic_math", run_id="run-1")
     return payload
 
 
+def agentic_output_table_evidence(benchmark: str, expected_total: int) -> dict:
+    output_table = (
+        "agentic_math_output_table"
+        if benchmark == "agentic_math"
+        else "agentic_swe_output_table"
+    )
+    return {
+        "name": output_table,
+        "ok": True,
+        "nrows": expected_total,
+        "expected": expected_total,
+        "columns_ok": True,
+        "required_columns": [
+            "nemoclaw_session_copy_source",
+            "nemoclaw_session_copied_bytes",
+        ],
+        "missing_columns": [],
+        "row_observability_ok": True,
+        "row_observability_checked_rows": expected_total,
+        "row_observability_expected_rows": expected_total,
+        "row_observability_invalid_row_count": 0,
+        "row_observability_invalid_examples": [],
+        "row_observability_required_copy_source_columns": [
+            "nemoclaw_session_copy_source",
+        ],
+        "row_observability_required_positive_int_columns": [
+            "nemoclaw_session_copied_bytes",
+        ],
+        "row_observability_allowed_copy_sources": [
+            "stdout_agent_meta",
+            "live_runtime_budget",
+        ],
+    }
+
+
 def operator_docs_payload(*, ok: bool = True):
     check_names = [
         "readme_exists",
@@ -188,6 +223,9 @@ def wandb_completion_verifier_payload(
             "failed": 0,
             "expected_total": expected_total,
         }
+        payload["observed_evidence"].setdefault("tables", []).append(
+            agentic_output_table_evidence(benchmark, expected_total)
+        )
     return add_wandb_run_metadata(payload, benchmark=benchmark, run_id=run_id)
 
 
@@ -1075,7 +1113,7 @@ def test_wandb_completion_accepts_specific_run_id_match(tmp_path):
                     "agentic_math/total_instances": {"ok": True, "value": 100},
                 },
                 "tables": [
-                    {"name": "agentic_math_output_table", "ok": True, "nrows": 100},
+                    agentic_output_table_evidence("agentic_math", 100),
                 ],
                 "artifacts": [
                     {
@@ -1149,6 +1187,28 @@ def test_wandb_completion_rejects_agentic_without_nemoclaw_audit(tmp_path):
     ]
 
 
+def test_wandb_completion_rejects_agentic_without_session_copy_evidence(tmp_path):
+    module = load_module()
+    payload = wandb_completion_verifier_payload()
+    payload["observed_evidence"].pop("tables")
+    run = write_json(tmp_path / "completion.json", payload)
+
+    result = module.evaluate_wandb_completion(
+        [run],
+        required_benchmarks=["agentic_math"],
+        required_run_ids={"agentic_math": "run-1"},
+        require=True,
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "invalid_evidence"
+    record = result["invalid_evidence_records"][0]
+    assert record["nemoclaw_session_audit_valid"] is False
+    assert "observed_evidence.tables must include the Agentic output table" in record[
+        "nemoclaw_session_audit_errors"
+    ]
+
+
 def test_wandb_completion_rejects_legacy_schema_as_incomplete(tmp_path):
     module = load_module()
     run = write_json(
@@ -1163,6 +1223,9 @@ def test_wandb_completion_rejects_legacy_schema_as_incomplete(tmp_path):
                 "summary_metrics": {
                     "agentic_math/accuracy": {"ok": True, "value": 0.86},
                 },
+                "tables": [
+                    agentic_output_table_evidence("agentic_math", 100),
+                ],
             },
         },
     )
@@ -1198,6 +1261,9 @@ def test_wandb_completion_rejects_non_finished_observed_evidence(tmp_path):
                 "summary_metrics": {
                     "agentic_math/accuracy": {"ok": True, "value": 0.86},
                 },
+                "tables": [
+                    agentic_output_table_evidence("agentic_math", 100),
+                ],
             },
         },
     )
@@ -2282,6 +2348,9 @@ def test_paid_run_review_package_verifies_wandb_completion_entry(tmp_path):
                     "summary_metrics": {
                         "agentic_math/accuracy": {"ok": True, "value": 0.86},
                     },
+                    "tables": [
+                        agentic_output_table_evidence("agentic_math", 100),
+                    ],
                 },
             }
         ),
@@ -2720,6 +2789,9 @@ def test_paid_run_review_package_rejects_wandb_completion_parent_run_mismatch(tm
                 "summary_metrics": {
                     "agentic_math/accuracy": {"ok": True, "value": 0.86},
                 },
+                "tables": [
+                    agentic_output_table_evidence("agentic_math", 100),
+                ],
             },
         },
     )
@@ -3341,6 +3413,9 @@ def test_build_report_summary_includes_benchmark_evidence_matrix(tmp_path):
                 "summary_metrics": {
                     "agentic_math/accuracy": {"ok": True, "value": 0.86},
                 },
+                "tables": [
+                    agentic_output_table_evidence("agentic_math", 100),
+                ],
             },
         },
     )

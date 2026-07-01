@@ -28,6 +28,13 @@ WANDB_COMPLETION_API_TIMEOUT_SECONDS = 60
 SCOPE_ATTESTATION_SCHEMA_VERSION = 1
 MIN_SCOPE_CONFIRMATION_LENGTH = 20
 NEMOCLAW_AUDIT_REQUIRED_BENCHMARKS = {"agentic_math", "agentic_swe"}
+NEMOCLAW_OUTPUT_TABLES = {
+    "agentic_math": "agentic_math_output_table",
+    "agentic_swe": "agentic_swe_output_table",
+}
+NEMOCLAW_SESSION_COPY_SOURCE_COLUMNS = ("nemoclaw_session_copy_source",)
+NEMOCLAW_SESSION_COPY_BYTE_COLUMNS = ("nemoclaw_session_copied_bytes",)
+NEMOCLAW_SESSION_COPY_SOURCES = ("stdout_agent_meta", "live_runtime_budget")
 PLACEHOLDER_ACCOUNTING_VALUES = {
     "あとで",
     "仮",
@@ -181,6 +188,131 @@ def int_like(value: Any) -> int | None:
     return None
 
 
+def string_sequence(value: Any) -> list[str] | None:
+    if not isinstance(value, list):
+        return None
+    result = [item for item in value if isinstance(item, str) and item]
+    return result if len(result) == len(value) else None
+
+
+def required_string_sequence_issues(
+    value: Any,
+    *,
+    required: tuple[str, ...],
+    field: str,
+    exact: bool = False,
+) -> list[str]:
+    observed = string_sequence(value)
+    if observed is None:
+        return [f"{field} must be a list of strings"]
+    observed_set = set(observed)
+    required_set = set(required)
+    if exact and observed_set != required_set:
+        return [f"{field} must equal {list(required)}"]
+    missing = sorted(required_set - observed_set)
+    if missing:
+        return [f"{field} missing required values: {missing}"]
+    return []
+
+
+def nemoclaw_session_copy_evidence_current(
+    payload: dict[str, Any],
+    *,
+    expected_total: int | None,
+) -> tuple[bool, list[str]]:
+    benchmark = payload.get("benchmark")
+    table_name = NEMOCLAW_OUTPUT_TABLES.get(benchmark)
+    if table_name is None:
+        return True, []
+
+    issues: list[str] = []
+    observed = payload.get("observed_evidence")
+    if not isinstance(observed, dict):
+        return False, ["observed_evidence must be an object for NeMoClaw session-copy proof"]
+    tables = observed.get("tables")
+    if not isinstance(tables, list):
+        return False, ["observed_evidence.tables must include the Agentic output table"]
+    output_table = next(
+        (
+            table
+            for table in tables
+            if isinstance(table, dict) and table.get("name") == table_name
+        ),
+        None,
+    )
+    if output_table is None:
+        return False, [f"observed_evidence.tables must include {table_name}"]
+
+    if output_table.get("columns_ok") is not True:
+        issues.append(f"{table_name}.columns_ok must be true")
+    missing_columns = output_table.get("missing_columns")
+    if missing_columns not in ([], None):
+        issues.append(f"{table_name}.missing_columns must be empty")
+    required_columns = string_sequence(output_table.get("required_columns"))
+    if required_columns is not None:
+        required_observability_columns = (
+            *NEMOCLAW_SESSION_COPY_SOURCE_COLUMNS,
+            *NEMOCLAW_SESSION_COPY_BYTE_COLUMNS,
+        )
+        missing_required_columns = sorted(
+            set(required_observability_columns) - set(required_columns)
+        )
+        if missing_required_columns:
+            issues.append(
+                f"{table_name}.required_columns missing session-copy columns: "
+                f"{missing_required_columns}"
+            )
+
+    if output_table.get("row_observability_ok") is not True:
+        issues.append(f"{table_name}.row_observability_ok must be true")
+    invalid_row_count = int_like(output_table.get("row_observability_invalid_row_count"))
+    if invalid_row_count is None:
+        issues.append(f"{table_name}.row_observability_invalid_row_count must be an integer")
+    elif invalid_row_count != 0:
+        issues.append(f"{table_name}.row_observability_invalid_row_count must be 0")
+
+    checked_rows = int_like(output_table.get("row_observability_checked_rows"))
+    if checked_rows is None or checked_rows <= 0:
+        issues.append(f"{table_name}.row_observability_checked_rows must be positive")
+    expected_rows = int_like(output_table.get("row_observability_expected_rows"))
+    if expected_rows is None or expected_rows <= 0:
+        issues.append(f"{table_name}.row_observability_expected_rows must be positive")
+    if expected_total is not None and checked_rows is not None and checked_rows != expected_total:
+        issues.append(
+            f"{table_name}.row_observability_checked_rows must equal expected_total"
+        )
+    if expected_total is not None and expected_rows is not None and expected_rows != expected_total:
+        issues.append(
+            f"{table_name}.row_observability_expected_rows must equal expected_total"
+        )
+
+    issues.extend(
+        required_string_sequence_issues(
+            output_table.get("row_observability_required_copy_source_columns"),
+            required=NEMOCLAW_SESSION_COPY_SOURCE_COLUMNS,
+            field=f"{table_name}.row_observability_required_copy_source_columns",
+            exact=True,
+        )
+    )
+    issues.extend(
+        required_string_sequence_issues(
+            output_table.get("row_observability_required_positive_int_columns"),
+            required=NEMOCLAW_SESSION_COPY_BYTE_COLUMNS,
+            field=f"{table_name}.row_observability_required_positive_int_columns",
+            exact=True,
+        )
+    )
+    issues.extend(
+        required_string_sequence_issues(
+            output_table.get("row_observability_allowed_copy_sources"),
+            required=NEMOCLAW_SESSION_COPY_SOURCES,
+            field=f"{table_name}.row_observability_allowed_copy_sources",
+            exact=True,
+        )
+    )
+    return not issues, issues
+
+
 def nemoclaw_session_audit_current(payload: dict[str, Any]) -> tuple[bool, list[str]]:
     benchmark = payload.get("benchmark")
     if benchmark not in NEMOCLAW_AUDIT_REQUIRED_BENCHMARKS:
@@ -235,6 +367,12 @@ def nemoclaw_session_audit_current(payload: dict[str, Any]) -> tuple[bool, list[
         issues.append("observed_evidence.nemoclaw_session_audit.required must equal passed")
     if failed_count is not None and failed_count != 0:
         issues.append("observed_evidence.nemoclaw_session_audit.failed must be 0")
+    copy_ok, copy_issues = nemoclaw_session_copy_evidence_current(
+        payload,
+        expected_total=expected_total,
+    )
+    if not copy_ok:
+        issues.extend(copy_issues)
     return not issues, issues
 
 

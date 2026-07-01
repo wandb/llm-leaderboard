@@ -89,6 +89,36 @@ def add_wandb_run_metadata(payload, *, benchmark="agentic_math", run_id="run-1")
     return payload
 
 
+def agentic_output_table_evidence(expected_total: int = 100) -> dict:
+    return {
+        "name": "agentic_math_output_table",
+        "ok": True,
+        "nrows": expected_total,
+        "expected": expected_total,
+        "columns_ok": True,
+        "required_columns": [
+            "nemoclaw_session_copy_source",
+            "nemoclaw_session_copied_bytes",
+        ],
+        "missing_columns": [],
+        "row_observability_ok": True,
+        "row_observability_checked_rows": expected_total,
+        "row_observability_expected_rows": expected_total,
+        "row_observability_invalid_row_count": 0,
+        "row_observability_invalid_examples": [],
+        "row_observability_required_copy_source_columns": [
+            "nemoclaw_session_copy_source",
+        ],
+        "row_observability_required_positive_int_columns": [
+            "nemoclaw_session_copied_bytes",
+        ],
+        "row_observability_allowed_copy_sources": [
+            "stdout_agent_meta",
+            "live_runtime_budget",
+        ],
+    }
+
+
 def wandb_completion_payload(*, run_id: str = "run-1"):
     payload = {
         "ok": True,
@@ -125,6 +155,9 @@ def wandb_completion_payload(*, run_id: str = "run-1"):
                 "failed": 0,
                 "expected_total": 100,
             },
+            "tables": [
+                agentic_output_table_evidence(100),
+            ],
             "summary_metrics": {
                 "agentic_math/accuracy": {"ok": True, "value": 0.86},
             },
@@ -598,6 +631,41 @@ def test_paid_review_doctor_rejects_non_adopted_wandb_completion_missing_query_s
     assert entry["query_source_required"] is True
     assert entry["query_source_valid"] is False
     assert "query_source is not an object" in entry["verification_error"]
+
+
+def test_paid_review_doctor_rejects_wandb_completion_missing_session_copy_evidence(tmp_path):
+    payload = wandb_completion_payload()
+    payload["observed_evidence"].pop("tables")
+    completion = write_json(tmp_path / "agentic_math-run-1.json", payload)
+    review = write_json(tmp_path / "review.json", completed_review_payload(completion))
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--review-json",
+            str(review),
+            "--required-wandb-benchmark",
+            "agentic_math",
+            "--required-wandb-run-id",
+            "agentic_math=run-1",
+            "--require-one-model-canary",
+            "--fail-on-invalid",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    report = json.loads(result.stdout)
+    entry = report["gates"][0]["records"][0]["wandb_completion_entries"][0]
+    assert entry["verified"] is False
+    assert entry["nemoclaw_session_audit_valid"] is False
+    assert "observed_evidence.tables must include the Agentic output table" in entry[
+        "verification_error"
+    ]
 
 
 def test_paid_review_doctor_rejects_wandb_completion_missing_run_metadata(tmp_path):

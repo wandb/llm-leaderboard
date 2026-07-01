@@ -67,6 +67,41 @@ def add_wandb_run_metadata(payload, *, benchmark="agentic_math", run_id="run-1")
     return payload
 
 
+def agentic_output_table_evidence(benchmark: str, expected_total: int) -> dict:
+    output_table = (
+        "agentic_math_output_table"
+        if benchmark == "agentic_math"
+        else "agentic_swe_output_table"
+    )
+    return {
+        "name": output_table,
+        "ok": True,
+        "nrows": expected_total,
+        "expected": expected_total,
+        "columns_ok": True,
+        "required_columns": [
+            "nemoclaw_session_copy_source",
+            "nemoclaw_session_copied_bytes",
+        ],
+        "missing_columns": [],
+        "row_observability_ok": True,
+        "row_observability_checked_rows": expected_total,
+        "row_observability_expected_rows": expected_total,
+        "row_observability_invalid_row_count": 0,
+        "row_observability_invalid_examples": [],
+        "row_observability_required_copy_source_columns": [
+            "nemoclaw_session_copy_source",
+        ],
+        "row_observability_required_positive_int_columns": [
+            "nemoclaw_session_copied_bytes",
+        ],
+        "row_observability_allowed_copy_sources": [
+            "stdout_agent_meta",
+            "live_runtime_budget",
+        ],
+    }
+
+
 def completion_payload(*, benchmark="agentic_math", run_id="run-1", ok=True):
     expected_total = 100 if benchmark == "agentic_math" else 80 if benchmark == "agentic_swe" else None
     payload = {
@@ -115,6 +150,9 @@ def completion_payload(*, benchmark="agentic_math", run_id="run-1", ok=True):
             "failed": 0,
             "expected_total": expected_total,
         }
+        payload["observed_evidence"].setdefault("tables", []).append(
+            agentic_output_table_evidence(benchmark, expected_total)
+        )
     return add_wandb_run_metadata(payload, benchmark=benchmark, run_id=run_id)
 
 
@@ -546,6 +584,35 @@ def test_cli_rejects_agentic_completion_without_nemoclaw_audit(tmp_path):
     assert result.returncode != 0
     assert "required_evidence.nemoclaw_session_audit must be an object" in result.stderr
     assert "observed_evidence.nemoclaw_session_audit must be an object" in result.stderr
+    assert not output.exists()
+
+
+def test_cli_rejects_agentic_completion_without_session_copy_evidence(tmp_path):
+    review = write_json(tmp_path / "review.json", review_payload())
+    payload = completion_payload()
+    payload["observed_evidence"].pop("tables")
+    completion = write_json(tmp_path / "completion.json", payload)
+    output = tmp_path / "updated_review.json"
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--review-json",
+            str(review),
+            "--completion-json",
+            str(completion),
+            "--output-json",
+            str(output),
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "observed_evidence.tables must include the Agentic output table" in result.stderr
     assert not output.exists()
 
 
