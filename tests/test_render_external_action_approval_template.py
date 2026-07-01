@@ -64,11 +64,13 @@ def approval_packet() -> dict:
             "status": "available",
             "script": "scripts/tools/verify_external_action_approval_packet.py",
             "required_before_external_action": True,
+            "source_packet_json": "external_action_approval_packet.json",
             "reviewed_packet_json_template": reviewed_packet_template,
             "report_json_template": verifier_report_template,
             "command_template": (
                 "uv run python scripts/tools/verify_external_action_approval_packet.py "
                 f"--approval-packet-json {reviewed_packet_template} "
+                "--source-packet-json external_action_approval_packet.json "
                 "--require-approved "
                 f"--json {verifier_report_template}"
             ),
@@ -133,6 +135,8 @@ def test_render_external_action_approval_template_does_not_grant_approvals(tmp_p
     assert "Source approval packet SHA-256" in markdown
     assert "Minimum approved budget USD" in markdown
     assert "verify_external_action_approval_packet.py" in markdown
+    assert f"--source-packet-json {packet_path}" in markdown
+    assert f"--json {output_json.with_suffix('.verify.json')}" in markdown
 
     verify_result = subprocess.run(
         [

@@ -40,6 +40,12 @@ def approval_packet() -> dict:
         "status": "pending",
         "external_action_item_count": 1,
         "requirement_counts": counts,
+        "approval_requirement_constraints": {
+            "paid_api": {
+                "minimum_approved_budget_usd": 30.0,
+                "minimum_approved_budget_source": "max_pre_run_budget_estimate_high",
+            }
+        },
         "items": [
             {
                 "gate": "weave_content_canary",
@@ -171,6 +177,13 @@ def test_prepare_external_action_approval_handoff_keeps_unapproved_template_pend
     assert handoff["required_approval_count"] == 3
     assert handoff["granted_approval_count"] == 0
     assert handoff["all_required_approvals_granted"] is False
+    paid_api = next(
+        item
+        for item in handoff["approval_requirements"]
+        if item["requirement"] == "paid_api"
+    )
+    assert paid_api["minimum_approved_budget_usd"] == 30.0
+    assert paid_api["minimum_approved_budget_source"] == "max_pre_run_budget_estimate_high"
     assert all(value is False for value in handoff["safety"].values())
 
     reviewed_json = Path(handoff["paths"]["reviewed_json"])
@@ -190,10 +203,19 @@ def test_prepare_external_action_approval_handoff_keeps_unapproved_template_pend
     reviewed = json.loads(reviewed_json.read_text(encoding="utf-8"))
     assert reviewed["status"] == "pending_approval"
     assert reviewed["all_required_approvals_granted"] is False
+    reviewed_paid_api = next(
+        item
+        for item in reviewed["approval_requirements"]
+        if item["requirement"] == "paid_api"
+    )
+    assert reviewed_paid_api["minimum_approved_budget_usd"] == 30.0
     assert reviewed["approval_template"]["source_approval_packet_sha256"] == handoff[
         "source"
     ]["approval_packet_sha256"]
-    assert "Verifier ok: `False`" in handoff_markdown.read_text(encoding="utf-8")
+    handoff_markdown_text = handoff_markdown.read_text(encoding="utf-8")
+    assert "Verifier ok: `False`" in handoff_markdown_text
+    assert "Minimum approved budget USD" in handoff_markdown_text
+    assert "| Paid API | True | not_granted | 30.0 |" in handoff_markdown_text
 
 
 def test_prepare_external_action_approval_handoff_resolves_latest_pointer(tmp_path):

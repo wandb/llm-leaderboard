@@ -188,10 +188,24 @@ def approval_template_markdown(
     )
     verifier_command = str(verifier.get("command_template") or "")
     if verifier_command:
-        verifier_command = verifier_command.replace(
-            str(verifier.get("reviewed_packet_json_template") or ""),
-            str(output_json),
-        )
+        reviewed_template = str(verifier.get("reviewed_packet_json_template") or "")
+        source_packet_template = str(verifier.get("source_packet_json") or "")
+        report_template = str(verifier.get("report_json_template") or "")
+        if reviewed_template:
+            verifier_command = verifier_command.replace(
+                reviewed_template,
+                str(output_json),
+            )
+        if source_packet_template:
+            verifier_command = verifier_command.replace(
+                source_packet_template,
+                str(packet_path),
+            )
+        if report_template:
+            verifier_command = verifier_command.replace(
+                report_template,
+                str(output_json.with_suffix(".verify.json")),
+            )
     lines = [
         "# Taiwan External Action Approval Reviewed Template",
         "",

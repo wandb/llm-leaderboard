@@ -88,6 +88,47 @@ def count_granted_requirements(report: dict[str, Any]) -> int:
     )
 
 
+def approval_requirement_summary(requirements: Any) -> list[dict[str, Any]]:
+    if not isinstance(requirements, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for item in requirements:
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            {
+                "requirement": item.get("requirement"),
+                "label": item.get("label"),
+                "required": item.get("required"),
+                "approval_status": item.get("approval_status"),
+                "minimum_approved_budget_usd": item.get(
+                    "minimum_approved_budget_usd"
+                ),
+                "minimum_approved_budget_source": item.get(
+                    "minimum_approved_budget_source"
+                ),
+                "reviewer_fields": (
+                    item.get("reviewer_fields")
+                    if isinstance(item.get("reviewer_fields"), list)
+                    else []
+                ),
+            }
+        )
+    return rows
+
+
+def md_cell(value: Any) -> str:
+    if value is None:
+        text = ""
+    elif isinstance(value, bool):
+        text = str(value)
+    elif isinstance(value, (list, tuple)):
+        text = ", ".join(str(item) for item in value)
+    else:
+        text = str(value)
+    return text.replace("\n", "<br>").replace("|", "\\|")
+
+
 def handoff_markdown(handoff: dict[str, Any]) -> str:
     verifier = handoff.get("verifier") if isinstance(handoff.get("verifier"), dict) else {}
     paths = handoff.get("paths") if isinstance(handoff.get("paths"), dict) else {}
@@ -121,6 +162,30 @@ def handoff_markdown(handoff: dict[str, Any]) -> str:
     ):
         if paths.get(key):
             lines.append(f"| {key} | `{paths[key]}` |")
+    lines.extend(
+        [
+            "",
+            "## Approval Requirements",
+            "",
+            "| Requirement | Required | Approval status | Minimum approved budget USD | Reviewer fields |",
+            "|---|---:|---|---:|---|",
+        ]
+    )
+    requirements = handoff.get("approval_requirements")
+    if isinstance(requirements, list) and requirements:
+        for item in requirements:
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                "| "
+                f"{md_cell(item.get('label') or item.get('requirement'))} | "
+                f"{md_cell(item.get('required'))} | "
+                f"{md_cell(item.get('approval_status'))} | "
+                f"{md_cell(item.get('minimum_approved_budget_usd'))} | "
+                f"{md_cell(item.get('reviewer_fields'))} |"
+            )
+    else:
+        lines.append("| none | False | not_required |  |  |")
     lines.extend(
         [
             "",
@@ -212,6 +277,7 @@ def prepare_handoff(
         markdown_path=paths["reviewed_markdown"],
     )
     write_json(paths["render_report_json"], render_report)
+    reviewed_template = read_json_object(paths["reviewed_json"])
     verify_report = verify_approval_packet(
         paths["reviewed_json"],
         source_packet_path=packet_path,
@@ -266,6 +332,9 @@ def prepare_handoff(
         },
         "required_approval_count": int(verify_report.get("required_approval_count") or 0),
         "granted_approval_count": count_granted_requirements(verify_report),
+        "approval_requirements": approval_requirement_summary(
+            reviewed_template.get("approval_requirements")
+        ),
         "all_required_approvals_granted": verify_report.get(
             "all_required_approvals_granted"
         )
