@@ -1,6 +1,6 @@
 # Taiwan Leaderboard Task Status
 
-Last updated: 2026-07-01 11:43 JST
+Last updated: 2026-07-01 11:45 JST
 
 This file is the persistent progress ledger for the Taiwan leaderboard work.
 Update it at every meaningful milestone so progress is visible even when chat
@@ -19,7 +19,7 @@ docs/taiwan_leaderboard_overview_ja.md
 ```text
 branch: dev-zh-TW
 remote: origin/dev-zh-TW
-latest pushed commit before this ledger update: 8bea1e5 Refresh Taiwan release evidence after audit proof
+latest pushed commit before this ledger update: a79b5c5 Require NeMoClaw audit proof in adoption paths
 
 pushed implementation/docs commits this cycle before this ledger update:
   ebe5dcd Ignore local evaluation scratch dirs
@@ -66,6 +66,7 @@ pushed implementation/docs commits this cycle before this ledger update:
   5d5e8a8 Require NeMoClaw audit proof in W&B completion
   b436f2b Sync Taiwan progress after W&B audit proof
   8bea1e5 Refresh Taiwan release evidence after audit proof
+  a79b5c5 Require NeMoClaw audit proof in adoption paths
 
 validated before push:
   NeMoClaw/OpenClaw setup tests: 47 passed
@@ -2328,6 +2329,7 @@ A580  Formal release gate refresh after pushed W&B audit proof docs/taiwan_leade
 A581  Latest release-bundle external-action approval handoff refresh after pushed W&B audit proof docs/taiwan_leaderboard_tasks.md, temp/taiwan_external_action_approval_REVIEWED_20260701T022046Z_TEMPLATE.json, temp/taiwan_external_action_approval_REVIEWED_20260701T022046Z_TEMPLATE.md, temp/taiwan_external_action_approval_REVIEWED_20260701T022046Z_TEMPLATE.render.json, temp/taiwan_external_action_approval_REVIEWED_20260701T022046Z.verify.json, temp/taiwan_operator_execution_plan_A581_unapproved.json, temp/taiwan_operator_execution_plan_A581_unapproved.md; tests: render_external_action_approval_template.py rendered a reviewed-copy template from outputs/taiwan_release_evidence/bundle_20260701T022046Z/external_action_approval_packet.json with ok=true/status=template_rendered/source_approval_packet_sha256=6f1c70eed1dc73212ab5df373607e41fec21a00d67c6ff31c12abaac02d8e0c2/required_approval_count=4/all_required_approvals_granted=false/will_execute_external_actions=false; verify_external_action_approval_packet.py --require-approved intentionally failed the unreviewed template with ok=false/status=validation_failed/granted_approval_count=0/all_required_approvals_granted=false/source_binding.bound=true/source_approval_packet_sha256=6f1c70eed1dc73212ab5df373607e41fec21a00d67c6ff31c12abaac02d8e0c2/will_execute_external_actions=false; render_taiwan_operator_execution_plan.py --require-ready was then run with matching renderer-level and command-level source/report paths and refused shell generation with exit_code=2 because approvals are not granted and the live Weave content canary gate JSON does not exist yet; temp/taiwan_operator_execution_plan_A581_unapproved.json records status=placeholder_ready/all_ready_for_external_execution=false/external_action_approval.valid=false/source_packet_path_matches_expected=true/source_packet_sha256_matches_expected=true/command_policy.valid=false; temp/taiwan_operator_execution_plan_A581_unapproved.sh was not written; no W&B write, OpenRouter, benchmark model inference, paid provider completion, install/onboard action, live content canary, or full evaluation run was launched in this step.
 A582  Post-push progress ledger synchronization docs/taiwan_leaderboard_tasks.md; checks: git log confirms b436f2b Sync Taiwan progress after W&B audit proof was pushed to origin/dev-zh-TW before this ledger update; latest pointer now records timestamp=20260701T022046Z/status=not_ready/blockers [weave_content_canary, wandb_completion, paid_run_review_package, one_model_full_canary]/bundle_integrity_ok=true/checked_file_count=600/verification_error_count=0/latest_pointer_verification_status=passed/latest_pointer_verification_issue_count=0; no W&B write, OpenRouter, benchmark model inference, paid provider completion, install/onboard action, live content canary, or full evaluation run was launched in this step.
 A583  NeMoClaw audit proof adoption-path hardening scripts/tools/sync_wandb_completion_to_paid_review.py, scripts/tools/audit_taiwan_existing_results.py, scripts/tools/verify_taiwan_release_evidence_bundle.py, tests/test_sync_wandb_completion_to_paid_review.py, tests/test_audit_taiwan_existing_results.py, tests/test_verify_taiwan_release_evidence_bundle.py, docs/taiwan_leaderboard_tasks.md; tests: python3 -m py_compile passed for touched sync/audit/release-verifier/test files; git diff --check passed for the scoped files; tests/test_verify_taiwan_release_evidence_bundle.py passed 305 tests; tests/test_sync_wandb_completion_to_paid_review.py plus tests/test_audit_taiwan_existing_results.py plus tests/test_verify_taiwan_release_evidence_bundle.py passed 361 tests; tests/test_taiwan_release_evidence_bundle.py passed 8 tests; implementation: W&B completion-to-paid-review sync, existing-results audit, and release-bundle validation now reject Agentic Math/SWE W&B completion proof JSON unless required_evidence.nemoclaw_session_audit.required is true, required_evidence.expected_total is positive, observed_evidence.nemoclaw_session_audit has ok=true with required=passed=expected_total and failed=0, and the W&B completion checks include a matching nemoclaw_session_audit check; audit_taiwan_existing_results.py also emits --require-nemoclaw-session-audit in Agentic Math/SWE verifier refresh commands so stale proof cannot be promoted by an adoption path; no W&B write, OpenRouter, benchmark model inference, paid provider completion, install/onboard action, live content canary, or full evaluation run was launched in this step.
+A584  Post-push progress ledger synchronization docs/taiwan_leaderboard_tasks.md; checks: git log confirms a79b5c5 Require NeMoClaw audit proof in adoption paths is pushed to origin/dev-zh-TW; scoped implementation/test/docs files from A583 were committed and pushed; latest release pointer remains timestamp=20260701T022046Z/status=not_ready/blockers [weave_content_canary, wandb_completion, paid_run_review_package, one_model_full_canary]/bundle_integrity_ok=true/checked_file_count=600/verification_error_count=0/latest_pointer_verification_status=passed/latest_pointer_verification_issue_count=0; no W&B write, OpenRouter, benchmark model inference, paid provider completion, install/onboard action, live content canary, or full evaluation run was launched in this step.
 ```
 
 ## Production Gates
