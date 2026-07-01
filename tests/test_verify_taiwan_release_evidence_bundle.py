@@ -16348,6 +16348,77 @@ def test_verify_release_evidence_bundle_rejects_weave_canary_without_nemoclaw_op
     )
 
 
+def test_verify_release_evidence_bundle_rejects_weave_canary_without_gate_verifier_script(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_weave_content_canary_command(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["files"] = [
+        record
+        for record in manifest["files"]
+        if record.get("source_path")
+        != "scripts/tools/verify_weave_agents_content_canary_result.py"
+    ]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "agentic runner script is not bundled: "
+        "scripts/tools/verify_weave_agents_content_canary_result.py"
+    ) in payload["errors"]
+
+
+def test_verify_release_evidence_bundle_rejects_weave_canary_gate_verifier_missing_query_source_contract(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_weave_content_canary_command(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    verifier_record = next(
+        record
+        for record in manifest["files"]
+        if record.get("source_path")
+        == "scripts/tools/verify_weave_agents_content_canary_result.py"
+    )
+    script_path = bundle / verifier_record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace(
+            "def query_source_validation_issues(",
+            "def removed_query_source_validation_issues(",
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, verifier_record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "agentic runner script missing source contract native query source "
+        "validation: scripts/tools/verify_weave_agents_content_canary_result.py: "
+        "def query_source_validation_issues("
+    ) in payload["errors"]
+
+
 def test_verify_release_evidence_bundle_rejects_agents_check_without_json_output(tmp_path):
     bundle = build_bundle_with_operator_weave_content_canary_command(tmp_path)
     manifest_path = bundle / "manifest.json"

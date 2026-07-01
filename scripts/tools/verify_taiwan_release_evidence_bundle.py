@@ -80,6 +80,9 @@ OPERATOR_EXECUTION_PLAN_RENDERER_SCRIPT = (
 WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT = (
     "scripts/tools/weave_content_canary_gate_contract.py"
 )
+WEAVE_CONTENT_CANARY_GATE_VERIFIER_SCRIPT = (
+    "scripts/tools/verify_weave_agents_content_canary_result.py"
+)
 NEMOCLAW_INSTALL_SCRIPT = "scripts/setup/install_nemoclaw.sh"
 NEMOCLAW_CANARY_READINESS_SCRIPT = "scripts/tools/check_taiwan_canary_readiness.py"
 NEMOCLAW_ADOPTION_SCRIPT = "scripts/tools/check_taiwan_nemoclaw_adoption.py"
@@ -894,6 +897,79 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("Content canary expected request-model proof", '"expected_request_models"'),
             ("Content canary observed request-model proof", '"observed_request_models"'),
             ("Content canary request-model proven flag", '"request_model_proven"'),
+        ),
+    },
+    WEAVE_CONTENT_CANARY_GATE_VERIFIER_SCRIPT: {
+        "role": "agentic_runner:weave_content_canary_gate_verifier_script",
+        "tokens": (
+            (
+                "offline gate verifier contract",
+                "does not query W&B or call a model.",
+            ),
+            (
+                "content canary gate name",
+                'GATE_NAME = "weave_agents_content_canary"',
+            ),
+            (
+                "native Weave Agents API base URL",
+                'WEAVE_AGENTS_API_BASE_URL = "https://trace.wandb.ai"',
+            ),
+            (
+                "native Weave Agents query endpoint",
+                'WEAVE_AGENTS_QUERY_ENDPOINT = "/agents/query"',
+            ),
+            (
+                "native Weave Agents spans endpoint",
+                'WEAVE_AGENTS_SPANS_ENDPOINT = "/agents/spans/query"',
+            ),
+            (
+                "required passing verifier checks constant",
+                "REQUIRED_PASSING_VERIFIER_CHECKS = (",
+            ),
+            (
+                "final-answer order check requirement",
+                '"trace_final_answer_order"',
+            ),
+            (
+                "native query source validation",
+                "def query_source_validation_issues(",
+            ),
+            (
+                "Agents diagnostic validation",
+                "def agents_diagnostic_validation_issues(",
+            ),
+            (
+                "NeMoClaw OpenClaw preflight validation",
+                "def nemoclaw_openclaw_config_preflight_validation_issues(",
+            ),
+            (
+                "required text evidence parser",
+                "def required_texts_from_verifier(",
+            ),
+            (
+                "required text capture check",
+                "required_text_capture",
+            ),
+            (
+                "required text count evidence",
+                "content_capture_health.required_text_count",
+            ),
+            (
+                "request-model proven gate field",
+                '"request_model_proven": status == "passed"',
+            ),
+            (
+                "Weave trace id gate field",
+                '"weave_verifier_latest_trace_id": (',
+            ),
+            (
+                "Agents diagnostic trace id gate field",
+                '"agents_diagnostic_latest_trace_id": (',
+            ),
+            (
+                "NeMoClaw preflight gate field",
+                '"nemoclaw_openclaw_config_preflight": (',
+            ),
         ),
     },
     "scripts/tools/log_agentic_math_results_to_wandb.py": {

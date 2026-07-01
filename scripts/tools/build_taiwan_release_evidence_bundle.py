@@ -38,6 +38,9 @@ EXTERNAL_ACTION_APPROVAL_TEMPLATE_RENDERER_SCRIPT = (
 WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT = (
     "scripts/tools/weave_content_canary_gate_contract.py"
 )
+WEAVE_CONTENT_CANARY_GATE_VERIFIER_SCRIPT = (
+    "scripts/tools/verify_weave_agents_content_canary_result.py"
+)
 NEMOCLAW_INSTALL_SCRIPT = "scripts/setup/install_nemoclaw.sh"
 NEMOCLAW_CANARY_READINESS_SCRIPT = "scripts/tools/check_taiwan_canary_readiness.py"
 NEMOCLAW_ADOPTION_SCRIPT = "scripts/tools/check_taiwan_nemoclaw_adoption.py"
@@ -55,6 +58,9 @@ AGENTIC_RUNNER_SCRIPT_ROLES = {
     ),
     WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT: (
         "agentic_runner:weave_content_canary_gate_contract_script"
+    ),
+    WEAVE_CONTENT_CANARY_GATE_VERIFIER_SCRIPT: (
+        "agentic_runner:weave_content_canary_gate_verifier_script"
     ),
     "scripts/tools/log_agentic_math_results_to_wandb.py": "agentic_runner:math_relog_script",
     "scripts/tools/log_agentic_swe_results_to_wandb.py": "agentic_runner:swe_relog_script",
