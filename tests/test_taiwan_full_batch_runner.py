@@ -986,6 +986,31 @@ def test_pre_run_budget_estimate_record_reports_missing_path():
     assert "required before paid execution" in record["errors"][0]
 
 
+def test_pre_run_budget_estimate_record_rejects_incomplete_agentic_breakdown(tmp_path):
+    module = load_module()
+    budget = tmp_path / "budget.json"
+    write_budget_estimate(budget)
+    payload = json.loads(budget.read_text(encoding="utf-8"))
+    payload["agentic_math"] = {
+        "historical_records": 0,
+        "estimate_usd": {"method": "no_local_evidence", "low": None, "mid": None, "high": None},
+    }
+    payload["swebench_pro"] = {
+        "historical_records": 0,
+        "estimate_usd": {"method": "no_local_evidence", "low": None, "mid": None, "high": None},
+    }
+    budget.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+    record = module.build_pre_run_budget_estimate_record(
+        budget,
+        required_before_paid_execution=True,
+    )
+
+    assert record["valid"] is False
+    assert any("agentic_math.historical_records must be positive" in item for item in record["errors"])
+    assert any("swebench_pro.estimate_usd.low is missing" in item for item in record["errors"])
+
+
 def test_external_action_approval_record_accepts_source_bound_verifier_report(tmp_path):
     module = load_module()
     report = tmp_path / "external_action_approval.verify.json"

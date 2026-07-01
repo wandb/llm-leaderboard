@@ -591,6 +591,25 @@ def build_pre_run_budget_estimate_record(
     if not isinstance(target_model, str) or not target_model:
         record["errors"].append("target_model is missing or not a string")
         target_model = ""
+    for category in ("agentic_math", "swebench_pro"):
+        category_payload = payload.get(category)
+        if category_payload is None:
+            continue
+        if not isinstance(category_payload, dict):
+            record["errors"].append(f"{category} is present but not an object")
+            continue
+        historical_records = category_payload.get("historical_records")
+        if not isinstance(historical_records, int) or historical_records <= 0:
+            record["errors"].append(
+                f"{category}.historical_records must be positive when {category} evidence is present"
+            )
+        estimate = category_payload.get("estimate_usd")
+        if not isinstance(estimate, dict):
+            record["errors"].append(f"{category}.estimate_usd is missing or not an object")
+            continue
+        for key in ("low", "mid", "high"):
+            if not isinstance(estimate.get(key), (int, float)):
+                record["errors"].append(f"{category}.estimate_usd.{key} is missing or not numeric")
     target_models = budget_target_models(payload)
     selected_identifiers: list[str] = []
     unmatched_configs: list[str] = []

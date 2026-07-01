@@ -107,6 +107,13 @@ def summarize_category(
     }
 
 
+def estimate_band_complete(summary: dict[str, Any]) -> bool:
+    estimate = summary.get("estimate_usd")
+    if not isinstance(estimate, dict):
+        return False
+    return all(isinstance(estimate.get(key), (int, float)) for key in ("low", "mid", "high"))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path, help="Local output root to scan.")
@@ -147,6 +154,17 @@ def main() -> None:
         target_count=args.swe_tasks,
         price=price,
     )
+    missing_estimates = [
+        name
+        for name, summary in (("agentic_math", math), ("swebench_pro", swe))
+        if not estimate_band_complete(summary)
+    ]
+    if missing_estimates:
+        raise SystemExit(
+            "cannot estimate paid canary budget without local token evidence for: "
+            + ", ".join(missing_estimates)
+            + "; rerun after representative Agentic Math/SWE usage exists or provide a reviewed budget JSON manually"
+        )
     subtotal_low = sum(
         value
         for value in (

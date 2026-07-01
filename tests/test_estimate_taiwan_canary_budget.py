@@ -104,6 +104,44 @@ def test_main_estimates_openai_direct_canary_budget(tmp_path, monkeypatch, capsy
     assert json.loads(capsys.readouterr().out)["target_model"] == payload["target_model"]
 
 
+def test_main_rejects_missing_agentic_budget_evidence(tmp_path, monkeypatch):
+    module = load_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "estimate_taiwan_canary_budget.py",
+            str(tmp_path / "empty_outputs"),
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="agentic_math, swebench_pro"):
+        module.main()
+
+
+def test_main_rejects_partial_agentic_budget_evidence(tmp_path, monkeypatch):
+    module = load_module()
+    root = tmp_path / "outputs"
+    write_usage(
+        root / "agentic_math" / "row1.json",
+        category="agentic_math",
+        model="openai-direct/gpt-4.1-mini-2025-04-14",
+        input_tokens=1_000_000,
+        output_tokens=1_000_000,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "estimate_taiwan_canary_budget.py",
+            str(root),
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="swebench_pro"):
+        module.main()
+
+
 def test_main_rejects_unknown_pricing_model(tmp_path, monkeypatch):
     module = load_module()
     monkeypatch.setattr(
