@@ -1011,8 +1011,11 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (",
             ),
             ("W&B output table column check", "output_table_columns"),
+            ("W&B output table invocation evidence check", "output_table_invocation_evidence"),
+            ("W&B output table row loader", "def _table_data_rows_from_payload("),
             ("W&B table file column loader", "def _download_wandb_table_json("),
             ("W&B observed table column evidence", '"columns_ok": bool(check.get("ok"))'),
+            ("W&B observed invocation evidence", '"invocation_evidence_ok": bool(check.get("ok"))'),
             ("W&B OpenClaw invocation path column", '"openclaw_invocation_path"'),
             ("W&B OpenClaw invocation sha256 column", '"openclaw_invocation_sha256"'),
             ("W&B OpenClaw command sha256 column", '"openclaw_command_sha256"'),
@@ -10704,6 +10707,32 @@ def validate_wandb_completion_agentic_output_columns(
         errors.append(f"{label} observed_evidence.tables {table_name} columns_ok is not true")
     if observed_table.get("missing_columns") not in ([], None):
         errors.append(f"{label} observed_evidence.tables {table_name} missing_columns is not empty")
+    if observed_table.get("invocation_evidence_ok") is not True:
+        errors.append(
+            f"{label} observed_evidence.tables {table_name} invocation_evidence_ok is not true"
+        )
+    if observed_table.get("invocation_evidence_source") != "wandb_file":
+        errors.append(
+            f"{label} observed_evidence.tables {table_name} invocation_evidence_source "
+            "must be wandb_file"
+        )
+    checked_rows = observed_table.get("invocation_checked_rows")
+    if not isinstance(checked_rows, int) or checked_rows < 1:
+        errors.append(
+            f"{label} observed_evidence.tables {table_name} invocation_checked_rows is invalid"
+        )
+    invalid_rows = observed_table.get("invocation_invalid_row_count")
+    if invalid_rows != 0:
+        errors.append(
+            f"{label} observed_evidence.tables {table_name} invocation_invalid_row_count "
+            "is not 0"
+        )
+    invalid_examples = observed_table.get("invocation_invalid_examples")
+    if invalid_examples not in ([], None):
+        errors.append(
+            f"{label} observed_evidence.tables {table_name} invocation_invalid_examples "
+            "is not empty"
+        )
     return errors
 
 
@@ -11016,6 +11045,13 @@ def required_wandb_completion_check_names(required: dict[str, Any]) -> set[str]:
             for table in tables
         ):
             names.add("output_table_columns")
+        if any(
+            isinstance(table, dict)
+            and isinstance(table.get("required_columns"), list)
+            and "openclaw_invocation_sha256" in table.get("required_columns", [])
+            for table in tables
+        ):
+            names.add("output_table_invocation_evidence")
     taxonomy_tables = required.get("taxonomy_tables")
     if isinstance(taxonomy_tables, list) and taxonomy_tables:
         names.add("taxonomy_table")
@@ -11066,6 +11102,7 @@ def validate_wandb_completion_checks(
         "leaderboard_table",
         "output_table",
         "output_table_columns",
+        "output_table_invocation_evidence",
         "result_artifact",
         "nemoclaw_session_audit",
         "run_group",
@@ -11260,6 +11297,78 @@ def _validate_output_table_column_check(
     return errors
 
 
+def _validate_output_table_invocation_evidence_check(
+    *,
+    check: dict[str, Any] | None,
+    observed_row: dict[str, Any] | None,
+    table_name: str,
+    label: str,
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(check, dict):
+        errors.append(f"{label} checks output_table_invocation_evidence missing for {table_name}")
+        return errors
+    if not isinstance(observed_row, dict):
+        return errors
+    if check.get("table_name") != table_name:
+        errors.append(
+            f"{label} checks output_table_invocation_evidence table_name does not match {table_name}"
+        )
+    if check.get("ok") is not True:
+        errors.append(
+            f"{label} checks output_table_invocation_evidence is not ok for {table_name}"
+        )
+    if observed_row.get("invocation_evidence_ok") is not True:
+        errors.append(
+            f"{label} observed_evidence table {table_name} invocation_evidence_ok is not true"
+        )
+    if check.get("source") != "wandb_file":
+        errors.append(
+            f"{label} checks output_table_invocation_evidence source must be wandb_file"
+        )
+    if observed_row.get("invocation_evidence_source") != "wandb_file":
+        errors.append(
+            f"{label} observed_evidence table {table_name} invocation_evidence_source "
+            "must be wandb_file"
+        )
+    checked_rows = check.get("checked_rows")
+    observed_checked_rows = observed_row.get("invocation_checked_rows")
+    if not isinstance(checked_rows, int) or checked_rows < 1:
+        errors.append(
+            f"{label} checks output_table_invocation_evidence checked_rows is invalid"
+        )
+    elif checked_rows != observed_checked_rows:
+        errors.append(
+            f"{label} checks output_table_invocation_evidence checked_rows does not "
+            f"match observed_evidence table {table_name}"
+        )
+    expected_rows = check.get("expected_rows")
+    observed_expected_rows = observed_row.get("invocation_expected_rows")
+    if expected_rows != observed_expected_rows:
+        errors.append(
+            f"{label} checks output_table_invocation_evidence expected_rows does not "
+            f"match observed_evidence table {table_name}"
+        )
+    invalid_count = check.get("invalid_row_count")
+    if invalid_count != 0:
+        errors.append(
+            f"{label} checks output_table_invocation_evidence invalid_row_count is not 0"
+        )
+    if observed_row.get("invocation_invalid_row_count") != 0:
+        errors.append(
+            f"{label} observed_evidence table {table_name} invocation_invalid_row_count is not 0"
+        )
+    if check.get("invalid_examples") not in ([], None):
+        errors.append(
+            f"{label} checks output_table_invocation_evidence invalid_examples is not empty"
+        )
+    if observed_row.get("invocation_invalid_examples") not in ([], None):
+        errors.append(
+            f"{label} observed_evidence table {table_name} invocation_invalid_examples is not empty"
+        )
+    return errors
+
+
 def validate_wandb_completion_table_checks_against_observed(
     *,
     checks_by_name: dict[str, list[dict[str, Any]]],
@@ -11300,6 +11409,21 @@ def validate_wandb_completion_table_checks_against_observed(
                         label=label,
                     )
                 )
+                table_required_columns = _string_list_or_empty(
+                    table_spec.get("required_columns")
+                )
+                if "openclaw_invocation_sha256" in table_required_columns:
+                    errors.extend(
+                        _validate_output_table_invocation_evidence_check(
+                            check=_first_check(
+                                checks_by_name,
+                                "output_table_invocation_evidence",
+                            ),
+                            observed_row=observed_tables.get(table_name),
+                            table_name=table_name,
+                            label=label,
+                        )
+                    )
 
     for check_name, required_field, observed_field, observed_key in (
         ("taxonomy_table", "taxonomy_tables", "taxonomy_tables", "table_name"),

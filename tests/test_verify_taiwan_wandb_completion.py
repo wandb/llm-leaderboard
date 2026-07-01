@@ -5,6 +5,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+TEST_SHA = "a" * 64
 AGENTIC_MATH_OUTPUT_COLUMNS = [
     "nemoclaw_session_audit_ok",
     "nemoclaw_session_audit",
@@ -33,6 +34,36 @@ AGENTIC_SWE_OUTPUT_COLUMNS = [
     "openclaw_invocation_sha256",
     "openclaw_command_sha256",
 ]
+
+
+def table_value(column, row_index):
+    if column.endswith("_ok"):
+        return True
+    if column in {"tool_policy_violations"}:
+        return []
+    if column in {"conversation_order", "weave_sidecar", "nemoclaw_session_audit"}:
+        return {"ok": True, "required": True}
+    if column == "nemoclaw_session_audit_required":
+        return True
+    if column == "openclaw_result_path":
+        return f"/tmp/task-{row_index}/openclaw_result.json"
+    if column == "openclaw_invocation_path":
+        return f"/tmp/task-{row_index}/openclaw_invocation.json"
+    if column == "openclaw_invocation_sha256":
+        return TEST_SHA
+    if column == "openclaw_command_sha256":
+        return "b" * 64
+    return f"value-{row_index}"
+
+
+def table_payload(columns, nrows):
+    return {
+        "columns": list(columns),
+        "data": [
+            [table_value(column, row_index) for column in columns]
+            for row_index in range(1, nrows + 1)
+        ],
+    }
 
 
 class FakeArtifact:
@@ -83,7 +114,19 @@ class FakeRun:
         self.tags = tags or []
         self.group = group
         self.job_type = job_type
-        self._table_files = table_files or {}
+        self._table_files = table_files if table_files is not None else self._default_table_files()
+
+    def _default_table_files(self):
+        table_files = {}
+        for value in self.summary_metrics.values():
+            if not isinstance(value, dict):
+                continue
+            path = value.get("path")
+            columns = value.get("columns")
+            nrows = value.get("nrows")
+            if isinstance(path, str) and isinstance(columns, list) and isinstance(nrows, int):
+                table_files[path] = table_payload(columns, nrows)
+        return table_files
 
     def logged_artifacts(self):
         return self._artifacts
@@ -117,6 +160,7 @@ def complete_agentic_math_summary():
         "agentic_math_output_table": {
             "_type": "table-file",
             "nrows": 100,
+            "path": "media/table/agentic_math_output_table_0.table.json",
             "columns": AGENTIC_MATH_OUTPUT_COLUMNS,
         },
     }
@@ -143,6 +187,7 @@ def complete_agentic_swe_summary():
         "agentic_swe_output_table": {
             "_type": "table-file",
             "nrows": 80,
+            "path": "media/table/agentic_swe_output_table_0.table.json",
             "columns": AGENTIC_SWE_OUTPUT_COLUMNS,
         },
     }
@@ -219,6 +264,12 @@ def test_verify_agentic_math_wandb_completion_accepts_complete_run():
             "required_columns": AGENTIC_MATH_OUTPUT_COLUMNS,
             "missing_columns": [],
             "columns_source": "summary",
+            "invocation_evidence_ok": True,
+            "invocation_evidence_source": "wandb_file",
+            "invocation_checked_rows": 100,
+            "invocation_expected_rows": 100,
+            "invocation_invalid_row_count": 0,
+            "invocation_invalid_examples": [],
         },
     ]
     assert result["observed_evidence"]["artifacts"][0]["aliases"] == ["latest", "production"]
@@ -228,6 +279,7 @@ def test_verify_agentic_math_wandb_completion_accepts_complete_run():
         "leaderboard_table",
         "output_table",
         "output_table_columns",
+        "output_table_invocation_evidence",
         "answered_metric",
         "correct_metric",
         "accuracy_metric",
@@ -289,10 +341,10 @@ def test_verify_agentic_math_wandb_completion_loads_output_columns_from_table_fi
         summary=summary,
         artifacts=[complete_result_artifact()],
         table_files={
-            "media/table/agentic_math_output_table_0.table.json": {
-                "columns": AGENTIC_MATH_OUTPUT_COLUMNS,
-                "data": [],
-            }
+            "media/table/agentic_math_output_table_0.table.json": table_payload(
+                AGENTIC_MATH_OUTPUT_COLUMNS,
+                100,
+            )
         },
     )
 
@@ -309,6 +361,64 @@ def test_verify_agentic_math_wandb_completion_loads_output_columns_from_table_fi
         if table["name"] == "agentic_math_output_table"
     )
     assert output_table["columns_source"] == "wandb_file"
+
+
+def test_verify_agentic_math_wandb_completion_rejects_missing_invocation_row_evidence():
+    module = load_module()
+    summary = complete_agentic_math_summary()
+    payload = table_payload(AGENTIC_MATH_OUTPUT_COLUMNS, 100)
+    column_index = AGENTIC_MATH_OUTPUT_COLUMNS.index("openclaw_invocation_path")
+    payload["data"][0][column_index] = ""
+    run = FakeRun(
+        summary=summary,
+        artifacts=[complete_result_artifact()],
+        table_files={
+            "media/table/agentic_math_output_table_0.table.json": payload,
+        },
+    )
+
+    result = module.verify_run(run, module.BENCHMARK_SPECS["agentic_math"])
+
+    assert result["ok"] is False
+    check = next(
+        check
+        for check in result["checks"]
+        if check["name"] == "output_table_invocation_evidence"
+    )
+    assert check["ok"] is False
+    assert check["invalid_row_count"] == 1
+    assert check["invalid_examples"][0]["missing_or_empty"] == [
+        "openclaw_invocation_path"
+    ]
+
+
+def test_verify_agentic_swe_wandb_completion_rejects_invalid_invocation_hash():
+    module = load_module()
+    summary = complete_agentic_swe_summary()
+    payload = table_payload(AGENTIC_SWE_OUTPUT_COLUMNS, 80)
+    column_index = AGENTIC_SWE_OUTPUT_COLUMNS.index("openclaw_command_sha256")
+    payload["data"][0][column_index] = "not-a-sha"
+    run = FakeRun(
+        summary=summary,
+        artifacts=[complete_swe_result_artifact()],
+        table_files={
+            "media/table/agentic_swe_output_table_0.table.json": payload,
+        },
+    )
+
+    result = module.verify_run(run, module.BENCHMARK_SPECS["agentic_swe"])
+
+    assert result["ok"] is False
+    check = next(
+        check
+        for check in result["checks"]
+        if check["name"] == "output_table_invocation_evidence"
+    )
+    assert check["ok"] is False
+    assert check["invalid_row_count"] == 1
+    assert check["invalid_examples"][0]["invalid_hashes"] == [
+        "openclaw_command_sha256"
+    ]
 
 
 def test_verify_agentic_math_wandb_completion_requires_nemoclaw_session_audit():

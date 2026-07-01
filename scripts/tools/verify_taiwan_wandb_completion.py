@@ -56,6 +56,16 @@ AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "openclaw_invocation_sha256",
     "openclaw_command_sha256",
 )
+OPENCLAW_INVOCATION_EVIDENCE_COLUMNS = (
+    "openclaw_result_path",
+    "openclaw_invocation_path",
+    "openclaw_invocation_sha256",
+    "openclaw_command_sha256",
+)
+OPENCLAW_INVOCATION_HASH_COLUMNS = (
+    "openclaw_invocation_sha256",
+    "openclaw_command_sha256",
+)
 
 
 @dataclass(frozen=True)
@@ -201,6 +211,35 @@ def _table_columns_from_payload(payload: Any) -> list[str] | None:
     return _string_list(payload.get("columns"))
 
 
+def _table_data_rows_from_payload(payload: Any) -> tuple[list[dict[str, Any]] | None, str | None]:
+    if not isinstance(payload, dict):
+        return None, "W&B table payload is not a JSON object"
+    columns = _table_columns_from_payload(payload)
+    data = payload.get("data")
+    if columns is None:
+        return None, "W&B table payload has no valid columns"
+    if not isinstance(data, list):
+        return None, "W&B table payload has no valid data rows"
+    rows: list[dict[str, Any]] = []
+    for index, raw_row in enumerate(data, start=1):
+        if isinstance(raw_row, dict):
+            rows.append(raw_row)
+            continue
+        if isinstance(raw_row, list):
+            rows.append({column: raw_row[i] if i < len(raw_row) else None for i, column in enumerate(columns)})
+            continue
+        return None, f"W&B table data row {index} is not a list or object"
+    return rows, None
+
+
+def _is_sha256(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(char in "0123456789abcdefABCDEF" for char in value)
+    )
+
+
 def _download_wandb_table_json(run: Any, table_path: str) -> Any:
     file_getter = getattr(run, "file", None)
     if not callable(file_getter):
@@ -211,6 +250,23 @@ def _download_wandb_table_json(run: Any, table_path: str) -> Any:
         downloaded_name = getattr(downloaded, "name", None)
         local_path = Path(downloaded_name) if downloaded_name else Path(tmpdir) / table_path
         return json.loads(local_path.read_text(encoding="utf-8"))
+
+
+def _download_table_payload_from_summary(
+    run: Any,
+    summary: dict[str, Any],
+    key: str,
+) -> tuple[Any | None, str, str | None]:
+    value = summary.get(key)
+    if not isinstance(value, dict):
+        return None, "summary", f"missing or invalid W&B table summary for {key}"
+    table_path = value.get("path")
+    if not isinstance(table_path, str) or not table_path:
+        return None, "summary", f"{key} table summary has no path for row-level evidence"
+    try:
+        return _download_wandb_table_json(run, table_path), "wandb_file", None
+    except (OSError, json.JSONDecodeError, RuntimeError, AttributeError) as exc:
+        return None, "wandb_file", f"could not read W&B table file for {key}: {exc}"
 
 
 def _table_columns(
@@ -274,6 +330,100 @@ def _output_table_columns_check(
         required_columns=required_columns,
         columns=columns,
         missing_columns=[],
+        source=source,
+    )
+
+
+def _output_table_invocation_evidence_check(
+    run: Any,
+    summary: dict[str, Any],
+    spec: BenchmarkSpec,
+    *,
+    expected_rows: int | None,
+) -> dict[str, Any] | None:
+    required = list(OPENCLAW_INVOCATION_EVIDENCE_COLUMNS)
+    if not all(column in spec.output_table_required_columns for column in required):
+        return None
+    payload, source, error = _download_table_payload_from_summary(run, summary, spec.output_table)
+    if payload is None:
+        return _fail_check(
+            "output_table_invocation_evidence",
+            error or f"could not inspect row-level evidence for {spec.output_table}",
+            table_name=spec.output_table,
+            required_columns=required,
+            checked_rows=0,
+            invalid_row_count=None,
+            invalid_examples=[],
+            source=source,
+        )
+    rows, rows_error = _table_data_rows_from_payload(payload)
+    if rows is None:
+        return _fail_check(
+            "output_table_invocation_evidence",
+            rows_error or f"{spec.output_table} has no inspectable rows",
+            table_name=spec.output_table,
+            required_columns=required,
+            checked_rows=0,
+            invalid_row_count=None,
+            invalid_examples=[],
+            source=source,
+        )
+    invalid_examples: list[dict[str, Any]] = []
+    invalid_count = 0
+    for index, row in enumerate(rows, start=1):
+        missing_or_empty = [
+            column
+            for column in required
+            if not isinstance(row.get(column), str) or not row.get(column)
+        ]
+        invalid_hashes = [
+            column
+            for column in OPENCLAW_INVOCATION_HASH_COLUMNS
+            if column in row and not _is_sha256(row.get(column))
+        ]
+        if missing_or_empty or invalid_hashes:
+            invalid_count += 1
+            if len(invalid_examples) < 5:
+                invalid_examples.append(
+                    {
+                        "row_index": index,
+                        "missing_or_empty": missing_or_empty,
+                        "invalid_hashes": invalid_hashes,
+                    }
+                )
+    if expected_rows is not None and len(rows) != expected_rows:
+        return _fail_check(
+            "output_table_invocation_evidence",
+            f"{spec.output_table} table JSON row count does not match summary",
+            table_name=spec.output_table,
+            required_columns=required,
+            checked_rows=len(rows),
+            expected_rows=expected_rows,
+            invalid_row_count=invalid_count,
+            invalid_examples=invalid_examples,
+            source=source,
+        )
+    if invalid_count:
+        return _fail_check(
+            "output_table_invocation_evidence",
+            f"{spec.output_table} has rows without valid OpenClaw invocation evidence",
+            table_name=spec.output_table,
+            required_columns=required,
+            checked_rows=len(rows),
+            expected_rows=expected_rows,
+            invalid_row_count=invalid_count,
+            invalid_examples=invalid_examples,
+            source=source,
+        )
+    return _ok_check(
+        "output_table_invocation_evidence",
+        f"{spec.output_table} rows contain OpenClaw invocation evidence",
+        table_name=spec.output_table,
+        required_columns=required,
+        checked_rows=len(rows),
+        expected_rows=expected_rows,
+        invalid_row_count=0,
+        invalid_examples=[],
         source=source,
     )
 
@@ -664,6 +814,34 @@ def _observed_benchmark_evidence(
                 }
             )
             continue
+        if name == "output_table_invocation_evidence":
+            output_table_row = next(
+                (
+                    row
+                    for row in observed["tables"]
+                    if row.get("name") == spec.output_table
+                ),
+                None,
+            )
+            if output_table_row is None:
+                output_table_row = {
+                    "name": spec.output_table,
+                    "ok": bool(check.get("ok")),
+                    "nrows": None,
+                    "expected": None,
+                }
+                observed["tables"].append(output_table_row)
+            output_table_row.update(
+                {
+                    "invocation_evidence_ok": bool(check.get("ok")),
+                    "invocation_evidence_source": check.get("source"),
+                    "invocation_checked_rows": check.get("checked_rows"),
+                    "invocation_expected_rows": check.get("expected_rows"),
+                    "invocation_invalid_row_count": check.get("invalid_row_count"),
+                    "invocation_invalid_examples": check.get("invalid_examples"),
+                }
+            )
+            continue
         if name == "result_artifact":
             observed["artifacts"] = check.get("artifacts", [])
             continue
@@ -885,6 +1063,14 @@ def verify_run(
     output_table_columns_check = _output_table_columns_check(run, summary, spec)
     if output_table_columns_check is not None:
         checks.append(output_table_columns_check)
+    output_table_invocation_evidence_check = _output_table_invocation_evidence_check(
+        run,
+        summary,
+        spec,
+        expected_rows=output_rows,
+    )
+    if output_table_invocation_evidence_check is not None:
+        checks.append(output_table_invocation_evidence_check)
 
     if spec.answered_metric:
         answered = _metric(summary, spec.answered_metric)

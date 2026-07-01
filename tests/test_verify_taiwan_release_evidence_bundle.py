@@ -375,6 +375,12 @@ def agentic_math_wandb_completion_payload():
                     "required_columns": AGENTIC_MATH_OUTPUT_COLUMNS,
                     "missing_columns": [],
                     "columns_source": "summary",
+                    "invocation_evidence_ok": True,
+                    "invocation_evidence_source": "wandb_file",
+                    "invocation_checked_rows": 100,
+                    "invocation_expected_rows": 100,
+                    "invocation_invalid_row_count": 0,
+                    "invocation_invalid_examples": [],
                 },
             ],
             "artifacts": [
@@ -419,6 +425,23 @@ def agentic_math_wandb_completion_payload():
                 "columns": AGENTIC_MATH_OUTPUT_COLUMNS,
                 "missing_columns": [],
                 "source": "summary",
+            },
+            {
+                "name": "output_table_invocation_evidence",
+                "ok": True,
+                "detail": "agentic_math_output_table rows contain OpenClaw invocation evidence",
+                "table_name": "agentic_math_output_table",
+                "required_columns": [
+                    "openclaw_result_path",
+                    "openclaw_invocation_path",
+                    "openclaw_invocation_sha256",
+                    "openclaw_command_sha256",
+                ],
+                "checked_rows": 100,
+                "expected_rows": 100,
+                "invalid_row_count": 0,
+                "invalid_examples": [],
+                "source": "wandb_file",
             },
             {
                 "name": "answered_metric",
@@ -2775,6 +2798,67 @@ def test_validate_wandb_completion_payload_rejects_agentic_missing_observed_outp
     assert "proof observed_evidence.tables agentic_math_output_table missing tool_policy_violations" in errors
     assert "proof observed_evidence.tables agentic_math_output_table columns_ok is not true" in errors
     assert "proof checks contains failing check: output_table_columns" in errors
+
+
+def test_validate_wandb_completion_payload_rejects_missing_invocation_evidence_check():
+    module = load_verify_module()
+    payload = agentic_math_wandb_completion_payload()
+    payload["checks"] = [
+        check
+        for check in payload["checks"]
+        if check["name"] != "output_table_invocation_evidence"
+    ]
+
+    errors = module.validate_wandb_completion_payload(
+        payload,
+        label="proof",
+        expected_benchmark="agentic_math",
+    )
+
+    assert (
+        "proof checks missing required check: output_table_invocation_evidence"
+        in errors
+    )
+    assert (
+        "proof checks output_table_invocation_evidence missing for "
+        "agentic_math_output_table"
+    ) in errors
+
+
+def test_validate_wandb_completion_payload_rejects_failed_invocation_evidence_check():
+    module = load_verify_module()
+    payload = agentic_math_wandb_completion_payload()
+    output_table = payload["observed_evidence"]["tables"][1]
+    output_table["invocation_evidence_ok"] = False
+    output_table["invocation_invalid_row_count"] = 1
+    output_table["invocation_invalid_examples"] = [{"row_index": 1}]
+    output_check = next(
+        check
+        for check in payload["checks"]
+        if check["name"] == "output_table_invocation_evidence"
+    )
+    output_check["ok"] = False
+    output_check["invalid_row_count"] = 1
+    output_check["invalid_examples"] = [{"row_index": 1}]
+
+    errors = module.validate_wandb_completion_payload(
+        payload,
+        label="proof",
+        expected_benchmark="agentic_math",
+    )
+
+    assert (
+        "proof observed_evidence.tables agentic_math_output_table "
+        "invocation_evidence_ok is not true"
+    ) in errors
+    assert (
+        "proof checks contains failing check: output_table_invocation_evidence"
+        in errors
+    )
+    assert (
+        "proof checks output_table_invocation_evidence invalid_row_count is not 0"
+        in errors
+    )
 
 
 def nemoclaw_operator_handoff_payload(setup_path, setup_payload):
