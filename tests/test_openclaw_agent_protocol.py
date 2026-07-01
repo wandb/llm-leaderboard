@@ -457,6 +457,51 @@ def test_live_tool_budget_status_detects_agent_session_overage(tmp_path, monkeyp
     assert status["session_file"] == str(session)
 
 
+def test_live_tool_budget_status_checks_explicit_session_dir(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path / "empty-openclaw-state"))
+    session_dir = tmp_path / "task-agent" / "sessions"
+    session_dir.mkdir(parents=True)
+    session = session_dir / "session-1.jsonl"
+    session.write_text(
+        "\n".join(
+            json.dumps(
+                {
+                    "message": {
+                        "role": "assistant",
+                        "timestamp": index,
+                        "content": [
+                            {
+                                "type": "toolCall",
+                                "id": f"call_{index}",
+                                "name": "exec",
+                                "arguments": {"cmd": "true"},
+                            }
+                        ],
+                    }
+                }
+            )
+            for index in range(3)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    args = Namespace(
+        agent="agent-a",
+        profile=None,
+        max_tool_calls=2,
+        live_session_dir=[session_dir],
+    )
+
+    status = module.live_tool_budget_status(args, time.time() - 1)
+
+    assert status["enabled"] is True
+    assert status["exceeded"] is True
+    assert status["tool_call_count"] == 3
+    assert status["session_file"] == str(session)
+    assert str(session_dir) in status["session_dirs"]
+
+
 def test_extract_timeline_events_preserves_openclaw_session_order(tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     session = tmp_path / "session.jsonl"

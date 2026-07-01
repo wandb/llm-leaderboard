@@ -494,21 +494,41 @@ def agent_sessions_dir(args: argparse.Namespace) -> Path:
     return openclaw_state_dir(args) / "agents" / str(args.agent) / "sessions"
 
 
+def configured_live_session_dirs(args: argparse.Namespace) -> list[Path]:
+    dirs: list[Path] = []
+    seen: set[str] = set()
+    for value in getattr(args, "live_session_dir", None) or []:
+        path = Path(value).expanduser()
+        key = str(path)
+        if key not in seen:
+            dirs.append(path)
+            seen.add(key)
+    default_dir = agent_sessions_dir(args)
+    key = str(default_dir)
+    if key not in seen:
+        dirs.append(default_dir)
+    return dirs
+
+
 def live_session_candidates(args: argparse.Namespace, started_at: float) -> list[Path]:
-    sessions_dir = agent_sessions_dir(args)
-    if not sessions_dir.exists():
-        return []
     candidates: list[Path] = []
     threshold = started_at - 5.0
-    for path in sessions_dir.glob("*.jsonl"):
-        if path.name.endswith(".trajectory.jsonl"):
+    for sessions_dir in configured_live_session_dirs(args):
+        if not sessions_dir.exists():
             continue
-        try:
-            if path.stat().st_mtime >= threshold:
-                candidates.append(path)
-        except OSError:
-            continue
-    return sorted(candidates, key=lambda path: path.stat().st_mtime if path.exists() else 0.0, reverse=True)
+        for path in sessions_dir.glob("*.jsonl"):
+            if path.name.endswith(".trajectory.jsonl"):
+                continue
+            try:
+                if path.stat().st_mtime >= threshold:
+                    candidates.append(path)
+            except OSError:
+                continue
+    return sorted(
+        candidates,
+        key=lambda path: path.stat().st_mtime if path.exists() else 0.0,
+        reverse=True,
+    )
 
 
 def live_tool_budget_status(args: argparse.Namespace, started_at: float) -> dict[str, Any]:
@@ -519,6 +539,7 @@ def live_tool_budget_status(args: argparse.Namespace, started_at: float) -> dict
             "max_tool_calls": None,
             "tool_call_count": None,
             "session_file": None,
+            "session_dirs": [str(path) for path in configured_live_session_dirs(args)],
             "exceeded": False,
         }
     best_count = 0
@@ -534,6 +555,7 @@ def live_tool_budget_status(args: argparse.Namespace, started_at: float) -> dict
         "max_tool_calls": max_tool_calls,
         "tool_call_count": best_count if best_path else None,
         "session_file": str(best_path) if best_path else None,
+        "session_dirs": [str(path) for path in configured_live_session_dirs(args)],
         "exceeded": bool(best_path and best_count > max_tool_calls),
     }
 
@@ -1999,6 +2021,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="Harness-side live session JSONL tool-call budget. 0 disables the budget.",
+    )
+    run_parser.add_argument(
+        "--live-session-dir",
+        type=Path,
+        action="append",
+        default=[],
+        help=(
+            "Additional OpenClaw session JSONL directory to monitor for live "
+            "tool-call budget enforcement. Can be supplied multiple times."
+        ),
     )
     run_parser.add_argument("--local", action=argparse.BooleanOptionalAction, default=True)
     run_parser.add_argument("--cwd", type=Path, default=Path.cwd())

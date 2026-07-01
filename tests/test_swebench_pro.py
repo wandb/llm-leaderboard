@@ -541,6 +541,9 @@ def test_swebench_nemoclaw_run_forwards_sandbox_command_args(tmp_path, monkeypat
     assert captured_command[captured_command.index("--nemoclaw-workdir") + 1] == expected_checkout
     assert captured_command[captured_command.index("--openclaw-config-path") + 1] == expected_config
     assert captured_command[captured_command.index("--openclaw-config-source") + 1] == str(template)
+    assert captured_command[captured_command.index("--live-session-dir") + 1] == str(
+        checkout_dir / ".nejumi_openclaw" / "agent_state" / "sessions"
+    )
     session_key = captured_command[captured_command.index("--session-key") + 1]
     assert session_key.startswith(f"twcanary-swe-run:swebench-pro:{row['instance_id']}:")
 

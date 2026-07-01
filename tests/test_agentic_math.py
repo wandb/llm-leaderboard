@@ -473,6 +473,8 @@ def test_agentic_math_run_passes_wandb_scoped_session_key(tmp_path, monkeypatch)
             "openclaw_max_attempts": 1,
             "openclaw_retry_base_seconds": 0,
             "openclaw_timeout": 30,
+            "max_input_tokens": 12345,
+            "max_tool_calls": 7,
             "profile": None,
             "redo": False,
             "session_prefix": None,
@@ -489,8 +491,12 @@ def test_agentic_math_run_passes_wandb_scoped_session_key(tmp_path, monkeypatch)
     config_source = captured_command[captured_command.index("--openclaw-config-source") + 1]
     assert session_key.startswith("twcanary-run-3:agentic-math:math_1:")
     assert config_source == record["cache_key"]["openclaw_config_source"]
+    assert captured_command[captured_command.index("--max-input-tokens") + 1] == "12345"
+    assert captured_command[captured_command.index("--max-tool-calls") + 1] == "7"
     assert record["correct"] is True
     assert record["cache_key"]["session_prefix"] == "twcanary-run-3:agentic-math"
+    assert record["cache_key"]["max_input_tokens"] == 12345
+    assert record["cache_key"]["max_tool_calls"] == 7
 
 
 def test_agentic_math_fresh_success_rejects_sidecar_config_source_mismatch(tmp_path, monkeypatch):
@@ -1037,6 +1043,33 @@ def test_task_openclaw_config_supports_nemoclaw_task_workspace(tmp_path, monkeyp
     assert metadata["config_path"] == str(config_path)
 
 
+def test_task_live_session_dir_uses_local_task_agent_state(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    task_dir = tmp_path / "task"
+
+    local_args = type(
+        "Args",
+        (),
+        {
+            "use_task_agent": True,
+            "nemoclaw_sandbox": None,
+        },
+    )()
+    nemoclaw_args = type(
+        "Args",
+        (),
+        {
+            "use_task_agent": True,
+            "nemoclaw_sandbox": "nejumi-taiwan",
+        },
+    )()
+
+    assert module.task_live_session_dir(task_dir, local_args) == (
+        task_dir / "openclaw_agent_state" / "sessions"
+    )
+    assert module.task_live_session_dir(task_dir, nemoclaw_args) is None
+
+
 def test_main_dry_run_uses_protocol_path(tmp_path, monkeypatch):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
     calls = []
@@ -1118,6 +1151,8 @@ def test_evaluator_passes_nemoclaw_args_to_agentic_math_runner(tmp_path, monkeyp
                 "openclaw_timeout": 60,
                 "openclaw_max_attempts": 1,
                 "openclaw_retry_base_seconds": 1,
+                "max_input_tokens": 222222,
+                "max_tool_calls": 9,
                 "use_task_agent": True,
                 "nemoclaw_sandbox": "nejumi-taiwan",
                 "nemoclaw_bin": "/usr/local/bin/nemoclaw",
@@ -1138,6 +1173,8 @@ def test_evaluator_passes_nemoclaw_args_to_agentic_math_runner(tmp_path, monkeyp
     assert command[command.index("--nemoclaw-workdir") + 1] == "/sandbox/work"
     assert command[command.index("--nemoclaw-openclaw-config-path") + 1] == "/sandbox/.openclaw/openclaw.json"
     assert command[command.index("--session-prefix") + 1] == "{wandb_run_id}:agentic-math"
+    assert command[command.index("--max-input-tokens") + 1] == "222222"
+    assert command[command.index("--max-tool-calls") + 1] == "9"
 
 
 def test_evaluator_passes_no_use_task_agent_when_explicitly_disabled(tmp_path, monkeypatch):

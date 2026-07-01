@@ -89,6 +89,8 @@ def test_agentic_phase_runs_only_agentic_generation(tmp_path):
     assert cfg.swebench_pro.run_openclaw is True
     assert cfg.agentic_math.results_dir is None
     assert cfg.swebench_pro.patch_path is None
+    assert cfg.agentic_math.max_input_tokens == 500_000
+    assert cfg.agentic_math.max_tool_calls == 60
     assert cfg.swebench_pro.subset == "leaderboard_compact_80"
     assert cfg.swebench_pro.max_input_tokens == 1_000_000
     assert cfg.swebench_pro.max_tool_calls == 60

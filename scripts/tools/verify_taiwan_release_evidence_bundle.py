@@ -547,6 +547,10 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("NeMoClaw session copy requirement", "missing_nemoclaw_session_copy_status"),
             ("OpenClaw config source metadata", '"openclaw_config_source"'),
             ("OpenClaw config source CLI", "--openclaw-config-source"),
+            ("explicit live session directory CLI", "--live-session-dir"),
+            ("explicit live session directory resolver", "def configured_live_session_dirs("),
+            ("live tool budget validator", "def live_tool_budget_status("),
+            ("max tool-call budget sidecar issue", "max_tool_calls_exceeded"),
         ),
     },
     "scripts/tools/run_agentic_math_openclaw.py": {
@@ -613,6 +617,12 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("conversation-order summary counter", "conversation_order_violation_instances"),
             ("NeMoClaw session-audit result field", "nemoclaw_session_audit_ok"),
             ("NeMoClaw session-audit summary counter", "nemoclaw_session_audit_required_instances"),
+            ("runtime budget cache max input tokens", '"max_input_tokens": int(getattr(args, "max_input_tokens", 0) or 0)'),
+            ("runtime budget cache max tool calls", '"max_tool_calls": int(getattr(args, "max_tool_calls", 0) or 0)'),
+            ("runtime budget max input CLI", "--max-input-tokens"),
+            ("runtime budget max tool-call CLI", "--max-tool-calls"),
+            ("task-agent live session directory handoff", "--live-session-dir"),
+            ("runtime budget exceeded summary counter", "runtime_budget_exceeded_instances"),
         ),
     },
     "scripts/tools/run_swebench_pro_openclaw.py": {
@@ -674,6 +684,8 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("conversation-order summary counter", "conversation_order_violation_patches"),
             ("NeMoClaw session-audit result field", "nemoclaw_session_audit_ok"),
             ("NeMoClaw session-audit summary counter", "nemoclaw_session_audit_required_patches"),
+            ("task-agent live session directory resolver", "def task_live_session_dir("),
+            ("task-agent live session directory handoff", "--live-session-dir"),
         ),
     },
     "scripts/tools/run_taiwan_full_eval_batch.py": {

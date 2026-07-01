@@ -930,6 +930,24 @@ def task_openclaw_config_paths(
     return host_config_path, host_agent_dir, sandbox_config_path, sandbox_agent_dir
 
 
+def task_live_session_dir(
+    checkout_dir: Path,
+    task_dir: Path,
+    args: argparse.Namespace,
+) -> Path | None:
+    if not getattr(args, "use_task_agent", True):
+        return None
+    if getattr(args, "nemoclaw_sandbox", None):
+        transfer_mode = str(
+            getattr(args, "nemoclaw_checkout_transfer_mode", "visible") or "visible"
+        )
+        if transfer_mode != "visible":
+            return None
+        _, host_agent_dir, _, _ = task_openclaw_config_paths(checkout_dir, args)
+        return host_agent_dir / "sessions"
+    return task_dir / "openclaw_agent_state" / "sessions"
+
+
 def write_task_openclaw_config(
     row: dict[str, Any],
     checkout_dir: Path,
@@ -1088,6 +1106,9 @@ def run_openclaw_for_task(
         if openclaw_config_path:
             command.extend(["--openclaw-config-path", str(openclaw_config_path)])
         command.extend(["--openclaw-config-source", str(cache_key["openclaw_config_source"])])
+        live_session_dir = task_live_session_dir(checkout_dir, task_dir, args)
+        if live_session_dir is not None:
+            command.extend(["--live-session-dir", str(live_session_dir)])
         if getattr(args, "nemoclaw_sandbox", None):
             command.extend(["--nemoclaw-bin", str(getattr(args, "nemoclaw_bin", "nemoclaw"))])
             command.extend(["--nemoclaw-sandbox", str(args.nemoclaw_sandbox)])

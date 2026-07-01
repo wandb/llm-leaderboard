@@ -21,8 +21,10 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROTOCOL_RUNNER = REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py"
-RUNNER_VERSION = "agentic-math-openclaw-2026-07-01-config-cache-v2"
+RUNNER_VERSION = "agentic-math-openclaw-2026-07-01-runtime-budget-v1"
 NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
+DEFAULT_MAX_INPUT_TOKENS = 500_000
+DEFAULT_MAX_TOOL_CALLS = 60
 DEFAULT_DENIED_TOOLS = [
     "code_execution",
     "web_search",
@@ -156,6 +158,8 @@ def build_cache_key(row: dict[str, Any], prompt_text: str, args: argparse.Namesp
         "deny_tools": effective_deny_tools(args),
         "deny_argument_patterns": effective_deny_argument_patterns(args),
         "openclaw_config_source": openclaw_config_cache_source(args),
+        "max_input_tokens": int(getattr(args, "max_input_tokens", 0) or 0),
+        "max_tool_calls": int(getattr(args, "max_tool_calls", 0) or 0),
         "agent_runtime": "nemoclaw" if getattr(args, "nemoclaw_sandbox", None) else "host",
         "nemoclaw_sandbox": str(getattr(args, "nemoclaw_sandbox", "") or ""),
         "use_task_agent": bool(getattr(args, "use_task_agent", True)),
@@ -325,6 +329,14 @@ def write_task_openclaw_config(
         encoding="utf-8",
     )
     return agent_id, Path(config_path)
+
+
+def task_live_session_dir(task_dir: Path, args: argparse.Namespace) -> Path | None:
+    if not getattr(args, "use_task_agent", True):
+        return None
+    if getattr(args, "nemoclaw_sandbox", None):
+        return None
+    return task_dir / "openclaw_agent_state" / "sessions"
 
 
 def disable_remote_lookup_tools(config: dict[str, Any]) -> None:
@@ -697,6 +709,10 @@ def build_openclaw_error_record(
                 .get("agentMeta", {})
                 .get("usage", {})
             )
+    runtime_budget = sidecar.get("runtime_budget", {}) if isinstance(sidecar, dict) else {}
+    runtime_budget_exceeded = (
+        isinstance(runtime_budget, dict) and bool(runtime_budget.get("violations"))
+    )
 
     return {
         **row,
@@ -711,6 +727,10 @@ def build_openclaw_error_record(
         "openclaw_usage": usage,
         "openclaw_tool_call_count": sidecar.get("tool_call_count", 0) if isinstance(sidecar, dict) else 0,
         "openclaw_tool_error_count": sidecar.get("tool_error_count", 0) if isinstance(sidecar, dict) else 0,
+        "runtime_budget": runtime_budget,
+        "openclaw_disqualified_reason": "runtime_budget_exceeded"
+        if runtime_budget_exceeded
+        else "",
         "tool_policy_ok": sidecar.get("tool_policy_ok") if isinstance(sidecar, dict) else None,
         "tool_policy_violations": sidecar.get("tool_policy_violations", []) if isinstance(sidecar, dict) else [],
         "weave_sidecar": sidecar.get("weave_sidecar", {}) if isinstance(sidecar, dict) else {},
@@ -766,6 +786,11 @@ def build_scored_record_from_sidecar(
         ),
         "openclaw_tool_call_count": sidecar.get("tool_call_count", 0),
         "openclaw_tool_error_count": sidecar.get("tool_error_count", 0),
+        "runtime_budget": sidecar.get("runtime_budget", {}),
+        "openclaw_disqualified_reason": "runtime_budget_exceeded"
+        if isinstance(sidecar.get("runtime_budget"), dict)
+        and sidecar["runtime_budget"].get("violations")
+        else "",
         "tool_policy_ok": sidecar.get("tool_policy_ok"),
         "tool_policy_violations": sidecar.get("tool_policy_violations", []),
         "weave_sidecar": sidecar.get("weave_sidecar", {}),
@@ -1384,6 +1409,10 @@ def run_openclaw_for_task(
             str(args.openclaw_timeout),
             "--thinking",
             args.thinking,
+            "--max-input-tokens",
+            str(int(getattr(args, "max_input_tokens", 0) or 0)),
+            "--max-tool-calls",
+            str(int(getattr(args, "max_tool_calls", 0) or 0)),
         ]
         if args.profile:
             command.extend(["--profile", args.profile])
@@ -1415,6 +1444,9 @@ def run_openclaw_for_task(
         if openclaw_config_path:
             command.extend(["--openclaw-config-path", str(openclaw_config_path)])
         command.extend(["--openclaw-config-source", str(cache_key["openclaw_config_source"])])
+        live_session_dir = task_live_session_dir(task_dir, args)
+        if live_session_dir is not None:
+            command.extend(["--live-session-dir", str(live_session_dir)])
         if args.dry_run:
             command.append("--dry-run")
 
@@ -1595,6 +1627,11 @@ def write_summary(output_dir: Path, results: list[dict[str, Any]], args: argpars
     tool_errors = [row for row in results if int(row.get("openclaw_tool_error_count") or 0) > 0]
     tool_policy_violations = [row for row in results if row.get("tool_policy_violations")]
     conversation_order_violations = [row for row in results if row.get("conversation_order_ok") is False]
+    runtime_budget_exceeded = [
+        row
+        for row in results
+        if row.get("openclaw_disqualified_reason") == "runtime_budget_exceeded"
+    ]
     session_audit_required = [
         row
         for row in results
@@ -1630,6 +1667,12 @@ def write_summary(output_dir: Path, results: list[dict[str, Any]], args: argpars
         "tool_error_instances": len(tool_errors),
         "tool_policy_violation_instances": len(tool_policy_violations),
         "conversation_order_violation_instances": len(conversation_order_violations),
+        "runtime_budget": {
+            "max_input_tokens": int(getattr(args, "max_input_tokens", 0) or 0) or None,
+            "max_tool_calls": int(getattr(args, "max_tool_calls", 0) or 0) or None,
+        },
+        "runtime_budget_exceeded_instances": len(runtime_budget_exceeded),
+        "disqualified_instances": sum(1 for row in results if row.get("openclaw_disqualified_reason")),
         "nemoclaw_session_audit_required_instances": len(session_audit_required),
         "nemoclaw_session_audit_passed_instances": len(session_audit_passed),
         "nemoclaw_session_audit_failed_instances": len(session_audit_failed),
@@ -1673,6 +1716,18 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--openclaw-timeout", type=int, default=1200)
+    parser.add_argument(
+        "--max-input-tokens",
+        type=int,
+        default=DEFAULT_MAX_INPUT_TOKENS,
+        help="Agentic Math per-task input-token budget. 0 disables the budget.",
+    )
+    parser.add_argument(
+        "--max-tool-calls",
+        type=int,
+        default=DEFAULT_MAX_TOOL_CALLS,
+        help="Agentic Math per-task tool-call budget. 0 disables the budget.",
+    )
     parser.add_argument(
         "--openclaw-max-attempts",
         type=int,

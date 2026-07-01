@@ -234,6 +234,8 @@ agentic_math:
   nemoclaw_sandbox: null
   nemoclaw_workdir: '/sandbox'
   openclaw_timeout: 2400
+  max_input_tokens: 500000
+  max_tool_calls: 60
   allow_failed_preflight: false
   no_local: false
   testmode_max_samples: 1

@@ -13,6 +13,8 @@ from config_singleton import WandbConfigSingleton
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OPENCLAW_RUNNER = REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py"
+DEFAULT_MAX_INPUT_TOKENS = 500_000
+DEFAULT_MAX_TOOL_CALLS = 60
 AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "nemoclaw_session_audit_ok",
     "nemoclaw_session_audit",
@@ -115,6 +117,10 @@ def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
         str(_cfg_get(cfg.agentic_math, "openclaw_max_attempts", 3)),
         "--openclaw-retry-base-seconds",
         str(_cfg_get(cfg.agentic_math, "openclaw_retry_base_seconds", 15)),
+        "--max-input-tokens",
+        str(_cfg_get(cfg.agentic_math, "max_input_tokens", DEFAULT_MAX_INPUT_TOKENS)),
+        "--max-tool-calls",
+        str(_cfg_get(cfg.agentic_math, "max_tool_calls", DEFAULT_MAX_TOOL_CALLS)),
     ]
     profile = _cfg_get(cfg.agentic_math, "profile")
     if profile:
@@ -237,6 +243,15 @@ def _log_summary(run, cfg, summary: dict[str, Any], output_df: pd.DataFrame) -> 
             "agentic_math/correct_instances": int(summary["correct_instances"]),
             "agentic_math/total_instances": int(summary["total_instances"]),
             "agentic_math/answered_instances": int(summary["answered_instances"]),
+            "agentic_math/max_input_tokens": int(
+                _cfg_get(cfg.agentic_math, "max_input_tokens", DEFAULT_MAX_INPUT_TOKENS) or 0
+            ),
+            "agentic_math/max_tool_calls": int(
+                _cfg_get(cfg.agentic_math, "max_tool_calls", DEFAULT_MAX_TOOL_CALLS) or 0
+            ),
+            "agentic_math/runtime_budget_exceeded_instances": int(
+                summary.get("runtime_budget_exceeded_instances") or 0
+            ),
             **_nemoclaw_audit_metrics(summary),
         }
     )
