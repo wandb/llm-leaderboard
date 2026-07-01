@@ -82,6 +82,7 @@ WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT = (
 )
 NEMOCLAW_CANARY_READINESS_SCRIPT = "scripts/tools/check_taiwan_canary_readiness.py"
 NEMOCLAW_ADOPTION_SCRIPT = "scripts/tools/check_taiwan_nemoclaw_adoption.py"
+NEMOCLAW_POST_INSTALL_SCRIPT = "scripts/setup/verify_nemoclaw_post_install.py"
 NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 REQUIRED_NEMOCLAW_CANARY_REMOTE_LOOKUP_CHECK_NAMES = {
     "agentic Math denies remote lookup via deny_argument_pattern",
@@ -183,6 +184,37 @@ NEMOCLAW_ADOPTION_SCRIPT_SOURCE_TOKENS = (
     (
         "unknown runtime network policies evidence field",
         "unknown_runtime_network_policies",
+    ),
+)
+NEMOCLAW_POST_INSTALL_SCRIPT_SOURCE_TOKENS = (
+    ("command flag parser", "def command_flag_value("),
+    ("command safety report", "def command_safety_report("),
+    ("sandbox argument binding", "sandbox: str"),
+    ("OpenClaw config argument binding", "nemoclaw_openclaw_config_path: str"),
+    ("required flag-value map", "required_step_flag_values = {"),
+    ("setup sandbox value binding", '"setup_check": {"--sandbox": sandbox}'),
+    (
+        "protocol sandbox value binding",
+        '"protocol_preflight": {"--nemoclaw-sandbox": sandbox}',
+    ),
+    (
+        "canary OpenClaw config value binding",
+        '"--nemoclaw-openclaw-config-path": nemoclaw_openclaw_config_path',
+    ),
+    ("adoption sandbox value binding", '"adoption_check": {"--sandbox": sandbox}'),
+    ("required value error accumulator", "required_value_errors = []"),
+    ("required value parser invocation", "command_flag_value(command_tokens, flag)"),
+    ("required value error output", '"required_value_errors": required_value_errors'),
+    (
+        "required value error count",
+        'value_error_count = sum(len(record["required_value_errors"]) for record in records)',
+    ),
+    ("required flag-value evidence", '"required_step_flag_values": required_step_flag_values'),
+    ("value error count evidence", '"value_error_count": value_error_count'),
+    ("runtime sandbox argument pass-through", "sandbox=args.sandbox"),
+    (
+        "runtime OpenClaw config argument pass-through",
+        "nemoclaw_openclaw_config_path=args.nemoclaw_openclaw_config_path",
     ),
 )
 OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
@@ -4979,6 +5011,50 @@ def validate_nemoclaw_adoption_script_source(
             errors.append(
                 "NeMoClaw adoption script missing source contract "
                 f"{label}: {NEMOCLAW_ADOPTION_SCRIPT}: {token}"
+            )
+    return errors
+
+
+def validate_nemoclaw_post_install_script_source(
+    *,
+    bundle_dir: Path,
+    manifest: dict[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    records = file_records_by_source(manifest)
+    record = records.get(source_path_key(NEMOCLAW_POST_INSTALL_SCRIPT))
+    if not isinstance(record, dict):
+        return errors
+    roles = record.get("roles")
+    if not isinstance(roles, list) or not (
+        "operator_plan:command_script" in roles
+        or "current_gate:remediation_plan:command_script" in roles
+    ):
+        errors.append(
+            "NeMoClaw post-install verifier script missing command-script role: "
+            f"{NEMOCLAW_POST_INSTALL_SCRIPT}"
+        )
+    bundle_path = record.get("bundle_path")
+    if not isinstance(bundle_path, str) or not bundle_path:
+        errors.append(
+            "NeMoClaw post-install verifier script missing bundle_path: "
+            f"{NEMOCLAW_POST_INSTALL_SCRIPT}"
+        )
+        return errors
+    script_file = bundle_dir / bundle_path
+    try:
+        text = script_file.read_text(encoding="utf-8")
+    except OSError as exc:
+        errors.append(
+            "NeMoClaw post-install verifier script is not readable: "
+            f"{NEMOCLAW_POST_INSTALL_SCRIPT}: {exc}"
+        )
+        return errors
+    for label, token in NEMOCLAW_POST_INSTALL_SCRIPT_SOURCE_TOKENS:
+        if token not in text:
+            errors.append(
+                "NeMoClaw post-install verifier script missing source contract "
+                f"{label}: {NEMOCLAW_POST_INSTALL_SCRIPT}: {token}"
             )
     return errors
 
@@ -14945,6 +15021,7 @@ def verify_bundle(
     errors.extend(validate_agentic_runner_script_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_nemoclaw_canary_readiness_script_source(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_nemoclaw_adoption_script_source(bundle_dir=bundle_dir, manifest=manifest))
+    errors.extend(validate_nemoclaw_post_install_script_source(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_weave_agents_sync_script_source(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_wandb_adoption_draft_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_wandb_adoption_unconfirmed_checks_evidence(bundle_dir=bundle_dir, manifest=manifest))

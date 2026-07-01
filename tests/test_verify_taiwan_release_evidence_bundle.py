@@ -97,6 +97,32 @@ def add_manifest_file_record(manifest: dict, bundle: Path, source: Path, role: s
     )
 
 
+def attach_command_script_source(
+    bundle: Path,
+    source_path: str,
+    role: str = "operator_plan:command_script",
+) -> dict:
+    source = REPO_ROOT / source_path
+    bundle_path = Path(source_path)
+    destination = bundle / bundle_path
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(source.read_bytes())
+
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = {
+        "source_path": source_path,
+        "roles": [role],
+        "exists": True,
+        "bundle_path": str(bundle_path),
+        "size_bytes": destination.stat().st_size,
+        "sha256": sha256(destination),
+    }
+    manifest.setdefault("files", []).append(record)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return record
+
+
 def attach_valid_release_gate_pointer(bundle: Path, tmp_path: Path) -> dict:
     timestamp = "20260628T040000Z"
     release_gate_json = tmp_path / f"taiwan_release_gate_{timestamp}.json"
@@ -13703,6 +13729,81 @@ def test_verify_release_evidence_bundle_rejects_adoption_script_missing_runtime_
             f"{label}:" in error
             for error in payload["errors"]
         )
+
+
+def test_verify_release_evidence_bundle_rejects_post_install_script_missing_value_binding_map(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    record = attach_command_script_source(
+        bundle,
+        "scripts/setup/verify_nemoclaw_post_install.py",
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace(
+            "required_step_flag_values = {",
+            "removed_step_flag_values = {",
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "NeMoClaw post-install verifier script missing source contract "
+        "required flag-value map: "
+        "scripts/setup/verify_nemoclaw_post_install.py: required_step_flag_values = {"
+    ) in payload["errors"]
+
+
+def test_verify_release_evidence_bundle_rejects_post_install_script_missing_openclaw_config_binding(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    record = attach_command_script_source(
+        bundle,
+        "scripts/setup/verify_nemoclaw_post_install.py",
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace(
+            "nemoclaw_openclaw_config_path=args.nemoclaw_openclaw_config_path",
+            "removed_openclaw_config_path=args.nemoclaw_openclaw_config_path",
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "NeMoClaw post-install verifier script missing source contract "
+        "runtime OpenClaw config argument pass-through: "
+        "scripts/setup/verify_nemoclaw_post_install.py: "
+        "nemoclaw_openclaw_config_path=args.nemoclaw_openclaw_config_path"
+    ) in payload["errors"]
 
 
 def test_verify_release_evidence_bundle_accepts_existing_results_relog_command_scripts(tmp_path):
