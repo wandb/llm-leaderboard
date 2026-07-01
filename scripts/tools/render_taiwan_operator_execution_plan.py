@@ -48,6 +48,7 @@ CANARY_FORBIDDEN_PROVIDER_MARKERS = (
     "opus",
     "sonnet",
 )
+OPENAI_DIRECT_CANARY_APPROVAL_SCOPE_MARKER = "openai-direct/gpt-4.1-mini"
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -348,6 +349,93 @@ def validate_openai_direct_canary_batch_command(
     return errors
 
 
+def command_is_paid_canary_batch(command: str) -> bool:
+    parts = split_command(command)
+    return (
+        command_invokes(parts, "run_taiwan_full_eval_batch.py")
+        and option_present(parts, "--canary")
+        and not option_present(parts, "--prepare-only")
+    )
+
+
+def extract_paid_api_approval(payload: dict[str, Any]) -> dict[str, Any]:
+    result = {
+        "present": False,
+        "approved": False,
+        "approved_budget_usd": None,
+        "approved_model_scope": "",
+    }
+    approval_results = payload.get("approval_results")
+    if not isinstance(approval_results, list):
+        return result
+    for item in approval_results:
+        if not isinstance(item, dict) or item.get("requirement") != "paid_api":
+            continue
+        result["present"] = True
+        result["approved"] = bool(item.get("approved"))
+        result["approved_budget_usd"] = item.get("approved_budget_usd")
+        result["approved_model_scope"] = (
+            item.get("approved_model_scope")
+            if isinstance(item.get("approved_model_scope"), str)
+            else ""
+        )
+        break
+    return result
+
+
+def validate_canary_approval_scope(
+    steps: list[dict[str, Any]],
+    approval: dict[str, Any],
+) -> dict[str, Any]:
+    requires_scope = any(
+        command_is_paid_canary_batch(str(command))
+        for step in steps
+        if isinstance(step, dict)
+        for command in step.get("executable_commands") or []
+    )
+    errors: list[str] = []
+    paid_api = (
+        approval.get("paid_api_approval")
+        if isinstance(approval.get("paid_api_approval"), dict)
+        else {}
+    )
+    if requires_scope:
+        if paid_api.get("approved") is not True:
+            errors.append(
+                "paid canary execution requires an approved paid_api approval result"
+            )
+        scope = (
+            paid_api.get("approved_model_scope")
+            if isinstance(paid_api.get("approved_model_scope"), str)
+            else ""
+        )
+        lower_scope = scope.lower()
+        if OPENAI_DIRECT_CANARY_APPROVAL_SCOPE_MARKER not in lower_scope:
+            errors.append(
+                "paid canary approval scope must include "
+                f"{OPENAI_DIRECT_CANARY_APPROVAL_SCOPE_MARKER}"
+            )
+        markers = [
+            marker
+            for marker in CANARY_FORBIDDEN_PROVIDER_MARKERS
+            if marker in lower_scope
+        ]
+        if markers:
+            errors.append(
+                "paid canary approval scope contains forbidden provider marker(s): "
+                + ", ".join(sorted(set(markers)))
+            )
+    return {
+        "valid": not errors,
+        "required": requires_scope,
+        "expected_model_scope_marker": OPENAI_DIRECT_CANARY_APPROVAL_SCOPE_MARKER
+        if requires_scope
+        else "",
+        "observed_model_scope": paid_api.get("approved_model_scope") or "",
+        "errors": errors,
+    }
+
+
 def validate_command_policy(
     steps: list[dict[str, Any]],
     *,
@@ -531,6 +619,7 @@ def build_external_action_approval_record(
         "granted_approval_count": None,
         "all_required_approvals_granted": False,
         "source_binding": {},
+        "paid_api_approval": {},
         "expected_source_packet_json": str(expected_source_packet_path)
         if expected_source_packet_path
         else "",
@@ -600,6 +689,7 @@ def build_external_action_approval_record(
                 payload.get("all_required_approvals_granted")
             ),
             "source_binding": source_binding,
+            "paid_api_approval": extract_paid_api_approval(payload),
             "will_execute_external_actions": payload.get("will_execute_external_actions"),
         }
     )
@@ -841,6 +931,10 @@ def build_execution_plan(
             external_action_approval_report_json
         ),
     )
+    approval_scope_policy = validate_canary_approval_scope(
+        steps,
+        external_action_approval,
+    )
     return {
         "schema_version": 1,
         "generated_at": time.time(),
@@ -852,6 +946,7 @@ def build_execution_plan(
         "unresolved_placeholder_tokens": unresolved,
         "all_ready_to_execute_without_placeholder": all_ready,
         "external_action_approval": external_action_approval,
+        "approval_scope_policy": approval_scope_policy,
         "release_gate_binding": release_gate_binding,
         "command_policy": command_policy,
         "all_ready_for_external_execution": all_ready
@@ -860,7 +955,8 @@ def build_execution_plan(
             or bool(external_action_approval.get("valid"))
         )
         and bool(release_gate_binding.get("valid"))
-        and bool(command_policy.get("valid")),
+        and bool(command_policy.get("valid"))
+        and bool(approval_scope_policy.get("valid")),
         "no_external_action_performed": True,
         "total_command_count": sum(
             step.get("command_count", 0) for step in steps
@@ -957,6 +1053,24 @@ def markdown(plan: dict[str, Any]) -> str:
         if isinstance(binding_errors, list) and binding_errors:
             lines.extend(["", "Release gate binding errors:", ""])
             lines.extend(f"- {error}" for error in binding_errors)
+
+    approval_scope = plan.get("approval_scope_policy")
+    if isinstance(approval_scope, dict):
+        lines.extend(
+            [
+                "",
+                "## Approval Scope Policy",
+                "",
+                f"- Required: `{str(approval_scope.get('required')).lower()}`",
+                f"- Valid: `{str(approval_scope.get('valid')).lower()}`",
+                f"- Expected model scope marker: `{approval_scope.get('expected_model_scope_marker') or ''}`",
+                f"- Observed model scope: `{approval_scope.get('observed_model_scope') or ''}`",
+            ]
+        )
+        scope_errors = approval_scope.get("errors")
+        if isinstance(scope_errors, list) and scope_errors:
+            lines.extend(["", "Approval scope errors:", ""])
+            lines.extend(f"- {error}" for error in scope_errors)
 
     command_policy = plan.get("command_policy")
     if isinstance(command_policy, dict):
@@ -1166,11 +1280,20 @@ def main(argv: list[str] | None = None) -> int:
             errors = plan.get("external_action_approval", {}).get("errors", [])
             binding_errors = plan.get("release_gate_binding", {}).get("errors", [])
             command_policy_errors = plan.get("command_policy", {}).get("errors", [])
+            approval_scope_errors = plan.get("approval_scope_policy", {}).get(
+                "errors",
+                [],
+            )
             print(
                 "refusing to write shell script without valid external-action approval: "
                 + ", ".join(
                     str(error)
-                    for error in [*errors, *binding_errors, *command_policy_errors]
+                    for error in [
+                        *errors,
+                        *binding_errors,
+                        *command_policy_errors,
+                        *approval_scope_errors,
+                    ]
                 ),
                 file=sys.stderr,
             )
@@ -1188,11 +1311,20 @@ def main(argv: list[str] | None = None) -> int:
         errors = plan.get("external_action_approval", {}).get("errors", [])
         binding_errors = plan.get("release_gate_binding", {}).get("errors", [])
         command_policy_errors = plan.get("command_policy", {}).get("errors", [])
+        approval_scope_errors = plan.get("approval_scope_policy", {}).get(
+            "errors",
+            [],
+        )
         print(
             "operator execution plan external-action approval is not valid: "
             + ", ".join(
                 str(error)
-                for error in [*errors, *binding_errors, *command_policy_errors]
+                for error in [
+                    *errors,
+                    *binding_errors,
+                    *command_policy_errors,
+                    *approval_scope_errors,
+                ]
             ),
             file=sys.stderr,
         )

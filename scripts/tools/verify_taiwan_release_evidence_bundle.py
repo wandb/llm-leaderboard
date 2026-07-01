@@ -200,6 +200,14 @@ OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
         "OpenAI-direct canary batch validator",
         "def validate_openai_direct_canary_batch_command(",
     ),
+    (
+        "OpenAI-direct canary approval scope marker",
+        "OPENAI_DIRECT_CANARY_APPROVAL_SCOPE_MARKER",
+    ),
+    (
+        "OpenAI-direct canary approval scope validator",
+        "def validate_canary_approval_scope(",
+    ),
 )
 AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
     "scripts/evaluator/agentic_math.py": {

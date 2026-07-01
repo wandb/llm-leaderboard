@@ -72,7 +72,12 @@ def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def write_external_action_approval_report(path: Path, source_packet: Path) -> Path:
+def write_external_action_approval_report(
+    path: Path,
+    source_packet: Path,
+    *,
+    approved_model_scope: str = "openai-direct/gpt-4.1-mini-2025-04-14 canary",
+) -> Path:
     path.write_text(
         json.dumps(
             {
@@ -90,6 +95,16 @@ def write_external_action_approval_report(path: Path, source_packet: Path) -> Pa
                     "bound": True,
                     "errors": [],
                 },
+                "approval_results": [
+                    {
+                        "requirement": "paid_api",
+                        "required": True,
+                        "approved": True,
+                        "approved_budget_usd": 25.0,
+                        "approved_model_scope": approved_model_scope,
+                        "errors": [],
+                    }
+                ],
                 "will_execute_external_actions": False,
                 "errors": [],
             }
@@ -930,7 +945,88 @@ def test_render_operator_execution_plan_allows_openai_direct_canary_command(tmp_
     assert result.returncode == 0, result.stderr
     rendered = json.loads(output_json.read_text(encoding="utf-8"))
     assert rendered["command_policy"]["valid"] is True
+    assert rendered["approval_scope_policy"]["valid"] is True
     assert rendered["all_ready_for_external_execution"] is True
+
+
+def test_render_operator_execution_plan_rejects_canary_scope_mismatch(tmp_path):
+    source_packet = write_source_packet(tmp_path / "external_action_approval_packet.json")
+    approval_report = write_external_action_approval_report(
+        tmp_path / "approval.verify.json",
+        source_packet,
+        approved_model_scope="OpenAI canary without exact model scope",
+    )
+    operator_plan = tmp_path / "operator_plan.json"
+    payload = {
+        "schema_version": 1,
+        "status": "pending",
+        "operator_next_steps": {
+            "steps": [
+                {
+                    "order": 1,
+                    "gate": "one_model_full_canary",
+                    "status": "incomplete",
+                    "next_action": "Run OpenAI-direct nonagentic canary.",
+                    "requires_paid_api": True,
+                    "requires_wandb_access": True,
+                    "requires_wandb_write": True,
+                    "requires_third_party_acceptance": False,
+                    "requires_nemoclaw_install": False,
+                    "requires_scope_confirmation": False,
+                    "commands": [
+                        (
+                            "uv run python scripts/tools/run_taiwan_full_eval_batch.py "
+                            "--manifest configs/taiwan_openai_canary_models.yaml "
+                            "--canary --phase nonagentic "
+                            "--generated-config-dir configs/taiwan_full/generated_openai_canary_nonagentic "
+                            "--output-root outputs/taiwan_full_eval "
+                            "--wandb-run-id-prefix twcanary-openai-mini-20260701 "
+                            "--yes --run-purpose 'OpenAI-direct gpt-4.1-mini one-model nonagentic phase' "
+                            "--expected-cost-band 'low-cost OpenAI-direct canary; confirm cap before execution' "
+                            "--pre-run-budget-estimate-json outputs/taiwan_full_eval/openai_canary_budget_estimate.json "
+                            f"--external-action-approval-source-packet-json {source_packet} "
+                            f"--external-action-approval-report-json {approval_report}"
+                        )
+                    ],
+                    "evidence_to_produce": [
+                        "outputs/taiwan_full_eval/canary_nonagentic_paid_run_review.json"
+                    ],
+                    "warnings": [],
+                }
+            ]
+        },
+    }
+    operator_plan.write_text(json.dumps(payload), encoding="utf-8")
+    output_json = tmp_path / "execution_plan.json"
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--operator-plan-json",
+            str(operator_plan),
+            "--gate",
+            "one_model_full_canary",
+            "--external-action-approval-source-packet-json",
+            str(source_packet),
+            "--external-action-approval-report-json",
+            str(approval_report),
+            "--output-json",
+            str(output_json),
+            "--require-ready",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    rendered = json.loads(output_json.read_text(encoding="utf-8"))
+    scope_policy = rendered["approval_scope_policy"]
+    assert scope_policy["valid"] is False
+    assert scope_policy["required"] is True
+    assert any("openai-direct/gpt-4.1-mini" in error for error in scope_policy["errors"])
 
 
 def test_render_operator_execution_plan_rejects_non_openai_canary_command(tmp_path):

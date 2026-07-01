@@ -380,12 +380,20 @@ def validate_requirement(
         validate_nemoclaw_install(item, errors)
     elif requirement == "scope_confirmation":
         validate_scope_confirmation(item, errors)
-    return {
+    result = {
         "requirement": requirement,
         "required": True,
         "approved": status == "granted" and not errors,
         "errors": errors,
     }
+    if requirement == "paid_api":
+        result["approved_budget_usd"] = parse_budget_usd(item.get("approved_budget_usd"))
+        result["approved_model_scope"] = (
+            item.get("approved_model_scope").strip()
+            if isinstance(item.get("approved_model_scope"), str)
+            else ""
+        )
+    return result
 
 
 def approval_requirement_base(item: dict[str, Any]) -> dict[str, Any]:

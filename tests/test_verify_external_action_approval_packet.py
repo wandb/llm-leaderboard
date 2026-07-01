@@ -222,6 +222,11 @@ def test_verify_external_action_approval_packet_passes_for_reviewed_packet(tmp_p
     assert report["granted_approval_count"] == report["required_approval_count"]
     assert report["will_execute_external_actions"] is False
     assert report["errors"] == []
+    paid_api = next(
+        item for item in report["approval_results"] if item["requirement"] == "paid_api"
+    )
+    assert paid_api["approved_budget_usd"] == 25.0
+    assert paid_api["approved_model_scope"] == "OpenAI mini canary"
 
 
 def test_verify_external_action_approval_packet_passes_with_source_binding(tmp_path):
