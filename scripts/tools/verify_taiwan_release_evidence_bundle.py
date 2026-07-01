@@ -942,6 +942,22 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 '"blocked_before_openclaw"',
             ),
             (
+                "blocked command result writer",
+                "def write_blocked_command_result(",
+            ),
+            (
+                "blocked command result is not paid API",
+                '"paid_api_attempted": False',
+            ),
+            (
+                "external approval blocked failure kind",
+                '"external_action_approval_missing"',
+            ),
+            (
+                "NeMoClaw preflight blocked failure kind",
+                '"nemoclaw_config_preflight_failed"',
+            ),
+            (
                 "NeMoClaw OpenClaw config preflight builder",
                 "def build_nemoclaw_openclaw_config_preflight(",
             ),

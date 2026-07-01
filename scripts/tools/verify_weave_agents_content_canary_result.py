@@ -823,6 +823,10 @@ def status_from_verifier(
 
 def status_from_command_failure(command_result: dict[str, Any], failure_kind: str | None, failure_detail: str) -> tuple[str, str]:
     kind = failure_kind
+    if kind == "external_action_approval_missing":
+        return "external_action_approval_missing", failure_detail
+    if kind == "nemoclaw_config_preflight_failed":
+        return "nemoclaw_config_preflight_failed", failure_detail
     if kind == "model_not_found":
         return "model_configuration_failure", failure_detail
     if kind and kind.startswith("provider_"):
@@ -837,6 +841,10 @@ def recommendation(status: str, failure_kind: str | None) -> str:
         return "Run the content canary with --execute when paid inference is intentionally approved."
     if status == "incomplete":
         return "Rerun the canary or inspect why OpenClaw exited before writing a command result."
+    if status == "external_action_approval_missing":
+        return "Review and approve the source-bound external action packet, then rerun the live content canary."
+    if status == "nemoclaw_config_preflight_failed":
+        return "Fix the sandbox OpenClaw provider/model/Weave plugin config, then rerun the live content canary."
     if status == "provider_failure":
         if failure_kind == "provider_quota":
             return "Use a provider/model with available quota, then rerun the same canary."
@@ -906,7 +914,10 @@ def build_gate_summary(
     sidecar, _sidecar_error = read_json(sidecar_path)
 
     will_call_paid_model_api = bool(plan.get("will_call_paid_model_api"))
-    paid_api_attempted = command_result is not None
+    if isinstance(command_result, dict) and "paid_api_attempted" in command_result:
+        paid_api_attempted = bool(command_result.get("paid_api_attempted"))
+    else:
+        paid_api_attempted = command_result is not None
     failure_kind = command_failure_kind(command_result)
     failure_detail = command_failure_detail(command_result)
     if command_result is not None and command_result.get("ok") is not True and not failure_kind:

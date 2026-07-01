@@ -683,6 +683,42 @@ def run_subprocess(command: list[str], *, cwd: Path) -> subprocess.CompletedProc
     )
 
 
+def write_command_result(paths: CanaryPaths, payload: dict[str, Any]) -> dict[str, Any]:
+    paths.command_result_file.parent.mkdir(parents=True, exist_ok=True)
+    paths.command_result_file.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return payload
+
+
+def write_blocked_command_result(
+    paths: CanaryPaths,
+    *,
+    failure_kind: str,
+    failure_detail: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    now = time.time()
+    command_result = {
+        "ok": False,
+        "returncode": 2,
+        "started_at": None,
+        "ended_at": now,
+        "blocked_before_openclaw": True,
+        "paid_api_attempted": False,
+        "will_execute_external_actions": True,
+        "stdout_tail": "",
+        "stderr_tail": "",
+        "failure": {
+            "kind": failure_kind,
+            "detail": failure_detail,
+        },
+        **payload,
+    }
+    return write_command_result(paths, command_result)
+
+
 def write_gate_result(
     paths: CanaryPaths,
     *,
@@ -864,11 +900,25 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     if not external_action_approval.get("valid"):
+        command_result = write_blocked_command_result(
+            paths,
+            failure_kind="external_action_approval_missing",
+            failure_detail=(
+                "external-action approval was missing or invalid; OpenClaw and "
+                "provider execution were not started"
+            ),
+            payload={"external_action_approval": external_action_approval},
+        )
+        gate_result = write_gate_result(paths)
         result = {
             "ok": False,
             "executed": False,
             "blocked_before_openclaw": True,
             "plan_file": str(paths.plan_file),
+            "command_result_file": str(paths.command_result_file),
+            "gate_result_file": str(paths.gate_result_file),
+            "command_result": command_result,
+            "gate_result": gate_result,
             "external_action_approval": external_action_approval,
             "missing_fields": [
                 flag
@@ -903,11 +953,29 @@ def main(argv: list[str] | None = None) -> None:
         nemoclaw_openclaw_config_preflight=nemoclaw_openclaw_config_preflight,
     )
     if not nemoclaw_openclaw_config_preflight.get("ok"):
+        command_result = write_blocked_command_result(
+            paths,
+            failure_kind="nemoclaw_config_preflight_failed",
+            failure_detail=(
+                "NeMoClaw sandbox OpenClaw config preflight failed before "
+                "OpenClaw or provider execution"
+            ),
+            payload={
+                "nemoclaw_openclaw_config_preflight": (
+                    nemoclaw_openclaw_config_preflight
+                )
+            },
+        )
+        gate_result = write_gate_result(paths)
         result = {
             "ok": False,
             "executed": False,
             "blocked_before_openclaw": True,
             "plan_file": str(paths.plan_file),
+            "command_result_file": str(paths.command_result_file),
+            "gate_result_file": str(paths.gate_result_file),
+            "command_result": command_result,
+            "gate_result": gate_result,
             "nemoclaw_openclaw_config_preflight": nemoclaw_openclaw_config_preflight,
         }
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -920,16 +988,15 @@ def main(argv: list[str] | None = None) -> None:
         "returncode": completed.returncode,
         "started_at": started_at,
         "ended_at": time.time(),
+        "paid_api_attempted": True,
+        "blocked_before_openclaw": False,
         "stdout_tail": completed.stdout[-4000:],
         "stderr_tail": completed.stderr[-4000:],
     }
     failure = classify_openclaw_failure(paths.expected_sidecar, completed.stderr)
     if failure:
         command_result["failure"] = failure
-    paths.command_result_file.write_text(
-        json.dumps(command_result, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    write_command_result(paths, command_result)
     gate_result = write_gate_result(paths)
     if completed.returncode != 0:
         print(

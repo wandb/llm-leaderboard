@@ -16450,6 +16450,46 @@ def test_verify_release_evidence_bundle_rejects_weave_canary_runner_missing_exte
     ) in payload["errors"]
 
 
+def test_verify_release_evidence_bundle_rejects_weave_canary_runner_without_blocked_command_result(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_weave_content_canary_command(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    runner_record = next(
+        record
+        for record in manifest["files"]
+        if record.get("source_path")
+        == "scripts/tools/run_weave_agents_content_canary.py"
+    )
+    script_path = bundle / runner_record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace(
+            "def write_blocked_command_result(",
+            "def write_legacy_blocked_command_result(",
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, runner_record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "agentic runner script missing source contract blocked command result "
+        "writer: scripts/tools/run_weave_agents_content_canary.py: "
+        "def write_blocked_command_result("
+    ) in payload["errors"]
+
+
 def test_verify_release_evidence_bundle_rejects_weave_canary_gate_verifier_missing_query_source_contract(
     tmp_path,
 ):

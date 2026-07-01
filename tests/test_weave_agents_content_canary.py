@@ -238,7 +238,20 @@ def test_execute_requires_external_action_approval_before_openclaw(tmp_path, cap
     assert plan["external_action_approval"]["valid"] is False
     assert plan["nemoclaw_openclaw_config_preflight"]["required_before_openclaw"] is True
     assert plan["nemoclaw_openclaw_config_preflight"]["ran"] is False
-    assert not (tmp_path / "plans" / "weave_agents_content_canary_TEST_CANARY_APPROVAL.command_result.json").exists()
+    command_result_path = (
+        tmp_path
+        / "plans"
+        / "weave_agents_content_canary_TEST_CANARY_APPROVAL.command_result.json"
+    )
+    assert command_result_path.exists()
+    command_result = json.loads(command_result_path.read_text(encoding="utf-8"))
+    assert command_result["ok"] is False
+    assert command_result["blocked_before_openclaw"] is True
+    assert command_result["paid_api_attempted"] is False
+    assert command_result["failure"]["kind"] == "external_action_approval_missing"
+    gate = json.loads(Path(payload["gate_result_file"]).read_text(encoding="utf-8"))
+    assert gate["status"] == "external_action_approval_missing"
+    assert gate["paid_api_attempted"] is False
 
 
 def test_external_action_approval_record_requires_matching_source_packet(tmp_path):
@@ -391,9 +404,11 @@ def test_execute_blocks_before_openclaw_when_nemoclaw_openclaw_config_is_stale(
     module = load_module()
     report = tmp_path / "external_action_approval.verify.json"
     source_packet = write_external_action_approval_report(report)
+    real_run_subprocess = module.run_subprocess
 
     def fake_run_subprocess(command, *, cwd):
-        assert command[:4] == ["nemoclaw", "sandbox", "exec", "nejumi-taiwan"]
+        if command[:4] != ["nemoclaw", "sandbox", "exec", "nejumi-taiwan"]:
+            return real_run_subprocess(command, cwd=cwd)
         assert command[-2:] == ["cat", "/sandbox/.openclaw/openclaw.json"]
         return subprocess.CompletedProcess(
             command,
@@ -452,11 +467,20 @@ def test_execute_blocks_before_openclaw_when_nemoclaw_openclaw_config_is_stale(
         and check["ok"] is False
         for check in preflight["checks"]
     )
-    assert not (
+    command_result_path = (
         tmp_path
         / "plans"
         / "weave_agents_content_canary_TEST_CANARY_STALE_CONFIG.command_result.json"
-    ).exists()
+    )
+    assert command_result_path.exists()
+    command_result = json.loads(command_result_path.read_text(encoding="utf-8"))
+    assert command_result["ok"] is False
+    assert command_result["blocked_before_openclaw"] is True
+    assert command_result["paid_api_attempted"] is False
+    assert command_result["failure"]["kind"] == "nemoclaw_config_preflight_failed"
+    gate = json.loads(Path(payload["gate_result_file"]).read_text(encoding="utf-8"))
+    assert gate["status"] == "nemoclaw_config_preflight_failed"
+    assert gate["paid_api_attempted"] is False
 
 
 def test_classify_openclaw_failure_detects_provider_quota(tmp_path):

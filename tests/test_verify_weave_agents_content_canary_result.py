@@ -397,6 +397,37 @@ def test_provider_quota_failure_is_explicit_gate_status(tmp_path):
     assert "quota" in summary["recommended_next_action"]
 
 
+def test_external_action_approval_block_is_not_paid_api_attempt(tmp_path):
+    module = load_module()
+    task_id = "weave_agents_content_canary_APPROVAL_BLOCK"
+    plan_file = write_plan(tmp_path, will_call_paid_model_api=True, task_id=task_id)
+    write_command_result(
+        plan_file,
+        task_id,
+        {
+            "ok": False,
+            "returncode": 2,
+            "blocked_before_openclaw": True,
+            "paid_api_attempted": False,
+            "failure": {
+                "kind": "external_action_approval_missing",
+                "detail": (
+                    "external-action approval was missing or invalid; OpenClaw "
+                    "and provider execution were not started"
+                ),
+            },
+        },
+    )
+
+    summary = module.build_gate_summary(plan_file=plan_file)
+
+    assert summary["ok"] is False
+    assert summary["status"] == "external_action_approval_missing"
+    assert summary["failure_kind"] == "external_action_approval_missing"
+    assert summary["paid_api_attempted"] is False
+    assert "approve" in summary["recommended_next_action"].lower()
+
+
 def test_provider_quota_can_be_inferred_from_legacy_sidecar(tmp_path):
     module = load_module()
     task_id = "weave_agents_content_canary_LEGACY_QUOTA"
