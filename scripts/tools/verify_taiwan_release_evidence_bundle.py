@@ -283,6 +283,26 @@ OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
         "Weave content canary command-policy call",
         "command_errors.extend(\n                            validate_weave_content_canary_gate_option(",
     ),
+    (
+        "Weave content canary blocked status action map",
+        "WEAVE_CONTENT_CANARY_BLOCKED_NEXT_ACTIONS",
+    ),
+    (
+        "external-action approval blocked status",
+        '"external_action_approval_missing"',
+    ),
+    (
+        "NeMoClaw config preflight blocked status",
+        '"nemoclaw_config_preflight_failed"',
+    ),
+    (
+        "blocked gate paid API attempted evidence",
+        "paid_api_attempted",
+    ),
+    (
+        "blocked gate pre-paid API wording",
+        "before any paid API attempt",
+    ),
     ("Weave content canary NeMoClaw command policy", "--nemoclaw-sandbox"),
     ("Weave Agents usage command policy", "--weave-agents-require-usage"),
     (

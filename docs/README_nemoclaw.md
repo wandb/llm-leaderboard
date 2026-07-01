@@ -14,7 +14,7 @@ References:
 
 ## Current Status
 
-As of 2026-07-01 23:42 JST:
+As of 2026-07-01 23:58 JST:
 
 - Host prerequisites are present: Docker, Node.js, npm, zstd, and OpenClaw.
 - `nemoclaw v0.0.55` and `openshell 0.0.44` are installed on this machine.
@@ -104,8 +104,10 @@ As of 2026-07-01 23:42 JST:
   production readiness and operator execution-plan refusal messages classify
   those statuses as pre-OpenClaw blocked states, so operators are directed to
   approve the source-bound external-action packet or fix the NeMoClaw sandbox
-  OpenClaw config instead of chasing a generic provider/runtime failure. These
-  contracts cannot be removed while stale-looking evidence still passes.
+  OpenClaw config instead of chasing a generic provider/runtime failure. A641
+  adds release-bundle source-contract checks for the operator renderer's
+  blocked-status map, `paid_api_attempted` evidence, and pre-paid-API wording.
+  These contracts cannot be removed while stale-looking evidence still passes.
 - `configs/nemoclaw/policies/wandb_weave.yaml` is the W&B/Weave egress policy
   template for the sandbox. It was applied with
   `nemoclaw nejumi-taiwan policy-add --from-file ... --yes`; the command
