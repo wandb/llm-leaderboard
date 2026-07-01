@@ -14,7 +14,7 @@ References:
 
 ## Current Status
 
-As of 2026-07-01 21:16 JST:
+As of 2026-07-01 21:24 JST:
 
 - Host prerequisites are present: Docker, Node.js, npm, zstd, and OpenClaw.
 - `nemoclaw v0.0.55` and `openshell 0.0.44` are installed on this machine.
@@ -66,7 +66,9 @@ As of 2026-07-01 21:16 JST:
   query calls, and query_source endpoint fields so the verifier cannot regress
   to local or sidecar-only proof. A627 applies the same source-contract posture
   to `sync_weave_agents_completion_to_paid_review.py`, including native
-  query_source validation and synced-entry query_source fields.
+  query_source validation and synced-entry query_source fields. A628 tightens
+  that sync-script check so the release bundle must prove the validator is
+  called from the payload validation path, not only defined in source.
 - `configs/nemoclaw/policies/wandb_weave.yaml` is the W&B/Weave egress policy
   template for the sandbox. It was applied with
   `nemoclaw nejumi-taiwan policy-add --from-file ... --yes`; the command

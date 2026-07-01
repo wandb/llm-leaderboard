@@ -328,7 +328,7 @@ WEAVE_AGENTS_SYNC_SCRIPT_SOURCE_TOKENS = (
     ),
     (
         "native Weave query source validator invocation",
-        "_query_source_issues(",
+        "issues.extend(\n        _query_source_issues(",
     ),
     (
         "synced native Weave query source kind field",
