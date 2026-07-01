@@ -1010,15 +1010,18 @@ FORBIDDEN_NEMOCLAW_POST_INSTALL_COMMAND_MARKERS = (
     "weave",
 )
 REQUIRED_NEMOCLAW_POST_INSTALL_COMMAND_TOKENS = {
-    "setup_check": ("--check-only", "--json"),
-    "protocol_preflight": ("preflight",),
+    "setup_check": ("--check-only", "--sandbox", "--json"),
+    "protocol_preflight": ("preflight", "--nemoclaw-sandbox"),
     "canary_readiness": (
         "--require-nemoclaw",
+        "--nemoclaw-sandbox",
+        "--nemoclaw-openclaw-config-path",
         "--json",
     ),
     "adoption_check": (
         "--setup-json",
         "--readiness-json",
+        "--sandbox",
         "--json",
         "--markdown",
     ),
@@ -8699,17 +8702,24 @@ def validate_nemoclaw_post_install_verification_evidence(
         if isinstance(step, dict) and step.get("name")
     }
     required_command_tokens = {
-        "setup_check": ("install_nemoclaw.sh", "--check-only", "--json"),
-        "protocol_preflight": ("run_openclaw_agent_protocol.py", "preflight"),
+        "setup_check": ("install_nemoclaw.sh", "--check-only", "--sandbox", "--json"),
+        "protocol_preflight": (
+            "run_openclaw_agent_protocol.py",
+            "preflight",
+            "--nemoclaw-sandbox",
+        ),
         "canary_readiness": (
             "check_taiwan_canary_readiness.py",
             "--require-nemoclaw",
+            "--nemoclaw-sandbox",
+            "--nemoclaw-openclaw-config-path",
             "--json",
         ),
         "adoption_check": (
             "check_taiwan_nemoclaw_adoption.py",
             "--setup-json",
             "--readiness-json",
+            "--sandbox",
             "--json",
             "--markdown",
         ),

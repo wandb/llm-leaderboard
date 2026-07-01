@@ -67,16 +67,18 @@ FORBIDDEN_POST_INSTALL_COMMAND_MARKERS = (
     "weave",
 )
 REQUIRED_POST_INSTALL_COMMAND_TOKENS = {
-    "setup_check": ("--check-only", "--json"),
-    "protocol_preflight": ("preflight",),
+    "setup_check": ("--check-only", "--sandbox", "--json"),
+    "protocol_preflight": ("preflight", "--nemoclaw-sandbox"),
     "canary_readiness": (
         "--require-nemoclaw",
+        "--nemoclaw-sandbox",
         "--nemoclaw-openclaw-config-path",
         "--json",
     ),
     "adoption_check": (
         "--setup-json",
         "--readiness-json",
+        "--sandbox",
         "--json",
         "--markdown",
     ),

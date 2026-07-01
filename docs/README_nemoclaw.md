@@ -14,7 +14,7 @@ References:
 
 ## Current Status
 
-As of 2026-07-01 21:44 JST:
+As of 2026-07-01 21:55 JST:
 
 - Host prerequisites are present: Docker, Node.js, npm, zstd, and OpenClaw.
 - `nemoclaw v0.0.55` and `openshell 0.0.44` are installed on this machine.
@@ -74,7 +74,10 @@ As of 2026-07-01 21:44 JST:
   OpenAI-direct canary batch validation, and canary approval-scope validation.
   A630 applies the same criterion-invocation contract to the NeMoClaw adoption
   script so W&B/Weave runtime policy and runtime network allowlist checks cannot
-  be left defined but omitted from the adoption decision.
+  be left defined but omitted from the adoption decision. A631 adds the same
+  posture to post-install command safety: setup, protocol preflight, canary
+  readiness, and adoption-check handoffs must retain explicit sandbox-selection
+  tokens in both the verifier output and release-bundle validation.
 - `configs/nemoclaw/policies/wandb_weave.yaml` is the W&B/Weave egress policy
   template for the sandbox. It was applied with
   `nemoclaw nejumi-taiwan policy-add --from-file ... --yes`; the command

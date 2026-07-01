@@ -509,16 +509,26 @@ def test_verify_nemoclaw_post_install_forwards_canary_and_adoption_args(tmp_path
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
+    setup_command = payload["steps"][0]["command"]
+    preflight_command = payload["steps"][1]["command"]
     readiness_command = payload["steps"][2]["command"]
     adoption_command = payload["steps"][3]["command"]
+    assert "--sandbox" in setup_command
+    assert "nejumi-taiwan" in setup_command
+    assert "--nemoclaw-sandbox" in preflight_command
+    assert "nejumi-taiwan" in preflight_command
     assert "--manifest" in readiness_command
     assert str(manifest.resolve()) in readiness_command
+    assert "--nemoclaw-sandbox" in readiness_command
+    assert "nejumi-taiwan" in readiness_command
     assert "--canary-slug" in readiness_command
     assert "gpt-4_1-mini-openai-direct-canary" in readiness_command
     assert "--openclaw-model" in readiness_command
     assert "openai-direct/gpt-4.1-mini-2025-04-14" in readiness_command
     assert "--generated-agentic-dir" in readiness_command
     assert str(generated_agentic.resolve()) in readiness_command
+    assert "--sandbox" in adoption_command
+    assert "nejumi-taiwan" in adoption_command
     assert "--agentic-config-glob" in adoption_command
     assert "configs/taiwan_full/generated_openai_canary_agentic_nemoclaw/*.yaml" in adoption_command
 
