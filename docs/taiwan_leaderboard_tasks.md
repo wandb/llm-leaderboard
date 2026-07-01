@@ -1,6 +1,6 @@
 # Taiwan Leaderboard Task Status
 
-Last updated: 2026-07-02 03:23 JST
+Last updated: 2026-07-02 03:27 JST
 
 This file is the persistent progress ledger for the Taiwan leaderboard work.
 Update it at every meaningful milestone so progress is visible even when chat
@@ -19,7 +19,7 @@ docs/taiwan_leaderboard_overview_ja.md
 ```text
 branch: dev-zh-TW
 remote: origin/dev-zh-TW
-latest pushed implementation commit before this ledger update: d5fbb25 Verify approval handoff budget floor source
+latest pushed implementation commit before this ledger update: 7cbde04 Recheck approval budget floor in operator renderer
 
 pushed implementation/docs commits this cycle before this ledger update:
   ebe5dcd Ignore local evaluation scratch dirs
@@ -146,6 +146,7 @@ pushed implementation/docs commits this cycle before this ledger update:
   5d660a7 Bind approval budgets to pre-run estimates
   622890f Surface approval budget floor in handoff
   d5fbb25 Verify approval handoff budget floor source
+  7cbde04 Recheck approval budget floor in operator renderer
 
 validated before push:
   NeMoClaw/OpenClaw setup tests: 47 passed
