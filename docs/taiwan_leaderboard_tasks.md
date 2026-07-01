@@ -1,6 +1,6 @@
 # Taiwan Leaderboard Task Status
 
-Last updated: 2026-07-02 01:18 JST
+Last updated: 2026-07-02 01:22 JST
 
 This file is the persistent progress ledger for the Taiwan leaderboard work.
 Update it at every meaningful milestone so progress is visible even when chat
@@ -19,7 +19,7 @@ docs/taiwan_leaderboard_overview_ja.md
 ```text
 branch: dev-zh-TW
 remote: origin/dev-zh-TW
-latest pushed commit before this ledger update: 96a7d27 Sync Taiwan progress after release gate fixture
+latest pushed commit before this ledger update: 243a0a3 Default NeMoClaw OpenClaw config paths
 
 pushed implementation/docs commits this cycle before this ledger update:
   ebe5dcd Ignore local evaluation scratch dirs
@@ -130,6 +130,7 @@ pushed implementation/docs commits this cycle before this ledger update:
   da36062 Sync Taiwan progress after handoff preparer
   f785dd9 Update release gate NeMoClaw fixture contract
   96a7d27 Sync Taiwan progress after release gate fixture
+  243a0a3 Default NeMoClaw OpenClaw config paths
 
 validated before push:
   NeMoClaw/OpenClaw setup tests: 47 passed
@@ -2720,6 +2721,7 @@ A650  Release gate NeMoClaw fixture contract refresh tests/test_taiwan_release_g
 A651  Post-push progress ledger synchronization docs/taiwan_leaderboard_tasks.md; checks: git log confirms f785dd9 Update release gate NeMoClaw fixture contract was pushed to origin/dev-zh-TW; scoped test fixture files from A650 were committed and pushed separately from this ledger-only update; latest pointer now records timestamp=20260701T160508Z/status=not_ready/blockers [weave_content_canary, wandb_completion, paid_run_review_package, one_model_full_canary]/bundle_integrity_ok=true/checked_file_count=677/verification_error_count=0/latest_pointer_verification_status=passed; remaining uncommitted worktree changes are unrelated pre-existing Taiwan leaderboard files and were not staged; no W&B write, OpenRouter, benchmark model inference, paid provider completion, install/onboard action, approved live content canary, or full evaluation run was launched in this sync step.
 A652  Generated NeMoClaw OpenClaw config path default scripts/tools/prepare_taiwan_full_eval_configs.py, tests/test_taiwan_full_config_generation.py, docs/taiwan_leaderboard_tasks.md, temp/generated_openai_canary_agentic_nemoclaw_A653_default/config-taiwan-full-gpt-4_1-mini-openai-direct-canary.yaml, temp/generated_openai_canary_agentic_nemoclaw_A653_batch_default/config-taiwan-full-gpt-4_1-mini-openai-direct-canary.yaml, temp/taiwan_full_eval_A653_batch_default/canary_agentic_execution_plan.json, temp/taiwan_full_eval_A653_batch_default/canary_agentic_paid_run_review.json, temp/run_eval_preflight_openai_canary_agentic_nemoclaw_A653_default.json; tests: py_compile passed for scripts/tools/prepare_taiwan_full_eval_configs.py and tests/test_taiwan_full_config_generation.py; tests/test_taiwan_full_config_generation.py passed 12 tests; tests/test_taiwan_full_batch_runner.py tests/test_check_taiwan_nemoclaw_adoption.py tests/test_openclaw_agent_protocol.py tests/test_agentic_math.py tests/test_swebench_pro.py passed 179 tests; prepare_taiwan_full_eval_configs.py generated the OpenAI-direct canary Agentic Math/SWE config with nemoclaw_openclaw_config_path=/sandbox/.openclaw/openclaw.json for both sections even when only NeMoClaw sandbox flags were supplied; run_taiwan_full_eval_batch.py --prepare-only --phase agentic with --require-nemoclaw-agentic-config passed with config_guard_ok=true and evidence_guard_ok=true because paid model execution was false; run_eval.py --preflight passed with ok=true/status=passed and enabled_benchmarks=[agentic_math, swebench_pro] while W&B/Weave/model/evaluator execution was skipped; paid phase=agentic/full handoff still requires explicit config-path flags as audit evidence before run_eval.py; no W&B write, OpenRouter, benchmark model inference, paid provider completion, install/onboard action, approved live content canary, or full evaluation run was launched in this step.
 A653  Formal release gate refresh after generated-config default docs/taiwan_leaderboard_tasks.md, temp/taiwan_release_gate_20260701T161648Z.json, temp/latest_taiwan_release_gate_verify_20260701T161648Z.json, temp/taiwan_release_evidence_bundle_verify_20260701T161648Z.json, outputs/taiwan_release_evidence/bundle_20260701T161648Z/manifest.json, outputs/taiwan_release_evidence/bundle_20260701T161648Z/summary.md; checks: run_taiwan_release_gate.py --quiet passed with status=not_ready, release_ready=false, bundle integrity ok=true, checked_file_count=678, verification_error_count=0, latest pointer verification status=passed, and blocking_gates=[weave_content_canary, wandb_completion, paid_run_review_package, one_model_full_canary]; NeMoClaw post-install verification reran with sandbox=nejumi-taiwan and --nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json, producing ok=true/status=passed evidence at temp/nemoclaw_post_install_verification_20260701T161648Z.json; no W&B write, OpenRouter, benchmark model inference, paid provider completion, install/onboard action, approved live content canary, or full evaluation run was launched in this step.
+A654  Post-push progress ledger synchronization docs/taiwan_leaderboard_tasks.md; checks: git log confirms 243a0a3 Default NeMoClaw OpenClaw config paths was pushed to origin/dev-zh-TW; scoped implementation/test/docs files from A652/A653 were committed and pushed separately from this ledger-only update; latest formal release gate remains timestamp=20260701T161648Z/status=not_ready/blockers [weave_content_canary, wandb_completion, paid_run_review_package, one_model_full_canary]/bundle_integrity_ok=true/checked_file_count=678/verification_error_count=0/latest_pointer_verification_status=passed; remaining uncommitted worktree changes are unrelated pre-existing Taiwan leaderboard files and were not staged; no W&B write, OpenRouter, benchmark model inference, paid provider completion, install/onboard action, approved live content canary, or full evaluation run was launched in this sync step.
 ```
 
 ## Production Gates
