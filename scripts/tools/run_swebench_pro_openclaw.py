@@ -204,6 +204,14 @@ def patch_record_conversation_order_allows_reuse(record: dict[str, Any]) -> bool
     return True
 
 
+def patch_record_tool_policy_allows_reuse(record: dict[str, Any]) -> bool:
+    if record.get("tool_policy_ok") is False:
+        return False
+    if record.get("tool_policy_violations"):
+        return False
+    return True
+
+
 def patch_mentions_paths(patch: str, paths: list[str]) -> bool:
     for path in paths:
         if f" a/{path} " in patch or f" b/{path}" in patch:
@@ -233,6 +241,8 @@ def load_cached_patch_record(
     if not patch_record_nemoclaw_session_audit_matches_cache(record, cache_key):
         return None
     if not patch_record_conversation_order_allows_reuse(record):
+        return None
+    if not patch_record_tool_policy_allows_reuse(record):
         return None
     if not record.get("patch") and record.get("patch_capture_version") != PATCH_CAPTURE_VERSION:
         return None

@@ -561,11 +561,20 @@ def record_conversation_order_allows_reuse(record: dict[str, Any]) -> bool:
     return True
 
 
+def record_tool_policy_allows_reuse(record: dict[str, Any]) -> bool:
+    if record.get("tool_policy_ok") is False:
+        return False
+    if record.get("tool_policy_violations"):
+        return False
+    return True
+
+
 def cached_result_matches_cache(record: dict[str, Any], cache_key: dict[str, Any]) -> bool:
     return (
         cache_key_matches(record, cache_key)
         and cached_result_is_reusable(record)
         and record_conversation_order_allows_reuse(record)
+        and record_tool_policy_allows_reuse(record)
         and record_nemoclaw_session_audit_matches_cache(record, cache_key)
     )
 

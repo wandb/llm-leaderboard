@@ -1148,6 +1148,18 @@ def test_swebench_patch_cache_rejects_nemoclaw_record_without_session_audit(tmp_
     cached = module.load_cached_patch_record(task_dir, cache_key, "new-prefix")
     assert cached is not None
     assert cached["prefix"] == "new-prefix"
+    record["tool_policy_ok"] = False
+    record_path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+    assert module.load_cached_patch_record(task_dir, cache_key, "new-prefix") is None
+    record["tool_policy_ok"] = True
+    record["tool_policy_violations"] = [{"type": "denied_tool", "toolName": "web_search"}]
+    record_path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+    assert module.load_cached_patch_record(task_dir, cache_key, "new-prefix") is None
+    record["tool_policy_violations"] = []
+    record_path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+    cached = module.load_cached_patch_record(task_dir, cache_key, "new-prefix")
+    assert cached is not None
+    assert cached["prefix"] == "new-prefix"
     record["conversation_order_ok"] = False
     record_path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
     assert module.load_cached_patch_record(task_dir, cache_key, "new-prefix") is None
