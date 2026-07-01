@@ -311,6 +311,7 @@ def test_install_nemoclaw_check_json_fails_when_openshell_missing(tmp_path):
     assert "--policy-tier restricted" in payload["setup_plan"]["production_install_and_onboard_command"]
     assert "--json temp/nemoclaw_install_onboard_YYYYMMDDTHHMM.json" in payload["setup_plan"]["production_install_and_onboard_command"]
     assert "verify_nemoclaw_post_install.py" in payload["setup_plan"]["post_install_verification_command"]
+    assert "--nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json" in payload["setup_plan"]["post_install_verification_command"]
     assert "--fail-on-failed" in payload["setup_plan"]["post_install_verification_command"]
     assert "--manifest configs/taiwan_openai_canary_models.yaml" in payload["setup_plan"]["canary_readiness_command"]
     assert "--generated-agentic-dir configs/taiwan_full/generated_openai_canary_agentic_nemoclaw" in payload["setup_plan"]["canary_readiness_command"]

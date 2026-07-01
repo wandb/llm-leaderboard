@@ -82,6 +82,7 @@ REQUIRED_INSTALLER_REVIEW_COMMAND_MARKERS = (
 )
 REQUIRED_POST_INSTALL_VERIFICATION_COMMAND_MARKERS = (
     "scripts/setup/verify_nemoclaw_post_install.py",
+    "--nemoclaw-openclaw-config-path",
     "--json",
     "--markdown",
     "--fail-on-failed",

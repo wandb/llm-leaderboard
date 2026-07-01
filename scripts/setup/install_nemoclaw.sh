@@ -31,6 +31,7 @@ OPENAI_CANARY_FULL_DIR="${OPENAI_CANARY_FULL_DIR:-configs/taiwan_full/generated_
 OPENAI_CANARY_NONAGENTIC_DIR="${OPENAI_CANARY_NONAGENTIC_DIR:-configs/taiwan_full/generated_openai_canary_nonagentic}"
 OPENAI_CANARY_AGENTIC_DIR="${OPENAI_CANARY_AGENTIC_DIR:-configs/taiwan_full/generated_openai_canary_agentic_nemoclaw}"
 OPENAI_CANARY_AGENTIC_AGGREGATE_DIR="${OPENAI_CANARY_AGENTIC_AGGREGATE_DIR:-configs/taiwan_full/generated_openai_canary_agentic_aggregate}"
+NEMOCLAW_OPENCLAW_CONFIG_PATH="${NEMOCLAW_OPENCLAW_CONFIG_PATH:-/sandbox/.openclaw/openclaw.json}"
 CHECK_ONLY=0
 INSTALL=0
 ONBOARD=0
@@ -569,7 +570,7 @@ write_check_json() {
   fi
   production_install_and_onboard_command="$install_and_onboard_command"
   post_check_command="scripts/setup/install_nemoclaw.sh --check-only --sandbox $SANDBOX_NAME$gateway_flag$env_file_flag$endpoint_flag$provider_key_env_flag --json temp/nemoclaw_setup_check_YYYYMMDDTHHMM.json"
-  post_install_verification_command="uv run python scripts/setup/verify_nemoclaw_post_install.py --sandbox $SANDBOX_NAME --canary-manifest $OPENAI_CANARY_MANIFEST --generated-full-dir $OPENAI_CANARY_FULL_DIR --generated-nonagentic-dir $OPENAI_CANARY_NONAGENTIC_DIR --generated-agentic-dir $OPENAI_CANARY_AGENTIC_DIR --generated-agentic-aggregate-dir $OPENAI_CANARY_AGENTIC_AGGREGATE_DIR --json temp/nemoclaw_post_install_verification_YYYYMMDDTHHMM.json --markdown temp/nemoclaw_post_install_verification_YYYYMMDDTHHMM.md --fail-on-failed"
+  post_install_verification_command="uv run python scripts/setup/verify_nemoclaw_post_install.py --sandbox $SANDBOX_NAME --nemoclaw-openclaw-config-path $NEMOCLAW_OPENCLAW_CONFIG_PATH --canary-manifest $OPENAI_CANARY_MANIFEST --generated-full-dir $OPENAI_CANARY_FULL_DIR --generated-nonagentic-dir $OPENAI_CANARY_NONAGENTIC_DIR --generated-agentic-dir $OPENAI_CANARY_AGENTIC_DIR --generated-agentic-aggregate-dir $OPENAI_CANARY_AGENTIC_AGGREGATE_DIR --json temp/nemoclaw_post_install_verification_YYYYMMDDTHHMM.json --markdown temp/nemoclaw_post_install_verification_YYYYMMDDTHHMM.md --fail-on-failed"
   canary_readiness_command="uv run python scripts/tools/check_taiwan_canary_readiness.py --manifest $OPENAI_CANARY_MANIFEST --generated-full-dir $OPENAI_CANARY_FULL_DIR --generated-nonagentic-dir $OPENAI_CANARY_NONAGENTIC_DIR --generated-agentic-dir $OPENAI_CANARY_AGENTIC_DIR --generated-agentic-aggregate-dir $OPENAI_CANARY_AGENTIC_AGGREGATE_DIR --require-nemoclaw --nemoclaw-sandbox $SANDBOX_NAME --json outputs/taiwan_full_eval/openai_canary_readiness_nemoclaw.json"
   adoption_check_command="uv run python scripts/tools/check_taiwan_nemoclaw_adoption.py --setup-json temp/nemoclaw_setup_check_YYYYMMDDTHHMM.json --readiness-json outputs/taiwan_full_eval/openai_canary_readiness_nemoclaw.json --sandbox $SANDBOX_NAME --agentic-config-glob $OPENAI_CANARY_AGENTIC_DIR/*.yaml --json temp/taiwan_nemoclaw_adoption_check_YYYYMMDDTHHMM.json --markdown temp/taiwan_nemoclaw_adoption_check_YYYYMMDDTHHMM.md --fail-on-not-adoptable"
   production_gate_command="uv run python scripts/tools/run_taiwan_production_readiness_gate.py --report-json outputs/taiwan_full_eval/taiwan_production_readiness_report.json --fail-on-not-ready"

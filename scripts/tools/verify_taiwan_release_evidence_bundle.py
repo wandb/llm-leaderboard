@@ -68,6 +68,7 @@ WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT = (
 )
 NEMOCLAW_CANARY_READINESS_SCRIPT = "scripts/tools/check_taiwan_canary_readiness.py"
 NEMOCLAW_ADOPTION_SCRIPT = "scripts/tools/check_taiwan_nemoclaw_adoption.py"
+NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 REQUIRED_NEMOCLAW_CANARY_REMOTE_LOOKUP_CHECK_NAMES = {
     "agentic Math denies remote lookup via deny_argument_pattern",
     "agentic Math denies remote lookup via deny_tool",
@@ -6648,7 +6649,12 @@ def validate_nemoclaw_setup_post_install_command(
         errors.append(
             f"{label} setup_plan.post_install_verification_command must invoke verify_nemoclaw_post_install.py"
         )
-    for flag in ("--json", "--markdown", "--fail-on-failed"):
+    for flag in (
+        "--nemoclaw-openclaw-config-path",
+        "--json",
+        "--markdown",
+        "--fail-on-failed",
+    ):
         value, present = command_flag_value(parts, flag)
         if not present:
             errors.append(
@@ -6657,6 +6663,10 @@ def validate_nemoclaw_setup_post_install_command(
         elif flag != "--fail-on-failed" and not value:
             errors.append(
                 f"{label} setup_plan.post_install_verification_command has empty {flag}"
+            )
+        elif flag == "--nemoclaw-openclaw-config-path" and value != NEMOCLAW_OPENCLAW_CONFIG_PATH:
+            errors.append(
+                f"{label} setup_plan.post_install_verification_command --nemoclaw-openclaw-config-path must be {NEMOCLAW_OPENCLAW_CONFIG_PATH}"
             )
     return errors
 

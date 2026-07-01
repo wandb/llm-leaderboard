@@ -61,6 +61,7 @@ REQUIRED_MARKER_GROUPS: dict[str, tuple[str, ...]] = {
     "post_install_verification_command": (
         "uv run python scripts/setup/verify_nemoclaw_post_install.py",
         "--sandbox nejumi-taiwan",
+        "--nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json",
         "--canary-manifest configs/taiwan_openai_canary_models.yaml",
         "--generated-full-dir configs/taiwan_full/generated_openai_canary",
         "--generated-nonagentic-dir configs/taiwan_full/generated_openai_canary_nonagentic",

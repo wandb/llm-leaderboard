@@ -213,6 +213,7 @@ def setup_payload(*, ok: bool) -> dict:
             "post_install_check_command": "check --json temp/check.json",
             "post_install_verification_command": (
                 "uv run python scripts/setup/verify_nemoclaw_post_install.py "
+                "--nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json "
                 "--json temp/nemoclaw_post_install_verification.json "
                 "--markdown temp/nemoclaw_post_install_verification.md "
                 "--fail-on-failed"
@@ -275,6 +276,7 @@ def setup_payload(*, ok: bool) -> dict:
                     "step": "post_install_verification",
                     "command": (
                         "uv run python scripts/setup/verify_nemoclaw_post_install.py "
+                        "--nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json "
                         "--json temp/nemoclaw_post_install_verification.json "
                         "--markdown temp/nemoclaw_post_install_verification.md "
                         "--fail-on-failed"
@@ -595,6 +597,49 @@ def test_nemoclaw_adoption_doctor_rejects_post_install_command_without_fail_flag
     setup_plan = payload["criteria"][0]
     assert setup_plan["status"] == "invalid_setup_plan"
     assert "--fail-on-failed" in setup_plan[
+        "missing_post_install_verification_command_markers"
+    ]
+
+
+def test_nemoclaw_adoption_doctor_rejects_post_install_command_without_openclaw_config_path(
+    tmp_path,
+):
+    legacy = setup_payload(ok=True)
+    command = legacy["setup_plan"]["post_install_verification_command"].replace(
+        "--nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json ",
+        "",
+    )
+    legacy["setup_plan"]["post_install_verification_command"] = command
+    for row in legacy["setup_plan"]["operator_sequence"]:
+        if row["step"] == "post_install_verification":
+            row["command"] = command
+    setup = write_json(tmp_path / "setup.json", legacy)
+    readiness = write_json(tmp_path / "readiness.json", readiness_payload())
+    config = write_config(tmp_path / "config.yaml")
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--setup-json",
+            str(setup),
+            "--readiness-json",
+            str(readiness),
+            "--agentic-config",
+            str(config),
+            "--fail-on-not-adoptable",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    setup_plan = payload["criteria"][0]
+    assert setup_plan["status"] == "invalid_setup_plan"
+    assert "--nemoclaw-openclaw-config-path" in setup_plan[
         "missing_post_install_verification_command_markers"
     ]
 

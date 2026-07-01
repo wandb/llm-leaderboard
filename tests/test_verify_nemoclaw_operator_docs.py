@@ -108,6 +108,31 @@ def test_verify_nemoclaw_operator_docs_rejects_missing_adoption_fail_fast_marker
     ]
 
 
+def test_verify_nemoclaw_operator_docs_rejects_missing_post_install_openclaw_config_path(
+    tmp_path,
+):
+    readme = tmp_path / "README_nemoclaw.md"
+    readme.write_text(
+        README.read_text(encoding="utf-8").replace(
+            "  --nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json \\\n",
+            "",
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_verifier(tmp_path, readme=readme, fail_on_failed=True)
+
+    assert result.returncode == 1
+    payload = json.loads((tmp_path / "operator_docs.json").read_text(encoding="utf-8"))
+    assert payload["ok"] is False
+    failing = {check["name"]: check for check in payload["checks"] if not check["ok"]}
+    assert "post_install_verification_command" in failing
+    assert (
+        "--nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json"
+        in failing["post_install_verification_command"]["missing_markers"]
+    )
+
+
 def test_verify_nemoclaw_operator_docs_rejects_missing_production_readiness_fail_fast_marker(
     tmp_path,
 ):

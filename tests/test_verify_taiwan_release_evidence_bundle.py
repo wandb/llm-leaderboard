@@ -2440,6 +2440,7 @@ def nemoclaw_setup_payload():
             "post_install_verification_command": (
                 "uv run python scripts/setup/verify_nemoclaw_post_install.py "
                 "--sandbox nejumi-taiwan "
+                "--nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json "
                 "--canary-manifest configs/taiwan_openai_canary_models.yaml "
                 "--generated-full-dir configs/taiwan_full/generated_openai_canary "
                 "--generated-nonagentic-dir configs/taiwan_full/generated_openai_canary_nonagentic "
@@ -2537,6 +2538,7 @@ def nemoclaw_setup_payload():
                     "command": (
                         "uv run python scripts/setup/verify_nemoclaw_post_install.py "
                         "--sandbox nejumi-taiwan "
+                        "--nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json "
                         "--canary-manifest configs/taiwan_openai_canary_models.yaml "
                         "--generated-full-dir configs/taiwan_full/generated_openai_canary "
                         "--generated-nonagentic-dir configs/taiwan_full/generated_openai_canary_nonagentic "
@@ -9676,6 +9678,43 @@ def test_verify_release_evidence_bundle_rejects_nemoclaw_setup_post_install_comm
     assert payload["integrity_ok"] is False
     assert any(
         "setup_plan.post_install_verification_command missing --fail-on-failed" in error
+        for error in payload["errors"]
+    )
+
+
+def test_verify_release_evidence_bundle_rejects_nemoclaw_setup_post_install_command_missing_openclaw_config_path(
+    tmp_path,
+):
+    bundle, setup = build_bundle_with_nemoclaw_adoption(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    setup_record = next(record for record in manifest["files"] if record["source_path"] == str(setup))
+    bundled_setup = bundle / setup_record["bundle_path"]
+    payload = json.loads(bundled_setup.read_text(encoding="utf-8"))
+    command = payload["setup_plan"]["post_install_verification_command"].replace(
+        " --nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json",
+        "",
+    )
+    payload["setup_plan"]["post_install_verification_command"] = command
+    for row in payload["setup_plan"]["operator_sequence"]:
+        if row["step"] == "post_install_verification":
+            row["command"] = command
+    bundled_setup.write_text(json.dumps(payload), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, setup_record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "setup_plan.post_install_verification_command missing --nemoclaw-openclaw-config-path"
+        in error
         for error in payload["errors"]
     )
 
