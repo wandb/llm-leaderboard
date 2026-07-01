@@ -338,6 +338,11 @@ def build_operator_plan(
     external_action_checklist = bundle_builder.build_external_action_checklist(
         operator_steps=operator_steps,
         blocking_gates=blocking_gates,
+        paid_run_review_package=(
+            result.get("paid_run_review_package")
+            if isinstance(result.get("paid_run_review_package"), dict)
+            else {}
+        ),
     )
     approval_source_packet_json = ""
     bundle = result.get("bundle") if isinstance(result.get("bundle"), dict) else {}
@@ -655,6 +660,7 @@ def build_result(
     external_action_checklist = bundle_builder.build_external_action_checklist(
         operator_steps=operator_next_steps,
         blocking_gates=blocking_gates if isinstance(blocking_gates, list) else [],
+        paid_run_review_package=paid_run_review_package,
     )
     readiness_ok = bool(report.get("ok"))
     bundle_integrity_ok = bool(verification.get("integrity_ok"))

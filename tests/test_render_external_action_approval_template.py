@@ -40,6 +40,12 @@ def approval_packet() -> dict:
         "status": "pending",
         "external_action_item_count": 1,
         "requirement_counts": {name: 1 for name in requirements},
+        "approval_requirement_constraints": {
+            "paid_api": {
+                "minimum_approved_budget_usd": 30.0,
+                "minimum_approved_budget_source": "max_pre_run_budget_estimate_high",
+            }
+        },
         "items": [{"gate": "all", "requirements": requirements}],
     }
     reviewed_packet_template = "temp/taiwan_external_action_approval_REVIEWED.json"
@@ -110,6 +116,8 @@ def test_render_external_action_approval_template_does_not_grant_approvals(tmp_p
         item for item in template["approval_requirements"] if item["requirement"] == "paid_api"
     )
     assert paid_api["approval_status"] == "not_granted"
+    assert paid_api["minimum_approved_budget_usd"] == 30.0
+    assert paid_api["minimum_approved_budget_source"] == "max_pre_run_budget_estimate_high"
     assert paid_api["approved_budget_usd"] == "APPROVED_BUDGET_USD"
     assert paid_api["approved_model_scope"] == "APPROVED_MODEL_SCOPE"
     third_party = next(
@@ -123,6 +131,7 @@ def test_render_external_action_approval_template_does_not_grant_approvals(tmp_p
     markdown = output_md.read_text(encoding="utf-8")
     assert "Taiwan External Action Approval Reviewed Template" in markdown
     assert "Source approval packet SHA-256" in markdown
+    assert "Minimum approved budget USD" in markdown
     assert "verify_external_action_approval_packet.py" in markdown
 
     verify_result = subprocess.run(

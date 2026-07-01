@@ -40,6 +40,8 @@ APPROVAL_REQUIREMENT_BASE_FIELDS = (
     "required",
     "required_before_gates",
     "reviewer_fields",
+    "minimum_approved_budget_usd",
+    "minimum_approved_budget_source",
 )
 SOURCE_BOUND_TOP_LEVEL_FIELDS = (
     "readiness_status",
@@ -203,7 +205,7 @@ def expected_requirement_base(
         and requirement in (item.get("requirements") if isinstance(item.get("requirements"), list) else [])
     ]
     required = count > 0
-    return {
+    result = {
         "requirement": requirement,
         "label": label,
         "count": count,
@@ -211,6 +213,26 @@ def expected_requirement_base(
         "required_before_gates": gates,
         "reviewer_fields": expected_reviewer_fields(requirement, required=required),
     }
+    constraints = (
+        checklist.get("approval_requirement_constraints")
+        if isinstance(checklist.get("approval_requirement_constraints"), dict)
+        else {}
+    )
+    requirement_constraints = (
+        constraints.get(requirement)
+        if isinstance(constraints.get(requirement), dict)
+        else {}
+    )
+    if requirement == "paid_api":
+        minimum_budget = parse_budget_usd(
+            requirement_constraints.get("minimum_approved_budget_usd")
+        )
+        if minimum_budget is not None:
+            result["minimum_approved_budget_usd"] = minimum_budget
+            result["minimum_approved_budget_source"] = str(
+                requirement_constraints.get("minimum_approved_budget_source") or ""
+            )
+    return result
 
 
 def validate_common_approval_fields(
@@ -229,6 +251,16 @@ def validate_paid_api(item: dict[str, Any], errors: list[str]) -> None:
     budget = parse_budget_usd(item.get("approved_budget_usd"))
     if budget is None or budget <= 0:
         errors.append("paid_api.approved_budget_usd must be a positive USD number")
+    minimum_budget = parse_budget_usd(item.get("minimum_approved_budget_usd"))
+    if (
+        budget is not None
+        and minimum_budget is not None
+        and budget < minimum_budget
+    ):
+        errors.append(
+            "paid_api.approved_budget_usd must be greater than or equal to "
+            "minimum_approved_budget_usd"
+        )
     require_concrete_string(errors, "paid_api", item, "approved_model_scope")
 
 
@@ -352,7 +384,15 @@ def validate_requirement(
 ) -> dict[str, Any]:
     requirement = str(expected["requirement"])
     errors: list[str] = []
-    for field in ("label", "count", "required", "required_before_gates", "reviewer_fields"):
+    for field in (
+        "label",
+        "count",
+        "required",
+        "required_before_gates",
+        "reviewer_fields",
+        "minimum_approved_budget_usd",
+        "minimum_approved_budget_source",
+    ):
         if item.get(field) != expected.get(field):
             errors.append(f"{requirement}.{field} does not match external_action_checklist")
     required = bool(expected.get("required"))
@@ -388,6 +428,14 @@ def validate_requirement(
     }
     if requirement == "paid_api":
         result["approved_budget_usd"] = parse_budget_usd(item.get("approved_budget_usd"))
+        result["minimum_approved_budget_usd"] = parse_budget_usd(
+            item.get("minimum_approved_budget_usd")
+        )
+        result["minimum_approved_budget_source"] = (
+            item.get("minimum_approved_budget_source").strip()
+            if isinstance(item.get("minimum_approved_budget_source"), str)
+            else ""
+        )
         result["approved_model_scope"] = (
             item.get("approved_model_scope").strip()
             if isinstance(item.get("approved_model_scope"), str)

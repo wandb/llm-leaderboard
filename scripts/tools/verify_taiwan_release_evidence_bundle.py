@@ -1247,6 +1247,17 @@ EXTERNAL_ACTION_APPROVAL_TEMPLATE_RENDERER_SCRIPT = (
 EXTERNAL_ACTION_APPROVAL_HANDOFF_PREPARER_SCRIPT = (
     "scripts/tools/prepare_taiwan_external_action_approval.py"
 )
+EXTERNAL_ACTION_APPROVAL_PACKET_VERIFIER_REQUIRED_SOURCE_TOKENS = (
+    ("source-bound minimum budget field", "minimum_approved_budget_usd"),
+    (
+        "paid API source minimum budget comparison",
+        "approved_budget_usd must be greater than or equal to",
+    ),
+)
+EXTERNAL_ACTION_APPROVAL_TEMPLATE_RENDERER_REQUIRED_SOURCE_TOKENS = (
+    ("source-bound minimum budget field", "minimum_approved_budget_usd"),
+    ("minimum budget markdown column", "Minimum approved budget USD"),
+)
 EXTERNAL_ACTION_APPROVAL_HANDOFF_PREPARER_REQUIRED_SOURCE_TOKENS = (
     (
         "template renderer import",
@@ -1827,6 +1838,11 @@ def validate_current_gate(manifest: dict[str, Any]) -> list[str]:
             blocking_gates=current_gate.get("blocking_gates")
             if isinstance(current_gate.get("blocking_gates"), list)
             else [],
+            paid_run_review_package=(
+                current_gate.get("paid_run_review_package")
+                if isinstance(current_gate.get("paid_run_review_package"), dict)
+                else {}
+            ),
         )
         if current_gate.get("external_action_checklist") != expected_checklist:
             errors.append(
@@ -2589,6 +2605,12 @@ def validate_operator_plan_payload(
             blocking_gates=manifest.get("blocking_gates")
             if isinstance(manifest.get("blocking_gates"), list)
             else [],
+            paid_run_review_package=(
+                current_gate.get("paid_run_review_package")
+                if isinstance(current_gate, dict)
+                and isinstance(current_gate.get("paid_run_review_package"), dict)
+                else {}
+            ),
         )
         if payload.get("external_action_checklist") != expected_checklist:
             errors.append(
@@ -3285,6 +3307,17 @@ def validate_external_action_approval_packet_payload(
     )
     if isinstance(record, dict) and not record.get("bundle_path"):
         errors.append("external action approval packet verifier script missing bundle_path")
+    elif isinstance(record, dict):
+        errors.extend(
+            validate_external_action_approval_script_source(
+                bundle_dir=bundle_dir,
+                bundle_path=str(record.get("bundle_path")),
+                required_tokens=(
+                    EXTERNAL_ACTION_APPROVAL_PACKET_VERIFIER_REQUIRED_SOURCE_TOKENS
+                ),
+                label="external action approval packet verifier script",
+            )
+        )
     record = validate_file_role(
         errors=errors,
         records=records,
@@ -3295,6 +3328,17 @@ def validate_external_action_approval_packet_payload(
     if isinstance(record, dict) and not record.get("bundle_path"):
         errors.append(
             "external action approval template renderer script missing bundle_path"
+        )
+    elif isinstance(record, dict):
+        errors.extend(
+            validate_external_action_approval_script_source(
+                bundle_dir=bundle_dir,
+                bundle_path=str(record.get("bundle_path")),
+                required_tokens=(
+                    EXTERNAL_ACTION_APPROVAL_TEMPLATE_RENDERER_REQUIRED_SOURCE_TOKENS
+                ),
+                label="external action approval template renderer script",
+            )
         )
     record = validate_file_role(
         errors=errors,
@@ -3315,6 +3359,27 @@ def validate_external_action_approval_packet_payload(
                     bundle_dir=bundle_dir,
                     bundle_path=bundle_path,
                 )
+            )
+    return errors
+
+
+def validate_external_action_approval_script_source(
+    *,
+    bundle_dir: Path,
+    bundle_path: str,
+    required_tokens: tuple[tuple[str, str], ...],
+    label: str,
+) -> list[str]:
+    errors: list[str] = []
+    script_path = bundle_dir / bundle_path
+    try:
+        text = script_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"{label} is not readable: {exc}"]
+    for token_label, token in required_tokens:
+        if token not in text:
+            errors.append(
+                f"{label} missing source contract {token_label}: {token}"
             )
     return errors
 
@@ -3715,6 +3780,7 @@ def expected_external_action_checklist(
     *,
     operator_steps: dict[str, Any],
     blocking_gates: list[Any],
+    paid_run_review_package: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     steps = operator_steps.get("steps")
     if not isinstance(steps, list):
@@ -3752,7 +3818,10 @@ def expected_external_action_checklist(
                 "warnings": warnings,
             }
         )
-    return {
+    constraints = external_action_approval_requirement_constraints(
+        paid_run_review_package=paid_run_review_package or {}
+    )
+    checklist = {
         "schema_version": 1,
         "status": operator_steps.get("status", "unknown"),
         "blocking_gate_count": len(blocking_gate_names),
@@ -3762,6 +3831,58 @@ def expected_external_action_checklist(
         ),
         "requirement_counts": requirement_counts,
         "items": items,
+    }
+    if constraints:
+        checklist["approval_requirement_constraints"] = constraints
+    return checklist
+
+
+def external_action_approval_requirement_constraints(
+    *,
+    paid_run_review_package: dict[str, Any],
+) -> dict[str, Any]:
+    gates = paid_run_review_package.get("gates")
+    if not isinstance(gates, list):
+        return {}
+    highs: list[float] = []
+    source_budget_paths: list[str] = []
+    source_review_paths: list[str] = []
+    for gate in gates:
+        if not isinstance(gate, dict):
+            continue
+        records = gate.get("records")
+        if not isinstance(records, list):
+            continue
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            if record.get("requires_paid_model_api") is not True:
+                continue
+            budget = record.get("pre_run_budget_estimate")
+            if not isinstance(budget, dict):
+                continue
+            estimated_total = budget.get("estimated_total_usd")
+            if not isinstance(estimated_total, dict):
+                continue
+            high = numeric_usd_value(estimated_total.get("high"))
+            if high is None:
+                continue
+            highs.append(high)
+            path = budget.get("path")
+            if isinstance(path, str) and path.strip():
+                source_budget_paths.append(path.strip())
+            review_path = record.get("path")
+            if isinstance(review_path, str) and review_path.strip():
+                source_review_paths.append(review_path.strip())
+    if not highs:
+        return {}
+    return {
+        "paid_api": {
+            "minimum_approved_budget_usd": max(highs),
+            "minimum_approved_budget_source": "max_pre_run_budget_estimate_high",
+            "source_budget_paths": list(dict.fromkeys(source_budget_paths)),
+            "source_review_paths": list(dict.fromkeys(source_review_paths)),
+        }
     }
 
 
@@ -3798,7 +3919,7 @@ def expected_approval_requirement(
         reviewer_fields.extend(["installer_lock_json", "installer_sha256", "sandbox"])
     elif requirement == "scope_confirmation":
         reviewer_fields.append("scope_attestation_json")
-    return {
+    result = {
         "requirement": requirement,
         "label": EXTERNAL_ACTION_REQUIREMENT_LABELS[requirement],
         "count": count,
@@ -3807,6 +3928,26 @@ def expected_approval_requirement(
         "required_before_gates": gates,
         "reviewer_fields": reviewer_fields if count > 0 else [],
     }
+    constraints = (
+        checklist.get("approval_requirement_constraints")
+        if isinstance(checklist.get("approval_requirement_constraints"), dict)
+        else {}
+    )
+    requirement_constraints = (
+        constraints.get(requirement)
+        if isinstance(constraints.get(requirement), dict)
+        else {}
+    )
+    if requirement == "paid_api":
+        minimum_budget = numeric_usd_value(
+            requirement_constraints.get("minimum_approved_budget_usd")
+        )
+        if minimum_budget is not None:
+            result["minimum_approved_budget_usd"] = minimum_budget
+            result["minimum_approved_budget_source"] = str(
+                requirement_constraints.get("minimum_approved_budget_source") or ""
+            )
+    return result
 
 
 def expected_approval_requirements(checklist: dict[str, Any]) -> list[dict[str, Any]]:
@@ -3827,6 +3968,29 @@ def expected_external_action_summary_snippets(checklist: dict[str, Any]) -> list
         f"Status: `{checklist.get('status', 'unknown')}`",
         f"External action items: `{checklist.get('external_action_item_count', 0)}`",
     ]
+    constraints = (
+        checklist.get("approval_requirement_constraints")
+        if isinstance(checklist.get("approval_requirement_constraints"), dict)
+        else {}
+    )
+    paid_constraints = (
+        constraints.get("paid_api")
+        if isinstance(constraints.get("paid_api"), dict)
+        else {}
+    )
+    if "minimum_approved_budget_usd" in paid_constraints:
+        snippets.extend(
+            [
+                (
+                    "Minimum paid API approval budget USD: "
+                    f"`{markdown_cell(paid_constraints.get('minimum_approved_budget_usd'))}`"
+                ),
+                (
+                    "Budget floor source: "
+                    f"`{markdown_cell(paid_constraints.get('minimum_approved_budget_source'))}`"
+                ),
+            ]
+        )
     items = checklist.get("items")
     if not isinstance(items, list) or not items:
         snippets.append("| none |  | none | 0 | 0 |")
@@ -12531,6 +12695,9 @@ def validate_budget_approval_alignment_payload(
     if not isinstance(alignment, dict):
         if required:
             errors.append(f"{label} budget_approval_alignment is missing or not an object")
+        return errors
+
+    if not required and alignment.get("required_before_paid_execution") is not True:
         return errors
 
     if alignment.get("required_before_paid_execution") is not True:

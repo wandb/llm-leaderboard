@@ -53,7 +53,13 @@ def approved_item(
     }
 
 
-def approval_packet(tmp_path: Path, *, approved: bool = True) -> dict:
+def approval_packet(
+    tmp_path: Path,
+    *,
+    approved: bool = True,
+    approved_budget_usd: float = 25.0,
+    minimum_approved_budget_usd: float | None = None,
+) -> dict:
     module = load_module()
     installer_sha = "a" * 64
     lock_json = write_json(
@@ -118,6 +124,21 @@ def approval_packet(tmp_path: Path, *, approved: bool = True) -> dict:
         "requirement_counts": {name: 1 for name in requirements},
         "items": [{"gate": "all", "requirements": requirements}],
     }
+    paid_api_extra = {
+        "approved_budget_usd": approved_budget_usd,
+        "approved_model_scope": "OpenAI mini canary",
+    }
+    if minimum_approved_budget_usd is not None:
+        checklist["approval_requirement_constraints"] = {
+            "paid_api": {
+                "minimum_approved_budget_usd": minimum_approved_budget_usd,
+                "minimum_approved_budget_source": "max_pre_run_budget_estimate_high",
+            }
+        }
+        paid_api_extra["minimum_approved_budget_usd"] = minimum_approved_budget_usd
+        paid_api_extra["minimum_approved_budget_source"] = (
+            "max_pre_run_budget_estimate_high"
+        )
     approval_requirements = [
         approved_item(
             requirement="paid_api",
@@ -130,7 +151,7 @@ def approval_packet(tmp_path: Path, *, approved: bool = True) -> dict:
                 "approved_budget_usd",
                 "approved_model_scope",
             ],
-            extra={"approved_budget_usd": 25.0, "approved_model_scope": "OpenAI mini canary"},
+            extra=paid_api_extra,
         ),
         approved_item(
             requirement="wandb_access",
@@ -227,6 +248,33 @@ def test_verify_external_action_approval_packet_passes_for_reviewed_packet(tmp_p
     )
     assert paid_api["approved_budget_usd"] == 25.0
     assert paid_api["approved_model_scope"] == "OpenAI mini canary"
+
+
+def test_verify_external_action_approval_packet_rejects_budget_below_source_minimum(
+    tmp_path,
+):
+    module = load_module()
+    packet_path = write_json(
+        tmp_path / "approval_packet.json",
+        approval_packet(
+            tmp_path,
+            approved_budget_usd=25.0,
+            minimum_approved_budget_usd=30.0,
+        ),
+    )
+
+    report = module.verify_approval_packet(packet_path)
+
+    assert report["ok"] is False
+    paid_api = next(
+        item for item in report["approval_results"] if item["requirement"] == "paid_api"
+    )
+    assert paid_api["minimum_approved_budget_usd"] == 30.0
+    assert paid_api["minimum_approved_budget_source"] == "max_pre_run_budget_estimate_high"
+    assert (
+        "paid_api.approved_budget_usd must be greater than or equal to "
+        "minimum_approved_budget_usd"
+    ) in report["errors"]
 
 
 def test_verify_external_action_approval_packet_passes_with_source_binding(tmp_path):

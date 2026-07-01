@@ -211,8 +211,8 @@ def approval_template_markdown(
         "",
         "## Approval Requirements",
         "",
-        "| Requirement | Required | Approval status | Reviewer fields |",
-        "|---|---:|---|---|",
+        "| Requirement | Required | Approval status | Minimum approved budget USD | Reviewer fields |",
+        "|---|---:|---|---:|---|",
     ]
     for item in template.get("approval_requirements") or []:
         if not isinstance(item, dict):
@@ -222,6 +222,7 @@ def approval_template_markdown(
             f"{md_cell(item.get('label'))} | "
             f"{md_cell(item.get('required'))} | "
             f"{md_cell(item.get('approval_status'))} | "
+            f"{md_cell(item.get('minimum_approved_budget_usd'))} | "
             f"{md_cell(item.get('reviewer_fields'))} |"
         )
     lines.extend(

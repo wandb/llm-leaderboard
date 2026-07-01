@@ -2034,6 +2034,7 @@ def build_bundle_with_paid_review_scope_attestation(tmp_path):
             "expected_cost_band": "$10-$20",
             "actual_cost_estimate": "$12.34",
             "provider_bill_reference": "openai-dashboard-2026-06-28",
+            "requires_paid_model_api": True,
             "pre_run_budget_estimate": {
                 "path": str(pre_run_budget),
                 "present": True,
@@ -2041,6 +2042,17 @@ def build_bundle_with_paid_review_scope_attestation(tmp_path):
                 "sha256": pre_run_budget_sha,
                 "target_model": "openai-direct/gpt-4.1-mini-2025-04-14",
                 "estimated_total_usd": {"low": 10.0, "mid": 12.0, "high": 20.0},
+            },
+            "external_action_approval": {"paid_api_approved_budget_usd": 25.0},
+            "budget_approval_alignment": {
+                "required_before_paid_execution": True,
+                "valid": True,
+                "pre_run_budget_estimate_valid": True,
+                "external_action_approval_valid": True,
+                "estimated_total_high_usd": 20.0,
+                "approved_budget_usd": 25.0,
+                "approved_budget_covers_estimate_high": True,
+                "errors": [],
             },
             "verify_wandb_completion": True,
             "verify_weave_agents": False,
@@ -2157,6 +2169,7 @@ def build_bundle_with_paid_review_scope_attestation(tmp_path):
                             "provider_bill_reference_present": True,
                             "actual_cost_estimate_placeholder": False,
                             "provider_bill_reference_placeholder": False,
+                            "requires_paid_model_api": True,
                             "pre_run_budget_estimate": {
                                 "path": str(pre_run_budget),
                                 "present": True,
@@ -2164,6 +2177,17 @@ def build_bundle_with_paid_review_scope_attestation(tmp_path):
                                 "sha256": pre_run_budget_sha,
                                 "target_model": "openai-direct/gpt-4.1-mini-2025-04-14",
                                 "estimated_total_usd": {"low": 10.0, "mid": 12.0, "high": 20.0},
+                            },
+                            "external_action_approval": {"paid_api_approved_budget_usd": 25.0},
+                            "budget_approval_alignment": {
+                                "required_before_paid_execution": True,
+                                "valid": True,
+                                "pre_run_budget_estimate_valid": True,
+                                "external_action_approval_valid": True,
+                                "estimated_total_high_usd": 20.0,
+                                "approved_budget_usd": 25.0,
+                                "approved_budget_covers_estimate_high": True,
+                                "errors": [],
                             },
                             "run_count": 1,
                             "verify_wandb_completion": True,
@@ -5717,6 +5741,39 @@ def test_verify_release_evidence_bundle_rejects_external_action_approval_packet_
     payload = json.loads(result.stdout)
     assert payload["integrity_ok"] is False
     assert "external_action_approval_packet checklist sha256 mismatch" in payload["errors"]
+
+
+def test_verify_release_evidence_bundle_rejects_missing_paid_api_budget_minimum(
+    tmp_path,
+):
+    bundle, _attestation = build_bundle_with_paid_review_scope_attestation(tmp_path)
+    packet_path = bundle / "external_action_approval_packet.json"
+    packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    paid_api = next(
+        item
+        for item in packet["approval_requirements"]
+        if item["requirement"] == "paid_api"
+    )
+    assert paid_api["minimum_approved_budget_usd"] == 20.0
+    paid_api.pop("minimum_approved_budget_usd")
+    packet_path.write_text(json.dumps(packet), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, "external_action_approval_packet.json")
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "external_action_approval_packet approval_requirements do not match checklist"
+        in payload["errors"]
+    )
 
 
 def test_verify_release_evidence_bundle_rejects_external_action_approval_verifier_command_mismatch(tmp_path):

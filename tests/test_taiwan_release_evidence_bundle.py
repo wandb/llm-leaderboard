@@ -165,9 +165,11 @@ def test_release_evidence_bundle_copies_report_references(tmp_path):
         {
             "status": "completed",
             "phase": "agentic",
+            "requires_paid_model_api": True,
             "pre_run_budget_estimate": {
                 "path": str(pre_run_budget),
                 "valid": True,
+                "estimated_total_usd": {"low": 10.0, "mid": 12.0, "high": 20.0},
             },
         },
     )
@@ -264,6 +266,13 @@ def test_release_evidence_bundle_copies_report_references(tmp_path):
                             "expected_cost_band_present": True,
                             "actual_cost_estimate_present": True,
                             "provider_bill_reference_present": True,
+                            "requires_paid_model_api": True,
+                            "pre_run_budget_estimate": {
+                                "path": str(pre_run_budget),
+                                "present": True,
+                                "valid": True,
+                                "estimated_total_usd": {"low": 10.0, "mid": 12.0, "high": 20.0},
+                            },
                             "run_count": 1,
                             "verify_wandb_completion": True,
                             "wandb_completion_entries": [
@@ -1187,11 +1196,20 @@ def test_release_evidence_bundle_copies_report_references(tmp_path):
     assert checklist["item_count"] == operator_plan["operator_next_steps"]["step_count"]
     assert "wandb_access" in checklist["requirement_counts"]
     assert checklist["items"]
+    paid_api_constraints = checklist["approval_requirement_constraints"]["paid_api"]
+    assert paid_api_constraints["minimum_approved_budget_usd"] == 20.0
+    assert (
+        paid_api_constraints["minimum_approved_budget_source"]
+        == "max_pre_run_budget_estimate_high"
+    )
+    assert paid_api_constraints["source_budget_paths"] == [str(pre_run_budget)]
+    assert paid_api_constraints["source_review_paths"] == [str(review)]
     operator_plan_markdown = operator_plan_md.read_text(encoding="utf-8")
     assert "Taiwan Release Operator Plan" in operator_plan_markdown
     assert "## Operator Execution Plan Renderer" in operator_plan_markdown
     assert "render_taiwan_operator_execution_plan.py" in operator_plan_markdown
     assert "## External Action Checklist" in operator_plan_markdown
+    assert "Minimum paid API approval budget USD: `20.0`" in operator_plan_markdown
     approval_packet = json.loads(approval_packet_json.read_text(encoding="utf-8"))
     assert approval_packet["schema_version"] == 1
     assert approval_packet["status"] == "pending_approval"
@@ -1199,6 +1217,16 @@ def test_release_evidence_bundle_copies_report_references(tmp_path):
     assert approval_packet["external_action_checklist_sha256"] == manifest[
         "external_action_approval_packet"
     ]["external_action_checklist_sha256"]
+    paid_api_requirement = next(
+        item
+        for item in approval_packet["approval_requirements"]
+        if item["requirement"] == "paid_api"
+    )
+    assert paid_api_requirement["minimum_approved_budget_usd"] == 20.0
+    assert (
+        paid_api_requirement["minimum_approved_budget_source"]
+        == "max_pre_run_budget_estimate_high"
+    )
     assert approval_packet["required_approval_count"] > 0
     assert approval_packet["all_required_approvals_granted"] is False
     assert approval_packet["approval_verifier"]["script"] == (
@@ -1222,6 +1250,7 @@ def test_release_evidence_bundle_copies_report_references(tmp_path):
     approval_markdown = approval_packet_md.read_text(encoding="utf-8")
     assert "Taiwan External Action Approval Packet" in approval_markdown
     assert "## Approval Requirements" in approval_markdown
+    assert "Minimum approved budget USD" in approval_markdown
     assert "## Approval Template Renderer" in approval_markdown
     assert "## Approval Verifier" in approval_markdown
     assert "## Approval Handoff Preparer" in approval_markdown
