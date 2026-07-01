@@ -337,6 +337,7 @@ NON_SCOREABLE_OPENCLAW_FAILURE_PATTERNS = [
     ("workspace_vanished", r"\bWorkspaceVanishedError\b|workspace appears to have disappeared"),
     ("unknown_model", r"\bmodel .*not found\b|\bunknown model\b|\bNo provider\b"),
     ("conversation_order_violation", r"\bConversation order violation\b"),
+    ("nemoclaw_session_audit_failed", r"\bNeMoClaw session audit failed\b"),
 ]
 WORKSPACE_VANISHED_RE = re.compile(
     r"WorkspaceVanishedError:.*?: (?P<workspace>/[^\n]+?)\. Refusing.*?remove (?P<attestation>/[^\s]+\.attested)",

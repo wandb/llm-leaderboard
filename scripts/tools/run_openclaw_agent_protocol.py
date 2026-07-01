@@ -667,6 +667,7 @@ def run_agent(args: argparse.Namespace) -> None:
 
     enrich_sidecar_with_tool_events(sidecar)
     sidecar["runtime_budget"] = runtime_budget_status(sidecar, args)
+    sidecar["nemoclaw_session_audit"] = nemoclaw_session_audit_status(sidecar, args)
     violations = tool_policy_violations(sidecar.get("tool_events", []), policy)
     sidecar["tool_policy_violations"] = violations
     sidecar["tool_policy_ok"] = not violations
@@ -700,6 +701,13 @@ def run_agent(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
         raise SystemExit("Conversation order violation")
+    nemoclaw_session_audit = sidecar.get("nemoclaw_session_audit")
+    if isinstance(nemoclaw_session_audit, dict) and nemoclaw_session_audit.get("ok") is False:
+        print(
+            json.dumps({"nemoclaw_session_audit": nemoclaw_session_audit}, ensure_ascii=False, indent=2),
+            file=sys.stderr,
+        )
+        raise SystemExit("NeMoClaw session audit failed")
     print(sidecar_path)
     if result.returncode != 0:
         raise SystemExit(result.returncode)
@@ -801,6 +809,75 @@ def copy_nemoclaw_session_file(
         "sandbox_session_file": session_file,
         "copied_session_file": str(copied_path),
         "bytes": copied_path.stat().st_size,
+    }
+
+
+def nemoclaw_session_audit_status(sidecar: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
+    if not getattr(args, "nemoclaw_sandbox", None):
+        return {"required": False, "ok": None, "reason": "not_nemoclaw"}
+    if getattr(args, "dry_run", False):
+        return {"required": False, "ok": None, "reason": "dry_run"}
+
+    errors: list[str] = []
+    copy_status = sidecar.get("nemoclaw_session_copy")
+    if not isinstance(copy_status, dict):
+        errors.append("missing_nemoclaw_session_copy_status")
+        copy_status = {}
+    elif copy_status.get("ok") is not True:
+        errors.append(f"session_copy_{copy_status.get('reason') or 'failed'}")
+
+    copied_session_file = sidecar.get("copied_session_file")
+    copied_session_path: Path | None = None
+    copied_session_bytes: int | None = None
+    if not isinstance(copied_session_file, str) or not copied_session_file:
+        errors.append("missing_copied_session_file")
+    else:
+        copied_session_path = Path(copied_session_file).expanduser()
+        if not copied_session_path.exists():
+            errors.append("copied_session_file_missing_on_host")
+        else:
+            copied_session_bytes = copied_session_path.stat().st_size
+            if copied_session_bytes <= 0:
+                errors.append("copied_session_file_empty")
+
+    conversation_order = sidecar.get("conversation_order")
+    if not isinstance(conversation_order, dict):
+        errors.append("missing_conversation_order")
+        conversation_order = {}
+    elif conversation_order.get("checked") is not True:
+        errors.append("conversation_order_not_checked")
+    elif conversation_order.get("ok") is not True:
+        errors.append("conversation_order_not_ok")
+
+    event_count = sidecar.get("timeline_event_count")
+    if not isinstance(event_count, int) or event_count <= 0:
+        errors.append("missing_timeline_events")
+
+    user_count = conversation_order.get("user_message_count")
+    assistant_count = conversation_order.get("assistant_message_count")
+    tool_call_count = conversation_order.get("tool_call_count")
+    if not isinstance(user_count, int) or user_count <= 0:
+        errors.append("missing_user_message")
+    if not (
+        (isinstance(assistant_count, int) and assistant_count > 0)
+        or (isinstance(tool_call_count, int) and tool_call_count > 0)
+    ):
+        errors.append("missing_assistant_or_tool_activity")
+
+    return {
+        "required": True,
+        "ok": not errors,
+        "sandbox": getattr(args, "nemoclaw_sandbox", None),
+        "copy": copy_status,
+        "copied_session_file": copied_session_file if isinstance(copied_session_file, str) else None,
+        "copied_session_bytes": copied_session_bytes,
+        "timeline_event_count": event_count,
+        "conversation_order_checked": conversation_order.get("checked"),
+        "conversation_order_ok": conversation_order.get("ok"),
+        "user_message_count": user_count,
+        "assistant_message_count": assistant_count,
+        "tool_call_count": tool_call_count,
+        "errors": errors,
     }
 
 

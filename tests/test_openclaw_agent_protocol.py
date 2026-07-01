@@ -320,6 +320,85 @@ def test_copy_nemoclaw_session_file_writes_host_audit_copy(tmp_path, monkeypatch
     assert "/sandbox/.openclaw/agents/main/sessions/s1.jsonl" in captured["command"]
 
 
+def test_nemoclaw_session_audit_requires_copied_checked_session():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    sidecar = {
+        "nemoclaw_session_copy": {
+            "attempted": False,
+            "ok": None,
+            "reason": "missing_sandbox_session_file",
+        },
+        "conversation_order": {"ok": True, "checked": False},
+        "timeline_event_count": 0,
+    }
+    args = Namespace(nemoclaw_sandbox="nejumi-taiwan", dry_run=False)
+
+    status = module.nemoclaw_session_audit_status(sidecar, args)
+
+    assert status["required"] is True
+    assert status["ok"] is False
+    assert "session_copy_missing_sandbox_session_file" in status["errors"]
+    assert "missing_copied_session_file" in status["errors"]
+    assert "conversation_order_not_checked" in status["errors"]
+    assert "missing_timeline_events" in status["errors"]
+
+
+def test_nemoclaw_session_audit_accepts_copied_session_with_user_and_assistant(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    session = tmp_path / "nemoclaw_session.jsonl"
+    session.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "message": {
+                            "role": "user",
+                            "timestamp": 100,
+                            "content": [{"type": "text", "text": "problem"}],
+                        }
+                    }
+                ),
+                json.dumps(
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "timestamp": 200,
+                            "content": [{"type": "text", "text": "ANSWER: \\boxed{11}"}],
+                        }
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sidecar = {
+        "stdout_json": {
+            "meta": {"agentMeta": {"sessionFile": "/sandbox/.openclaw/agents/main/sessions/s1.jsonl"}}
+        },
+        "copied_session_file": str(session),
+        "nemoclaw_session_copy": {
+            "attempted": True,
+            "ok": True,
+            "sandbox_session_file": "/sandbox/.openclaw/agents/main/sessions/s1.jsonl",
+            "copied_session_file": str(session),
+            "bytes": session.stat().st_size,
+        },
+    }
+    args = Namespace(nemoclaw_sandbox="nejumi-taiwan", dry_run=False)
+
+    module.enrich_sidecar_with_tool_events(sidecar)
+    status = module.nemoclaw_session_audit_status(sidecar, args)
+
+    assert status["required"] is True
+    assert status["ok"] is True
+    assert status["copied_session_bytes"] == session.stat().st_size
+    assert status["conversation_order_checked"] is True
+    assert status["user_message_count"] == 1
+    assert status["assistant_message_count"] == 1
+    assert status["errors"] == []
+
+
 def test_live_tool_budget_status_detects_agent_session_overage(tmp_path, monkeypatch):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path / "openclaw-state"))

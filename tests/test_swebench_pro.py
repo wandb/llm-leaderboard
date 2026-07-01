@@ -696,6 +696,16 @@ def test_swebench_non_scoreable_openclaw_failure_detects_setup_and_provider_erro
         stderr="Conversation order violation",
     )
     assert module.non_scoreable_openclaw_failure_reason(order, None) == "conversation_order_violation"
+    session_audit = subprocess.CompletedProcess(
+        ["cmd"],
+        1,
+        stdout="",
+        stderr="NeMoClaw session audit failed",
+    )
+    assert (
+        module.non_scoreable_openclaw_failure_reason(session_audit, None)
+        == "nemoclaw_session_audit_failed"
+    )
 
 
 def test_swebench_non_scoreable_openclaw_failure_does_not_catch_transient_timeout():
