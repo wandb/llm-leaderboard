@@ -102,7 +102,7 @@ def weave_completion_payload(*, ok=True, agent_name="nejumi-taiwan-openclaw"):
             "tool_content_required": True,
             "trace_timestamp_quality_required": True,
             "trace_final_answer_order_required": True,
-            "usage_required": False,
+            "usage_required": True,
             "no_error_spans_required": True,
             "required_texts": [],
             "conversation_id": "",
@@ -163,11 +163,21 @@ def weave_completion_payload(*, ok=True, agent_name="nejumi-taiwan-openclaw"):
             },
             {"name": "message_content_capture", "ok": ok},
             {"name": "input_message_capture", "ok": ok},
+            {"name": "tool_span_count", "ok": ok},
             {"name": "tool_content_capture", "ok": ok},
+            {
+                "name": "usage",
+                "ok": ok,
+                "agent_input_tokens": 0,
+                "agent_output_tokens": 0,
+                "trace_input_tokens": 10 if ok else 0,
+                "trace_output_tokens": 5 if ok else 0,
+            },
             {"name": "trace_timestamp_quality", "ok": True},
             {"name": "trace_order", "ok": ok},
             {"name": "trace_user_message_order", "ok": ok},
             {"name": "trace_final_answer_order", "ok": ok},
+            {"name": "trace_errors", "ok": ok},
         ],
     }
 
@@ -194,8 +204,20 @@ def wandb_completion_payload():
         },
         "generated_at": time.time(),
         "verification_schema_version": 1,
+        "required_evidence": {
+            "expected_total": 100,
+            "nemoclaw_session_audit": {"required": True},
+        },
         "observed_evidence": {
             "run_state": "finished",
+            "expected_total": 100,
+            "nemoclaw_session_audit": {
+                "ok": True,
+                "required": 100,
+                "passed": 100,
+                "failed": 0,
+                "expected_total": 100,
+            },
             "summary_metrics": {
                 "agentic_math/accuracy": {"ok": True, "value": 0.86},
             },
@@ -340,6 +362,12 @@ def test_cli_writes_updated_review_to_output(tmp_path):
     assert entry["checks_valid"] is True
     assert entry["run_scope_proven"] is True
     assert entry["request_model_proven"] is True
+    assert entry["message_content_proven"] is True
+    assert entry["input_message_proven"] is True
+    assert entry["tool_span_proven"] is True
+    assert entry["tool_content_proven"] is True
+    assert entry["usage_proven"] is True
+    assert entry["no_error_spans_proven"] is True
     assert entry["expected_request_models"] == ["gpt-4.1-mini-2025-04-14"]
     assert entry["observed_request_models"] == ["gpt-4.1-mini-2025-04-14"]
     assert entry["conversation_id_contains"] == "run-1"
@@ -656,6 +684,93 @@ def test_cli_rejects_missing_final_answer_order_requirement(tmp_path):
         "required_evidence.trace_final_answer_order_required must be true"
         in result.stderr
     )
+
+
+def test_cli_rejects_missing_usage_requirement(tmp_path):
+    review = write_json(tmp_path / "review.json", review_payload())
+    payload = weave_completion_payload()
+    payload["required_evidence"]["usage_required"] = False
+    completion = write_json(tmp_path / "weave.json", payload)
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--review-json",
+            str(review),
+            "--completion-json",
+            str(completion),
+            "--run-id",
+            "run-1",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "required_evidence.usage_required must be true" in result.stderr
+
+
+def test_cli_rejects_missing_usage_check(tmp_path):
+    review = write_json(tmp_path / "review.json", review_payload())
+    payload = weave_completion_payload()
+    payload["checks"] = [
+        check for check in payload["checks"] if check.get("name") != "usage"
+    ]
+    completion = write_json(tmp_path / "weave.json", payload)
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--review-json",
+            str(review),
+            "--completion-json",
+            str(completion),
+            "--run-id",
+            "run-1",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "checks missing required check(s): usage" in result.stderr
+
+
+def test_cli_rejects_usage_check_without_token_counts(tmp_path):
+    review = write_json(tmp_path / "review.json", review_payload())
+    payload = weave_completion_payload()
+    usage_check = next(
+        check for check in payload["checks"] if check.get("name") == "usage"
+    )
+    usage_check["trace_input_tokens"] = 0
+    usage_check["trace_output_tokens"] = 0
+    completion = write_json(tmp_path / "weave.json", payload)
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--review-json",
+            str(review),
+            "--completion-json",
+            str(completion),
+            "--run-id",
+            "run-1",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "usage check must expose positive token usage" in result.stderr
 
 
 def test_cli_rejects_missing_timestamp_quality_requirement(tmp_path):

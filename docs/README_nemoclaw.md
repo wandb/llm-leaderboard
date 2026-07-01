@@ -14,7 +14,7 @@ References:
 
 ## Current Status
 
-As of 2026-07-01 20:25 JST:
+As of 2026-07-01 20:41 JST:
 
 - Host prerequisites are present: Docker, Node.js, npm, zstd, and OpenClaw.
 - `nemoclaw v0.0.55` and `openshell 0.0.44` are installed on this machine.
@@ -51,6 +51,12 @@ As of 2026-07-01 20:25 JST:
   keeps W&B and OpenAI credentials out of the OpenClaw config by storing them
   in `/sandbox/.openclaw/nejumi_secrets.json` and referencing them through file
   SecretRefs.
+- Weave Agents completion proof is enforced both at verifier time and sync
+  time. Sync dry-run entries copied into paid-run reviews must retain explicit
+  proof flags for visible message content, visible user/problem input, tool
+  spans, tool content, token usage, and no-error spans, in addition to
+  request_model and trace-order checks. Production readiness and release-bundle
+  verification reject entries where those proof flags are missing or false.
 - `configs/nemoclaw/policies/wandb_weave.yaml` is the W&B/Weave egress policy
   template for the sandbox. It was applied with
   `nemoclaw nejumi-taiwan policy-add --from-file ... --yes`; the command

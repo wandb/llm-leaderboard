@@ -84,6 +84,14 @@ REQUIRED_WEAVE_AGENTS_CHECK_NAMES = {
     "trace_errors",
     "usage",
 }
+WEAVE_AGENTS_SYNC_ENTRY_PROOF_FLAGS = (
+    "message_content_proven",
+    "input_message_proven",
+    "tool_span_proven",
+    "tool_content_proven",
+    "usage_proven",
+    "no_error_spans_proven",
+)
 WEAVE_AGENTS_QUERY_SOURCE_KIND = "wandb_agents_api"
 WEAVE_AGENTS_API_BASE_URL = "https://trace.wandb.ai"
 WEAVE_AGENTS_QUERY_ENDPOINT = "/agents/query"
@@ -2951,6 +2959,9 @@ def _verify_weave_agents_sync_dry_run_report(entry: dict[str, Any]) -> dict[str,
                 errors.append("sync dry-run report entry run_scope_proven must be true")
             if row.get("request_model_proven") is not True:
                 errors.append("sync dry-run report entry request_model_proven must be true")
+            for flag in WEAVE_AGENTS_SYNC_ENTRY_PROOF_FLAGS:
+                if row.get(flag) is not True:
+                    errors.append(f"sync dry-run report entry {flag} must be true")
             latest_trace_id = entry.get("latest_trace_id")
             if isinstance(latest_trace_id, str) and latest_trace_id:
                 if row.get("latest_trace_id") != latest_trace_id:

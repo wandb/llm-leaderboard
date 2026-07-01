@@ -24,11 +24,17 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WEAVE_AGENTS_COMPLETION_SCHEMA_VERSION = 1
 REQUIRED_WEAVE_AGENTS_CHECK_NAMES = {
+    "input_message_capture",
+    "message_content_capture",
     "request_model",
     "trace_timestamp_quality",
     "trace_order",
     "trace_user_message_order",
     "trace_final_answer_order",
+    "tool_content_capture",
+    "tool_span_count",
+    "trace_errors",
+    "usage",
 }
 WEAVE_AGENTS_QUERY_SOURCE_KIND = "wandb_agents_api"
 WEAVE_AGENTS_API_BASE_URL = "https://trace.wandb.ai"
@@ -382,12 +388,22 @@ def weave_payload_current(payload: dict[str, Any]) -> tuple[bool, list[str]]:
         issues.append("required_evidence must be an object")
         required = {}
     else:
+        if required.get("content_required") is not True:
+            issues.append("required_evidence.content_required must be true")
         if required.get("input_message_required") is not True:
             issues.append("required_evidence.input_message_required must be true")
+        if required.get("tool_span_required") is not True:
+            issues.append("required_evidence.tool_span_required must be true")
+        if required.get("tool_content_required") is not True:
+            issues.append("required_evidence.tool_content_required must be true")
         if required.get("trace_timestamp_quality_required") is not True:
             issues.append("required_evidence.trace_timestamp_quality_required must be true")
         if required.get("trace_final_answer_order_required") is not True:
             issues.append("required_evidence.trace_final_answer_order_required must be true")
+        if required.get("usage_required") is not True:
+            issues.append("required_evidence.usage_required must be true")
+        if required.get("no_error_spans_required") is not True:
+            issues.append("required_evidence.no_error_spans_required must be true")
     required_texts = _required_texts(required.get("required_texts"), issues)
     issues.extend(
         _query_source_issues(
@@ -440,6 +456,25 @@ def weave_payload_current(payload: dict[str, Any]) -> tuple[bool, list[str]]:
             issues.append("required tool content has no tool spans")
         elif not isinstance(with_content, int) or with_content < tool_count:
             issues.append("required tool content is not visible for every tool span")
+    if required.get("usage_required") is True:
+        usage_check = _check_by_name(payload.get("checks"), "usage")
+        if usage_check is None:
+            issues.append("checks missing required check(s): usage")
+        elif usage_check.get("ok") is not True:
+            issues.append("usage check must be ok=true")
+        else:
+            total_tokens = 0
+            for field in (
+                "agent_input_tokens",
+                "agent_output_tokens",
+                "trace_input_tokens",
+                "trace_output_tokens",
+            ):
+                value = usage_check.get(field)
+                if isinstance(value, int):
+                    total_tokens += value
+            if total_tokens <= 0:
+                issues.append("usage check must expose positive token usage")
     if required_texts:
         if "required_text_capture" not in check_names:
             issues.append("checks missing required check(s): required_text_capture")
@@ -593,6 +628,53 @@ def weave_completion_entry(
         required=required,
         health=health,
     )
+    checks = payload.get("checks")
+    usage_check = _check_by_name(checks, "usage")
+    trace_errors_check = _check_by_name(checks, "trace_errors")
+    tool_count = health.get("tool_span_count")
+    tool_spans_with_content = health.get("tool_spans_with_content")
+    message_content_proven = (
+        required.get("content_required") is True
+        and isinstance(health.get("message_spans_with_content"), int)
+        and health.get("message_spans_with_content") > 0
+    )
+    input_message_proven = (
+        required.get("input_message_required") is True
+        and isinstance(health.get("message_spans_with_input"), int)
+        and health.get("message_spans_with_input") > 0
+    )
+    tool_span_proven = (
+        required.get("tool_span_required") is True
+        and isinstance(tool_count, int)
+        and tool_count > 0
+    )
+    tool_content_proven = (
+        required.get("tool_content_required") is True
+        and tool_span_proven
+        and isinstance(tool_spans_with_content, int)
+        and tool_spans_with_content >= tool_count
+    )
+    usage_proven = (
+        required.get("usage_required") is True
+        and isinstance(usage_check, dict)
+        and usage_check.get("ok") is True
+        and sum(
+            value
+            for value in (
+                usage_check.get("agent_input_tokens"),
+                usage_check.get("agent_output_tokens"),
+                usage_check.get("trace_input_tokens"),
+                usage_check.get("trace_output_tokens"),
+            )
+            if isinstance(value, int)
+        )
+        > 0
+    )
+    no_error_spans_proven = (
+        required.get("no_error_spans_required") is True
+        and isinstance(trace_errors_check, dict)
+        and trace_errors_check.get("ok") is True
+    )
     return {
         "ok": bool(payload.get("ok")),
         "run_id": run_id,
@@ -605,6 +687,12 @@ def weave_completion_entry(
         and bool(payload.get("latest_trace_id")),
         "run_scope_proven": run_scope_proven,
         "request_model_proven": request_model_proven,
+        "message_content_proven": message_content_proven,
+        "input_message_proven": input_message_proven,
+        "tool_span_proven": tool_span_proven,
+        "tool_content_proven": tool_content_proven,
+        "usage_proven": usage_proven,
+        "no_error_spans_proven": no_error_spans_proven,
         "expected_request_models": request_model_evidence["expected_request_models"],
         "observed_request_models": request_model_evidence["observed_request_models"],
         "span_request_models": request_model_evidence["span_request_models"],

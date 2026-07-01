@@ -3751,6 +3751,12 @@ def build_bundle_with_weave_agents_completion(tmp_path):
                     "trace_present": True,
                     "run_scope_proven": True,
                     "request_model_proven": True,
+                    "message_content_proven": True,
+                    "input_message_proven": True,
+                    "tool_span_proven": True,
+                    "tool_content_proven": True,
+                    "usage_proven": True,
+                    "no_error_spans_proven": True,
                     "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
                     "observed_request_models": ["gpt-4.1-mini-2025-04-14"],
                     "span_request_models": ["gpt-4.1-mini-2025-04-14"],
@@ -11926,6 +11932,40 @@ def test_verify_release_evidence_bundle_accepts_weave_agents_completion_proof(tm
         "gate:one_model_full_canary:weave_agents_completion_sync_dry_run"
         in record.get("roles", [])
         for record in manifest["files"]
+    )
+
+
+def test_verify_release_evidence_bundle_rejects_weave_agents_sync_without_usage_proof(tmp_path):
+    bundle, _completion = build_bundle_with_weave_agents_completion(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    sync_record = next(
+        record
+        for record in manifest["files"]
+        if any(
+            "weave_agents_completion_sync_dry_run" in str(role)
+            for role in record.get("roles", [])
+        )
+    )
+    bundled_sync_report = bundle / sync_record["bundle_path"]
+    payload = json.loads(bundled_sync_report.read_text(encoding="utf-8"))
+    payload["entries"][0]["usage_proven"] = False
+    bundled_sync_report.write_text(json.dumps(payload), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, sync_record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "claimed entry usage_proven must be true" in error
+        for error in payload["errors"]
     )
 
 

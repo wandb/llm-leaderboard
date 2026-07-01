@@ -332,6 +332,12 @@ def weave_sync_dry_run_payload(
                 "trace_present": True,
                 "run_scope_proven": True,
                 "request_model_proven": True,
+                "message_content_proven": True,
+                "input_message_proven": True,
+                "tool_span_proven": True,
+                "tool_content_proven": True,
+                "usage_proven": True,
+                "no_error_spans_proven": True,
                 "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
                 "observed_request_models": ["gpt-4.1-mini-2025-04-14"],
                 "span_request_models": ["gpt-4.1-mini-2025-04-14"],
@@ -1648,6 +1654,50 @@ def test_one_model_canary_rejects_weave_agents_completion_without_usage_requirem
     assert entry["usage_required"] is False
     assert entry["usage_proven"] is False
     assert "does not require usage" in entry["verification_error"]
+
+
+def test_one_model_canary_rejects_weave_agents_sync_dry_run_without_usage_proof(tmp_path):
+    module = load_module()
+    weave_verifier = write_json(
+        tmp_path / "weave.json",
+        weave_agents_completion_payload(run_id="required-run"),
+    )
+    agentic_review_before_weave = write_json(
+        tmp_path / "agentic.before_weave.json",
+        {
+            "status": "completed",
+            "phase": "agentic",
+            "canary": True,
+            "model_count": 1,
+            "runs": [{"wandb_run_id": "required-run"}],
+        },
+    )
+    agentic_review_before_weave_sha = sha256(agentic_review_before_weave)
+    sync_payload = weave_sync_dry_run_payload(
+        review_path=agentic_review_before_weave,
+        completion_path=weave_verifier,
+        source_review_sha256=agentic_review_before_weave_sha,
+        run_id="required-run",
+    )
+    sync_payload["entries"][0]["usage_proven"] = False
+    weave_sync_dry_run = write_json(tmp_path / "weave.sync_dry_run.json", sync_payload)
+
+    entry = module._verify_review_weave_agents_completion_entry(
+        {
+            "ok": True,
+            "path": str(weave_verifier),
+            "agent_name": "nejumi-taiwan-openclaw",
+            "run_id": "required-run",
+            "sync_dry_run_report_json": str(weave_sync_dry_run),
+            "sync_dry_run_source_review_json": str(agentic_review_before_weave),
+            "sync_dry_run_source_review_sha256": agentic_review_before_weave_sha,
+        },
+        max_age_seconds=86400,
+    )
+
+    assert entry["verified"] is False
+    assert entry["sync_dry_run_report_ok"] is False
+    assert "sync dry-run report entry usage_proven must be true" in entry["verification_error"]
 
 
 def test_one_model_canary_rejects_agentic_benchmark_without_weave_agents_completion(tmp_path):
