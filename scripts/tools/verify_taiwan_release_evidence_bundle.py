@@ -5023,15 +5023,31 @@ def validate_nemoclaw_post_install_script_source(
     errors: list[str] = []
     records = file_records_by_source(manifest)
     record = records.get(source_path_key(NEMOCLAW_POST_INSTALL_SCRIPT))
+    current_gate = manifest.get("current_gate")
+    runner = (
+        current_gate.get("runner_evidence")
+        if isinstance(current_gate, dict)
+        and isinstance(current_gate.get("runner_evidence"), dict)
+        else {}
+    )
+    has_post_install_evidence = isinstance(
+        runner.get("nemoclaw_post_install_verification"), dict
+    ) and bool(runner.get("nemoclaw_post_install_verification"))
     if not isinstance(record, dict):
+        if has_post_install_evidence:
+            errors.append(
+                "NeMoClaw post-install verifier script is not bundled: "
+                f"{NEMOCLAW_POST_INSTALL_SCRIPT}"
+            )
         return errors
     roles = record.get("roles")
     if not isinstance(roles, list) or not (
         "operator_plan:command_script" in roles
         or "current_gate:remediation_plan:command_script" in roles
+        or "nemoclaw_post_install_verification:script" in roles
     ):
         errors.append(
-            "NeMoClaw post-install verifier script missing command-script role: "
+            "NeMoClaw post-install verifier script missing required role: "
             f"{NEMOCLAW_POST_INSTALL_SCRIPT}"
         )
     bundle_path = record.get("bundle_path")

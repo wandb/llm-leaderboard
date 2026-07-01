@@ -10665,6 +10665,12 @@ def test_verify_release_evidence_bundle_accepts_nemoclaw_post_install_verificati
         record for record in manifest["files"] if record.get("bundle_path") == "summary.md"
     )
     assert "release_summary_markdown" in summary_record["roles"]
+    script_record = next(
+        record
+        for record in manifest["files"]
+        if record.get("source_path") == "scripts/setup/verify_nemoclaw_post_install.py"
+    )
+    assert "nemoclaw_post_install_verification:script" in script_record["roles"]
 
     result = subprocess.run(
         ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
@@ -10677,6 +10683,36 @@ def test_verify_release_evidence_bundle_accepts_nemoclaw_post_install_verificati
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["integrity_ok"] is True
+
+
+def test_verify_release_evidence_bundle_rejects_nemoclaw_post_install_without_verifier_script(
+    tmp_path,
+):
+    bundle, _post_install = build_bundle_with_nemoclaw_post_install(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["files"] = [
+        record
+        for record in manifest["files"]
+        if record.get("source_path") != "scripts/setup/verify_nemoclaw_post_install.py"
+    ]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "NeMoClaw post-install verifier script is not bundled: "
+        "scripts/setup/verify_nemoclaw_post_install.py"
+    ) in payload["errors"]
 
 
 def test_verify_release_evidence_bundle_rejects_nemoclaw_post_install_path_mismatch(tmp_path):

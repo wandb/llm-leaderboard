@@ -38,6 +38,7 @@ EXTERNAL_ACTION_APPROVAL_TEMPLATE_RENDERER_SCRIPT = (
 WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT = (
     "scripts/tools/weave_content_canary_gate_contract.py"
 )
+NEMOCLAW_POST_INSTALL_SCRIPT = "scripts/setup/verify_nemoclaw_post_install.py"
 AGENTIC_RUNNER_SCRIPT_ROLES = {
     "scripts/evaluator/agentic_math.py": "agentic_runner:math_evaluator_script",
     "scripts/evaluator/swebench_pro.py": "agentic_runner:swe_evaluator_script",
@@ -717,6 +718,11 @@ def collect_evidence(report_path: Path, report: dict[str, Any]) -> dict[str, dic
         if isinstance(post_install, dict):
             add_evidence(evidence, role="nemoclaw_post_install_verification", path_value=post_install.get("path"))
             add_evidence(evidence, role="nemoclaw_post_install_verification_markdown", path_value=post_install.get("markdown_path"))
+            add_evidence(
+                evidence,
+                role="nemoclaw_post_install_verification:script",
+                path_value=NEMOCLAW_POST_INSTALL_SCRIPT,
+            )
             add_post_install_verification_paths(
                 evidence,
                 role="nemoclaw_post_install_verification",
