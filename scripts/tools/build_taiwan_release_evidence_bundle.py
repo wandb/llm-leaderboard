@@ -38,6 +38,8 @@ EXTERNAL_ACTION_APPROVAL_TEMPLATE_RENDERER_SCRIPT = (
 WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT = (
     "scripts/tools/weave_content_canary_gate_contract.py"
 )
+NEMOCLAW_CANARY_READINESS_SCRIPT = "scripts/tools/check_taiwan_canary_readiness.py"
+NEMOCLAW_ADOPTION_SCRIPT = "scripts/tools/check_taiwan_nemoclaw_adoption.py"
 NEMOCLAW_POST_INSTALL_SCRIPT = "scripts/setup/verify_nemoclaw_post_install.py"
 AGENTIC_RUNNER_SCRIPT_ROLES = {
     "scripts/evaluator/agentic_math.py": "agentic_runner:math_evaluator_script",
@@ -709,6 +711,11 @@ def collect_evidence(report_path: Path, report: dict[str, Any]) -> dict[str, dic
         if isinstance(nemoclaw_adoption, dict):
             add_evidence(evidence, role="nemoclaw_adoption_check", path_value=nemoclaw_adoption.get("path"))
             add_evidence(evidence, role="nemoclaw_adoption_check_markdown", path_value=nemoclaw_adoption.get("markdown_path"))
+            add_evidence(
+                evidence,
+                role="nemoclaw_adoption_check:script",
+                path_value=NEMOCLAW_ADOPTION_SCRIPT,
+            )
             add_json_referenced_paths(
                 evidence,
                 role="nemoclaw_adoption_check",
@@ -722,6 +729,16 @@ def collect_evidence(report_path: Path, report: dict[str, Any]) -> dict[str, dic
                 evidence,
                 role="nemoclaw_post_install_verification:script",
                 path_value=NEMOCLAW_POST_INSTALL_SCRIPT,
+            )
+            add_evidence(
+                evidence,
+                role="nemoclaw_post_install_verification:canary_readiness_script",
+                path_value=NEMOCLAW_CANARY_READINESS_SCRIPT,
+            )
+            add_evidence(
+                evidence,
+                role="nemoclaw_post_install_verification:adoption_script",
+                path_value=NEMOCLAW_ADOPTION_SCRIPT,
             )
             add_post_install_verification_paths(
                 evidence,

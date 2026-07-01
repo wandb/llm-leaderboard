@@ -4935,15 +4935,31 @@ def validate_nemoclaw_canary_readiness_script_source(
     errors: list[str] = []
     records = file_records_by_source(manifest)
     record = records.get(source_path_key(NEMOCLAW_CANARY_READINESS_SCRIPT))
+    current_gate = manifest.get("current_gate")
+    runner = (
+        current_gate.get("runner_evidence")
+        if isinstance(current_gate, dict)
+        and isinstance(current_gate.get("runner_evidence"), dict)
+        else {}
+    )
+    has_post_install_evidence = isinstance(
+        runner.get("nemoclaw_post_install_verification"), dict
+    ) and bool(runner.get("nemoclaw_post_install_verification"))
     if not isinstance(record, dict):
+        if has_post_install_evidence:
+            errors.append(
+                "NeMoClaw canary readiness script is not bundled: "
+                f"{NEMOCLAW_CANARY_READINESS_SCRIPT}"
+            )
         return errors
     roles = record.get("roles")
     if not isinstance(roles, list) or not (
         "operator_plan:command_script" in roles
         or "current_gate:remediation_plan:command_script" in roles
+        or "nemoclaw_post_install_verification:canary_readiness_script" in roles
     ):
         errors.append(
-            "NeMoClaw canary readiness script missing command-script role: "
+            "NeMoClaw canary readiness script missing required role: "
             f"{NEMOCLAW_CANARY_READINESS_SCRIPT}"
         )
     bundle_path = record.get("bundle_path")
@@ -4979,15 +4995,35 @@ def validate_nemoclaw_adoption_script_source(
     errors: list[str] = []
     records = file_records_by_source(manifest)
     record = records.get(source_path_key(NEMOCLAW_ADOPTION_SCRIPT))
+    current_gate = manifest.get("current_gate")
+    runner = (
+        current_gate.get("runner_evidence")
+        if isinstance(current_gate, dict)
+        and isinstance(current_gate.get("runner_evidence"), dict)
+        else {}
+    )
+    has_adoption_evidence = isinstance(
+        runner.get("nemoclaw_adoption_check"), dict
+    ) and bool(runner.get("nemoclaw_adoption_check"))
+    has_post_install_evidence = isinstance(
+        runner.get("nemoclaw_post_install_verification"), dict
+    ) and bool(runner.get("nemoclaw_post_install_verification"))
     if not isinstance(record, dict):
+        if has_adoption_evidence or has_post_install_evidence:
+            errors.append(
+                "NeMoClaw adoption script is not bundled: "
+                f"{NEMOCLAW_ADOPTION_SCRIPT}"
+            )
         return errors
     roles = record.get("roles")
     if not isinstance(roles, list) or not (
         "operator_plan:command_script" in roles
         or "current_gate:remediation_plan:command_script" in roles
+        or "nemoclaw_adoption_check:script" in roles
+        or "nemoclaw_post_install_verification:adoption_script" in roles
     ):
         errors.append(
-            "NeMoClaw adoption script missing command-script role: "
+            "NeMoClaw adoption script missing required role: "
             f"{NEMOCLAW_ADOPTION_SCRIPT}"
         )
     bundle_path = record.get("bundle_path")

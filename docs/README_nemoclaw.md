@@ -14,7 +14,7 @@ References:
 
 ## Current Status
 
-As of 2026-07-01 22:30 JST:
+As of 2026-07-01 22:41 JST:
 
 - Host prerequisites are present: Docker, Node.js, npm, zstd, and OpenClaw.
 - `nemoclaw v0.0.55` and `openshell 0.0.44` are installed on this machine.
@@ -82,8 +82,10 @@ As of 2026-07-01 22:30 JST:
   different sandbox or OpenClaw config path is rejected. A633 adds a
   release-bundle source contract for the bundled post-install verifier itself.
   A634 makes the formal evidence bundle include that verifier whenever
-  post-install evidence exists, so command value binding cannot be removed while
-  stale-looking evidence still passes.
+  post-install evidence exists. A635 also requires the formal bundle to include
+  the adoption doctor and canary-readiness scripts when adoption or
+  post-install evidence exists, so command value binding and adoption/readiness
+  source contracts cannot be removed while stale-looking evidence still passes.
 - `configs/nemoclaw/policies/wandb_weave.yaml` is the W&B/Weave egress policy
   template for the sandbox. It was applied with
   `nemoclaw nejumi-taiwan policy-add --from-file ... --yes`; the command
