@@ -28,6 +28,7 @@ def write_budget_estimate(
     *,
     target_model: str = "openai-direct/gpt-4.1-mini-2025-04-14",
     target_models: list[str] | None = None,
+    estimated_total_usd: dict[str, float] | None = None,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -40,7 +41,7 @@ def write_budget_estimate(
             "cacheRead": 0.10,
             "cacheWrite": 0.0,
         },
-        "estimated_total_usd": {"low": 1.0, "mid": 2.0, "high": 3.0},
+        "estimated_total_usd": estimated_total_usd or {"low": 1.0, "mid": 2.0, "high": 3.0},
         "pricing_source_url": "https://openai.com/index/gpt-4-1/",
         "pricing_note": "provider dashboards are authoritative",
     }
@@ -49,7 +50,12 @@ def write_budget_estimate(
     path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
 
 
-def write_external_action_approval_report(path: Path, *, source_packet: Path | None = None) -> Path:
+def write_external_action_approval_report(
+    path: Path,
+    *,
+    source_packet: Path | None = None,
+    approved_budget_usd: float = 25.0,
+) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     if source_packet is None:
         source_packet = path.parent / "external_action_approval_packet.json"
@@ -78,6 +84,16 @@ def write_external_action_approval_report(path: Path, *, source_packet: Path | N
                 "required_approval_count": 6,
                 "granted_approval_count": 6,
                 "all_required_approvals_granted": True,
+                "approval_results": [
+                    {
+                        "requirement": "paid_api",
+                        "required": True,
+                        "approved": True,
+                        "approved_budget_usd": approved_budget_usd,
+                        "approved_model_scope": "OpenAI mini canary",
+                        "errors": [],
+                    }
+                ],
                 "source_binding": {
                     "source_packet_json": str(source_packet),
                     "source_packet_readable": True,
@@ -1032,8 +1048,45 @@ def test_external_action_approval_record_accepts_source_bound_verifier_report(tm
     assert record["source_packet_path_matches_expected"] is True
     assert record["source_packet_sha256_matches_expected"] is True
     assert record["expected_source_packet_json"] == str(source_packet)
+    assert record["paid_api_approved_budget_usd"] == 25.0
+    assert record["paid_api_approved_model_scope"] == "OpenAI mini canary"
     assert len(record["sha256"]) == 64
     assert record["errors"] == []
+
+
+def test_budget_approval_alignment_rejects_approval_below_high_estimate(tmp_path):
+    module = load_module()
+    budget = tmp_path / "budget.json"
+    write_budget_estimate(
+        budget,
+        estimated_total_usd={"low": 1.0, "mid": 2.0, "high": 12.5},
+    )
+    approval = tmp_path / "external_action_approval.verify.json"
+    source_packet = write_external_action_approval_report(
+        approval,
+        approved_budget_usd=10.0,
+    )
+    budget_record = module.build_pre_run_budget_estimate_record(
+        budget,
+        required_before_paid_execution=True,
+    )
+    approval_record = module.build_external_action_approval_record(
+        approval,
+        required_before_external_action=True,
+        expected_source_packet_path=source_packet,
+    )
+
+    record = module.build_budget_approval_alignment_record(
+        pre_run_budget_estimate=budget_record,
+        external_action_approval=approval_record,
+        required_before_paid_execution=True,
+    )
+
+    assert record["valid"] is False
+    assert record["estimated_total_high_usd"] == 12.5
+    assert record["approved_budget_usd"] == 10.0
+    assert record["approved_budget_covers_estimate_high"] is False
+    assert any("lower than pre_run_budget_estimate" in item for item in record["errors"])
 
 
 def test_external_action_approval_record_rejects_unbound_report(tmp_path):
@@ -1925,6 +1978,85 @@ def test_paid_run_rejects_budget_for_different_model(tmp_path, monkeypatch):
     assert budget_record["valid"] is False
     assert budget_record["target_model_matches_selected_config"] is False
     assert any("do not match selected config" in item for item in budget_record["errors"])
+
+
+def test_paid_run_rejects_approval_budget_below_pre_run_high(tmp_path, monkeypatch):
+    module = load_module()
+    manifest = tmp_path / "models.yaml"
+    manifest.write_text(
+        "\n".join(
+            [
+                "models:",
+                "  - slug: gpt-4_1-mini-openai-direct-canary",
+                "    source_config: config-gpt-4.1-mini-2025-04-14.yaml",
+                "    run_name: 'taiwan/full/openai/gpt-4.1-mini: canary'",
+                "    openclaw_model: 'openai-direct/gpt-4.1-mini-2025-04-14'",
+                "    agentic_thinking: 'off'",
+                "    swe_thinking: 'off'",
+                "    judge_model: 'gpt-4.1-mini-2025-04-14'",
+                "    canary: true",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    output_root = tmp_path / "outputs"
+    budget = output_root / "openai_canary_budget_estimate.json"
+    write_budget_estimate(
+        budget,
+        estimated_total_usd={"low": 1.0, "mid": 2.0, "high": 3.0},
+    )
+    approval = output_root / "external_action_approval.verify.json"
+    source_packet = write_external_action_approval_report(
+        approval,
+        approved_budget_usd=2.5,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_taiwan_full_eval_batch.py",
+            "--manifest",
+            str(manifest),
+            "--canary",
+            "--phase",
+            "nonagentic",
+            "--generated-config-dir",
+            str(tmp_path / "generated"),
+            "--output-root",
+            str(output_root),
+            "--run-purpose",
+            "paid schema test",
+            "--expected-cost-band",
+            "$1-$3",
+            "--pre-run-budget-estimate-json",
+            str(budget),
+            "--external-action-approval-report-json",
+            str(approval),
+            "--external-action-approval-source-packet-json",
+            str(source_packet),
+        ],
+    )
+
+    try:
+        module.main()
+    except SystemExit as exc:
+        assert "approved budget" in str(exc)
+    else:
+        raise AssertionError("expected approval budget cap to block paid execution")
+
+    review = json.loads(
+        (output_root / "canary_nonagentic_paid_run_review.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert review["status"] == "budget_approval_alignment_failed"
+    alignment = review["budget_approval_alignment"]
+    assert alignment["estimated_total_high_usd"] == 3.0
+    assert alignment["approved_budget_usd"] == 2.5
+    assert alignment["approved_budget_covers_estimate_high"] is False
+    assert review["external_action_approval"]["valid"] is True
+    assert review["pre_run_budget_estimate"]["valid"] is True
 
 
 def test_paid_run_requires_external_action_approval_report(tmp_path, monkeypatch):

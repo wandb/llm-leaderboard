@@ -550,6 +550,7 @@ def paid_run_review_completion_requirements(
             "batch_manifest_path",
             "post_run_cost_command",
             "pre_run_budget_estimate",
+            "budget_approval_alignment",
         ],
         "pre_run_budget_estimate_required_when": "requires_paid_model_api=true before paid execution",
         "pre_run_budget_estimate_required_fields": [
@@ -561,6 +562,12 @@ def paid_run_review_completion_requirements(
             "estimated_total_usd.mid",
             "estimated_total_usd.high",
             "pricing_source_url",
+        ],
+        "budget_approval_alignment_required_when": "requires_paid_model_api=true before paid execution",
+        "budget_approval_alignment_required_fields": [
+            "pre_run_budget_estimate.estimated_total_usd.high",
+            "external_action_approval paid_api.approved_budget_usd",
+            "approved_budget_usd >= estimated_total_usd.high",
         ],
         "completed_review_required_fields": [
             "ended_at",
@@ -3499,6 +3506,7 @@ def evaluate_one_model_canary(
                 "expected_cost_band_present": _nonempty_string(payload.get("expected_cost_band")),
                 "pre_run_budget_estimate": _review_pre_run_budget_estimate(payload),
                 "external_action_approval": _review_external_action_approval(payload),
+                "budget_approval_alignment": _review_budget_approval_alignment(payload),
                 "actual_cost_estimate_present": _nonempty_string(payload.get("actual_cost_estimate")),
                 "provider_bill_reference_present": _nonempty_string(payload.get("provider_bill_reference")),
                 "actual_cost_estimate_placeholder": isinstance(payload.get("actual_cost_estimate"), str)
@@ -3726,6 +3734,19 @@ def _review_common_errors(payload: dict[str, Any]) -> list[str]:
             f"external_action_approval {error}"
             for error in external_action_approval["errors"]
         )
+    budget_approval_alignment = _review_budget_approval_alignment(
+        payload,
+        pre_run_budget=pre_run_budget,
+        external_action_approval=external_action_approval,
+    )
+    if (
+        budget_approval_alignment["required_before_paid_execution"]
+        and not budget_approval_alignment["valid"]
+    ):
+        errors.extend(
+            f"budget_approval_alignment {error}"
+            for error in budget_approval_alignment["errors"]
+        )
     return errors
 
 
@@ -3837,6 +3858,8 @@ def _review_external_action_approval(payload: dict[str, Any]) -> dict[str, Any]:
         "source_binding_bound": False,
         "source_approval_packet_sha256": "",
         "will_execute_external_actions": None,
+        "paid_api_approved_budget_usd": None,
+        "paid_api_approved_model_scope": "",
         "errors": [],
     }
     if not isinstance(record, dict):
@@ -3867,6 +3890,17 @@ def _review_external_action_approval(payload: dict[str, Any]) -> dict[str, Any]:
                 else ""
             ),
             "will_execute_external_actions": record.get("will_execute_external_actions"),
+            "paid_api_approved_budget_usd": (
+                record.get("paid_api_approved_budget_usd")
+                if isinstance(record.get("paid_api_approved_budget_usd"), (int, float))
+                and not isinstance(record.get("paid_api_approved_budget_usd"), bool)
+                else None
+            ),
+            "paid_api_approved_model_scope": (
+                record.get("paid_api_approved_model_scope")
+                if isinstance(record.get("paid_api_approved_model_scope"), str)
+                else ""
+            ),
         }
     )
     nested_errors = record.get("errors")
@@ -3907,6 +3941,108 @@ def _review_external_action_approval(payload: dict[str, Any]) -> dict[str, Any]:
     if record.get("valid") is False and not result["errors"]:
         result["errors"].append("embedded valid flag is false")
         result["valid"] = False
+    return result
+
+
+def _review_budget_approval_alignment(
+    payload: dict[str, Any],
+    *,
+    pre_run_budget: dict[str, Any] | None = None,
+    external_action_approval: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    record = payload.get("budget_approval_alignment")
+    required = bool(payload.get("requires_paid_model_api")) and payload.get("prepare_only") is not True
+    pre_run_budget = pre_run_budget or _review_pre_run_budget_estimate(payload)
+    external_action_approval = external_action_approval or _review_external_action_approval(payload)
+    pre_run_high = (
+        pre_run_budget.get("estimated_total_usd", {}).get("high")
+        if isinstance(pre_run_budget.get("estimated_total_usd"), dict)
+        else None
+    )
+    approved_budget = external_action_approval.get("paid_api_approved_budget_usd")
+    result: dict[str, Any] = {
+        "required_before_paid_execution": required,
+        "present": False,
+        "valid": False,
+        "pre_run_budget_estimate_valid": bool(pre_run_budget.get("valid")),
+        "external_action_approval_valid": bool(external_action_approval.get("valid")),
+        "estimated_total_high_usd": None,
+        "approved_budget_usd": None,
+        "approved_model_scope": "",
+        "approved_budget_covers_estimate_high": False,
+        "errors": [],
+    }
+    if not isinstance(record, dict):
+        if required:
+            result["errors"].append("is missing or not an object")
+        return result
+
+    estimated_high = record.get("estimated_total_high_usd")
+    record_approved_budget = record.get("approved_budget_usd")
+    if isinstance(estimated_high, bool) or not isinstance(estimated_high, (int, float)):
+        estimated_high = None
+    if isinstance(record_approved_budget, bool) or not isinstance(
+        record_approved_budget,
+        (int, float),
+    ):
+        record_approved_budget = None
+    result.update(
+        {
+            "present": True,
+            "pre_run_budget_estimate_valid": bool(
+                record.get("pre_run_budget_estimate_valid")
+            ),
+            "external_action_approval_valid": bool(
+                record.get("external_action_approval_valid")
+            ),
+            "estimated_total_high_usd": estimated_high,
+            "approved_budget_usd": record_approved_budget,
+            "approved_model_scope": (
+                record.get("approved_model_scope")
+                if isinstance(record.get("approved_model_scope"), str)
+                else ""
+            ),
+            "approved_budget_covers_estimate_high": (
+                record.get("approved_budget_covers_estimate_high") is True
+            ),
+        }
+    )
+    nested_errors = record.get("errors")
+    if isinstance(nested_errors, list):
+        result["errors"].extend(str(error) for error in nested_errors if error)
+    if not required:
+        result["valid"] = not result["errors"] and bool(record.get("valid", True))
+        return result
+
+    if record.get("required_before_paid_execution") is not True:
+        result["errors"].append("required_before_paid_execution must be true")
+    if record.get("valid") is not True:
+        result["errors"].append("embedded valid flag is not true")
+    if pre_run_budget.get("valid") is not True:
+        result["errors"].append("pre_run_budget_estimate is not valid")
+    if external_action_approval.get("valid") is not True:
+        result["errors"].append("external_action_approval is not valid")
+    if estimated_high is None:
+        result["errors"].append("estimated_total_high_usd is missing or not numeric")
+    if record_approved_budget is None:
+        result["errors"].append("approved_budget_usd is missing or not numeric")
+    if isinstance(pre_run_high, bool) or not isinstance(pre_run_high, (int, float)):
+        result["errors"].append("pre_run_budget_estimate.estimated_total_usd.high is missing or not numeric")
+    elif estimated_high is not None and estimated_high != pre_run_high:
+        result["errors"].append("estimated_total_high_usd does not match pre_run_budget_estimate")
+    if isinstance(approved_budget, bool) or not isinstance(approved_budget, (int, float)):
+        result["errors"].append("external_action_approval paid_api.approved_budget_usd is missing or not numeric")
+    elif record_approved_budget is not None and record_approved_budget != approved_budget:
+        result["errors"].append("approved_budget_usd does not match external_action_approval")
+    if estimated_high is not None and record_approved_budget is not None:
+        if record_approved_budget < estimated_high:
+            result["errors"].append(
+                "approved_budget_usd is lower than estimated_total_high_usd"
+            )
+        if record.get("approved_budget_covers_estimate_high") is not True:
+            result["errors"].append("approved_budget_covers_estimate_high must be true")
+
+    result["valid"] = not result["errors"]
     return result
 
 
@@ -4269,6 +4405,7 @@ def evaluate_paid_run_review_package(
             "expected_cost_band_present": _nonempty_string(payload.get("expected_cost_band")),
             "pre_run_budget_estimate": _review_pre_run_budget_estimate(payload),
             "external_action_approval": _review_external_action_approval(payload),
+            "budget_approval_alignment": _review_budget_approval_alignment(payload),
             "actual_cost_estimate_present": _nonempty_string(payload.get("actual_cost_estimate")),
             "provider_bill_reference_present": _nonempty_string(payload.get("provider_bill_reference")),
             "actual_cost_estimate_placeholder": isinstance(payload.get("actual_cost_estimate"), str)

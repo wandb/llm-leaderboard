@@ -177,6 +177,11 @@ def collect_pre_run_budget_rows(gates: list[Any]) -> list[dict[str, Any]]:
             budget = record.get("pre_run_budget_estimate")
             if not isinstance(budget, dict):
                 continue
+            alignment = (
+                record.get("budget_approval_alignment")
+                if isinstance(record.get("budget_approval_alignment"), dict)
+                else {}
+            )
             rows.append(
                 {
                     "gate": gate.get("name"),
@@ -192,8 +197,16 @@ def collect_pre_run_budget_rows(gates: list[Any]) -> list[dict[str, Any]]:
                     ),
                     "selected_model_identifiers": budget.get("selected_model_identifiers"),
                     "estimated_total_usd": budget.get("estimated_total_usd"),
+                    "budget_alignment_valid": alignment.get("valid"),
+                    "approved_budget_usd": alignment.get("approved_budget_usd"),
+                    "approved_budget_covers_high": alignment.get(
+                        "approved_budget_covers_estimate_high"
+                    ),
                     "path": budget.get("path"),
-                    "errors": budget.get("errors"),
+                    "errors": {
+                        "budget": budget.get("errors"),
+                        "alignment": alignment.get("errors"),
+                    },
                 }
             )
     return rows
@@ -277,8 +290,8 @@ def build_markdown(report: dict[str, Any]) -> str:
             "",
             "## Pre-Run Budget Estimates",
             "",
-            "| Gate | Review | Phase | Required | Present | Valid | SHA256 matches | Target model | Matches selected config | Selected model identifiers | Estimated total USD | Budget JSON | Errors |",
-            "|---|---|---|---:|---:|---:|---:|---|---:|---|---|---|---|",
+            "| Gate | Review | Phase | Required | Present | Valid | SHA256 matches | Target model | Matches selected config | Selected model identifiers | Estimated total USD | Alignment valid | Approved USD | Approved covers high | Budget JSON | Errors |",
+            "|---|---|---|---:|---:|---:|---:|---|---:|---|---|---:|---:|---:|---|---|",
         ]
     )
     if budget_rows:
@@ -298,6 +311,9 @@ def build_markdown(report: dict[str, Any]) -> str:
                         md_cell(row.get("target_model_matches_selected_config")),
                         md_cell(row.get("selected_model_identifiers")),
                         md_cell(row.get("estimated_total_usd")),
+                        md_cell(row.get("budget_alignment_valid")),
+                        md_cell(row.get("approved_budget_usd")),
+                        md_cell(row.get("approved_budget_covers_high")),
                         md_cell(row.get("path")),
                         md_cell(row.get("errors")),
                     ]
@@ -305,7 +321,7 @@ def build_markdown(report: dict[str, Any]) -> str:
                 + " |"
             )
     else:
-        lines.append("| none |  |  |  |  |  |  |  |  |  |  |")
+        lines.append("| none |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |")
     wandb_entries = collect_wandb_completion_entries(gates)
     lines.extend(
         [

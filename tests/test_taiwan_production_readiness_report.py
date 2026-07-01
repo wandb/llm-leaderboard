@@ -2927,6 +2927,92 @@ def test_paid_run_review_package_rejects_budget_model_mismatch(tmp_path):
     )
 
 
+def test_paid_run_review_package_rejects_budget_approval_below_high_estimate(tmp_path):
+    module = load_module()
+    budget_json = write_json(
+        tmp_path / "openai_canary_budget_estimate.json",
+        {
+            "target_model": "openai-direct/gpt-4.1-mini-2025-04-14",
+            "target_models": ["openai-direct/gpt-4.1-mini-2025-04-14"],
+            "estimated_total_usd": {"low": 1.0, "mid": 2.0, "high": 3.0},
+        },
+    )
+    approval_json = write_json(
+        tmp_path / "external_action_approval.verify.json",
+        {
+            "schema_version": 1,
+            "ok": True,
+            "status": "approved",
+            "will_execute_external_actions": False,
+        },
+    )
+    review = write_json(
+        tmp_path / "review.json",
+        completed_review_payload(
+            requires_paid_model_api=True,
+            will_execute_external_actions=True,
+            pre_run_budget_estimate={
+                "required_before_paid_execution": True,
+                "present": True,
+                "valid": True,
+                "path": str(budget_json),
+                "sha256": sha256(budget_json),
+                "target_model": "openai-direct/gpt-4.1-mini-2025-04-14",
+                "target_models": ["openai-direct/gpt-4.1-mini-2025-04-14"],
+                "selected_model_identifiers": ["openai-direct/gpt-4.1-mini-2025-04-14"],
+                "target_model_matches_selected_config": True,
+                "price_per_million_tokens": {"input": 0.4, "output": 1.6},
+                "estimated_total_usd": {"low": 1.0, "mid": 2.0, "high": 3.0},
+                "pricing_source_url": "https://openai.com/index/gpt-4-1/",
+                "errors": [],
+            },
+            external_action_approval={
+                "required_before_external_action": True,
+                "present": True,
+                "valid": True,
+                "path": str(approval_json),
+                "sha256": sha256(approval_json),
+                "status": "approved",
+                "required_approval_count": 1,
+                "granted_approval_count": 1,
+                "all_required_approvals_granted": True,
+                "source_binding": {
+                    "bound": True,
+                    "source_approval_packet_sha256": "a" * 64,
+                },
+                "will_execute_external_actions": False,
+                "paid_api_approved_budget_usd": 2.5,
+                "paid_api_approved_model_scope": "OpenAI mini canary",
+                "errors": [],
+            },
+            budget_approval_alignment={
+                "required_before_paid_execution": True,
+                "valid": False,
+                "pre_run_budget_estimate_valid": True,
+                "external_action_approval_valid": True,
+                "estimated_total_high_usd": 3.0,
+                "approved_budget_usd": 2.5,
+                "approved_model_scope": "OpenAI mini canary",
+                "approved_budget_covers_estimate_high": False,
+                "errors": [
+                    "external_action_approval paid_api.approved_budget_usd is lower than pre_run_budget_estimate.estimated_total_usd.high"
+                ],
+            },
+        ),
+    )
+
+    result = module.evaluate_paid_run_review_package([review], require=True)
+
+    assert result["ok"] is False
+    assert result["status"] == "invalid_review_package"
+    record = result["records"][0]
+    assert record["budget_approval_alignment"]["valid"] is False
+    assert (
+        "budget_approval_alignment approved_budget_usd is lower than estimated_total_high_usd"
+        in record["errors"]
+    )
+
+
 def test_paid_run_review_package_rejects_missing_provider_bill_reference(tmp_path):
     module = load_module()
     review = write_json(

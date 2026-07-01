@@ -752,6 +752,22 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "pre-run budget estimate band check",
                 "estimate_usd.{key} is missing or not numeric",
             ),
+            (
+                "external approval paid budget extraction",
+                "paid_api_approved_budget_usd",
+            ),
+            (
+                "budget approval alignment function",
+                "def build_budget_approval_alignment_record(",
+            ),
+            (
+                "budget approval high-estimate comparison",
+                "approved_budget >= estimated_high",
+            ),
+            (
+                "budget approval alignment blocking status",
+                "budget_approval_alignment_failed",
+            ),
         ),
     },
     "scripts/analysis/estimate_taiwan_canary_budget.py": {

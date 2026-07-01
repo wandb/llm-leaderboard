@@ -682,6 +682,9 @@ def build_external_action_approval_record(
         "source_packet_path_matches_expected": False,
         "source_packet_sha256_matches_expected": False,
         "will_execute_external_actions": None,
+        "approval_results": [],
+        "paid_api_approved_budget_usd": None,
+        "paid_api_approved_model_scope": "",
         "errors": [],
     }
     if required_before_external_action and expected_source_packet_path is None:
@@ -732,6 +735,26 @@ def build_external_action_approval_record(
 
     required_count = payload.get("required_approval_count")
     granted_count = payload.get("granted_approval_count")
+    approval_results = (
+        payload.get("approval_results")
+        if isinstance(payload.get("approval_results"), list)
+        else []
+    )
+    paid_api_result = next(
+        (
+            item
+            for item in approval_results
+            if isinstance(item, dict) and item.get("requirement") == "paid_api"
+        ),
+        {},
+    )
+    paid_api_approved_budget = paid_api_result.get("approved_budget_usd")
+    if isinstance(paid_api_approved_budget, bool) or not isinstance(
+        paid_api_approved_budget,
+        (int, float),
+    ):
+        paid_api_approved_budget = None
+    paid_api_model_scope = paid_api_result.get("approved_model_scope")
     record.update(
         {
             "schema_version": payload.get("schema_version"),
@@ -748,6 +771,13 @@ def build_external_action_approval_record(
             ),
             "source_binding": source_binding,
             "will_execute_external_actions": payload.get("will_execute_external_actions"),
+            "approval_results": approval_results,
+            "paid_api_approved_budget_usd": paid_api_approved_budget,
+            "paid_api_approved_model_scope": (
+                paid_api_model_scope.strip()
+                if isinstance(paid_api_model_scope, str)
+                else ""
+            ),
         }
     )
 
@@ -802,6 +832,62 @@ def build_external_action_approval_record(
                 )
     if source_errors:
         record["errors"].extend(f"source_binding: {item}" for item in source_errors)
+
+    record["valid"] = not record["errors"]
+    return record
+
+
+def build_budget_approval_alignment_record(
+    *,
+    pre_run_budget_estimate: dict,
+    external_action_approval: dict,
+    required_before_paid_execution: bool,
+) -> dict:
+    estimated_total = (
+        pre_run_budget_estimate.get("estimated_total_usd")
+        if isinstance(pre_run_budget_estimate.get("estimated_total_usd"), dict)
+        else {}
+    )
+    estimated_high = estimated_total.get("high")
+    if isinstance(estimated_high, bool) or not isinstance(estimated_high, (int, float)):
+        estimated_high = None
+    approved_budget = external_action_approval.get("paid_api_approved_budget_usd")
+    if isinstance(approved_budget, bool) or not isinstance(approved_budget, (int, float)):
+        approved_budget = None
+
+    record = {
+        "required_before_paid_execution": bool(required_before_paid_execution),
+        "valid": False,
+        "pre_run_budget_estimate_valid": bool(pre_run_budget_estimate.get("valid")),
+        "external_action_approval_valid": bool(external_action_approval.get("valid")),
+        "estimated_total_high_usd": estimated_high,
+        "approved_budget_usd": approved_budget,
+        "approved_model_scope": str(
+            external_action_approval.get("paid_api_approved_model_scope") or ""
+        ),
+        "approved_budget_covers_estimate_high": False,
+        "errors": [],
+    }
+
+    if not required_before_paid_execution:
+        record["valid"] = True
+        return record
+
+    if pre_run_budget_estimate.get("valid") is not True:
+        record["errors"].append("pre_run_budget_estimate must be valid before budget approval alignment")
+    if external_action_approval.get("valid") is not True:
+        record["errors"].append("external_action_approval must be valid before budget approval alignment")
+    if estimated_high is None:
+        record["errors"].append("pre_run_budget_estimate.estimated_total_usd.high is missing or not numeric")
+    if approved_budget is None:
+        record["errors"].append("external_action_approval paid_api.approved_budget_usd is missing or not numeric")
+    if estimated_high is not None and approved_budget is not None:
+        record["approved_budget_covers_estimate_high"] = approved_budget >= estimated_high
+        if approved_budget < estimated_high:
+            record["errors"].append(
+                "external_action_approval paid_api.approved_budget_usd is lower than "
+                "pre_run_budget_estimate.estimated_total_usd.high"
+            )
 
     record["valid"] = not record["errors"]
     return record
@@ -1469,6 +1555,11 @@ def main() -> None:
         required_before_external_action=will_execute_external_actions,
         expected_source_packet_path=args.external_action_approval_source_packet_json,
     )
+    budget_approval_alignment = build_budget_approval_alignment_record(
+        pre_run_budget_estimate=pre_run_budget_estimate,
+        external_action_approval=external_action_approval,
+        required_before_paid_execution=will_call_paid_model_api,
+    )
     run_eval_preflights = build_run_eval_preflight_records(
         configs,
         phase=args.phase,
@@ -1506,6 +1597,7 @@ def main() -> None:
         "run_eval_preflights": run_eval_preflights,
         "pre_run_budget_estimate": pre_run_budget_estimate,
         "external_action_approval": external_action_approval,
+        "budget_approval_alignment": budget_approval_alignment,
         "created_at": time.time(),
     }
     args.output_root.mkdir(parents=True, exist_ok=True)
@@ -1546,6 +1638,7 @@ def main() -> None:
         "run_eval_preflights": run_eval_preflights,
         "pre_run_budget_estimate": pre_run_budget_estimate,
         "external_action_approval": external_action_approval,
+        "budget_approval_alignment": budget_approval_alignment,
         "completion_requirements": {
             "status": "completed",
             "pre_run_budget_estimate": {
@@ -1581,8 +1674,17 @@ def main() -> None:
                     "source_packet_path_matches_expected=true",
                     "source_packet_sha256_matches_expected=true",
                     "will_execute_external_actions=false",
+                    "paid_api.approved_budget_usd",
                 ],
                 "source_bound_review_copy_required": True,
+            },
+            "budget_approval_alignment": {
+                "required_before_paid_execution": will_call_paid_model_api,
+                "required_fields": [
+                    "pre_run_budget_estimate.estimated_total_usd.high",
+                    "external_action_approval paid_api.approved_budget_usd",
+                    "approved_budget_usd >= estimated_total_usd.high",
+                ],
             },
             "actual_cost_estimate": "required after execution",
             "provider_bill_reference": "required after execution",
@@ -1740,6 +1842,16 @@ def main() -> None:
             "External execution requires a valid source-bound approval verifier report "
             "and matching source packet: --external-action-approval-report-json, "
             "--external-action-approval-source-packet-json"
+        )
+
+    if will_call_paid_model_api and not budget_approval_alignment.get("valid"):
+        review_record["status"] = "budget_approval_alignment_failed"
+        review_record["blocking_reason"] = budget_approval_alignment
+        write_json(review_path, review_record)
+        raise SystemExit(
+            "Paid model evaluation requires approved budget to cover the pre-run "
+            "high estimate: "
+            + "; ".join(str(item) for item in budget_approval_alignment["errors"])
         )
 
     if not weave_content_canary_gate["blocking_ok"]:
