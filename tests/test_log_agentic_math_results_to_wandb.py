@@ -103,6 +103,55 @@ def test_validate_summary_rejects_mismatched_counts():
         module.validate_summary(summary, rows)
 
 
+def test_validate_summary_rejects_explicit_observability_failures():
+    module = load_module()
+    summary = {
+        "total_instances": 3,
+        "answered_instances": 3,
+        "correct_instances": 3,
+        "incorrect_instances": 0,
+        "accuracy": 1.0,
+        "correctness": 1.0,
+        "nemoclaw_session_audit_required_instances": 3,
+        "nemoclaw_session_audit_passed_instances": 3,
+        "nemoclaw_session_audit_failed_instances": 0,
+    }
+    rows = [
+        {
+            "task_id": "m1",
+            "correct": True,
+            "predicted_answer": "1",
+            "nemoclaw_session_audit_ok": True,
+            "nemoclaw_session_audit": {"required": True, "ok": True},
+            "conversation_order_ok": False,
+        },
+        {
+            "task_id": "m2",
+            "correct": True,
+            "predicted_answer": "2",
+            "nemoclaw_session_audit_ok": True,
+            "nemoclaw_session_audit": {"required": True, "ok": True},
+            "tool_policy_violations": [{"type": "denied_tool"}],
+        },
+        {
+            "task_id": "m3",
+            "correct": True,
+            "predicted_answer": "3",
+            "nemoclaw_session_audit_ok": True,
+            "nemoclaw_session_audit": {"required": True, "ok": True},
+            "weave_sidecar": {"ok": False},
+        },
+    ]
+
+    with pytest.raises(ValueError) as exc:
+        module.validate_summary(summary, rows)
+
+    message = str(exc.value)
+    assert "row m1 has conversation_order_ok=false" in message
+    assert "row m2 has tool_policy_violations" in message
+    assert "row m3 has weave_sidecar.ok=false" in message
+
+
 def test_build_leaderboard_uses_existing_agentic_math_schema():
     module = load_module()
     summary = {

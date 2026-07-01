@@ -90,6 +90,33 @@ def source_sha256s(*, official_eval_dir: Path, patch_path: Path) -> dict[str, st
     return result
 
 
+def observability_acceptance_issues(patch_rows: list[dict[str, Any]]) -> list[str]:
+    issues: list[str] = []
+    for index, row in enumerate(patch_rows, start=1):
+        instance_id = row.get("instance_id") or index
+        if row.get("conversation_order_ok") is False:
+            issues.append(f"patch {instance_id} has conversation_order_ok=false")
+        conversation_order = row.get("conversation_order")
+        if isinstance(conversation_order, dict) and conversation_order.get("ok") is False:
+            issues.append(f"patch {instance_id} has conversation_order.ok=false")
+        if row.get("tool_policy_ok") is False:
+            issues.append(f"patch {instance_id} has tool_policy_ok=false")
+        if row.get("tool_policy_violations"):
+            issues.append(f"patch {instance_id} has tool_policy_violations")
+        if row.get("weave_sidecar_ok") is False:
+            issues.append(f"patch {instance_id} has weave_sidecar_ok=false")
+        weave_sidecar = row.get("weave_sidecar")
+        if isinstance(weave_sidecar, dict) and weave_sidecar.get("ok") is False:
+            issues.append(f"patch {instance_id} has weave_sidecar.ok=false")
+    return issues
+
+
+def validate_observability_acceptance(patch_rows: list[dict[str, Any]]) -> None:
+    issues = observability_acceptance_issues(patch_rows)
+    if issues:
+        raise ValueError("; ".join(issues))
+
+
 def validate_summary(
     summary: dict[str, Any],
     *,
@@ -147,6 +174,11 @@ def validate_nemoclaw_session_audit(
         if row.get("instance_id") is not None
     }
     missing_patch_rows = sorted(expected_ids - set(patch_by_instance))
+    rows_for_audit = [
+        patch_by_instance[instance_id]
+        for instance_id in sorted(expected_ids)
+        if instance_id in patch_by_instance
+    ] or patch_rows
     counts = nemoclaw_audit_summary_metrics(patch_rows)
     required = counts["agentic_swe/nemoclaw_session_audit_required_patches"]
     passed = counts["agentic_swe/nemoclaw_session_audit_passed_patches"]
@@ -165,6 +197,10 @@ def validate_nemoclaw_session_audit(
         )
     if failed != 0:
         mismatches.append("agentic_swe/nemoclaw_session_audit_failed_patches must be 0")
+    try:
+        validate_observability_acceptance(rows_for_audit)
+    except ValueError as exc:
+        mismatches.append(str(exc))
     if mismatches:
         raise ValueError("; ".join(mismatches))
 

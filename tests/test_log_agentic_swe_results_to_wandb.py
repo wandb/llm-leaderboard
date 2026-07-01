@@ -93,6 +93,22 @@ def test_validate_summary_rejects_eval_result_id_mismatch():
         raise AssertionError("expected summary validation failure")
 
 
+def test_validate_nemoclaw_session_audit_rejects_explicit_observability_failures():
+    module = load_module()
+    patch_rows = patch_rows_with_nemoclaw_audit()
+    patch_rows[0]["conversation_order_ok"] = False
+    patch_rows[1]["tool_policy_violations"] = [{"type": "denied_tool"}]
+    patch_rows[2]["weave_sidecar_ok"] = False
+
+    with pytest.raises(ValueError) as exc:
+        module.validate_nemoclaw_session_audit(summary_payload(), patch_rows)
+
+    message = str(exc.value)
+    assert "patch i1 has conversation_order_ok=false" in message
+    assert "patch i2 has tool_policy_violations" in message
+    assert "patch i3 has weave_sidecar_ok=false" in message
+
+
 def test_build_output_table_preserves_patch_metadata():
     module = load_module()
 
@@ -448,12 +464,9 @@ def test_main_write_rejects_source_file_drift_after_validated_plan(
     )
     module.main()
 
-    patch_path.write_text(
-        json.dumps(
-            patch_rows_with_nemoclaw_audit(tool_policy_ok=False)
-        ),
-        encoding="utf-8",
-    )
+    changed_rows = patch_rows_with_nemoclaw_audit()
+    changed_rows[0]["patch"] = "diff --git a/y b/y"
+    patch_path.write_text(json.dumps(changed_rows), encoding="utf-8")
 
     def fail_login():
         raise AssertionError("must reject before W&B login")

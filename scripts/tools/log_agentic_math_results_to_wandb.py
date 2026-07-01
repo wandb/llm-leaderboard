@@ -78,6 +78,33 @@ def source_sha256s(results_dir: Path) -> dict[str, str]:
     }
 
 
+def observability_acceptance_issues(rows: list[dict[str, Any]]) -> list[str]:
+    issues: list[str] = []
+    for index, row in enumerate(rows, start=1):
+        row_id = row.get("task_id") or row.get("id") or index
+        if row.get("conversation_order_ok") is False:
+            issues.append(f"row {row_id} has conversation_order_ok=false")
+        conversation_order = row.get("conversation_order")
+        if isinstance(conversation_order, dict) and conversation_order.get("ok") is False:
+            issues.append(f"row {row_id} has conversation_order.ok=false")
+        if row.get("tool_policy_ok") is False:
+            issues.append(f"row {row_id} has tool_policy_ok=false")
+        if row.get("tool_policy_violations"):
+            issues.append(f"row {row_id} has tool_policy_violations")
+        if row.get("weave_sidecar_ok") is False:
+            issues.append(f"row {row_id} has weave_sidecar_ok=false")
+        weave_sidecar = row.get("weave_sidecar")
+        if isinstance(weave_sidecar, dict) and weave_sidecar.get("ok") is False:
+            issues.append(f"row {row_id} has weave_sidecar.ok=false")
+    return issues
+
+
+def validate_observability_acceptance(rows: list[dict[str, Any]]) -> None:
+    issues = observability_acceptance_issues(rows)
+    if issues:
+        raise ValueError("; ".join(issues))
+
+
 def validate_summary(summary: dict[str, Any], rows: list[dict[str, Any]]) -> None:
     missing = sorted(REQUIRED_SUMMARY_KEYS - set(summary))
     if missing:
@@ -157,6 +184,7 @@ def validate_summary(summary: dict[str, Any], rows: list[dict[str, Any]]) -> Non
         audit_mismatches.append("nemoclaw_session_audit_failed_instances must be 0")
     if audit_mismatches:
         raise ValueError("; ".join(audit_mismatches))
+    validate_observability_acceptance(rows)
 
 
 def build_leaderboard(

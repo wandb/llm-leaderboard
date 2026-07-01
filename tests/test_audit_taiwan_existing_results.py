@@ -658,6 +658,37 @@ def test_existing_result_audit_blocks_agentic_math_relog_without_nemoclaw_audit(
     assert record["rerun_required"] is True
 
 
+def test_existing_result_audit_blocks_agentic_math_relog_with_explicit_observability_failure(
+    tmp_path,
+    monkeypatch,
+):
+    module = load_module()
+    monkeypatch.setattr(module, "AGENTIC_MATH_EXPECTED_TOTAL", 3)
+    result_dir = write_agentic_math_result(tmp_path, total=3)
+    rows = [json.loads(line) for line in (result_dir / "results.jsonl").read_text(encoding="utf-8").splitlines()]
+    rows[0]["conversation_order_ok"] = False
+    rows[1]["tool_policy_violations"] = [{"type": "denied_tool"}]
+    rows[2]["weave_sidecar_ok"] = False
+    write_jsonl(result_dir / "results.jsonl", rows)
+
+    audit = module.build_audit(
+        output_root=tmp_path,
+        completion_dir=tmp_path / "wandb_completion",
+    )
+
+    assert audit["ok"] is False
+    assert audit["summary"]["nemoclaw_audit_blocked_complete_count"] == 1
+    record = audit["unformalized_complete_records"][0]
+    assert record["formalization_status"] == "local_complete_missing_nemoclaw_audit"
+    assert record["reloggable_to_wandb"] is False
+    assert record["nemoclaw_session_audit_valid"] is False
+    assert "result row task-0 has conversation_order_ok=false" in record["nemoclaw_session_audit_errors"]
+    assert "result row task-1 has tool_policy_violations" in record["nemoclaw_session_audit_errors"]
+    assert "result row task-2 has weave_sidecar_ok=false" in record["nemoclaw_session_audit_errors"]
+    assert record["relog_dry_run_command"] == ""
+    assert record["relog_command"] == ""
+
+
 def test_existing_result_audit_archives_hash_bound_nonrelease_result(tmp_path, monkeypatch):
     module = load_module()
     monkeypatch.setattr(module, "AGENTIC_MATH_EXPECTED_TOTAL", 3)
@@ -1025,3 +1056,51 @@ def test_existing_result_audit_blocks_swe_relog_without_nemoclaw_audit(tmp_path,
     assert record["relog_command"] == ""
     assert record["verify_command"] == ""
     assert record["rerun_required"] is True
+
+
+def test_existing_result_audit_blocks_swe_relog_with_explicit_observability_failure(
+    tmp_path,
+    monkeypatch,
+):
+    module = load_module()
+    monkeypatch.setattr(module, "AGENTIC_SWE_EXPECTED_TOTAL", 1)
+    model_dir = tmp_path / "swebench_pro" / "model-c"
+    write_json(
+        model_dir / "openclaw" / "patches.json",
+        [
+            {
+                "instance_id": "i1",
+                "patch": "diff --git a/x b/x",
+                "nemoclaw_session_audit_ok": True,
+                "nemoclaw_session_audit": {"required": True, "ok": True},
+                "tool_policy_ok": False,
+            }
+        ],
+    )
+    write_json(
+        model_dir / "official_eval" / "summary.json",
+        {
+            "total_instances": 1,
+            "resolved_instances": 1,
+            "unresolved_instances": 0,
+            "pass_at_1": 1.0,
+            "resolved_ids": ["i1"],
+            "unresolved_ids": [],
+        },
+    )
+
+    audit = module.build_audit(
+        output_root=tmp_path,
+        completion_dir=tmp_path / "wandb_completion",
+    )
+
+    assert audit["ok"] is False
+    assert audit["summary"]["nemoclaw_audit_blocked_complete_count"] == 1
+    record = audit["unformalized_complete_records"][0]
+    assert record["benchmark"] == "agentic_swe"
+    assert record["formalization_status"] == "local_complete_missing_nemoclaw_audit"
+    assert record["reloggable_to_wandb"] is False
+    assert record["nemoclaw_session_audit_valid"] is False
+    assert "patch row i1 has tool_policy_ok=false" in record["nemoclaw_session_audit_errors"]
+    assert record["relog_dry_run_command"] == ""
+    assert record["relog_command"] == ""

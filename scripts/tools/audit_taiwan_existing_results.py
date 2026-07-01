@@ -279,6 +279,28 @@ def agentic_math_local_nemoclaw_audit_issues(
         issues.append("every result row must pass NeMoClaw session audit")
     if row_failed != 0:
         issues.append("no result row may have failed NeMoClaw session audit")
+    issues.extend(agentic_observability_acceptance_issues(rows, row_label="result row"))
+    return issues
+
+
+def agentic_observability_acceptance_issues(rows: list[dict[str, Any]], *, row_label: str) -> list[str]:
+    issues: list[str] = []
+    for index, row in enumerate(rows, start=1):
+        row_id = row.get("task_id") or row.get("instance_id") or row.get("id") or index
+        if row.get("conversation_order_ok") is False:
+            issues.append(f"{row_label} {row_id} has conversation_order_ok=false")
+        conversation_order = row.get("conversation_order")
+        if isinstance(conversation_order, dict) and conversation_order.get("ok") is False:
+            issues.append(f"{row_label} {row_id} has conversation_order.ok=false")
+        if row.get("tool_policy_ok") is False:
+            issues.append(f"{row_label} {row_id} has tool_policy_ok=false")
+        if row.get("tool_policy_violations"):
+            issues.append(f"{row_label} {row_id} has tool_policy_violations")
+        if row.get("weave_sidecar_ok") is False:
+            issues.append(f"{row_label} {row_id} has weave_sidecar_ok=false")
+        weave_sidecar = row.get("weave_sidecar")
+        if isinstance(weave_sidecar, dict) and weave_sidecar.get("ok") is False:
+            issues.append(f"{row_label} {row_id} has weave_sidecar.ok=false")
     return issues
 
 
@@ -328,6 +350,7 @@ def agentic_swe_local_nemoclaw_audit_issues(
         issues.append("agentic_swe NeMoClaw audit passed patch count must equal expected_total")
     if failed:
         issues.append("agentic_swe NeMoClaw audit failed patch count must be 0")
+    issues.extend(agentic_observability_acceptance_issues(rows_for_audit, row_label="patch row"))
     return issues
 
 

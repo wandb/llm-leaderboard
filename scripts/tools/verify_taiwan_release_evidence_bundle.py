@@ -559,6 +559,8 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
         "role": "agentic_runner:math_relog_script",
         "tokens": (
             ("Agentic Math relog source validation", "validate_summary(summary, rows)"),
+            ("Agentic Math relog observability validator", "def validate_observability_acceptance("),
+            ("Agentic Math relog observability validation call", "validate_observability_acceptance(rows)"),
             ("Agentic Math output table", "agentic_math_output_table"),
             ("Agentic Math NeMoClaw audit field passthrough", "nemoclaw_session_audit_ok"),
             (
@@ -574,6 +576,8 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
     "scripts/tools/log_agentic_swe_results_to_wandb.py": {
         "role": "agentic_runner:swe_relog_script",
         "tokens": (
+            ("SWE relog observability validator", "def validate_observability_acceptance("),
+            ("SWE relog observability validation call", "validate_observability_acceptance(rows_for_audit)"),
             ("SWE relog conversation-order field", "conversation_order_ok"),
             ("SWE relog NeMoClaw audit field", "nemoclaw_session_audit_ok"),
             ("SWE output table", "agentic_swe_output_table"),
