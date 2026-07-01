@@ -66,6 +66,20 @@ OPENCLAW_INVOCATION_HASH_COLUMNS = (
     "openclaw_invocation_sha256",
     "openclaw_command_sha256",
 )
+AGENTIC_ROW_TRUE_COLUMNS = (
+    "nemoclaw_session_audit_ok",
+    "conversation_order_ok",
+    "tool_policy_ok",
+    "weave_sidecar_ok",
+)
+AGENTIC_ROW_EMPTY_LIST_COLUMNS = (
+    "tool_policy_violations",
+)
+AGENTIC_ROW_DICT_OK_COLUMNS = (
+    "nemoclaw_session_audit",
+    "conversation_order",
+    "weave_sidecar",
+)
 
 
 @dataclass(frozen=True)
@@ -428,6 +442,132 @@ def _output_table_invocation_evidence_check(
     )
 
 
+def _output_table_row_observability_check(
+    run: Any,
+    summary: dict[str, Any],
+    spec: BenchmarkSpec,
+    *,
+    expected_rows: int | None,
+) -> dict[str, Any] | None:
+    required_true = [
+        column
+        for column in AGENTIC_ROW_TRUE_COLUMNS
+        if column in spec.output_table_required_columns
+    ]
+    required_empty = [
+        column
+        for column in AGENTIC_ROW_EMPTY_LIST_COLUMNS
+        if column in spec.output_table_required_columns
+    ]
+    required_dict_ok = [
+        column
+        for column in AGENTIC_ROW_DICT_OK_COLUMNS
+        if column in spec.output_table_required_columns
+    ]
+    if not required_true and not required_empty and not required_dict_ok:
+        return None
+    payload, source, error = _download_table_payload_from_summary(run, summary, spec.output_table)
+    required_columns = required_true + required_empty + required_dict_ok
+    if payload is None:
+        return _fail_check(
+            "output_table_row_observability",
+            error or f"could not inspect row observability for {spec.output_table}",
+            table_name=spec.output_table,
+            required_true_columns=required_true,
+            required_empty_list_columns=required_empty,
+            required_dict_ok_columns=required_dict_ok,
+            required_columns=required_columns,
+            checked_rows=0,
+            invalid_row_count=None,
+            invalid_examples=[],
+            source=source,
+        )
+    rows, rows_error = _table_data_rows_from_payload(payload)
+    if rows is None:
+        return _fail_check(
+            "output_table_row_observability",
+            rows_error or f"{spec.output_table} has no inspectable rows",
+            table_name=spec.output_table,
+            required_true_columns=required_true,
+            required_empty_list_columns=required_empty,
+            required_dict_ok_columns=required_dict_ok,
+            required_columns=required_columns,
+            checked_rows=0,
+            invalid_row_count=None,
+            invalid_examples=[],
+            source=source,
+        )
+    invalid_examples: list[dict[str, Any]] = []
+    invalid_count = 0
+    for index, row in enumerate(rows, start=1):
+        not_true = [column for column in required_true if row.get(column) is not True]
+        non_empty_lists = [
+            column
+            for column in required_empty
+            if not isinstance(row.get(column), list) or row.get(column)
+        ]
+        dict_not_ok = [
+            column
+            for column in required_dict_ok
+            if not isinstance(row.get(column), dict) or row.get(column, {}).get("ok") is not True
+        ]
+        if not_true or non_empty_lists or dict_not_ok:
+            invalid_count += 1
+            if len(invalid_examples) < 5:
+                invalid_examples.append(
+                    {
+                        "row_index": index,
+                        "not_true": not_true,
+                        "non_empty_lists": non_empty_lists,
+                        "dict_not_ok": dict_not_ok,
+                    }
+                )
+    if expected_rows is not None and len(rows) != expected_rows:
+        return _fail_check(
+            "output_table_row_observability",
+            f"{spec.output_table} table JSON row count does not match summary",
+            table_name=spec.output_table,
+            required_true_columns=required_true,
+            required_empty_list_columns=required_empty,
+            required_dict_ok_columns=required_dict_ok,
+            required_columns=required_columns,
+            checked_rows=len(rows),
+            expected_rows=expected_rows,
+            invalid_row_count=invalid_count,
+            invalid_examples=invalid_examples,
+            source=source,
+        )
+    if invalid_count:
+        return _fail_check(
+            "output_table_row_observability",
+            f"{spec.output_table} has rows with failed Agentic observability checks",
+            table_name=spec.output_table,
+            required_true_columns=required_true,
+            required_empty_list_columns=required_empty,
+            required_dict_ok_columns=required_dict_ok,
+            required_columns=required_columns,
+            checked_rows=len(rows),
+            expected_rows=expected_rows,
+            invalid_row_count=invalid_count,
+            invalid_examples=invalid_examples,
+            source=source,
+        )
+    return _ok_check(
+        "output_table_row_observability",
+        f"{spec.output_table} rows passed Agentic observability checks",
+        table_name=spec.output_table,
+        required_true_columns=required_true,
+        required_empty_list_columns=required_empty,
+        required_dict_ok_columns=required_dict_ok,
+        required_columns=required_columns,
+        checked_rows=len(rows),
+        expected_rows=expected_rows,
+        invalid_row_count=0,
+        invalid_examples=[],
+        source=source,
+    )
+
+
 def _int_metric(summary: dict[str, Any], key: str | None) -> tuple[int | None, Any]:
     if not key:
         return None, None
@@ -677,6 +817,7 @@ def _benchmark_required_evidence(
                 "name": spec.output_table,
                 "row_count": "must equal total metric",
                 "required_columns": list(spec.output_table_required_columns),
+                "row_observability": "all required audit/tool/order/sidecar row checks must pass",
             },
         ],
         "artifacts": artifacts,
@@ -839,6 +980,41 @@ def _observed_benchmark_evidence(
                     "invocation_expected_rows": check.get("expected_rows"),
                     "invocation_invalid_row_count": check.get("invalid_row_count"),
                     "invocation_invalid_examples": check.get("invalid_examples"),
+                }
+            )
+            continue
+        if name == "output_table_row_observability":
+            output_table_row = next(
+                (
+                    row
+                    for row in observed["tables"]
+                    if row.get("name") == spec.output_table
+                ),
+                None,
+            )
+            if output_table_row is None:
+                output_table_row = {
+                    "name": spec.output_table,
+                    "ok": bool(check.get("ok")),
+                    "nrows": None,
+                    "expected": None,
+                }
+                observed["tables"].append(output_table_row)
+            output_table_row.update(
+                {
+                    "row_observability_ok": bool(check.get("ok")),
+                    "row_observability_source": check.get("source"),
+                    "row_observability_checked_rows": check.get("checked_rows"),
+                    "row_observability_expected_rows": check.get("expected_rows"),
+                    "row_observability_invalid_row_count": check.get("invalid_row_count"),
+                    "row_observability_invalid_examples": check.get("invalid_examples"),
+                    "row_observability_required_true_columns": check.get("required_true_columns"),
+                    "row_observability_required_empty_list_columns": check.get(
+                        "required_empty_list_columns"
+                    ),
+                    "row_observability_required_dict_ok_columns": check.get(
+                        "required_dict_ok_columns"
+                    ),
                 }
             )
             continue
@@ -1071,6 +1247,14 @@ def verify_run(
     )
     if output_table_invocation_evidence_check is not None:
         checks.append(output_table_invocation_evidence_check)
+    output_table_row_observability_check = _output_table_row_observability_check(
+        run,
+        summary,
+        spec,
+        expected_rows=output_rows,
+    )
+    if output_table_row_observability_check is not None:
+        checks.append(output_table_row_observability_check)
 
     if spec.answered_metric:
         answered = _metric(summary, spec.answered_metric)

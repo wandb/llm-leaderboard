@@ -270,6 +270,26 @@ def test_verify_agentic_math_wandb_completion_accepts_complete_run():
             "invocation_expected_rows": 100,
             "invocation_invalid_row_count": 0,
             "invocation_invalid_examples": [],
+            "row_observability_ok": True,
+            "row_observability_source": "wandb_file",
+            "row_observability_checked_rows": 100,
+            "row_observability_expected_rows": 100,
+            "row_observability_invalid_row_count": 0,
+            "row_observability_invalid_examples": [],
+            "row_observability_required_true_columns": [
+                "nemoclaw_session_audit_ok",
+                "conversation_order_ok",
+                "tool_policy_ok",
+                "weave_sidecar_ok",
+            ],
+            "row_observability_required_empty_list_columns": [
+                "tool_policy_violations",
+            ],
+            "row_observability_required_dict_ok_columns": [
+                "nemoclaw_session_audit",
+                "conversation_order",
+                "weave_sidecar",
+            ],
         },
     ]
     assert result["observed_evidence"]["artifacts"][0]["aliases"] == ["latest", "production"]
@@ -280,6 +300,7 @@ def test_verify_agentic_math_wandb_completion_accepts_complete_run():
         "output_table",
         "output_table_columns",
         "output_table_invocation_evidence",
+        "output_table_row_observability",
         "answered_metric",
         "correct_metric",
         "accuracy_metric",
@@ -419,6 +440,72 @@ def test_verify_agentic_swe_wandb_completion_rejects_invalid_invocation_hash():
     assert check["invalid_examples"][0]["invalid_hashes"] == [
         "openclaw_command_sha256"
     ]
+
+
+def test_verify_agentic_math_wandb_completion_rejects_failed_row_observability():
+    module = load_module()
+    summary = complete_agentic_math_summary()
+    payload = table_payload(AGENTIC_MATH_OUTPUT_COLUMNS, 100)
+    tool_ok_index = AGENTIC_MATH_OUTPUT_COLUMNS.index("tool_policy_ok")
+    violations_index = AGENTIC_MATH_OUTPUT_COLUMNS.index("tool_policy_violations")
+    payload["data"][0][tool_ok_index] = False
+    payload["data"][0][violations_index] = [{"type": "denied_tool"}]
+    run = FakeRun(
+        summary=summary,
+        artifacts=[complete_result_artifact()],
+        table_files={
+            "media/table/agentic_math_output_table_0.table.json": payload,
+        },
+    )
+
+    result = module.verify_run(run, module.BENCHMARK_SPECS["agentic_math"])
+
+    assert result["ok"] is False
+    check = next(
+        check
+        for check in result["checks"]
+        if check["name"] == "output_table_row_observability"
+    )
+    assert check["ok"] is False
+    assert check["invalid_row_count"] == 1
+    assert check["invalid_examples"][0]["not_true"] == ["tool_policy_ok"]
+    assert check["invalid_examples"][0]["non_empty_lists"] == [
+        "tool_policy_violations"
+    ]
+    output_table = next(
+        table
+        for table in result["observed_evidence"]["tables"]
+        if table["name"] == "agentic_math_output_table"
+    )
+    assert output_table["row_observability_ok"] is False
+    assert output_table["row_observability_invalid_row_count"] == 1
+
+
+def test_verify_agentic_swe_wandb_completion_rejects_failed_nested_observability():
+    module = load_module()
+    summary = complete_agentic_swe_summary()
+    payload = table_payload(AGENTIC_SWE_OUTPUT_COLUMNS, 80)
+    conversation_index = AGENTIC_SWE_OUTPUT_COLUMNS.index("conversation_order")
+    payload["data"][0][conversation_index] = {"ok": False, "reason": "bad order"}
+    run = FakeRun(
+        summary=summary,
+        artifacts=[complete_swe_result_artifact()],
+        table_files={
+            "media/table/agentic_swe_output_table_0.table.json": payload,
+        },
+    )
+
+    result = module.verify_run(run, module.BENCHMARK_SPECS["agentic_swe"])
+
+    assert result["ok"] is False
+    check = next(
+        check
+        for check in result["checks"]
+        if check["name"] == "output_table_row_observability"
+    )
+    assert check["ok"] is False
+    assert check["invalid_row_count"] == 1
+    assert check["invalid_examples"][0]["dict_not_ok"] == ["conversation_order"]
 
 
 def test_verify_agentic_math_wandb_completion_requires_nemoclaw_session_audit():

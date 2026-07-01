@@ -381,6 +381,26 @@ def agentic_math_wandb_completion_payload():
                     "invocation_expected_rows": 100,
                     "invocation_invalid_row_count": 0,
                     "invocation_invalid_examples": [],
+                    "row_observability_ok": True,
+                    "row_observability_source": "wandb_file",
+                    "row_observability_checked_rows": 100,
+                    "row_observability_expected_rows": 100,
+                    "row_observability_invalid_row_count": 0,
+                    "row_observability_invalid_examples": [],
+                    "row_observability_required_true_columns": [
+                        "nemoclaw_session_audit_ok",
+                        "conversation_order_ok",
+                        "tool_policy_ok",
+                        "weave_sidecar_ok",
+                    ],
+                    "row_observability_required_empty_list_columns": [
+                        "tool_policy_violations",
+                    ],
+                    "row_observability_required_dict_ok_columns": [
+                        "nemoclaw_session_audit",
+                        "conversation_order",
+                        "weave_sidecar",
+                    ],
                 },
             ],
             "artifacts": [
@@ -436,6 +456,41 @@ def agentic_math_wandb_completion_payload():
                     "openclaw_invocation_path",
                     "openclaw_invocation_sha256",
                     "openclaw_command_sha256",
+                ],
+                "checked_rows": 100,
+                "expected_rows": 100,
+                "invalid_row_count": 0,
+                "invalid_examples": [],
+                "source": "wandb_file",
+            },
+            {
+                "name": "output_table_row_observability",
+                "ok": True,
+                "detail": "agentic_math_output_table rows passed Agentic observability checks",
+                "table_name": "agentic_math_output_table",
+                "required_true_columns": [
+                    "nemoclaw_session_audit_ok",
+                    "conversation_order_ok",
+                    "tool_policy_ok",
+                    "weave_sidecar_ok",
+                ],
+                "required_empty_list_columns": [
+                    "tool_policy_violations",
+                ],
+                "required_dict_ok_columns": [
+                    "nemoclaw_session_audit",
+                    "conversation_order",
+                    "weave_sidecar",
+                ],
+                "required_columns": [
+                    "nemoclaw_session_audit_ok",
+                    "conversation_order_ok",
+                    "tool_policy_ok",
+                    "weave_sidecar_ok",
+                    "tool_policy_violations",
+                    "nemoclaw_session_audit",
+                    "conversation_order",
+                    "weave_sidecar",
                 ],
                 "checked_rows": 100,
                 "expected_rows": 100,
@@ -2857,6 +2912,71 @@ def test_validate_wandb_completion_payload_rejects_failed_invocation_evidence_ch
     )
     assert (
         "proof checks output_table_invocation_evidence invalid_row_count is not 0"
+        in errors
+    )
+
+
+def test_validate_wandb_completion_payload_rejects_missing_row_observability_check():
+    module = load_verify_module()
+    payload = agentic_math_wandb_completion_payload()
+    payload["checks"] = [
+        check
+        for check in payload["checks"]
+        if check["name"] != "output_table_row_observability"
+    ]
+
+    errors = module.validate_wandb_completion_payload(
+        payload,
+        label="proof",
+        expected_benchmark="agentic_math",
+    )
+
+    assert (
+        "proof checks missing required check: output_table_row_observability"
+        in errors
+    )
+    assert (
+        "proof checks output_table_row_observability missing for "
+        "agentic_math_output_table"
+    ) in errors
+
+
+def test_validate_wandb_completion_payload_rejects_failed_row_observability_check():
+    module = load_verify_module()
+    payload = agentic_math_wandb_completion_payload()
+    output_table = payload["observed_evidence"]["tables"][1]
+    output_table["row_observability_ok"] = False
+    output_table["row_observability_invalid_row_count"] = 1
+    output_table["row_observability_invalid_examples"] = [
+        {"row_index": 1, "not_true": ["tool_policy_ok"]}
+    ]
+    output_check = next(
+        check
+        for check in payload["checks"]
+        if check["name"] == "output_table_row_observability"
+    )
+    output_check["ok"] = False
+    output_check["invalid_row_count"] = 1
+    output_check["invalid_examples"] = [
+        {"row_index": 1, "not_true": ["tool_policy_ok"]}
+    ]
+
+    errors = module.validate_wandb_completion_payload(
+        payload,
+        label="proof",
+        expected_benchmark="agentic_math",
+    )
+
+    assert (
+        "proof observed_evidence.tables agentic_math_output_table "
+        "row_observability_ok is not true"
+    ) in errors
+    assert (
+        "proof checks contains failing check: output_table_row_observability"
+        in errors
+    )
+    assert (
+        "proof checks output_table_row_observability invalid_row_count is not 0"
         in errors
     )
 

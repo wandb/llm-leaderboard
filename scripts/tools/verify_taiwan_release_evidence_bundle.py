@@ -1012,10 +1012,12 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ),
             ("W&B output table column check", "output_table_columns"),
             ("W&B output table invocation evidence check", "output_table_invocation_evidence"),
+            ("W&B output table row observability check", "output_table_row_observability"),
             ("W&B output table row loader", "def _table_data_rows_from_payload("),
             ("W&B table file column loader", "def _download_wandb_table_json("),
             ("W&B observed table column evidence", '"columns_ok": bool(check.get("ok"))'),
             ("W&B observed invocation evidence", '"invocation_evidence_ok": bool(check.get("ok"))'),
+            ("W&B observed row observability evidence", '"row_observability_ok": bool(check.get("ok"))'),
             ("W&B OpenClaw invocation path column", '"openclaw_invocation_path"'),
             ("W&B OpenClaw invocation sha256 column", '"openclaw_invocation_sha256"'),
             ("W&B OpenClaw command sha256 column", '"openclaw_command_sha256"'),
@@ -1452,6 +1454,20 @@ AGENTIC_WANDB_OUTPUT_TABLE_REQUIRED_COLUMNS = {
         "openclaw_command_sha256",
     ),
 }
+AGENTIC_WANDB_ROW_TRUE_COLUMNS = (
+    "nemoclaw_session_audit_ok",
+    "conversation_order_ok",
+    "tool_policy_ok",
+    "weave_sidecar_ok",
+)
+AGENTIC_WANDB_ROW_EMPTY_LIST_COLUMNS = (
+    "tool_policy_violations",
+)
+AGENTIC_WANDB_ROW_DICT_OK_COLUMNS = (
+    "nemoclaw_session_audit",
+    "conversation_order",
+    "weave_sidecar",
+)
 SCOPE_ATTESTATION_RENDER_SAFETY_FIELDS = (
     "executes_external_action",
     "queries_wandb",
@@ -10733,6 +10749,33 @@ def validate_wandb_completion_agentic_output_columns(
             f"{label} observed_evidence.tables {table_name} invocation_invalid_examples "
             "is not empty"
         )
+    if observed_table.get("row_observability_ok") is not True:
+        errors.append(
+            f"{label} observed_evidence.tables {table_name} row_observability_ok is not true"
+        )
+    if observed_table.get("row_observability_source") != "wandb_file":
+        errors.append(
+            f"{label} observed_evidence.tables {table_name} row_observability_source "
+            "must be wandb_file"
+        )
+    row_checked = observed_table.get("row_observability_checked_rows")
+    if not isinstance(row_checked, int) or row_checked < 1:
+        errors.append(
+            f"{label} observed_evidence.tables {table_name} "
+            "row_observability_checked_rows is invalid"
+        )
+    row_invalid = observed_table.get("row_observability_invalid_row_count")
+    if row_invalid != 0:
+        errors.append(
+            f"{label} observed_evidence.tables {table_name} "
+            "row_observability_invalid_row_count is not 0"
+        )
+    row_invalid_examples = observed_table.get("row_observability_invalid_examples")
+    if row_invalid_examples not in ([], None):
+        errors.append(
+            f"{label} observed_evidence.tables {table_name} "
+            "row_observability_invalid_examples is not empty"
+        )
     return errors
 
 
@@ -11052,6 +11095,13 @@ def required_wandb_completion_check_names(required: dict[str, Any]) -> set[str]:
             for table in tables
         ):
             names.add("output_table_invocation_evidence")
+        if any(
+            isinstance(table, dict)
+            and isinstance(table.get("required_columns"), list)
+            and "conversation_order_ok" in table.get("required_columns", [])
+            for table in tables
+        ):
+            names.add("output_table_row_observability")
     taxonomy_tables = required.get("taxonomy_tables")
     if isinstance(taxonomy_tables, list) and taxonomy_tables:
         names.add("taxonomy_table")
@@ -11103,6 +11153,7 @@ def validate_wandb_completion_checks(
         "output_table",
         "output_table_columns",
         "output_table_invocation_evidence",
+        "output_table_row_observability",
         "result_artifact",
         "nemoclaw_session_audit",
         "run_group",
@@ -11369,6 +11420,130 @@ def _validate_output_table_invocation_evidence_check(
     return errors
 
 
+def _validate_output_table_row_observability_check(
+    *,
+    check: dict[str, Any] | None,
+    observed_row: dict[str, Any] | None,
+    table_name: str,
+    table_required_columns: list[str],
+    label: str,
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(check, dict):
+        errors.append(f"{label} checks output_table_row_observability missing for {table_name}")
+        return errors
+    if not isinstance(observed_row, dict):
+        return errors
+    if check.get("table_name") != table_name:
+        errors.append(
+            f"{label} checks output_table_row_observability table_name does not match {table_name}"
+        )
+    if check.get("ok") is not True:
+        errors.append(
+            f"{label} checks output_table_row_observability is not ok for {table_name}"
+        )
+    if observed_row.get("row_observability_ok") is not True:
+        errors.append(
+            f"{label} observed_evidence table {table_name} row_observability_ok is not true"
+        )
+    if check.get("source") != "wandb_file":
+        errors.append(
+            f"{label} checks output_table_row_observability source must be wandb_file"
+        )
+    if observed_row.get("row_observability_source") != "wandb_file":
+        errors.append(
+            f"{label} observed_evidence table {table_name} row_observability_source "
+            "must be wandb_file"
+        )
+    checked_rows = check.get("checked_rows")
+    observed_checked_rows = observed_row.get("row_observability_checked_rows")
+    if not isinstance(checked_rows, int) or checked_rows < 1:
+        errors.append(
+            f"{label} checks output_table_row_observability checked_rows is invalid"
+        )
+    elif checked_rows != observed_checked_rows:
+        errors.append(
+            f"{label} checks output_table_row_observability checked_rows does not "
+            f"match observed_evidence table {table_name}"
+        )
+    expected_rows = check.get("expected_rows")
+    observed_expected_rows = observed_row.get("row_observability_expected_rows")
+    if expected_rows != observed_expected_rows:
+        errors.append(
+            f"{label} checks output_table_row_observability expected_rows does not "
+            f"match observed_evidence table {table_name}"
+        )
+    invalid_count = check.get("invalid_row_count")
+    if invalid_count != 0:
+        errors.append(
+            f"{label} checks output_table_row_observability invalid_row_count is not 0"
+        )
+    if observed_row.get("row_observability_invalid_row_count") != 0:
+        errors.append(
+            f"{label} observed_evidence table {table_name} "
+            "row_observability_invalid_row_count is not 0"
+        )
+    if check.get("invalid_examples") not in ([], None):
+        errors.append(
+            f"{label} checks output_table_row_observability invalid_examples is not empty"
+        )
+    if observed_row.get("row_observability_invalid_examples") not in ([], None):
+        errors.append(
+            f"{label} observed_evidence table {table_name} "
+            "row_observability_invalid_examples is not empty"
+        )
+    required_true = [
+        column
+        for column in AGENTIC_WANDB_ROW_TRUE_COLUMNS
+        if column in table_required_columns
+    ]
+    required_empty = [
+        column
+        for column in AGENTIC_WANDB_ROW_EMPTY_LIST_COLUMNS
+        if column in table_required_columns
+    ]
+    required_dict_ok = [
+        column
+        for column in AGENTIC_WANDB_ROW_DICT_OK_COLUMNS
+        if column in table_required_columns
+    ]
+    if _string_list_or_empty(check.get("required_true_columns")) != required_true:
+        errors.append(
+            f"{label} checks output_table_row_observability required_true_columns mismatch"
+        )
+    if _string_list_or_empty(observed_row.get("row_observability_required_true_columns")) != required_true:
+        errors.append(
+            f"{label} observed_evidence table {table_name} "
+            "row_observability_required_true_columns mismatch"
+        )
+    if _string_list_or_empty(check.get("required_empty_list_columns")) != required_empty:
+        errors.append(
+            f"{label} checks output_table_row_observability "
+            "required_empty_list_columns mismatch"
+        )
+    if (
+        _string_list_or_empty(observed_row.get("row_observability_required_empty_list_columns"))
+        != required_empty
+    ):
+        errors.append(
+            f"{label} observed_evidence table {table_name} "
+            "row_observability_required_empty_list_columns mismatch"
+        )
+    if _string_list_or_empty(check.get("required_dict_ok_columns")) != required_dict_ok:
+        errors.append(
+            f"{label} checks output_table_row_observability required_dict_ok_columns mismatch"
+        )
+    if (
+        _string_list_or_empty(observed_row.get("row_observability_required_dict_ok_columns"))
+        != required_dict_ok
+    ):
+        errors.append(
+            f"{label} observed_evidence table {table_name} "
+            "row_observability_required_dict_ok_columns mismatch"
+        )
+    return errors
+
+
 def validate_wandb_completion_table_checks_against_observed(
     *,
     checks_by_name: dict[str, list[dict[str, Any]]],
@@ -11421,6 +11596,19 @@ def validate_wandb_completion_table_checks_against_observed(
                             ),
                             observed_row=observed_tables.get(table_name),
                             table_name=table_name,
+                            label=label,
+                        )
+                    )
+                if "conversation_order_ok" in table_required_columns:
+                    errors.extend(
+                        _validate_output_table_row_observability_check(
+                            check=_first_check(
+                                checks_by_name,
+                                "output_table_row_observability",
+                            ),
+                            observed_row=observed_tables.get(table_name),
+                            table_name=table_name,
+                            table_required_columns=table_required_columns,
                             label=label,
                         )
                     )
