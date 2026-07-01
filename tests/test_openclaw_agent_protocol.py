@@ -502,6 +502,86 @@ def test_live_tool_budget_status_checks_explicit_session_dir(tmp_path, monkeypat
     assert str(session_dir) in status["session_dirs"]
 
 
+def test_live_tool_budget_status_checks_nemoclaw_sandbox_session_dir(monkeypatch, tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path / "empty-openclaw-state"))
+    captured = {}
+
+    def fake_run(command, text, capture_output, check, env):
+        captured["command"] = command
+        captured["env"] = env
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                {
+                    "ok": True,
+                    "sessions": [
+                        {
+                            "path": "/sandbox/tasks/math/openclaw_agent_state/sessions/session-1.jsonl",
+                            "mtime": 123.0,
+                            "tool_call_count": 4,
+                        }
+                    ],
+                }
+            )
+            + "\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    args = Namespace(
+        agent="agent-a",
+        profile=None,
+        max_tool_calls=3,
+        live_session_dir=[],
+        live_sandbox_session_dir=["/sandbox/tasks/math/openclaw_agent_state/sessions"],
+        nemoclaw_bin="nemoclaw",
+        nemoclaw_sandbox="nejumi-taiwan",
+    )
+
+    status = module.live_tool_budget_status(args, time.time() - 1, env={"PATH": "/bin"})
+
+    assert status["enabled"] is True
+    assert status["exceeded"] is True
+    assert status["tool_call_count"] == 4
+    assert status["session_source"] == "nemoclaw_sandbox"
+    assert status["session_file"] == "/sandbox/tasks/math/openclaw_agent_state/sessions/session-1.jsonl"
+    assert status["sandbox_session_dirs"] == ["/sandbox/tasks/math/openclaw_agent_state/sessions"]
+    assert status["sandbox_scan"]["ok"] is True
+    assert captured["command"][:4] == ["nemoclaw", "sandbox", "exec", "nejumi-taiwan"]
+    assert "/sandbox/tasks/math/openclaw_agent_state/sessions" in captured["command"]
+    assert captured["env"] == {"PATH": "/bin"}
+
+
+def test_runtime_budget_status_uses_live_nemoclaw_tool_overage():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    sidecar = {
+        "tool_call_count": 0,
+        "live_runtime_budget": {
+            "enabled": True,
+            "exceeded": True,
+            "reason": "max_tool_calls_exceeded",
+            "tool_call_count": 4,
+            "session_source": "nemoclaw_sandbox",
+        },
+    }
+    args = Namespace(max_input_tokens=0, max_tool_calls=3)
+
+    status = module.runtime_budget_status(sidecar, args)
+
+    assert status["ok"] is False
+    assert status["observed"]["tool_call_count"] == 4
+    assert status["violations"] == [
+        {
+            "type": "max_tool_calls_exceeded",
+            "observed": 4,
+            "limit": 3,
+            "source": "live_runtime_budget",
+        }
+    ]
+
+
 def test_extract_timeline_events_preserves_openclaw_session_order(tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     session = tmp_path / "session.jsonl"

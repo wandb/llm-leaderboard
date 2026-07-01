@@ -548,6 +548,89 @@ def test_swebench_nemoclaw_run_forwards_sandbox_command_args(tmp_path, monkeypat
     assert session_key.startswith(f"twcanary-swe-run:swebench-pro:{row['instance_id']}:")
 
 
+def test_swebench_nemoclaw_copy_mode_forwards_live_sandbox_session_dir(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    row = sample_row()
+    checkout_dir = tmp_path / "checkout-copy"
+    checkout_dir.mkdir()
+    task_dir = tmp_path / "task"
+    template = tmp_path / "openclaw_template.json"
+    template.write_text('{"agents": {"list": []}}\n', encoding="utf-8")
+    captured_command = []
+
+    def fake_run_command(command, cwd=None, timeout=None, check=True):
+        captured_command[:] = command
+        output_dir = Path(command[command.index("--output-dir") + 1])
+        sidecar_path = module.task_sidecar_path(output_dir, row["instance_id"])
+        sidecar_path.parent.mkdir(parents=True, exist_ok=True)
+        sidecar_path.write_text(
+            json.dumps(
+                {
+                    **protocol_sidecar_identity(module, command, row["instance_id"]),
+                    "returncode": 0,
+                    "tool_policy_ok": True,
+                    "tool_policy_violations": [],
+                    "tool_call_count": 2,
+                    "tool_error_count": 0,
+                    "runtime_budget": {"ok": True},
+                    "weave_sidecar": {"ok": True},
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, stdout=str(sidecar_path), stderr="")
+
+    monkeypatch.setattr(module, "run_command", fake_run_command)
+    monkeypatch.setattr(module, "ensure_nemoclaw_checkout_ready", lambda checkout_dir, task_dir, args: None)
+    monkeypatch.setattr(
+        module,
+        "run_nemoclaw_text_command",
+        lambda args, command, input_text=None, timeout=60, check=True, workdir="/sandbox": subprocess.CompletedProcess(
+            command, 0, stdout="", stderr=""
+        ),
+    )
+    args = SimpleNamespace(
+        agent="fallback-agent",
+        allow_failed_preflight=False,
+        deny_argument_pattern=None,
+        deny_tool=None,
+        dry_run=False,
+        max_input_tokens=1_000_000,
+        max_tool_calls=60,
+        model="openai-direct/gpt-4.1-mini-2025-04-14",
+        no_local=False,
+        nemoclaw_bin="nemoclaw",
+        nemoclaw_checkout_sandbox_root="/sandbox/checkouts",
+        nemoclaw_checkout_transfer_mode="copy",
+        nemoclaw_openclaw_config_path="/sandbox/.openclaw/openclaw.json",
+        nemoclaw_sandbox="nejumi-taiwan",
+        nemoclaw_workdir=None,
+        openclaw_config_template=template,
+        openclaw_max_attempts=1,
+        openclaw_retry_base_seconds=0,
+        openclaw_timeout=30,
+        openclaw_tool_profile="coding",
+        profile=None,
+        session_prefix=None,
+        task_agent_prefix="tw-swe",
+        thinking="off",
+        use_task_agent=True,
+        weave_sidecar=False,
+        weave_sidecar_strict=False,
+    )
+
+    metadata = module.run_openclaw_for_task(row, checkout_dir, task_dir, args)
+
+    expected_checkout = f"/sandbox/checkouts/{checkout_dir.name}"
+    assert metadata["nemoclaw_sandbox"] == "nejumi-taiwan"
+    assert "--live-session-dir" not in captured_command
+    live_index = captured_command.index("--live-sandbox-session-dir")
+    assert (
+        captured_command[live_index + 1]
+        == f"{expected_checkout}/.nejumi_openclaw/agent_state/sessions"
+    )
+
+
 def test_swebench_rejects_sidecar_config_source_mismatch(tmp_path, monkeypatch):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
     row = sample_row()

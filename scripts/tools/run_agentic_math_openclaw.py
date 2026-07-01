@@ -21,7 +21,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROTOCOL_RUNNER = REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py"
-RUNNER_VERSION = "agentic-math-openclaw-2026-07-01-runtime-budget-v1"
+RUNNER_VERSION = "agentic-math-openclaw-2026-07-02-sandbox-live-budget-v1"
 NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 DEFAULT_MAX_INPUT_TOKENS = 500_000
 DEFAULT_MAX_TOOL_CALLS = 60
@@ -337,6 +337,18 @@ def task_live_session_dir(task_dir: Path, args: argparse.Namespace) -> Path | No
     if getattr(args, "nemoclaw_sandbox", None):
         return None
     return task_dir / "openclaw_agent_state" / "sessions"
+
+
+def task_live_sandbox_session_dir(
+    row: dict[str, Any],
+    args: argparse.Namespace,
+    agent_id: str,
+) -> str | None:
+    if not getattr(args, "use_task_agent", True):
+        return None
+    if not getattr(args, "nemoclaw_sandbox", None):
+        return None
+    return str(PurePosixPath(nemoclaw_task_workdir(row, args, agent_id)) / "openclaw_agent_state" / "sessions")
 
 
 def disable_remote_lookup_tools(config: dict[str, Any]) -> None:
@@ -1447,6 +1459,9 @@ def run_openclaw_for_task(
         live_session_dir = task_live_session_dir(task_dir, args)
         if live_session_dir is not None:
             command.extend(["--live-session-dir", str(live_session_dir)])
+        live_sandbox_session_dir = task_live_sandbox_session_dir(row, args, agent_id)
+        if live_sandbox_session_dir is not None:
+            command.extend(["--live-sandbox-session-dir", live_sandbox_session_dir])
         if args.dry_run:
             command.append("--dry-run")
 

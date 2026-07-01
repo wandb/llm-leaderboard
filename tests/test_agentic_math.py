@@ -1046,6 +1046,7 @@ def test_task_openclaw_config_supports_nemoclaw_task_workspace(tmp_path, monkeyp
 def test_task_live_session_dir_uses_local_task_agent_state(tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
     task_dir = tmp_path / "task"
+    row = {"task_id": "math_1"}
 
     local_args = type(
         "Args",
@@ -1068,6 +1069,118 @@ def test_task_live_session_dir_uses_local_task_agent_state(tmp_path):
         task_dir / "openclaw_agent_state" / "sessions"
     )
     assert module.task_live_session_dir(task_dir, nemoclaw_args) is None
+    safe_task = module.safe_agent_id("math_1", "task")
+    assert (
+        module.task_live_sandbox_session_dir(row, nemoclaw_args, "tw-math")
+        == f"/sandbox/agentic_math/{safe_task}/openclaw_agent_state/sessions"
+    )
+
+
+def test_agentic_math_nemoclaw_forwards_live_sandbox_session_dir(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    row = {
+        "task_id": "math_1",
+        "answer": "2",
+        "question": "1+1?",
+        "subject": "algebra",
+        "answer_format": "math_expression",
+    }
+    captured_command = []
+
+    monkeypatch.setattr(
+        module,
+        "read_openclaw_config_template",
+        lambda args: ({"agents": {"list": []}}, "/sandbox/.openclaw/openclaw.json"),
+    )
+    monkeypatch.setattr(module, "write_nemoclaw_text_file", lambda args, path, text: None)
+
+    def fake_run_command(command, cwd=None, timeout=None, check=True):
+        captured_command[:] = command
+        output_dir = Path(command[command.index("--output-dir") + 1])
+        prompt_text = Path(command[command.index("--prompt-file") + 1]).read_text(encoding="utf-8")
+        sidecar_path = module.task_sidecar_path(output_dir, row["task_id"])
+        sidecar_path.parent.mkdir(parents=True, exist_ok=True)
+        sidecar_path.write_text(
+            json.dumps(
+                {
+                    "returncode": 0,
+                    "metadata": {
+                        "task_id": row["task_id"],
+                        "prompt_hash": module.sha256_text(prompt_text),
+                        "model_id": command[command.index("--model") + 1],
+                        "openclaw_config_source": command[command.index("--openclaw-config-source") + 1],
+                    },
+                    "tool_policy": {
+                        "deny_tools": [
+                            command[index + 1]
+                            for index, token in enumerate(command[:-1])
+                            if token == "--deny-tool"
+                        ],
+                        "deny_argument_patterns": [
+                            command[index + 1]
+                            for index, token in enumerate(command[:-1])
+                            if token == "--deny-argument-pattern"
+                        ],
+                    },
+                    "stdout": "ANSWER: 2\n",
+                    "tool_policy_ok": True,
+                    "tool_policy_violations": [],
+                    "tool_call_count": 1,
+                    "tool_error_count": 0,
+                    "runtime_budget": {"ok": True},
+                    "conversation_order": {"ok": True, "checked": True},
+                    "nemoclaw_session_audit": {"required": True, "ok": True},
+                    "weave_sidecar": {"ok": True},
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, stdout=str(sidecar_path), stderr="")
+
+    monkeypatch.setattr(module, "run_command", fake_run_command)
+    args = type(
+        "Args",
+        (),
+        {
+            "agent": "main",
+            "allow_failed_preflight": False,
+            "deny_argument_pattern": None,
+            "deny_tool": None,
+            "dry_run": False,
+            "fail_fast": False,
+            "model": "openai-direct/example-model",
+            "nemoclaw_bin": "nemoclaw",
+            "nemoclaw_openclaw_config_path": "/sandbox/.openclaw/openclaw.json",
+            "nemoclaw_sandbox": "nejumi-taiwan",
+            "nemoclaw_workdir": "/sandbox/tasks",
+            "no_local": False,
+            "openclaw_max_attempts": 1,
+            "openclaw_retry_base_seconds": 0,
+            "openclaw_timeout": 30,
+            "openclaw_tool_profile": "coding",
+            "profile": None,
+            "redo": False,
+            "session_prefix": None,
+            "task_agent_prefix": "tw-math",
+            "thinking": "high",
+            "use_task_agent": True,
+            "max_input_tokens": 500_000,
+            "max_tool_calls": 60,
+            "weave_sidecar": False,
+            "weave_sidecar_strict": False,
+        },
+    )()
+
+    record = module.run_openclaw_for_task(row, tmp_path / "task", args)
+
+    assert record["correct"] is True
+    assert captured_command[captured_command.index("--nemoclaw-sandbox") + 1] == "nejumi-taiwan"
+    live_index = captured_command.index("--live-sandbox-session-dir")
+    safe_task = module.safe_agent_id("math_1", "task")
+    assert (
+        captured_command[live_index + 1]
+        == f"/sandbox/tasks/agentic_math/{safe_task}/openclaw_agent_state/sessions"
+    )
 
 
 def test_main_dry_run_uses_protocol_path(tmp_path, monkeypatch):

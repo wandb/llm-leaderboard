@@ -26,7 +26,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROTOCOL_RUNNER = REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py"
-RUNNER_VERSION = "swebench-pro-openclaw-2026-07-01-config-cache-v4"
+RUNNER_VERSION = "swebench-pro-openclaw-2026-07-02-sandbox-live-budget-v1"
 PATCH_CAPTURE_VERSION = "git-diff-with-untracked-excluding-selected-tests-v2"
 DEFAULT_MAX_INPUT_TOKENS = 1_000_000
 DEFAULT_MAX_TOOL_CALLS = 60
@@ -948,6 +948,18 @@ def task_live_session_dir(
     return task_dir / "openclaw_agent_state" / "sessions"
 
 
+def task_live_sandbox_session_dir(checkout_dir: Path, args: argparse.Namespace) -> str | None:
+    if not getattr(args, "use_task_agent", True):
+        return None
+    if not getattr(args, "nemoclaw_sandbox", None):
+        return None
+    transfer_mode = str(getattr(args, "nemoclaw_checkout_transfer_mode", "visible") or "visible")
+    if transfer_mode == "visible":
+        return None
+    _, _, _, sandbox_agent_dir = task_openclaw_config_paths(checkout_dir, args)
+    return str(sandbox_agent_dir / "sessions")
+
+
 def write_task_openclaw_config(
     row: dict[str, Any],
     checkout_dir: Path,
@@ -1109,6 +1121,9 @@ def run_openclaw_for_task(
         live_session_dir = task_live_session_dir(checkout_dir, task_dir, args)
         if live_session_dir is not None:
             command.extend(["--live-session-dir", str(live_session_dir)])
+        live_sandbox_session_dir = task_live_sandbox_session_dir(checkout_dir, args)
+        if live_sandbox_session_dir is not None:
+            command.extend(["--live-sandbox-session-dir", live_sandbox_session_dir])
         if getattr(args, "nemoclaw_sandbox", None):
             command.extend(["--nemoclaw-bin", str(getattr(args, "nemoclaw_bin", "nemoclaw"))])
             command.extend(["--nemoclaw-sandbox", str(args.nemoclaw_sandbox)])

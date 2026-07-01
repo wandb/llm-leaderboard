@@ -40,6 +40,57 @@ AGENTS_API_BASE_URL = "https://trace.wandb.ai"
 AGENTS_QUERY_ENDPOINT = "/agents/query"
 AGENTS_SPANS_QUERY_ENDPOINT = "/agents/spans/query"
 AGENTS_DIAGNOSTIC_SCHEMA_VERSION = 1
+SANDBOX_LIVE_SESSION_SCAN_TIMEOUT = 10
+SANDBOX_LIVE_SESSION_POLL_SECONDS = 5.0
+SANDBOX_LIVE_SESSION_SCAN_SCRIPT = r"""
+import json
+import sys
+from pathlib import Path
+
+threshold = float(sys.argv[1])
+rows = []
+for raw_dir in sys.argv[2:]:
+    sessions_dir = Path(raw_dir)
+    if not sessions_dir.exists() or not sessions_dir.is_dir():
+        continue
+    for path in sessions_dir.glob("*.jsonl"):
+        if path.name.endswith(".trajectory.jsonl"):
+            continue
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        if stat.st_mtime < threshold:
+            continue
+        tool_calls = 0
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for raw in lines:
+            try:
+                event = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            message = event.get("message") if isinstance(event, dict) else None
+            if not isinstance(message, dict) or message.get("role") != "assistant":
+                continue
+            content = message.get("content")
+            if not isinstance(content, list):
+                continue
+            for part in content:
+                if isinstance(part, dict) and part.get("type") in {"toolCall", "tool_use"}:
+                    tool_calls += 1
+        rows.append(
+            {
+                "path": str(path),
+                "mtime": stat.st_mtime,
+                "tool_call_count": tool_calls,
+            }
+        )
+rows.sort(key=lambda row: (row["tool_call_count"], row["mtime"]), reverse=True)
+print(json.dumps({"ok": True, "sessions": rows}, ensure_ascii=False))
+""".strip()
 FINAL_ANSWER_MARKERS = (
     "ANSWER:",
     "FINAL ANSWER",
@@ -510,6 +561,19 @@ def configured_live_session_dirs(args: argparse.Namespace) -> list[Path]:
     return dirs
 
 
+def configured_live_sandbox_session_dirs(args: argparse.Namespace) -> list[str]:
+    dirs: list[str] = []
+    seen: set[str] = set()
+    for value in getattr(args, "live_sandbox_session_dir", None) or []:
+        path = str(value).strip()
+        if not path or "\n" in path or "\r" in path:
+            continue
+        if path not in seen:
+            dirs.append(path)
+            seen.add(path)
+    return dirs
+
+
 def live_session_candidates(args: argparse.Namespace, started_at: float) -> list[Path]:
     candidates: list[Path] = []
     threshold = started_at - 5.0
@@ -531,32 +595,129 @@ def live_session_candidates(args: argparse.Namespace, started_at: float) -> list
     )
 
 
-def live_tool_budget_status(args: argparse.Namespace, started_at: float) -> dict[str, Any]:
+def scan_nemoclaw_live_sessions(
+    args: argparse.Namespace,
+    started_at: float,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    sandbox_dirs = configured_live_sandbox_session_dirs(args)
+    if not getattr(args, "nemoclaw_sandbox", None) or not sandbox_dirs:
+        return {
+            "enabled": False,
+            "ok": None,
+            "reason": "not_configured",
+            "sandbox": getattr(args, "nemoclaw_sandbox", None),
+            "session_dirs": sandbox_dirs,
+            "sessions": [],
+        }
+    command = [
+        args.nemoclaw_bin,
+        "sandbox",
+        "exec",
+        args.nemoclaw_sandbox,
+        "--workdir",
+        "/sandbox",
+        "--no-tty",
+        "--timeout",
+        str(SANDBOX_LIVE_SESSION_SCAN_TIMEOUT),
+        "--",
+        "python3",
+        "-c",
+        SANDBOX_LIVE_SESSION_SCAN_SCRIPT,
+        str(started_at - 5.0),
+        *sandbox_dirs,
+    ]
+    result = subprocess.run(
+        command,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+    scan = {
+        "enabled": True,
+        "ok": result.returncode == 0,
+        "sandbox": getattr(args, "nemoclaw_sandbox", None),
+        "session_dirs": sandbox_dirs,
+        "command_returncode": result.returncode,
+        "stderr_tail": result.stderr[-1000:] if result.stderr else "",
+        "sessions": [],
+    }
+    if result.returncode != 0:
+        scan["reason"] = "sandbox_scan_failed"
+        return scan
+    parsed = parse_last_json_line(result.stdout)
+    if not isinstance(parsed, dict) or parsed.get("ok") is not True:
+        scan["ok"] = False
+        scan["reason"] = "sandbox_scan_invalid_json"
+        scan["stdout_tail"] = result.stdout[-1000:] if result.stdout else ""
+        return scan
+    sessions = parsed.get("sessions")
+    if isinstance(sessions, list):
+        scan["sessions"] = [session for session in sessions if isinstance(session, dict)]
+    return scan
+
+
+def live_tool_budget_status(
+    args: argparse.Namespace,
+    started_at: float,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
     max_tool_calls = int(getattr(args, "max_tool_calls", 0) or 0)
+    session_dirs = [str(path) for path in configured_live_session_dirs(args)]
+    sandbox_session_dirs = configured_live_sandbox_session_dirs(args)
     if max_tool_calls <= 0:
         return {
             "enabled": False,
             "max_tool_calls": None,
             "tool_call_count": None,
             "session_file": None,
-            "session_dirs": [str(path) for path in configured_live_session_dirs(args)],
+            "session_source": None,
+            "session_dirs": session_dirs,
+            "sandbox_session_dirs": sandbox_session_dirs,
+            "sandbox_scan": {"enabled": False, "ok": None, "reason": "budget_disabled"},
             "exceeded": False,
         }
-    best_count = 0
-    best_path: Path | None = None
+    observations: list[dict[str, Any]] = []
     for path in live_session_candidates(args, started_at):
         events = extract_tool_events({"live_session_file": str(path)})
         count = sum(1 for event in events if event.get("type") == "tool_call")
-        if best_path is None or count > best_count:
-            best_count = count
-            best_path = path
+        observations.append(
+            {
+                "source": "host",
+                "tool_call_count": count,
+                "session_file": str(path),
+            }
+        )
+    sandbox_scan = scan_nemoclaw_live_sessions(args, started_at, env)
+    if sandbox_scan.get("ok") is True:
+        for session in sandbox_scan.get("sessions", []):
+            count = session.get("tool_call_count")
+            path = session.get("path")
+            if isinstance(count, (int, float)) and isinstance(path, str) and path:
+                observations.append(
+                    {
+                        "source": "nemoclaw_sandbox",
+                        "tool_call_count": int(count),
+                        "session_file": path,
+                    }
+                )
+    observations.sort(
+        key=lambda item: int(item.get("tool_call_count") or 0),
+        reverse=True,
+    )
+    best = observations[0] if observations else {}
+    best_count = int(best.get("tool_call_count") or 0) if best else None
     return {
         "enabled": True,
         "max_tool_calls": max_tool_calls,
-        "tool_call_count": best_count if best_path else None,
-        "session_file": str(best_path) if best_path else None,
-        "session_dirs": [str(path) for path in configured_live_session_dirs(args)],
-        "exceeded": bool(best_path and best_count > max_tool_calls),
+        "tool_call_count": best_count,
+        "session_file": best.get("session_file") if best else None,
+        "session_source": best.get("source") if best else None,
+        "session_dirs": session_dirs,
+        "sandbox_session_dirs": sandbox_session_dirs,
+        "sandbox_scan": sandbox_scan,
+        "exceeded": bool(best and best_count is not None and best_count > max_tool_calls),
     }
 
 
@@ -583,10 +744,15 @@ def run_openclaw_command_with_live_budget(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    last_status: dict[str, Any] = live_tool_budget_status(args, started_at)
+    last_status: dict[str, Any] = live_tool_budget_status(args, started_at, env)
+    poll_seconds = (
+        SANDBOX_LIVE_SESSION_POLL_SECONDS
+        if configured_live_sandbox_session_dirs(args)
+        else 1.0
+    )
     while True:
         try:
-            stdout, stderr = process.communicate(timeout=1.0)
+            stdout, stderr = process.communicate(timeout=poll_seconds)
             return (
                 subprocess.CompletedProcess(command, process.returncode or 0, stdout=stdout, stderr=stderr),
                 {
@@ -596,7 +762,7 @@ def run_openclaw_command_with_live_budget(
                 },
             )
         except subprocess.TimeoutExpired:
-            last_status = live_tool_budget_status(args, started_at)
+            last_status = live_tool_budget_status(args, started_at, env)
             if not last_status.get("exceeded"):
                 continue
             stdout, stderr = terminate_process(process)
@@ -1115,6 +1281,22 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
     input_tokens = int(input_tokens) if isinstance(input_tokens, (int, float)) else None
     tool_call_count = sidecar.get("tool_call_count")
     tool_call_count = int(tool_call_count) if isinstance(tool_call_count, (int, float)) else None
+    live_budget = sidecar.get("live_runtime_budget")
+    live_tool_call_count = None
+    live_tool_exceeded = False
+    if isinstance(live_budget, dict):
+        live_count = live_budget.get("tool_call_count")
+        if isinstance(live_count, (int, float)):
+            live_tool_call_count = int(live_count)
+        live_tool_exceeded = (
+            live_budget.get("exceeded") is True
+            or live_budget.get("reason") == "max_tool_calls_exceeded"
+        )
+    if live_tool_call_count is not None:
+        if tool_call_count is None:
+            tool_call_count = live_tool_call_count
+        else:
+            tool_call_count = max(tool_call_count, live_tool_call_count)
 
     violations: list[dict[str, Any]] = []
     if max_input_tokens > 0 and input_tokens is not None and input_tokens > max_input_tokens:
@@ -1125,12 +1307,15 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
                 "limit": max_input_tokens,
             }
         )
-    if max_tool_calls > 0 and tool_call_count is not None and tool_call_count > max_tool_calls:
+    if max_tool_calls > 0 and (
+        (tool_call_count is not None and tool_call_count > max_tool_calls) or live_tool_exceeded
+    ):
         violations.append(
             {
                 "type": "max_tool_calls_exceeded",
                 "observed": tool_call_count,
                 "limit": max_tool_calls,
+                "source": "live_runtime_budget" if live_tool_exceeded else "openclaw_session_jsonl",
             }
         )
     return {
@@ -1144,7 +1329,7 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
             "input_tokens": input_tokens,
             "tool_call_count": tool_call_count,
         },
-        "live": sidecar.get("live_runtime_budget", {}),
+        "live": live_budget if isinstance(live_budget, dict) else {},
         "violations": violations,
     }
 
@@ -2030,6 +2215,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Additional OpenClaw session JSONL directory to monitor for live "
             "tool-call budget enforcement. Can be supplied multiple times."
+        ),
+    )
+    run_parser.add_argument(
+        "--live-sandbox-session-dir",
+        action="append",
+        default=[],
+        help=(
+            "OpenClaw session JSONL directory inside the NeMoClaw sandbox to "
+            "poll for live tool-call budget enforcement. Can be supplied multiple times."
         ),
     )
     run_parser.add_argument("--local", action=argparse.BooleanOptionalAction, default=True)
