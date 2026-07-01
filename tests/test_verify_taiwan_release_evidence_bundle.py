@@ -26,6 +26,7 @@ AGENTIC_MATH_OUTPUT_COLUMNS = [
     "openclaw_invocation_path",
     "openclaw_invocation_sha256",
     "openclaw_command_sha256",
+    "openclaw_config_source",
 ]
 WANDB_SCOPE_REQUIRED_HUMAN_FIELDS = [
     "scope_attestation_json.confirmed",
@@ -383,6 +384,13 @@ def agentic_math_wandb_completion_payload():
                     "invocation_expected_rows": 100,
                     "invocation_invalid_row_count": 0,
                     "invocation_invalid_examples": [],
+                    "openclaw_config_source_ok": True,
+                    "openclaw_config_source_source": "wandb_file",
+                    "openclaw_config_source_checked_rows": 100,
+                    "openclaw_config_source_expected_rows": 100,
+                    "openclaw_config_source_expected": "/sandbox/.openclaw/openclaw.json",
+                    "openclaw_config_source_invalid_row_count": 0,
+                    "openclaw_config_source_invalid_examples": [],
                     "row_observability_ok": True,
                     "row_observability_source": "wandb_file",
                     "row_observability_checked_rows": 100,
@@ -469,6 +477,19 @@ def agentic_math_wandb_completion_payload():
                     "openclaw_invocation_sha256",
                     "openclaw_command_sha256",
                 ],
+                "checked_rows": 100,
+                "expected_rows": 100,
+                "invalid_row_count": 0,
+                "invalid_examples": [],
+                "source": "wandb_file",
+            },
+            {
+                "name": "output_table_openclaw_config_source",
+                "ok": True,
+                "detail": "agentic_math_output_table rows use the expected OpenClaw config source",
+                "table_name": "agentic_math_output_table",
+                "required_columns": ["openclaw_config_source"],
+                "expected_config_source": "/sandbox/.openclaw/openclaw.json",
                 "checked_rows": 100,
                 "expected_rows": 100,
                 "invalid_row_count": 0,
@@ -10425,6 +10446,7 @@ def test_verify_release_evidence_bundle_rechecks_wandb_completion_checks_against
     checks["run_state"]["state"] = "running"
     checks["total_metric"]["value"] = 99
     checks["output_table"]["nrows"] = 99
+    checks["output_table_openclaw_config_source"]["expected_config_source"] = "/sandbox/other-openclaw.json"
     checks["nemoclaw_session_audit"]["passed"] = 99
     checks["result_artifact"]["artifacts"][0]["aliases"] = ["latest"]
     bundled_completion.write_text(json.dumps(payload), encoding="utf-8")
@@ -10451,6 +10473,11 @@ def test_verify_release_evidence_bundle_rechecks_wandb_completion_checks_against
     )
     assert any(
         "checks output_table nrows does not match observed_evidence table agentic_math_output_table" in error
+        for error in payload["errors"]
+    )
+    assert any(
+        "checks output_table_openclaw_config_source expected_config_source must be /sandbox/.openclaw/openclaw.json"
+        in error
         for error in payload["errors"]
     )
     assert any(

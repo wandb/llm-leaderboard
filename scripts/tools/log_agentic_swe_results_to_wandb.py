@@ -39,6 +39,7 @@ INVOCATION_EVIDENCE_COLUMNS = (
     "openclaw_invocation_sha256",
     "openclaw_command_sha256",
 )
+NEMOCLAW_OPENCLAW_CONFIG_SOURCE = "/sandbox/.openclaw/openclaw.json"
 INVOCATION_HASH_COLUMNS = (
     "openclaw_invocation_sha256",
     "openclaw_command_sha256",
@@ -155,6 +156,11 @@ def observability_acceptance_issues(patch_rows: list[dict[str, Any]]) -> list[st
             issues.append(
                 f"patch {instance_id} has invalid OpenClaw invocation hash evidence: "
                 f"{invalid_hashes}"
+            )
+        if row.get("openclaw_config_source") != NEMOCLAW_OPENCLAW_CONFIG_SOURCE:
+            issues.append(
+                f"patch {instance_id} has unexpected OpenClaw config source: "
+                f"{row.get('openclaw_config_source')!r}"
             )
         if row.get("conversation_order_ok") is False:
             issues.append(f"patch {instance_id} has conversation_order_ok=false")
@@ -329,6 +335,7 @@ def build_output_table(summary: dict[str, Any], patch_rows: list[dict[str, Any]]
                 "openclaw_invocation_path": patch_row.get("openclaw_invocation_path"),
                 "openclaw_invocation_sha256": patch_row.get("openclaw_invocation_sha256"),
                 "openclaw_command_sha256": patch_row.get("openclaw_command_sha256"),
+                "openclaw_config_source": patch_row.get("openclaw_config_source"),
             }
         )
     return pd.DataFrame(output_rows)

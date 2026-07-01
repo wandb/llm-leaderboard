@@ -33,6 +33,7 @@ AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "openclaw_invocation_path",
     "openclaw_invocation_sha256",
     "openclaw_command_sha256",
+    "openclaw_config_source",
 )
 
 
@@ -431,6 +432,7 @@ def _log_summary(run, cfg, summary: dict[str, Any], output_dir: Path, patch_path
                 "openclaw_invocation_path": patch.get("openclaw_invocation_path"),
                 "openclaw_invocation_sha256": patch.get("openclaw_invocation_sha256"),
                 "openclaw_command_sha256": patch.get("openclaw_command_sha256"),
+                "openclaw_config_source": patch.get("openclaw_config_source"),
             }
         )
     per_instance = pd.DataFrame(per_instance_rows)

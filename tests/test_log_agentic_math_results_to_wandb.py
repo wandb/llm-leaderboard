@@ -17,6 +17,7 @@ def invocation_evidence(row_id: str = "m1") -> dict:
         "openclaw_invocation_path": f"/tmp/{row_id}/openclaw_invocation.json",
         "openclaw_invocation_sha256": TEST_SHA,
         "openclaw_command_sha256": "b" * 64,
+        "openclaw_config_source": "/sandbox/.openclaw/openclaw.json",
         "nemoclaw_session_copy_source": "stdout_agent_meta",
         "nemoclaw_session_copied_bytes": 2048,
     }
@@ -235,6 +236,33 @@ def test_validate_summary_rejects_invalid_invocation_hashes():
         module.validate_summary(summary, [row])
 
 
+def test_validate_summary_rejects_wrong_openclaw_config_source():
+    module = load_module()
+    summary = {
+        "total_instances": 1,
+        "answered_instances": 1,
+        "correct_instances": 1,
+        "incorrect_instances": 0,
+        "accuracy": 1.0,
+        "correctness": 1.0,
+        "nemoclaw_session_audit_required_instances": 1,
+        "nemoclaw_session_audit_passed_instances": 1,
+        "nemoclaw_session_audit_failed_instances": 0,
+    }
+    row = {
+        "task_id": "m1",
+        "correct": True,
+        "predicted_answer": "1",
+        "nemoclaw_session_audit_ok": True,
+        "nemoclaw_session_audit": passed_nemoclaw_audit(),
+        **invocation_evidence("m1"),
+    }
+    row["openclaw_config_source"] = "/sandbox/other-openclaw.json"
+
+    with pytest.raises(ValueError, match="unexpected OpenClaw config source"):
+        module.validate_summary(summary, [row])
+
+
 def test_build_leaderboard_uses_existing_agentic_math_schema():
     module = load_module()
     summary = {
@@ -288,6 +316,7 @@ def test_math_relog_output_table_keeps_observability_columns():
     assert "openclaw_invocation_path" in output_df.columns
     assert "openclaw_invocation_sha256" in output_df.columns
     assert "openclaw_command_sha256" in output_df.columns
+    assert "openclaw_config_source" in output_df.columns
     assert output_df.to_dict(orient="records")[0]["nemoclaw_session_audit_ok"] is None
     assert output_df.to_dict(orient="records")[0]["tool_policy_violations"] is None
 

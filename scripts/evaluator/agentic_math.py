@@ -31,6 +31,7 @@ AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "openclaw_invocation_path",
     "openclaw_invocation_sha256",
     "openclaw_command_sha256",
+    "openclaw_config_source",
 )
 
 

@@ -21,6 +21,7 @@ AGENTIC_MATH_OUTPUT_COLUMNS = [
     "openclaw_invocation_path",
     "openclaw_invocation_sha256",
     "openclaw_command_sha256",
+    "openclaw_config_source",
 ]
 AGENTIC_SWE_OUTPUT_COLUMNS = [
     "nemoclaw_session_audit_ok",
@@ -37,6 +38,7 @@ AGENTIC_SWE_OUTPUT_COLUMNS = [
     "openclaw_invocation_path",
     "openclaw_invocation_sha256",
     "openclaw_command_sha256",
+    "openclaw_config_source",
 ]
 
 
@@ -61,6 +63,8 @@ def table_value(column, row_index):
         return TEST_SHA
     if column == "openclaw_command_sha256":
         return "b" * 64
+    if column == "openclaw_config_source":
+        return "/sandbox/.openclaw/openclaw.json"
     return f"value-{row_index}"
 
 
@@ -278,6 +282,13 @@ def test_verify_agentic_math_wandb_completion_accepts_complete_run():
             "invocation_expected_rows": 100,
             "invocation_invalid_row_count": 0,
             "invocation_invalid_examples": [],
+            "openclaw_config_source_ok": True,
+            "openclaw_config_source_source": "wandb_file",
+            "openclaw_config_source_checked_rows": 100,
+            "openclaw_config_source_expected_rows": 100,
+            "openclaw_config_source_expected": "/sandbox/.openclaw/openclaw.json",
+            "openclaw_config_source_invalid_row_count": 0,
+            "openclaw_config_source_invalid_examples": [],
             "row_observability_ok": True,
             "row_observability_source": "wandb_file",
             "row_observability_checked_rows": 100,
@@ -318,6 +329,7 @@ def test_verify_agentic_math_wandb_completion_accepts_complete_run():
         "output_table",
         "output_table_columns",
         "output_table_invocation_evidence",
+        "output_table_openclaw_config_source",
         "output_table_row_observability",
         "answered_metric",
         "correct_metric",
@@ -458,6 +470,34 @@ def test_verify_agentic_swe_wandb_completion_rejects_invalid_invocation_hash():
     assert check["invalid_examples"][0]["invalid_hashes"] == [
         "openclaw_command_sha256"
     ]
+
+
+def test_verify_agentic_math_wandb_completion_rejects_wrong_openclaw_config_source():
+    module = load_module()
+    summary = complete_agentic_math_summary()
+    payload = table_payload(AGENTIC_MATH_OUTPUT_COLUMNS, 100)
+    column_index = AGENTIC_MATH_OUTPUT_COLUMNS.index("openclaw_config_source")
+    payload["data"][0][column_index] = "/sandbox/other-openclaw.json"
+    run = FakeRun(
+        summary=summary,
+        artifacts=[complete_result_artifact()],
+        table_files={
+            "media/table/agentic_math_output_table_0.table.json": payload,
+        },
+    )
+
+    result = module.verify_run(run, module.BENCHMARK_SPECS["agentic_math"])
+
+    assert result["ok"] is False
+    check = next(
+        check
+        for check in result["checks"]
+        if check["name"] == "output_table_openclaw_config_source"
+    )
+    assert check["ok"] is False
+    assert check["expected_config_source"] == "/sandbox/.openclaw/openclaw.json"
+    assert check["invalid_row_count"] == 1
+    assert check["invalid_examples"][0]["openclaw_config_source"] == "/sandbox/other-openclaw.json"
 
 
 def test_verify_agentic_math_wandb_completion_rejects_failed_row_observability():

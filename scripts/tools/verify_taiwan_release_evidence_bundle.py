@@ -569,6 +569,7 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("Agentic Math W&B invocation path column", '"openclaw_invocation_path"'),
             ("Agentic Math W&B invocation sha256 column", '"openclaw_invocation_sha256"'),
             ("Agentic Math W&B command sha256 column", '"openclaw_command_sha256"'),
+            ("Agentic Math W&B OpenClaw config source column", '"openclaw_config_source"'),
             ("Agentic Math NeMoClaw session copy source column", '"nemoclaw_session_copy_source"'),
             ("Agentic Math NeMoClaw copied bytes column", '"nemoclaw_session_copied_bytes"'),
         ),
@@ -593,6 +594,7 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("SWE-Bench Pro W&B invocation path column", '"openclaw_invocation_path"'),
             ("SWE-Bench Pro W&B invocation sha256 column", '"openclaw_invocation_sha256"'),
             ("SWE-Bench Pro W&B command sha256 column", '"openclaw_command_sha256"'),
+            ("SWE-Bench Pro W&B OpenClaw config source column", '"openclaw_config_source"'),
             ("SWE-Bench Pro NeMoClaw session copy source column", '"nemoclaw_session_copy_source"'),
             ("SWE-Bench Pro NeMoClaw copied bytes column", '"nemoclaw_session_copied_bytes"'),
         ),
@@ -1108,6 +1110,7 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ),
             ("W&B output table column check", "output_table_columns"),
             ("W&B output table invocation evidence check", "output_table_invocation_evidence"),
+            ("W&B output table OpenClaw config source check", "output_table_openclaw_config_source"),
             ("W&B output table row observability check", "output_table_row_observability"),
             ("W&B output table row loader", "def _table_data_rows_from_payload("),
             ("W&B table file column loader", "def _download_wandb_table_json("),
@@ -1119,6 +1122,8 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("W&B OpenClaw invocation path column", '"openclaw_invocation_path"'),
             ("W&B OpenClaw invocation sha256 column", '"openclaw_invocation_sha256"'),
             ("W&B OpenClaw command sha256 column", '"openclaw_command_sha256"'),
+            ("W&B OpenClaw config source column", '"openclaw_config_source"'),
+            ("W&B OpenClaw config source expected value", "NEMOCLAW_OPENCLAW_CONFIG_SOURCE"),
             ("W&B NeMoClaw session copy source column", '"nemoclaw_session_copy_source"'),
             ("W&B NeMoClaw copied bytes column", '"nemoclaw_session_copied_bytes"'),
             ("W&B NeMoClaw allowed session copy sources", "NEMOCLAW_SESSION_COPY_SOURCES"),
@@ -1389,6 +1394,8 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("Agentic Math relog output invocation path column", '"openclaw_invocation_path",'),
             ("Agentic Math relog output invocation sha256 column", '"openclaw_invocation_sha256",'),
             ("Agentic Math relog output command sha256 column", '"openclaw_command_sha256",'),
+            ("Agentic Math relog output config source column", '"openclaw_config_source",'),
+            ("Agentic Math relog config source validator", "unexpected OpenClaw config source"),
             ("Agentic Math relog session copy source column", '"nemoclaw_session_copy_source",'),
             ("Agentic Math relog copied bytes column", '"nemoclaw_session_copied_bytes",'),
             ("Agentic Math output table", "agentic_math_output_table"),
@@ -1430,6 +1437,11 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "SWE relog output command sha256 field",
                 '"openclaw_command_sha256": patch_row.get("openclaw_command_sha256"),',
             ),
+            (
+                "SWE relog output config source field",
+                '"openclaw_config_source": patch_row.get("openclaw_config_source"),',
+            ),
+            ("SWE relog config source validator", "unexpected OpenClaw config source"),
             (
                 "SWE relog session copy source field",
                 '"nemoclaw_session_copy_source": (',
@@ -1553,6 +1565,7 @@ AGENTIC_WANDB_OUTPUT_TABLE_REQUIRED_COLUMNS = {
         "openclaw_invocation_path",
         "openclaw_invocation_sha256",
         "openclaw_command_sha256",
+        "openclaw_config_source",
     ),
     "agentic_swe": (
         "nemoclaw_session_audit_ok",
@@ -1569,6 +1582,7 @@ AGENTIC_WANDB_OUTPUT_TABLE_REQUIRED_COLUMNS = {
         "openclaw_invocation_path",
         "openclaw_invocation_sha256",
         "openclaw_command_sha256",
+        "openclaw_config_source",
     ),
 }
 AGENTIC_WANDB_ROW_TRUE_COLUMNS = (
@@ -11273,6 +11287,13 @@ def required_wandb_completion_check_names(required: dict[str, Any]) -> set[str]:
         if any(
             isinstance(table, dict)
             and isinstance(table.get("required_columns"), list)
+            and "openclaw_config_source" in table.get("required_columns", [])
+            for table in tables
+        ):
+            names.add("output_table_openclaw_config_source")
+        if any(
+            isinstance(table, dict)
+            and isinstance(table.get("required_columns"), list)
             and "conversation_order_ok" in table.get("required_columns", [])
             for table in tables
         ):
@@ -11328,6 +11349,7 @@ def validate_wandb_completion_checks(
         "output_table",
         "output_table_columns",
         "output_table_invocation_evidence",
+        "output_table_openclaw_config_source",
         "output_table_row_observability",
         "result_artifact",
         "nemoclaw_session_audit",
@@ -11595,6 +11617,92 @@ def _validate_output_table_invocation_evidence_check(
     return errors
 
 
+def _validate_output_table_openclaw_config_source_check(
+    *,
+    check: dict[str, Any] | None,
+    observed_row: dict[str, Any] | None,
+    table_name: str,
+    label: str,
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(check, dict):
+        errors.append(f"{label} checks output_table_openclaw_config_source missing for {table_name}")
+        return errors
+    if not isinstance(observed_row, dict):
+        return errors
+    if check.get("table_name") != table_name:
+        errors.append(
+            f"{label} checks output_table_openclaw_config_source table_name does not match {table_name}"
+        )
+    if check.get("ok") is not True:
+        errors.append(
+            f"{label} checks output_table_openclaw_config_source is not ok for {table_name}"
+        )
+    if observed_row.get("openclaw_config_source_ok") is not True:
+        errors.append(
+            f"{label} observed_evidence table {table_name} openclaw_config_source_ok is not true"
+        )
+    if check.get("source") != "wandb_file":
+        errors.append(
+            f"{label} checks output_table_openclaw_config_source source must be wandb_file"
+        )
+    if observed_row.get("openclaw_config_source_source") != "wandb_file":
+        errors.append(
+            f"{label} observed_evidence table {table_name} openclaw_config_source_source "
+            "must be wandb_file"
+        )
+    expected_source = check.get("expected_config_source")
+    observed_expected_source = observed_row.get("openclaw_config_source_expected")
+    if expected_source != NEMOCLAW_OPENCLAW_CONFIG_PATH:
+        errors.append(
+            f"{label} checks output_table_openclaw_config_source expected_config_source "
+            f"must be {NEMOCLAW_OPENCLAW_CONFIG_PATH}"
+        )
+    if observed_expected_source != NEMOCLAW_OPENCLAW_CONFIG_PATH:
+        errors.append(
+            f"{label} observed_evidence table {table_name} openclaw_config_source_expected "
+            f"must be {NEMOCLAW_OPENCLAW_CONFIG_PATH}"
+        )
+    checked_rows = check.get("checked_rows")
+    observed_checked_rows = observed_row.get("openclaw_config_source_checked_rows")
+    if not isinstance(checked_rows, int) or checked_rows < 1:
+        errors.append(
+            f"{label} checks output_table_openclaw_config_source checked_rows is invalid"
+        )
+    elif checked_rows != observed_checked_rows:
+        errors.append(
+            f"{label} checks output_table_openclaw_config_source checked_rows does not "
+            f"match observed_evidence table {table_name}"
+        )
+    expected_rows = check.get("expected_rows")
+    observed_expected_rows = observed_row.get("openclaw_config_source_expected_rows")
+    if expected_rows != observed_expected_rows:
+        errors.append(
+            f"{label} checks output_table_openclaw_config_source expected_rows does not "
+            f"match observed_evidence table {table_name}"
+        )
+    invalid_count = check.get("invalid_row_count")
+    if invalid_count != 0:
+        errors.append(
+            f"{label} checks output_table_openclaw_config_source invalid_row_count is not 0"
+        )
+    if observed_row.get("openclaw_config_source_invalid_row_count") != 0:
+        errors.append(
+            f"{label} observed_evidence table {table_name} "
+            "openclaw_config_source_invalid_row_count is not 0"
+        )
+    if check.get("invalid_examples") not in ([], None):
+        errors.append(
+            f"{label} checks output_table_openclaw_config_source invalid_examples is not empty"
+        )
+    if observed_row.get("openclaw_config_source_invalid_examples") not in ([], None):
+        errors.append(
+            f"{label} observed_evidence table {table_name} "
+            "openclaw_config_source_invalid_examples is not empty"
+        )
+    return errors
+
+
 def _validate_output_table_row_observability_check(
     *,
     check: dict[str, Any] | None,
@@ -11814,6 +11922,18 @@ def validate_wandb_completion_table_checks_against_observed(
                             check=_first_check(
                                 checks_by_name,
                                 "output_table_invocation_evidence",
+                            ),
+                            observed_row=observed_tables.get(table_name),
+                            table_name=table_name,
+                            label=label,
+                        )
+                    )
+                if "openclaw_config_source" in table_required_columns:
+                    errors.extend(
+                        _validate_output_table_openclaw_config_source_check(
+                            check=_first_check(
+                                checks_by_name,
+                                "output_table_openclaw_config_source",
                             ),
                             observed_row=observed_tables.get(table_name),
                             table_name=table_name,

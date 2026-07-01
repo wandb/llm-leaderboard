@@ -28,6 +28,7 @@ DEFAULT_ENV_FILE = REPO_ROOT / ".env"
 VERIFICATION_SCHEMA_VERSION = 1
 WANDB_API_TIMEOUT_SECONDS = 60
 WANDB_QUERY_SOURCE_KIND = "wandb_sdk"
+NEMOCLAW_OPENCLAW_CONFIG_SOURCE = "/sandbox/.openclaw/openclaw.json"
 AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "nemoclaw_session_audit_ok",
     "nemoclaw_session_audit",
@@ -43,6 +44,7 @@ AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "openclaw_invocation_path",
     "openclaw_invocation_sha256",
     "openclaw_command_sha256",
+    "openclaw_config_source",
 )
 AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "nemoclaw_session_audit_ok",
@@ -59,12 +61,16 @@ AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "openclaw_invocation_path",
     "openclaw_invocation_sha256",
     "openclaw_command_sha256",
+    "openclaw_config_source",
 )
 OPENCLAW_INVOCATION_EVIDENCE_COLUMNS = (
     "openclaw_result_path",
     "openclaw_invocation_path",
     "openclaw_invocation_sha256",
     "openclaw_command_sha256",
+)
+OPENCLAW_CONFIG_SOURCE_COLUMNS = (
+    "openclaw_config_source",
 )
 OPENCLAW_INVOCATION_HASH_COLUMNS = (
     "openclaw_invocation_sha256",
@@ -454,6 +460,95 @@ def _output_table_invocation_evidence_check(
         f"{spec.output_table} rows contain OpenClaw invocation evidence",
         table_name=spec.output_table,
         required_columns=required,
+        checked_rows=len(rows),
+        expected_rows=expected_rows,
+        invalid_row_count=0,
+        invalid_examples=[],
+        source=source,
+    )
+
+
+def _output_table_openclaw_config_source_check(
+    run: Any,
+    summary: dict[str, Any],
+    spec: BenchmarkSpec,
+    *,
+    expected_rows: int | None,
+) -> dict[str, Any] | None:
+    required = list(OPENCLAW_CONFIG_SOURCE_COLUMNS)
+    if not all(column in spec.output_table_required_columns for column in required):
+        return None
+    payload, source, error = _download_table_payload_from_summary(run, summary, spec.output_table)
+    if payload is None:
+        return _fail_check(
+            "output_table_openclaw_config_source",
+            error or f"could not inspect OpenClaw config source for {spec.output_table}",
+            table_name=spec.output_table,
+            required_columns=required,
+            expected_config_source=NEMOCLAW_OPENCLAW_CONFIG_SOURCE,
+            checked_rows=0,
+            invalid_row_count=None,
+            invalid_examples=[],
+            source=source,
+        )
+    rows, rows_error = _table_data_rows_from_payload(payload)
+    if rows is None:
+        return _fail_check(
+            "output_table_openclaw_config_source",
+            rows_error or f"{spec.output_table} has no inspectable rows",
+            table_name=spec.output_table,
+            required_columns=required,
+            expected_config_source=NEMOCLAW_OPENCLAW_CONFIG_SOURCE,
+            checked_rows=0,
+            invalid_row_count=None,
+            invalid_examples=[],
+            source=source,
+        )
+    invalid_examples: list[dict[str, Any]] = []
+    invalid_count = 0
+    for index, row in enumerate(rows, start=1):
+        value = row.get("openclaw_config_source")
+        if value != NEMOCLAW_OPENCLAW_CONFIG_SOURCE:
+            invalid_count += 1
+            if len(invalid_examples) < 5:
+                invalid_examples.append(
+                    {
+                        "row_index": index,
+                        "openclaw_config_source": value,
+                    }
+                )
+    if expected_rows is not None and len(rows) != expected_rows:
+        return _fail_check(
+            "output_table_openclaw_config_source",
+            f"{spec.output_table} table JSON row count does not match summary",
+            table_name=spec.output_table,
+            required_columns=required,
+            expected_config_source=NEMOCLAW_OPENCLAW_CONFIG_SOURCE,
+            checked_rows=len(rows),
+            expected_rows=expected_rows,
+            invalid_row_count=invalid_count,
+            invalid_examples=invalid_examples,
+            source=source,
+        )
+    if invalid_count:
+        return _fail_check(
+            "output_table_openclaw_config_source",
+            f"{spec.output_table} has rows with unexpected OpenClaw config source",
+            table_name=spec.output_table,
+            required_columns=required,
+            expected_config_source=NEMOCLAW_OPENCLAW_CONFIG_SOURCE,
+            checked_rows=len(rows),
+            expected_rows=expected_rows,
+            invalid_row_count=invalid_count,
+            invalid_examples=invalid_examples,
+            source=source,
+        )
+    return _ok_check(
+        "output_table_openclaw_config_source",
+        f"{spec.output_table} rows use the expected OpenClaw config source",
+        table_name=spec.output_table,
+        required_columns=required,
+        expected_config_source=NEMOCLAW_OPENCLAW_CONFIG_SOURCE,
         checked_rows=len(rows),
         expected_rows=expected_rows,
         invalid_row_count=0,
@@ -1052,6 +1147,35 @@ def _observed_benchmark_evidence(
                 }
             )
             continue
+        if name == "output_table_openclaw_config_source":
+            output_table_row = next(
+                (
+                    row
+                    for row in observed["tables"]
+                    if row.get("name") == spec.output_table
+                ),
+                None,
+            )
+            if output_table_row is None:
+                output_table_row = {
+                    "name": spec.output_table,
+                    "ok": bool(check.get("ok")),
+                    "nrows": None,
+                    "expected": None,
+                }
+                observed["tables"].append(output_table_row)
+            output_table_row.update(
+                {
+                    "openclaw_config_source_ok": bool(check.get("ok")),
+                    "openclaw_config_source_source": check.get("source"),
+                    "openclaw_config_source_checked_rows": check.get("checked_rows"),
+                    "openclaw_config_source_expected_rows": check.get("expected_rows"),
+                    "openclaw_config_source_expected": check.get("expected_config_source"),
+                    "openclaw_config_source_invalid_row_count": check.get("invalid_row_count"),
+                    "openclaw_config_source_invalid_examples": check.get("invalid_examples"),
+                }
+            )
+            continue
         if name == "output_table_row_observability":
             output_table_row = next(
                 (
@@ -1325,6 +1449,14 @@ def verify_run(
     )
     if output_table_invocation_evidence_check is not None:
         checks.append(output_table_invocation_evidence_check)
+    output_table_config_source_check = _output_table_openclaw_config_source_check(
+        run,
+        summary,
+        spec,
+        expected_rows=output_rows,
+    )
+    if output_table_config_source_check is not None:
+        checks.append(output_table_config_source_check)
     output_table_row_observability_check = _output_table_row_observability_check(
         run,
         summary,

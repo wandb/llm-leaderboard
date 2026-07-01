@@ -53,6 +53,7 @@ def patch_rows_with_nemoclaw_audit(*, tool_policy_ok: bool = True):
             "openclaw_invocation_path": "/tmp/i1/openclaw_invocation.json",
             "openclaw_invocation_sha256": TEST_SHA,
             "openclaw_command_sha256": "b" * 64,
+            "openclaw_config_source": "/sandbox/.openclaw/openclaw.json",
         },
         {
             "instance_id": "i2",
@@ -65,6 +66,7 @@ def patch_rows_with_nemoclaw_audit(*, tool_policy_ok: bool = True):
             "openclaw_invocation_path": "/tmp/i2/openclaw_invocation.json",
             "openclaw_invocation_sha256": TEST_SHA,
             "openclaw_command_sha256": "b" * 64,
+            "openclaw_config_source": "/sandbox/.openclaw/openclaw.json",
         },
         {
             "instance_id": "i3",
@@ -77,6 +79,7 @@ def patch_rows_with_nemoclaw_audit(*, tool_policy_ok: bool = True):
             "openclaw_invocation_path": "/tmp/i3/openclaw_invocation.json",
             "openclaw_invocation_sha256": TEST_SHA,
             "openclaw_command_sha256": "b" * 64,
+            "openclaw_config_source": "/sandbox/.openclaw/openclaw.json",
         },
     ]
 
@@ -155,6 +158,15 @@ def test_validate_nemoclaw_session_audit_rejects_invalid_invocation_hashes():
         module.validate_nemoclaw_session_audit(summary_payload(), patch_rows)
 
 
+def test_validate_nemoclaw_session_audit_rejects_wrong_openclaw_config_source():
+    module = load_module()
+    patch_rows = patch_rows_with_nemoclaw_audit()
+    patch_rows[0]["openclaw_config_source"] = "/sandbox/other-openclaw.json"
+
+    with pytest.raises(ValueError, match="unexpected OpenClaw config source"):
+        module.validate_nemoclaw_session_audit(summary_payload(), patch_rows)
+
+
 def test_build_output_table_preserves_patch_metadata():
     module = load_module()
 
@@ -177,6 +189,7 @@ def test_build_output_table_preserves_patch_metadata():
                 "openclaw_invocation_path": "path/to/invocation.json",
                 "openclaw_invocation_sha256": TEST_SHA,
                 "openclaw_command_sha256": "b" * 64,
+                "openclaw_config_source": "/sandbox/.openclaw/openclaw.json",
             }
         ],
     )
@@ -200,6 +213,7 @@ def test_build_output_table_preserves_patch_metadata():
     assert i1["openclaw_invocation_path"] == "path/to/invocation.json"
     assert i1["openclaw_invocation_sha256"] == TEST_SHA
     assert i1["openclaw_command_sha256"] == "b" * 64
+    assert i1["openclaw_config_source"] == "/sandbox/.openclaw/openclaw.json"
     assert i2["resolved"] is False
     assert i2["has_patch_record"] is False
 
