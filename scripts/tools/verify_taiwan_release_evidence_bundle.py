@@ -584,6 +584,78 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
         "role": "agentic_runner:weave_agents_verifier_script",
         "tokens": (
             (
+                "Weave content requirement evidence",
+                '"content_required"',
+            ),
+            (
+                "Weave input-message requirement evidence",
+                '"input_message_required"',
+            ),
+            (
+                "Weave tool-span requirement evidence",
+                '"tool_span_required"',
+            ),
+            (
+                "Weave tool-content requirement evidence",
+                '"tool_content_required"',
+            ),
+            (
+                "Weave usage requirement evidence",
+                '"usage_required"',
+            ),
+            (
+                "Weave no-error requirement evidence",
+                '"no_error_spans_required"',
+            ),
+            (
+                "Weave message-content check name",
+                '"message_content_capture"',
+            ),
+            (
+                "Weave input-message check name",
+                '"input_message_capture"',
+            ),
+            (
+                "Weave tool-span check name",
+                '"tool_span_count"',
+            ),
+            (
+                "Weave tool-content check name",
+                '"tool_content_capture"',
+            ),
+            (
+                "Weave usage check name",
+                '"usage"',
+            ),
+            (
+                "Weave no-error check name",
+                '"trace_errors"',
+            ),
+            (
+                "Weave timestamp-quality check name",
+                '"trace_timestamp_quality"',
+            ),
+            (
+                "Weave final-answer order check name",
+                '"trace_final_answer_order"',
+            ),
+            (
+                "Weave tool-span CLI option",
+                "--require-tool-span",
+            ),
+            (
+                "Weave tool-content CLI option",
+                "--require-tool-content",
+            ),
+            (
+                "Weave usage CLI option",
+                "--require-usage",
+            ),
+            (
+                "Weave no-error default CLI escape hatch",
+                "--allow-error-spans",
+            ),
+            (
                 "Weave request-model CLI option",
                 "--expected-request-model",
             ),

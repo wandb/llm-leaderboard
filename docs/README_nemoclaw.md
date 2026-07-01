@@ -14,7 +14,7 @@ References:
 
 ## Current Status
 
-As of 2026-07-01 20:50 JST:
+As of 2026-07-01 20:56 JST:
 
 - Host prerequisites are present: Docker, Node.js, npm, zstd, and OpenClaw.
 - `nemoclaw v0.0.55` and `openshell 0.0.44` are installed on this machine.
@@ -58,7 +58,10 @@ As of 2026-07-01 20:50 JST:
   request_model and trace-order checks. Production readiness and release-bundle
   verification reject entries where those proof flags are missing or false. The
   bundled sync script is also source-contract checked so operator handoff cannot
-  silently drop this proof enforcement.
+  silently drop this proof enforcement. The bundled
+  `verify_taiwan_weave_agents.py` verifier itself is now source-contract checked
+  for the same content, tool, usage, no-error, timestamp/order, and
+  request_model obligations.
 - `configs/nemoclaw/policies/wandb_weave.yaml` is the W&B/Weave egress policy
   template for the sandbox. It was applied with
   `nemoclaw nejumi-taiwan policy-add --from-file ... --yes`; the command
