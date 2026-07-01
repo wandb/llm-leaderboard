@@ -13585,6 +13585,90 @@ def test_verify_release_evidence_bundle_rejects_agentic_math_missing_cached_audi
     ) in payload["errors"]
 
 
+def test_verify_release_evidence_bundle_rejects_agentic_math_missing_fresh_sidecar_identity_guard_call(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path") == "scripts/tools/run_agentic_math_openclaw.py"
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace(
+            "if not sidecar_matches_cache(sidecar, cache_key):\n        raise RuntimeError(",
+            "if False:\n        raise RuntimeError(",
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "OpenClaw fresh sidecar identity adoption call" in error
+        and "scripts/tools/run_agentic_math_openclaw.py" in error
+        and "if not sidecar_matches_cache(sidecar, cache_key):\n        raise RuntimeError(" in error
+        for error in payload["errors"]
+    )
+
+
+def test_verify_release_evidence_bundle_rejects_agentic_math_missing_fresh_sidecar_audit_guard_call(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path") == "scripts/tools/run_agentic_math_openclaw.py"
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace(
+            "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):\n"
+            "        raise RuntimeError(",
+            "if False:\n        raise RuntimeError(",
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "NeMoClaw session audit fresh sidecar adoption call" in error
+        and "scripts/tools/run_agentic_math_openclaw.py" in error
+        and "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):\n"
+        "        raise RuntimeError(" in error
+        for error in payload["errors"]
+    )
+
+
 def test_verify_release_evidence_bundle_rejects_swe_missing_cached_weave_guard_call(
     tmp_path,
 ):
@@ -13624,6 +13708,90 @@ def test_verify_release_evidence_bundle_rejects_swe_missing_cached_weave_guard_c
         "scripts/tools/run_swebench_pro_openclaw.py: "
         "if not patch_record_weave_sidecar_allows_reuse(record):"
     ) in payload["errors"]
+
+
+def test_verify_release_evidence_bundle_rejects_swe_missing_fresh_sidecar_identity_guard_call(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path") == "scripts/tools/run_swebench_pro_openclaw.py"
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace(
+            "if not sidecar_identity_matches_cache(sidecar, cache_key):\n        raise RuntimeError(",
+            "if False:\n        raise RuntimeError(",
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "OpenClaw fresh sidecar identity adoption call" in error
+        and "scripts/tools/run_swebench_pro_openclaw.py" in error
+        and "if not sidecar_identity_matches_cache(sidecar, cache_key):\n        raise RuntimeError(" in error
+        for error in payload["errors"]
+    )
+
+
+def test_verify_release_evidence_bundle_rejects_swe_missing_fresh_sidecar_audit_guard_call(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path") == "scripts/tools/run_swebench_pro_openclaw.py"
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace(
+            "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):\n"
+            "        raise RuntimeError(",
+            "if False:\n        raise RuntimeError(",
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "NeMoClaw session audit fresh sidecar adoption call" in error
+        and "scripts/tools/run_swebench_pro_openclaw.py" in error
+        and "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):\n"
+        "        raise RuntimeError(" in error
+        for error in payload["errors"]
+    )
 
 
 def test_verify_release_evidence_bundle_rejects_swe_missing_cached_audit_guard_call(

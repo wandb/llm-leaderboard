@@ -279,7 +279,15 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("OpenClaw config source protocol handoff", "--openclaw-config-source"),
             ("OpenClaw config source sidecar validation", 'metadata.get("openclaw_config_source")'),
             ("OpenClaw sidecar metadata mismatch rejection", "OpenClaw sidecar metadata mismatch"),
+            (
+                "OpenClaw fresh sidecar identity adoption call",
+                "if not sidecar_matches_cache(sidecar, cache_key):\n        raise RuntimeError(",
+            ),
             ("NeMoClaw session audit sidecar acceptance guard", "def sidecar_nemoclaw_session_audit_matches_cache("),
+            (
+                "NeMoClaw session audit fresh sidecar adoption call",
+                "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):\n        raise RuntimeError(",
+            ),
             ("NeMoClaw session audit cached result acceptance guard", "def cached_result_matches_cache("),
             (
                 "NeMoClaw session audit cached result reuse call",
@@ -324,7 +332,15 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("OpenClaw config source protocol handoff", "--openclaw-config-source"),
             ("OpenClaw sidecar identity validation", "def sidecar_identity_matches_cache("),
             ("OpenClaw sidecar metadata mismatch rejection", "OpenClaw sidecar metadata mismatch"),
+            (
+                "OpenClaw fresh sidecar identity adoption call",
+                "if not sidecar_identity_matches_cache(sidecar, cache_key):\n        raise RuntimeError(",
+            ),
             ("NeMoClaw session audit sidecar acceptance guard", "def sidecar_nemoclaw_session_audit_matches_cache("),
+            (
+                "NeMoClaw session audit fresh sidecar adoption call",
+                "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):\n        raise RuntimeError(",
+            ),
             ("NeMoClaw session audit cached patch acceptance guard", "def patch_record_nemoclaw_session_audit_matches_cache("),
             (
                 "NeMoClaw session audit cached patch reuse call",
