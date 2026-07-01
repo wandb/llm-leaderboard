@@ -148,7 +148,7 @@ def test_cached_non_transient_openclaw_error_is_reusable():
     assert module.cached_result_is_reusable(record)
 
 
-def test_cached_nemoclaw_result_requires_session_audit():
+def test_cached_nemoclaw_result_requires_session_audit(tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
     cache_key = {
         "task_id": "task_1",
@@ -156,10 +156,23 @@ def test_cached_nemoclaw_result_requires_session_audit():
         "agent_runtime": "nemoclaw",
         "nemoclaw_sandbox": "nejumi-taiwan",
     }
+    command = ["python3", "run_openclaw_agent_protocol.py", "run"]
+    invocation = {
+        "cache_key": cache_key,
+        "command": command,
+        "command_sha256": module.command_sha256(command),
+        "expected_openclaw_result_path": str(tmp_path / "openclaw_result.json"),
+    }
+    invocation_path = tmp_path / "openclaw_invocation.json"
+    invocation_path.write_text(json.dumps(invocation, ensure_ascii=False), encoding="utf-8")
     record = {
         "task_id": "task_1",
         "cache_key": cache_key,
         "correct": True,
+        "openclaw_result_path": invocation["expected_openclaw_result_path"],
+        "openclaw_invocation_path": str(invocation_path),
+        "openclaw_invocation_sha256": module.sha256_file(invocation_path),
+        "openclaw_command_sha256": invocation["command_sha256"],
     }
 
     assert not module.cached_result_matches_cache(record, cache_key)
@@ -169,6 +182,9 @@ def test_cached_nemoclaw_result_requires_session_audit():
     record["nemoclaw_session_audit"] = {"required": True, "ok": True}
     record["nemoclaw_session_audit_ok"] = True
     assert module.cached_result_matches_cache(record, cache_key)
+    record["openclaw_invocation_sha256"] = "0" * 64
+    assert not module.cached_result_matches_cache(record, cache_key)
+    record["openclaw_invocation_sha256"] = module.sha256_file(invocation_path)
     record["conversation_order_ok"] = False
     assert not module.cached_result_matches_cache(record, cache_key)
     record["conversation_order_ok"] = True

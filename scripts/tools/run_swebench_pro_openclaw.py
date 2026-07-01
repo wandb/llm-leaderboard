@@ -110,6 +110,11 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def command_sha256(command: list[str]) -> str:
+    payload = json.dumps(command, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def resolve_session_prefix(args: argparse.Namespace, default_prefix: str = "swebench-pro") -> str:
     configured = str(getattr(args, "session_prefix", "") or "").strip()
     prefix = configured or default_prefix
@@ -221,6 +226,40 @@ def patch_record_weave_sidecar_allows_reuse(record: dict[str, Any]) -> bool:
     return True
 
 
+def patch_record_invocation_matches_cache(record: dict[str, Any], cache_key: dict[str, Any]) -> bool:
+    if not cache_requires_nemoclaw_session_audit(cache_key):
+        return True
+    invocation_path_value = record.get("openclaw_invocation_path")
+    invocation_sha = record.get("openclaw_invocation_sha256")
+    command_sha = record.get("openclaw_command_sha256")
+    if not isinstance(invocation_path_value, str) or not invocation_path_value:
+        return False
+    if not isinstance(invocation_sha, str) or len(invocation_sha) != 64:
+        return False
+    path = Path(invocation_path_value)
+    if not path.exists():
+        return False
+    try:
+        if sha256_file(path) != invocation_sha:
+            return False
+        invocation = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(invocation, dict):
+        return False
+    if invocation.get("cache_key") != cache_key:
+        return False
+    if isinstance(command_sha, str) and command_sha:
+        if invocation.get("command_sha256") != command_sha:
+            return False
+    elif invocation.get("command"):
+        return False
+    expected_path = record.get("openclaw_result_path")
+    if isinstance(expected_path, str) and expected_path:
+        return invocation.get("expected_openclaw_result_path") == expected_path
+    return True
+
+
 def patch_mentions_paths(patch: str, paths: list[str]) -> bool:
     for path in paths:
         if f" a/{path} " in patch or f" b/{path}" in patch:
@@ -254,6 +293,8 @@ def load_cached_patch_record(
     if not patch_record_tool_policy_allows_reuse(record):
         return None
     if not patch_record_weave_sidecar_allows_reuse(record):
+        return None
+    if not patch_record_invocation_matches_cache(record, cache_key):
         return None
     if not record.get("patch") and record.get("patch_capture_version") != PATCH_CAPTURE_VERSION:
         return None
@@ -1083,6 +1124,7 @@ def run_openclaw_for_task(
             "attempt_number": attempt_number,
             "max_attempts": max_attempts,
             "command": command,
+            "command_sha256": command_sha256(command),
             "session_key": session_key,
             "runner_version": RUNNER_VERSION,
             "cache_key": cache_key,
@@ -1108,6 +1150,9 @@ def run_openclaw_for_task(
             json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+        metadata["openclaw_invocation_path"] = str(invocation_path)
+        metadata["openclaw_invocation_sha256"] = sha256_file(invocation_path)
+        metadata["openclaw_command_sha256"] = metadata["command_sha256"]
         (task_dir / "openclaw_invocation.json").write_text(
             json.dumps(
                 {
@@ -1506,9 +1551,14 @@ def main() -> None:
                 if key
                 in {
                     "attempt_id",
+                    "attempt_number",
+                    "max_attempts",
                     "runner_version",
                     "prompt_hash",
                     "session_key",
+                    "openclaw_invocation_path",
+                    "openclaw_invocation_sha256",
+                    "openclaw_command_sha256",
                     "openclaw_result_path",
                     "openclaw_returncode",
                     "openclaw_usage",

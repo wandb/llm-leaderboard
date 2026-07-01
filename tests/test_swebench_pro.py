@@ -1127,11 +1127,24 @@ def test_swebench_patch_cache_rejects_nemoclaw_record_without_session_audit(tmp_
     cache_key = module.build_cache_key(row, prompt, args)
     task_dir = tmp_path / "task"
     task_dir.mkdir()
+    command = ["python3", "run_openclaw_agent_protocol.py", "run"]
+    invocation = {
+        "cache_key": cache_key,
+        "command": command,
+        "command_sha256": module.command_sha256(command),
+        "expected_openclaw_result_path": str(task_dir / "openclaw_result.json"),
+    }
+    invocation_path = task_dir / "openclaw_invocation.json"
+    invocation_path.write_text(json.dumps(invocation, ensure_ascii=False), encoding="utf-8")
     record = {
         "instance_id": row["instance_id"],
         "patch": "diff --git a/x b/x\n",
         "cache_key": cache_key,
         "patch_capture_version": module.PATCH_CAPTURE_VERSION,
+        "openclaw_result_path": invocation["expected_openclaw_result_path"],
+        "openclaw_invocation_path": str(invocation_path),
+        "openclaw_invocation_sha256": module.sha256_file(invocation_path),
+        "openclaw_command_sha256": invocation["command_sha256"],
     }
     record_path = task_dir / "patch_record.json"
     record_path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
@@ -1148,6 +1161,11 @@ def test_swebench_patch_cache_rejects_nemoclaw_record_without_session_audit(tmp_
     cached = module.load_cached_patch_record(task_dir, cache_key, "new-prefix")
     assert cached is not None
     assert cached["prefix"] == "new-prefix"
+    record["openclaw_invocation_sha256"] = "0" * 64
+    record_path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+    assert module.load_cached_patch_record(task_dir, cache_key, "new-prefix") is None
+    record["openclaw_invocation_sha256"] = module.sha256_file(invocation_path)
+    record_path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
     record["tool_policy_ok"] = False
     record_path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
     assert module.load_cached_patch_record(task_dir, cache_key, "new-prefix") is None

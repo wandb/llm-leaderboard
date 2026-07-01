@@ -121,6 +121,19 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def command_sha256(command: list[str]) -> str:
+    payload = json.dumps(command, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def resolve_session_prefix(args: argparse.Namespace, default_prefix: str = "agentic-math") -> str:
     configured = str(getattr(args, "session_prefix", "") or "").strip()
     prefix = configured or default_prefix
@@ -578,6 +591,40 @@ def record_weave_sidecar_allows_reuse(record: dict[str, Any]) -> bool:
     return True
 
 
+def record_invocation_matches_cache(record: dict[str, Any], cache_key: dict[str, Any]) -> bool:
+    if not cache_requires_nemoclaw_session_audit(cache_key):
+        return True
+    invocation_path_value = record.get("openclaw_invocation_path")
+    invocation_sha = record.get("openclaw_invocation_sha256")
+    command_sha = record.get("openclaw_command_sha256")
+    if not isinstance(invocation_path_value, str) or not invocation_path_value:
+        return False
+    if not isinstance(invocation_sha, str) or len(invocation_sha) != 64:
+        return False
+    path = Path(invocation_path_value)
+    if not path.exists():
+        return False
+    try:
+        if sha256_file(path) != invocation_sha:
+            return False
+        invocation = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(invocation, dict):
+        return False
+    if invocation.get("cache_key") != cache_key:
+        return False
+    if isinstance(command_sha, str) and command_sha:
+        if invocation.get("command_sha256") != command_sha:
+            return False
+    elif invocation.get("command"):
+        return False
+    expected_path = record.get("openclaw_result_path")
+    if isinstance(expected_path, str) and expected_path:
+        return invocation.get("expected_openclaw_result_path") == expected_path
+    return True
+
+
 def cached_result_matches_cache(record: dict[str, Any], cache_key: dict[str, Any]) -> bool:
     return (
         cache_key_matches(record, cache_key)
@@ -586,6 +633,7 @@ def cached_result_matches_cache(record: dict[str, Any], cache_key: dict[str, Any
         and record_tool_policy_allows_reuse(record)
         and record_weave_sidecar_allows_reuse(record)
         and record_nemoclaw_session_audit_matches_cache(record, cache_key)
+        and record_invocation_matches_cache(record, cache_key)
     )
 
 
@@ -791,11 +839,21 @@ def attempt_metadata_from_sidecar_path(task_dir: Path, sidecar_path: Path) -> di
         if attempt_id
         else task_dir / "openclaw_invocation.json"
     )
-    return {
+    metadata = {
         "openclaw_attempt_id": attempt_id,
         "openclaw_attempt_output_dir": str(task_dir / "openclaw_attempts" / attempt_id) if attempt_id else "",
         "openclaw_invocation_path": str(invocation_path),
     }
+    if invocation_path.exists():
+        try:
+            invocation = json.loads(invocation_path.read_text(encoding="utf-8"))
+            metadata["openclaw_invocation_sha256"] = sha256_file(invocation_path)
+            command = invocation.get("command") if isinstance(invocation, dict) else None
+            if isinstance(command, list):
+                metadata["openclaw_command_sha256"] = invocation.get("command_sha256") or command_sha256(command)
+        except (OSError, json.JSONDecodeError):
+            pass
+    return metadata
 
 
 def relog_existing_sidecar(sidecar_path: Path, args: argparse.Namespace) -> dict[str, Any]:
@@ -1369,6 +1427,7 @@ def run_openclaw_for_task(
             "attempt_number": attempt_number,
             "max_attempts": max_attempts,
             "command": command,
+            "command_sha256": command_sha256(command),
             "session_key": session_key,
             "runner_version": RUNNER_VERSION,
             "cache_key": cache_key,
@@ -1381,6 +1440,8 @@ def run_openclaw_for_task(
             json.dumps(invocation, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+        attempt_metadata["openclaw_invocation_sha256"] = sha256_file(invocation_path)
+        attempt_metadata["openclaw_command_sha256"] = invocation["command_sha256"]
         (task_dir / "openclaw_invocation.json").write_text(
             json.dumps(
                 {
