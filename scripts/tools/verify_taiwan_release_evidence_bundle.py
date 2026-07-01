@@ -492,6 +492,7 @@ EXTERNAL_ACTION_REQUIREMENT_LABELS = {
 }
 SCOPE_ATTESTATION_SCHEMA_VERSION = 1
 MIN_SCOPE_CONFIRMATION_LENGTH = 20
+NEMOCLAW_AUDIT_REQUIRED_BENCHMARKS = {"agentic_math", "agentic_swe"}
 SCOPE_ATTESTATION_RENDER_SAFETY_FIELDS = (
     "executes_external_action",
     "queries_wandb",
@@ -8939,6 +8940,14 @@ def validate_wandb_completion_payload(
     if observed.get("run_state") != "finished":
         errors.append(f"{label} observed_evidence.run_state is not finished")
     errors.extend(
+        validate_wandb_completion_nemoclaw_session_audit(
+            payload=payload,
+            required=required_evidence,
+            observed=observed,
+            label=label,
+        )
+    )
+    errors.extend(
         validate_wandb_observed_evidence(
             required=required_evidence,
             observed=observed,
@@ -9121,6 +9130,59 @@ def validate_wandb_completion_query_source(
     return errors
 
 
+def validate_wandb_completion_nemoclaw_session_audit(
+    *,
+    payload: dict[str, Any],
+    required: dict[str, Any],
+    observed: dict[str, Any],
+    label: str,
+) -> list[str]:
+    benchmark = payload.get("benchmark")
+    if benchmark not in NEMOCLAW_AUDIT_REQUIRED_BENCHMARKS:
+        return []
+    errors: list[str] = []
+    required_audit = required.get("nemoclaw_session_audit")
+    if not isinstance(required_audit, dict):
+        errors.append(f"{label} required_evidence.nemoclaw_session_audit is not an object")
+    elif required_audit.get("required") is not True:
+        errors.append(f"{label} required_evidence.nemoclaw_session_audit.required is not true")
+    expected_total = _integer_value(required.get("expected_total"))
+    if expected_total is None or expected_total <= 0:
+        errors.append(f"{label} required_evidence.expected_total must be a positive integer")
+
+    observed_audit = observed.get("nemoclaw_session_audit")
+    if not isinstance(observed_audit, dict):
+        errors.append(f"{label} observed_evidence.nemoclaw_session_audit is not an object")
+        return errors
+    if observed_audit.get("ok") is not True:
+        errors.append(f"{label} observed_evidence.nemoclaw_session_audit.ok is not true")
+    required_count = _integer_value(observed_audit.get("required"))
+    passed_count = _integer_value(observed_audit.get("passed"))
+    failed_count = _integer_value(observed_audit.get("failed"))
+    for field, value in (
+        ("required", required_count),
+        ("passed", passed_count),
+        ("failed", failed_count),
+    ):
+        if value is None:
+            errors.append(f"{label} observed_evidence.nemoclaw_session_audit.{field} is not an integer")
+    observed_expected_total = _integer_value(observed_audit.get("expected_total"))
+    if expected_total is not None and observed_expected_total is not None and observed_expected_total != expected_total:
+        errors.append(
+            f"{label} observed_evidence.nemoclaw_session_audit.expected_total "
+            "does not match required_evidence.expected_total"
+        )
+    if expected_total is not None and required_count is not None and required_count != expected_total:
+        errors.append(f"{label} observed_evidence.nemoclaw_session_audit.required does not equal expected_total")
+    if expected_total is not None and passed_count is not None and passed_count != expected_total:
+        errors.append(f"{label} observed_evidence.nemoclaw_session_audit.passed does not equal expected_total")
+    if required_count is not None and passed_count is not None and required_count != passed_count:
+        errors.append(f"{label} observed_evidence.nemoclaw_session_audit.required does not equal passed")
+    if failed_count is not None and failed_count != 0:
+        errors.append(f"{label} observed_evidence.nemoclaw_session_audit.failed is not 0")
+    return errors
+
+
 def _positive_int(value: Any) -> bool:
     return not isinstance(value, bool) and isinstance(value, int) and value > 0
 
@@ -9224,6 +9286,9 @@ def required_wandb_completion_check_names(required: dict[str, Any]) -> set[str]:
             names.add("run_group")
         if isinstance(run_metadata.get("job_type"), str) and run_metadata.get("job_type"):
             names.add("run_job_type")
+    audit = required.get("nemoclaw_session_audit")
+    if isinstance(audit, dict):
+        names.add("nemoclaw_session_audit")
     return names
 
 
@@ -9252,6 +9317,7 @@ def validate_wandb_completion_checks(
         "leaderboard_table",
         "output_table",
         "result_artifact",
+        "nemoclaw_session_audit",
         "run_group",
         "run_job_type",
     }
@@ -9586,6 +9652,28 @@ def validate_wandb_completion_metadata_checks_against_observed(
     return errors
 
 
+def validate_wandb_completion_nemoclaw_check_against_observed(
+    *,
+    checks_by_name: dict[str, list[dict[str, Any]]],
+    observed: dict[str, Any],
+    label: str,
+) -> list[str]:
+    errors: list[str] = []
+    observed_audit = observed.get("nemoclaw_session_audit")
+    if not isinstance(observed_audit, dict):
+        return errors
+    check = _first_check(checks_by_name, "nemoclaw_session_audit")
+    if not isinstance(check, dict):
+        return errors
+    for field in ("required", "passed", "failed", "expected_total"):
+        if _integer_value(check.get(field)) != _integer_value(observed_audit.get(field)):
+            errors.append(
+                f"{label} checks nemoclaw_session_audit {field} does not match "
+                f"observed_evidence.nemoclaw_session_audit"
+            )
+    return errors
+
+
 def validate_wandb_completion_checks_against_observed(
     *,
     checks: list[Any],
@@ -9629,6 +9717,13 @@ def validate_wandb_completion_checks_against_observed(
         validate_wandb_completion_metadata_checks_against_observed(
             checks_by_name=checks_by_name,
             required=required,
+            observed=observed,
+            label=label,
+        )
+    )
+    errors.extend(
+        validate_wandb_completion_nemoclaw_check_against_observed(
+            checks_by_name=checks_by_name,
             observed=observed,
             label=label,
         )

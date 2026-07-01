@@ -262,6 +262,12 @@ def agentic_math_wandb_completion_payload():
         "required_evidence": {
             "run_state": "finished",
             "expected_total": 100,
+            "nemoclaw_session_audit": {
+                "required": True,
+                "required_metric": "agentic_math/nemoclaw_session_audit_required_instances",
+                "passed_metric": "agentic_math/nemoclaw_session_audit_passed_instances",
+                "failed_metric": "agentic_math/nemoclaw_session_audit_failed_instances",
+            },
             "summary_metrics": [
                 "agentic_math/total_instances",
                 "agentic_math/answered_instances",
@@ -288,6 +294,13 @@ def agentic_math_wandb_completion_payload():
         "observed_evidence": {
             "run_state": "finished",
             "expected_total": 100,
+            "nemoclaw_session_audit": {
+                "ok": True,
+                "required": 100,
+                "passed": 100,
+                "failed": 0,
+                "expected_total": 100,
+            },
             "summary_metrics": {
                 "agentic_math/total_instances": {
                     "ok": True,
@@ -368,6 +381,14 @@ def agentic_math_wandb_completion_payload():
                 "ok": True,
                 "detail": "agentic_math/accuracy equals correct/total",
                 "value": 0.86,
+            },
+            {
+                "name": "nemoclaw_session_audit",
+                "ok": True,
+                "required": 100,
+                "passed": 100,
+                "failed": 0,
+                "expected_total": 100,
             },
             {
                 "name": "result_artifact",
@@ -2518,6 +2539,22 @@ def test_validate_wandb_completion_payload_rejects_bad_schema_version():
     )
 
     assert "proof schema_version is not 1" in errors
+
+
+def test_validate_wandb_completion_payload_rejects_agentic_without_nemoclaw_audit():
+    module = load_verify_module()
+    payload = agentic_math_wandb_completion_payload()
+    payload["required_evidence"].pop("nemoclaw_session_audit")
+    payload["observed_evidence"].pop("nemoclaw_session_audit")
+
+    errors = module.validate_wandb_completion_payload(
+        payload,
+        label="proof",
+        expected_benchmark="agentic_math",
+    )
+
+    assert "proof required_evidence.nemoclaw_session_audit is not an object" in errors
+    assert "proof observed_evidence.nemoclaw_session_audit is not an object" in errors
 
 
 def nemoclaw_operator_handoff_payload(setup_path, setup_payload):
@@ -9091,6 +9128,7 @@ def test_verify_release_evidence_bundle_rechecks_wandb_completion_checks_against
     checks["run_state"]["state"] = "running"
     checks["total_metric"]["value"] = 99
     checks["output_table"]["nrows"] = 99
+    checks["nemoclaw_session_audit"]["passed"] = 99
     checks["result_artifact"]["artifacts"][0]["aliases"] = ["latest"]
     bundled_completion.write_text(json.dumps(payload), encoding="utf-8")
     refresh_manifest_record_hash(bundle, completion_record["bundle_path"])
@@ -9120,6 +9158,11 @@ def test_verify_release_evidence_bundle_rechecks_wandb_completion_checks_against
     )
     assert any(
         "checks result_artifact type evaluation-results missing required alias production"
+        in error
+        for error in payload["errors"]
+    )
+    assert any(
+        "checks nemoclaw_session_audit passed does not match observed_evidence.nemoclaw_session_audit"
         in error
         for error in payload["errors"]
     )

@@ -25,6 +25,7 @@ AGENTIC_SWE_EXPECTED_TOTAL = 80
 WANDB_COMPLETION_SCHEMA_VERSION = 1
 WANDB_COMPLETION_QUERY_SOURCE_KIND = "wandb_sdk"
 FULL_BENCHMARK_ID = "taiwan_full"
+NEMOCLAW_AUDIT_REQUIRED_BENCHMARKS = {"agentic_math", "agentic_swe"}
 
 
 def repo_path(path: Path | str) -> Path:
@@ -114,6 +115,69 @@ def table_rows_from_observed_evidence(completion: dict[str, Any], table_name: st
     return None
 
 
+def int_like(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return None
+
+
+def nemoclaw_session_audit_issues(completion: dict[str, Any]) -> list[str]:
+    benchmark = completion.get("benchmark")
+    if benchmark not in NEMOCLAW_AUDIT_REQUIRED_BENCHMARKS:
+        return []
+    issues: list[str] = []
+    required = completion.get("required_evidence")
+    if not isinstance(required, dict):
+        issues.append("required_evidence must be an object for NeMoClaw session audit proof")
+        required = {}
+    required_audit = required.get("nemoclaw_session_audit")
+    if not isinstance(required_audit, dict):
+        issues.append("required_evidence.nemoclaw_session_audit must be an object")
+    elif required_audit.get("required") is not True:
+        issues.append("required_evidence.nemoclaw_session_audit.required must be true")
+    expected_total = int_like(required.get("expected_total"))
+    if expected_total is None or expected_total <= 0:
+        issues.append("required_evidence.expected_total must be a positive integer")
+
+    observed = completion.get("observed_evidence")
+    if not isinstance(observed, dict):
+        issues.append("observed_evidence must be an object for NeMoClaw session audit proof")
+        observed = {}
+    observed_audit = observed.get("nemoclaw_session_audit")
+    if not isinstance(observed_audit, dict):
+        issues.append("observed_evidence.nemoclaw_session_audit must be an object")
+        return issues
+    if observed_audit.get("ok") is not True:
+        issues.append("observed_evidence.nemoclaw_session_audit.ok must be true")
+
+    required_count = int_like(observed_audit.get("required"))
+    passed_count = int_like(observed_audit.get("passed"))
+    failed_count = int_like(observed_audit.get("failed"))
+    for field, value in (
+        ("required", required_count),
+        ("passed", passed_count),
+        ("failed", failed_count),
+    ):
+        if value is None:
+            issues.append(f"observed_evidence.nemoclaw_session_audit.{field} must be an integer")
+    observed_expected_total = int_like(observed_audit.get("expected_total"))
+    if expected_total is not None and observed_expected_total is not None and observed_expected_total != expected_total:
+        issues.append("observed_evidence.nemoclaw_session_audit.expected_total must match required_evidence.expected_total")
+    if expected_total is not None and required_count is not None and required_count != expected_total:
+        issues.append("observed_evidence.nemoclaw_session_audit.required must equal expected_total")
+    if expected_total is not None and passed_count is not None and passed_count != expected_total:
+        issues.append("observed_evidence.nemoclaw_session_audit.passed must equal expected_total")
+    if required_count is not None and passed_count is not None and required_count != passed_count:
+        issues.append("observed_evidence.nemoclaw_session_audit.required must equal passed")
+    if failed_count is not None and failed_count != 0:
+        issues.append("observed_evidence.nemoclaw_session_audit.failed must be 0")
+    return issues
+
+
 def completion_schema_issues(completion: dict[str, Any]) -> list[str]:
     issues: list[str] = []
     if completion.get("schema_version") != WANDB_COMPLETION_SCHEMA_VERSION:
@@ -178,6 +242,7 @@ def completion_schema_issues(completion: dict[str, Any]) -> list[str]:
         issues.append("observed_evidence.summary_metrics must be an object")
     if not isinstance(observed.get("tables"), list):
         issues.append("observed_evidence.tables must be a list")
+    issues.extend(nemoclaw_session_audit_issues(completion))
     return issues
 
 
@@ -442,6 +507,7 @@ def verifier_command(record: dict[str, Any], *, run_id: str = "RUN_ID") -> str:
         return (
             "uv run python scripts/tools/verify_taiwan_wandb_completion.py "
             f"--run-id {run_id} --benchmark agentic_math --expected-total 100 "
+            "--require-nemoclaw-session-audit "
             "--env-file .env "
             f"--json outputs/taiwan_full_eval/wandb_completion/agentic_math-{run_id}.json"
         )
@@ -449,6 +515,7 @@ def verifier_command(record: dict[str, Any], *, run_id: str = "RUN_ID") -> str:
         return (
             "uv run python scripts/tools/verify_taiwan_wandb_completion.py "
             f"--run-id {run_id} --benchmark agentic_swe --expected-total 80 "
+            "--require-nemoclaw-session-audit "
             "--env-file .env "
             f"--json outputs/taiwan_full_eval/wandb_completion/agentic_swe-{run_id}.json"
         )

@@ -27,6 +27,7 @@ WANDB_COMPLETION_QUERY_SOURCE_KIND = "wandb_sdk"
 WANDB_COMPLETION_API_TIMEOUT_SECONDS = 60
 SCOPE_ATTESTATION_SCHEMA_VERSION = 1
 MIN_SCOPE_CONFIRMATION_LENGTH = 20
+NEMOCLAW_AUDIT_REQUIRED_BENCHMARKS = {"agentic_math", "agentic_swe"}
 PLACEHOLDER_ACCOUNTING_VALUES = {
     "あとで",
     "仮",
@@ -168,6 +169,73 @@ def observed_evidence_valid(value: Any) -> bool:
         "aggregate_tables",
     )
     return any(bool(value.get(key)) for key in evidence_keys)
+
+
+def int_like(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and math.isfinite(value) and value.is_integer():
+        return int(value)
+    return None
+
+
+def nemoclaw_session_audit_current(payload: dict[str, Any]) -> tuple[bool, list[str]]:
+    benchmark = payload.get("benchmark")
+    if benchmark not in NEMOCLAW_AUDIT_REQUIRED_BENCHMARKS:
+        return True, []
+
+    issues: list[str] = []
+    required = payload.get("required_evidence")
+    if not isinstance(required, dict):
+        issues.append("required_evidence must be an object for NeMoClaw session audit proof")
+        required = {}
+    required_audit = required.get("nemoclaw_session_audit")
+    if not isinstance(required_audit, dict):
+        issues.append("required_evidence.nemoclaw_session_audit must be an object")
+        required_audit = {}
+    elif required_audit.get("required") is not True:
+        issues.append("required_evidence.nemoclaw_session_audit.required must be true")
+
+    expected_total = int_like(required.get("expected_total"))
+    if expected_total is None or expected_total <= 0:
+        issues.append("required_evidence.expected_total must be a positive integer")
+
+    observed = payload.get("observed_evidence")
+    if not isinstance(observed, dict):
+        issues.append("observed_evidence must be an object for NeMoClaw session audit proof")
+        observed = {}
+    observed_audit = observed.get("nemoclaw_session_audit")
+    if not isinstance(observed_audit, dict):
+        issues.append("observed_evidence.nemoclaw_session_audit must be an object")
+        return False, issues
+    if observed_audit.get("ok") is not True:
+        issues.append("observed_evidence.nemoclaw_session_audit.ok must be true")
+
+    required_count = int_like(observed_audit.get("required"))
+    passed_count = int_like(observed_audit.get("passed"))
+    failed_count = int_like(observed_audit.get("failed"))
+    for field, value in (
+        ("required", required_count),
+        ("passed", passed_count),
+        ("failed", failed_count),
+    ):
+        if value is None:
+            issues.append(f"observed_evidence.nemoclaw_session_audit.{field} must be an integer")
+
+    observed_expected_total = int_like(observed_audit.get("expected_total"))
+    if expected_total is not None and observed_expected_total is not None and observed_expected_total != expected_total:
+        issues.append("observed_evidence.nemoclaw_session_audit.expected_total must match required_evidence.expected_total")
+    if expected_total is not None and required_count is not None and required_count != expected_total:
+        issues.append("observed_evidence.nemoclaw_session_audit.required must equal expected_total")
+    if expected_total is not None and passed_count is not None and passed_count != expected_total:
+        issues.append("observed_evidence.nemoclaw_session_audit.passed must equal expected_total")
+    if required_count is not None and passed_count is not None and required_count != passed_count:
+        issues.append("observed_evidence.nemoclaw_session_audit.required must equal passed")
+    if failed_count is not None and failed_count != 0:
+        issues.append("observed_evidence.nemoclaw_session_audit.failed must be 0")
+    return not issues, issues
 
 
 def wandb_query_source_current(payload: dict[str, Any]) -> tuple[bool, list[str]]:
@@ -315,6 +383,9 @@ def completion_payload_current(
     run_metadata_ok, run_metadata_issues = wandb_run_metadata_current(payload)
     if not run_metadata_ok:
         issues.extend(run_metadata_issues)
+    audit_ok, audit_issues = nemoclaw_session_audit_current(payload)
+    if not audit_ok:
+        issues.extend(audit_issues)
     return not issues, issues
 
 
@@ -360,11 +431,16 @@ def completion_entry(
         "verification_schema_version": payload.get("verification_schema_version"),
         "observed_evidence_valid": observed_evidence_valid(payload.get("observed_evidence")),
         "run_metadata_valid": wandb_run_metadata_current(payload)[0],
+        "nemoclaw_session_audit_valid": nemoclaw_session_audit_current(payload)[0],
     }
     run_metadata_ok, run_metadata_issues = wandb_run_metadata_current(payload)
     entry["run_metadata_valid"] = run_metadata_ok
     if run_metadata_issues:
         entry["run_metadata_errors"] = run_metadata_issues
+    audit_ok, audit_issues = nemoclaw_session_audit_current(payload)
+    entry["nemoclaw_session_audit_valid"] = audit_ok
+    if audit_issues:
+        entry["nemoclaw_session_audit_errors"] = audit_issues
     query_source = payload.get("query_source")
     if isinstance(query_source, dict):
         entry["query_source_kind"] = query_source.get("kind")
@@ -747,10 +823,13 @@ def compact_entry_for_report(entry: dict[str, Any]) -> dict[str, Any]:
         "verification_schema_version": entry.get("verification_schema_version"),
         "observed_evidence_valid": entry.get("observed_evidence_valid"),
         "run_metadata_valid": entry.get("run_metadata_valid"),
+        "nemoclaw_session_audit_valid": entry.get("nemoclaw_session_audit_valid"),
         "adopted_existing_result": bool(entry.get("adopted_existing_result")),
     }
     if isinstance(entry.get("run_metadata_errors"), list):
         compact["run_metadata_errors"] = entry.get("run_metadata_errors")
+    if isinstance(entry.get("nemoclaw_session_audit_errors"), list):
+        compact["nemoclaw_session_audit_errors"] = entry.get("nemoclaw_session_audit_errors")
     query_source_kind = entry.get("query_source_kind")
     query_source_run_path = entry.get("query_source_run_path")
     if query_source_kind is not None:

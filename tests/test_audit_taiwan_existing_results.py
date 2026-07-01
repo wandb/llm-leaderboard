@@ -117,6 +117,12 @@ def write_agentic_math_completion(root: Path, *, run_id="run-1", total=3, curren
                 "required_evidence": {
                     "run_state": "finished",
                     "expected_total": total,
+                    "nemoclaw_session_audit": {
+                        "required": True,
+                        "required_metric": "agentic_math/nemoclaw_session_audit_required_instances",
+                        "passed_metric": "agentic_math/nemoclaw_session_audit_passed_instances",
+                        "failed_metric": "agentic_math/nemoclaw_session_audit_failed_instances",
+                    },
                     "summary_metrics": [
                         "agentic_math/total_instances",
                         "agentic_math/answered_instances",
@@ -143,6 +149,13 @@ def write_agentic_math_completion(root: Path, *, run_id="run-1", total=3, curren
                 "observed_evidence": {
                     "run_state": "finished",
                     "expected_total": total,
+                    "nemoclaw_session_audit": {
+                        "ok": True,
+                        "required": total,
+                        "passed": total,
+                        "failed": 0,
+                        "expected_total": total,
+                    },
                     "summary_metrics": {
                         "agentic_math/total_instances": {"ok": True, "value": total},
                         "agentic_math/answered_instances": {"ok": True, "value": total},
@@ -459,6 +472,35 @@ def test_existing_result_audit_rejects_non_finished_completion(tmp_path, monkeyp
     assert audit["wandb_completion_records"][0]["schema_current"] is False
 
 
+def test_existing_result_audit_rejects_agentic_completion_without_nemoclaw_audit(
+    tmp_path, monkeypatch
+):
+    module = load_module()
+    monkeypatch.setattr(module, "AGENTIC_MATH_EXPECTED_TOTAL", 3)
+    write_agentic_math_result(tmp_path, total=3)
+    completion = write_agentic_math_completion(tmp_path, total=3, current=True)
+    payload = json.loads(completion.read_text(encoding="utf-8"))
+    payload["required_evidence"].pop("nemoclaw_session_audit")
+    payload["observed_evidence"].pop("nemoclaw_session_audit")
+    completion.write_text(json.dumps(payload), encoding="utf-8")
+
+    audit = module.build_audit(
+        output_root=tmp_path,
+        completion_dir=tmp_path / "wandb_completion",
+    )
+
+    assert audit["ok"] is False
+    assert audit["summary"]["formalized_wandb_complete_count"] == 0
+    record = audit["wandb_completion_records"][0]
+    assert record["schema_current"] is False
+    assert "required_evidence.nemoclaw_session_audit must be an object" in record[
+        "schema_current_issues"
+    ]
+    assert "observed_evidence.nemoclaw_session_audit must be an object" in record[
+        "schema_current_issues"
+    ]
+
+
 def test_existing_result_audit_rejects_completion_with_failed_status_even_when_ok_true(
     tmp_path, monkeypatch
 ):
@@ -568,6 +610,7 @@ def test_existing_result_audit_rejects_complete_local_without_wandb(tmp_path, mo
     assert audit["remediation_commands"][0] == record["relog_dry_run_command"]
     verify_command = record["verify_command"]
     assert "verify_taiwan_wandb_completion.py" in verify_command
+    assert "--require-nemoclaw-session-audit" in verify_command
     assert verify_command.count("uv run python scripts/tools/verify_taiwan_wandb_completion.py") == 1
 
 

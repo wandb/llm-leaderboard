@@ -68,6 +68,7 @@ def add_wandb_run_metadata(payload, *, benchmark="agentic_math", run_id="run-1")
 
 
 def completion_payload(*, benchmark="agentic_math", run_id="run-1", ok=True):
+    expected_total = 100 if benchmark == "agentic_math" else 80 if benchmark == "agentic_swe" else None
     payload = {
         "ok": ok,
         "benchmark": benchmark,
@@ -97,6 +98,23 @@ def completion_payload(*, benchmark="agentic_math", run_id="run-1", ok=True):
         },
         "checks": [],
     }
+    if expected_total is not None:
+        payload["required_evidence"] = {
+            "expected_total": expected_total,
+            "nemoclaw_session_audit": {
+                "required": True,
+                "required_metric": f"{benchmark}/nemoclaw_session_audit_required_instances",
+                "passed_metric": f"{benchmark}/nemoclaw_session_audit_passed_instances",
+                "failed_metric": f"{benchmark}/nemoclaw_session_audit_failed_instances",
+            },
+        }
+        payload["observed_evidence"]["nemoclaw_session_audit"] = {
+            "ok": True,
+            "required": expected_total,
+            "passed": expected_total,
+            "failed": 0,
+            "expected_total": expected_total,
+        }
     return add_wandb_run_metadata(payload, benchmark=benchmark, run_id=run_id)
 
 
@@ -432,6 +450,7 @@ def test_cli_writes_updated_review_to_output(tmp_path):
     assert updated["runs"][0]["wandb_completion"][0]["verification_schema_version"] == 1
     assert updated["runs"][0]["wandb_completion"][0]["observed_evidence_valid"] is True
     assert updated["runs"][0]["wandb_completion"][0]["run_metadata_valid"] is True
+    assert updated["runs"][0]["wandb_completion"][0]["nemoclaw_session_audit_valid"] is True
     assert updated["runs"][0]["wandb_completion"][0]["query_source_kind"] == "wandb_sdk"
     assert (
         updated["runs"][0]["wandb_completion"][0]["query_source_run_path"]
@@ -496,6 +515,37 @@ def test_cli_rejects_completion_without_run_metadata(tmp_path):
     assert result.returncode != 0
     assert "required_evidence.run_metadata must be an object" in result.stderr
     assert "observed_evidence.run_metadata must be an object" in result.stderr
+    assert not output.exists()
+
+
+def test_cli_rejects_agentic_completion_without_nemoclaw_audit(tmp_path):
+    review = write_json(tmp_path / "review.json", review_payload())
+    payload = completion_payload()
+    payload["required_evidence"].pop("nemoclaw_session_audit")
+    payload["observed_evidence"].pop("nemoclaw_session_audit")
+    completion = write_json(tmp_path / "completion.json", payload)
+    output = tmp_path / "updated_review.json"
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--review-json",
+            str(review),
+            "--completion-json",
+            str(completion),
+            "--output-json",
+            str(output),
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "required_evidence.nemoclaw_session_audit must be an object" in result.stderr
+    assert "observed_evidence.nemoclaw_session_audit must be an object" in result.stderr
     assert not output.exists()
 
 
