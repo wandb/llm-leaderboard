@@ -62,6 +62,7 @@ DEFAULT_WANDB_COMPLETION_GLOB = "outputs/taiwan_full_eval/wandb_completion/*.jso
 DEFAULT_EXISTING_RESULTS_AUDIT_GLOB = "temp/taiwan_existing_results_audit*.json"
 DEFAULT_REQUIRED_WANDB_BENCHMARKS = ("agentic_math", "agentic_swe", "taiwan_full")
 AGENTIC_REQUIRED_WANDB_BENCHMARKS = {"agentic_math", "agentic_swe"}
+NEMOCLAW_AUDIT_REQUIRED_BENCHMARKS = {"agentic_math", "agentic_swe"}
 WEAVE_AGENTS_CANARY_COMPLETION_PHASES = {"agentic", "full"}
 DEFAULT_WEAVE_CONTENT_CANARY_MAX_AGE_SECONDS = 24 * 60 * 60
 DEFAULT_WANDB_COMPLETION_MAX_AGE_SECONDS = 24 * 60 * 60
@@ -341,6 +342,7 @@ def wandb_completion_command(benchmark: str, *, run_id: str = "RUN_ID") -> str:
         return (
             "uv run python scripts/tools/verify_taiwan_wandb_completion.py "
             f"--run-id {run_id} --benchmark agentic_math --expected-total 100 "
+            "--require-nemoclaw-session-audit "
             "--env-file .env "
             f"--json outputs/taiwan_full_eval/wandb_completion/agentic_math-{run_id}.json"
         )
@@ -348,6 +350,7 @@ def wandb_completion_command(benchmark: str, *, run_id: str = "RUN_ID") -> str:
         return (
             "uv run python scripts/tools/verify_taiwan_wandb_completion.py "
             f"--run-id {run_id} --benchmark agentic_swe --expected-total 80 "
+            "--require-nemoclaw-session-audit "
             "--env-file .env "
             f"--json outputs/taiwan_full_eval/wandb_completion/agentic_swe-{run_id}.json"
         )
@@ -555,6 +558,8 @@ def paid_run_review_completion_requirements(
             "verification_schema_version": WANDB_COMPLETION_SCHEMA_VERSION,
             "observed_evidence_present": True,
             "observed_evidence.run_state": "finished",
+            "required_evidence.nemoclaw_session_audit": "required for Agentic Math/SWE paid-review/release proof",
+            "observed_evidence.nemoclaw_session_audit": "required=passed=expected_total and failed=0 for Agentic Math/SWE",
             "required_evidence.run_metadata": "required for paid-review/release proof",
             "observed_evidence.run_metadata": "must match required run config/tags/group/job_type",
             "max_age_seconds": wandb_completion_max_age_seconds,
@@ -1402,8 +1407,9 @@ def evaluate_wandb_completion(
     requirement = (
         "Required benchmark completion verifier JSONs must have ok=true, "
         f"include entity/project/run_id and generated_at{age_requirement}, use verification_schema_version="
-        f"{WANDB_COMPLETION_SCHEMA_VERSION}, and contain observed_evidence proving "
-        "a finished W&B run with logged metrics, tables, or artifacts."
+        f"{WANDB_COMPLETION_SCHEMA_VERSION}, contain observed_evidence proving "
+        "a finished W&B run with logged metrics, tables, or artifacts, and include "
+        "NeMoClaw session-audit proof for Agentic Math/SWE."
     )
     required_run_ids = required_run_ids or {}
     completed: dict[str, list[str]] = {}
@@ -1452,6 +1458,8 @@ def evaluate_wandb_completion(
         schema_valid = schema_version == WANDB_COMPLETION_SCHEMA_VERSION
         observed_evidence = payload.get("observed_evidence")
         observed_evidence_valid = _observed_evidence_valid(observed_evidence)
+        audit_issues = nemoclaw_session_audit_issues(payload)
+        audit_valid = not audit_issues
         if not isinstance(observed_evidence, dict):
             observed_evidence = {}
         if payload.get("ok") is True and not run_id_matches:
@@ -1477,6 +1485,8 @@ def evaluate_wandb_completion(
             "schema_valid": schema_valid,
             "observed_evidence": observed_evidence,
             "observed_evidence_valid": observed_evidence_valid,
+            "nemoclaw_session_audit_valid": audit_valid,
+            "nemoclaw_session_audit_errors": audit_issues,
             **freshness,
         }
         records.append(record)
@@ -1488,7 +1498,12 @@ def evaluate_wandb_completion(
             payload.get("ok") is True
             and run_id_matches
             and freshness["fresh"]
-            and (not identity_valid or not schema_valid or not observed_evidence_valid)
+            and (
+                not identity_valid
+                or not schema_valid
+                or not observed_evidence_valid
+                or not audit_valid
+            )
         ):
             invalid_evidence_records.append(record)
         if (
@@ -1499,6 +1514,7 @@ def evaluate_wandb_completion(
             and identity_valid
             and schema_valid
             and observed_evidence_valid
+            and audit_valid
         ):
             completed.setdefault(benchmark, []).append(path_display(path))
 
@@ -1986,6 +2002,8 @@ def _verify_review_wandb_completion_entry(
     schema_valid = schema_version == WANDB_COMPLETION_SCHEMA_VERSION
     observed_evidence = payload.get("observed_evidence")
     observed_evidence_valid = _observed_evidence_valid(observed_evidence)
+    audit_issues = nemoclaw_session_audit_issues(payload)
+    audit_valid = not audit_issues
     if not isinstance(observed_evidence, dict):
         observed_evidence = {}
     query_source_required = not bool(entry.get("adopted_existing_result"))
@@ -2031,6 +2049,8 @@ def _verify_review_wandb_completion_entry(
             "schema_valid": schema_valid,
             "observed_evidence": observed_evidence,
             "observed_evidence_valid": observed_evidence_valid,
+            "nemoclaw_session_audit_valid": audit_valid,
+            "nemoclaw_session_audit_errors": audit_issues,
             "query_source_required": query_source_required,
             "query_source": query_source,
             "query_source_valid": query_source_valid,
@@ -2055,6 +2075,7 @@ def _verify_review_wandb_completion_entry(
             and parent_project_matches
             and schema_valid
             and observed_evidence_valid
+            and audit_valid
             and query_source_valid
             and run_metadata_valid
             and sha256_matches
@@ -2089,6 +2110,11 @@ def _verify_review_wandb_completion_entry(
             )
         if not observed_evidence_valid:
             issues.append("verifier JSON is missing valid observed_evidence")
+        if not audit_valid:
+            issues.append(
+                "verifier JSON NeMoClaw session audit is invalid: "
+                + "; ".join(audit_issues)
+            )
         if not query_source_valid:
             issues.append(
                 "verifier JSON query_source is invalid: "
@@ -3172,6 +3198,68 @@ def _observed_evidence_valid(value: Any) -> bool:
         "aggregate_tables",
     )
     return any(bool(value.get(key)) for key in evidence_keys)
+
+
+def int_like(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and math.isfinite(value) and value.is_integer():
+        return int(value)
+    return None
+
+
+def nemoclaw_session_audit_issues(payload: dict[str, Any]) -> list[str]:
+    benchmark = payload.get("benchmark")
+    if benchmark not in NEMOCLAW_AUDIT_REQUIRED_BENCHMARKS:
+        return []
+    issues: list[str] = []
+    required = payload.get("required_evidence")
+    if not isinstance(required, dict):
+        issues.append("required_evidence must be an object for NeMoClaw session audit proof")
+        required = {}
+    required_audit = required.get("nemoclaw_session_audit")
+    if not isinstance(required_audit, dict):
+        issues.append("required_evidence.nemoclaw_session_audit must be an object")
+    elif required_audit.get("required") is not True:
+        issues.append("required_evidence.nemoclaw_session_audit.required must be true")
+    expected_total = int_like(required.get("expected_total"))
+    if expected_total is None or expected_total <= 0:
+        issues.append("required_evidence.expected_total must be a positive integer")
+
+    observed = payload.get("observed_evidence")
+    if not isinstance(observed, dict):
+        issues.append("observed_evidence must be an object for NeMoClaw session audit proof")
+        observed = {}
+    observed_audit = observed.get("nemoclaw_session_audit")
+    if not isinstance(observed_audit, dict):
+        issues.append("observed_evidence.nemoclaw_session_audit must be an object")
+        return issues
+    if observed_audit.get("ok") is not True:
+        issues.append("observed_evidence.nemoclaw_session_audit.ok must be true")
+    required_count = int_like(observed_audit.get("required"))
+    passed_count = int_like(observed_audit.get("passed"))
+    failed_count = int_like(observed_audit.get("failed"))
+    for field, value in (
+        ("required", required_count),
+        ("passed", passed_count),
+        ("failed", failed_count),
+    ):
+        if value is None:
+            issues.append(f"observed_evidence.nemoclaw_session_audit.{field} must be an integer")
+    observed_expected_total = int_like(observed_audit.get("expected_total"))
+    if expected_total is not None and observed_expected_total is not None and observed_expected_total != expected_total:
+        issues.append("observed_evidence.nemoclaw_session_audit.expected_total must match required_evidence.expected_total")
+    if expected_total is not None and required_count is not None and required_count != expected_total:
+        issues.append("observed_evidence.nemoclaw_session_audit.required must equal expected_total")
+    if expected_total is not None and passed_count is not None and passed_count != expected_total:
+        issues.append("observed_evidence.nemoclaw_session_audit.passed must equal expected_total")
+    if required_count is not None and passed_count is not None and required_count != passed_count:
+        issues.append("observed_evidence.nemoclaw_session_audit.required must equal passed")
+    if failed_count is not None and failed_count != 0:
+        issues.append("observed_evidence.nemoclaw_session_audit.failed must be 0")
+    return issues
 
 
 def _review_configs(payload: dict[str, Any]) -> list[str]:

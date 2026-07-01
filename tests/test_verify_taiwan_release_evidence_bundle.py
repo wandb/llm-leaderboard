@@ -536,6 +536,81 @@ def build_bundle(tmp_path, *, readiness_ok=False):
     return output_dir
 
 
+def test_collect_wandb_completion_proofs_ignores_stale_or_blocked_candidates():
+    module = load_verify_module()
+    stale_path = "outputs/taiwan_full_eval/wandb_completion/agentic_math-stale.json"
+    blocked_candidate_path = (
+        "outputs/taiwan_full_eval/wandb_completion/agentic_math-blocked.json"
+    )
+    current_path = "outputs/taiwan_full_eval/wandb_completion/agentic_math-current.json"
+    manifest = {
+        "current_gate": {
+            "benchmark_completion": [
+                {
+                    "benchmark": "agentic_math",
+                    "standalone_ok": False,
+                    "standalone_records": [
+                        {"path": stale_path, "ok": True, "schema_valid": True}
+                    ],
+                    "review_ok": False,
+                    "review_entries": [],
+                },
+                {
+                    "benchmark": "agentic_math",
+                    "standalone_ok": True,
+                    "standalone_records": [
+                        {"path": current_path, "ok": True, "schema_valid": True}
+                    ],
+                    "review_ok": False,
+                    "review_entries": [],
+                },
+            ],
+            "wandb_completion_contract": {
+                "benchmarks": [
+                    {
+                        "benchmark": "agentic_math",
+                        "standalone_completion_ok": False,
+                        "standalone_completion_paths": [stale_path],
+                        "review_completion_ok": False,
+                        "review_completion_paths": [],
+                        "formalized_existing_result": False,
+                        "formalized_existing_completion_paths": [],
+                    },
+                    {
+                        "benchmark": "agentic_math",
+                        "standalone_completion_ok": True,
+                        "standalone_completion_paths": [current_path],
+                        "review_completion_ok": False,
+                        "review_completion_paths": [],
+                        "formalized_existing_result": False,
+                        "formalized_existing_completion_paths": [],
+                    },
+                ]
+            },
+            "wandb_adoption_draft": {
+                "candidates": [
+                    {
+                        "benchmark": "agentic_math",
+                        "wandb_completion_json": blocked_candidate_path,
+                        "sync_ready": False,
+                    },
+                    {
+                        "benchmark": "agentic_math",
+                        "wandb_completion_json": current_path,
+                        "sync_ready": True,
+                    },
+                ]
+            },
+        }
+    }
+
+    proofs = module.collect_wandb_completion_proofs(manifest)
+
+    assert stale_path not in proofs
+    assert blocked_candidate_path not in proofs
+    assert current_path in proofs
+
+
 def build_bundle_with_operator_command_script(tmp_path):
     evidence = write_json(tmp_path / "evidence.json", {"ok": True})
     report = write_json(
@@ -630,6 +705,7 @@ def build_bundle_with_existing_results_relog_command_scripts(tmp_path):
             "post_log_verifier_command_template": (
                 "uv run python scripts/tools/verify_taiwan_wandb_completion.py "
                 "--run-id RUN_ID_AFTER_WANDB_LOG --benchmark agentic_math "
+                "--expected-total 100 --require-nemoclaw-session-audit "
                 f"--expected-run-config relog.source_sha256.summary_json={source_sha256['summary_json']} "
                 f"--expected-run-config relog.source_sha256.results_jsonl={source_sha256['results_jsonl']}"
             ),
@@ -5272,6 +5348,7 @@ def mark_wandb_contract_row_sync_ready(
             "uv run python scripts/tools/verify_taiwan_wandb_completion.py "
             "--entity test-entity --project test-project --run-id run-1 "
             "--benchmark agentic_math --expected-total 100 "
+            "--require-nemoclaw-session-audit "
             "--json outputs/taiwan_full_eval/wandb_completion/agentic_math-run-1.json"
         )
     render_command = (
@@ -5365,6 +5442,7 @@ def wandb_contract_sync_ready_manifest() -> dict:
         "uv run python scripts/tools/verify_taiwan_wandb_completion.py "
         "--entity test-entity --project test-project --run-id run-1 "
         "--benchmark agentic_math --expected-total 100 "
+        "--require-nemoclaw-session-audit "
         f"--json {completion_path}"
     )
     render_command = (
@@ -5561,6 +5639,7 @@ def test_verify_release_evidence_bundle_rejects_wandb_contract_draft_refresh_mis
             "uv run python scripts/tools/verify_taiwan_wandb_completion.py "
             "--entity test-entity --project test-project --run-id other-run "
             "--benchmark agentic_math --expected-total 100 "
+            "--require-nemoclaw-session-audit "
             "--json outputs/taiwan_full_eval/wandb_completion/agentic_math-run-1.json"
         )
     ]
@@ -5571,6 +5650,29 @@ def test_verify_release_evidence_bundle_rejects_wandb_contract_draft_refresh_mis
     assert (
         "wandb_completion_contract benchmark agentic_math stale sync-ready "
         "adoption refresh commands do not match W&B adoption draft candidate"
+    ) in errors
+
+
+def test_verify_release_evidence_bundle_rejects_wandb_contract_agentic_refresh_without_audit_flag():
+    module = load_verify_module()
+    manifest = wandb_contract_sync_ready_manifest()
+    row = manifest["current_gate"]["wandb_completion_contract"]["benchmarks"][0]
+    command = row["refresh_wandb_completion_commands"][0].replace(
+        " --require-nemoclaw-session-audit",
+        "",
+    )
+    row["refresh_wandb_completion_commands"] = [command]
+    row["recommended_commands"][0] = command
+
+    errors = module.validate_wandb_completion_contract_consistency(manifest)
+
+    assert (
+        "wandb_completion_contract benchmark agentic_math "
+        "verify command missing --require-nemoclaw-session-audit"
+    ) in errors
+    assert (
+        "wandb_completion_contract benchmark agentic_math stale sync-ready "
+        "adoption refresh command 1 missing --require-nemoclaw-session-audit"
     ) in errors
 
 
@@ -7490,6 +7592,7 @@ def test_verify_release_evidence_bundle_accepts_existing_results_relog_dry_run_p
         "post_log_verifier_command_template": (
             "uv run python scripts/tools/verify_taiwan_wandb_completion.py "
             "--run-id RUN_ID_AFTER_WANDB_LOG --benchmark agentic_math "
+            "--expected-total 100 --require-nemoclaw-session-audit "
             f"--expected-run-config relog.source_sha256.summary_json={source_sha256['summary_json']} "
             f"--expected-run-config relog.source_sha256.results_jsonl={source_sha256['results_jsonl']}"
         ),
@@ -7545,6 +7648,7 @@ def test_verify_release_evidence_bundle_rejects_existing_results_relog_plan_with
         "post_log_verifier_command_template": (
             "uv run python scripts/tools/verify_taiwan_wandb_completion.py "
             "--run-id RUN_ID_AFTER_WANDB_LOG --benchmark agentic_math "
+            "--expected-total 100 --require-nemoclaw-session-audit "
             f"--expected-run-config relog.source_sha256.summary_json={source_sha256['summary_json']}"
         ),
     }

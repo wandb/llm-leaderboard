@@ -350,7 +350,8 @@ def test_release_evidence_bundle_copies_report_references(tmp_path):
             },
             "post_log_verifier_command_template": (
                 "uv run python scripts/tools/verify_taiwan_wandb_completion.py "
-                "--run-id RUN_ID_AFTER_WANDB_LOG --benchmark agentic_math"
+                "--run-id RUN_ID_AFTER_WANDB_LOG --benchmark agentic_math "
+                "--expected-total 100 --require-nemoclaw-session-audit"
             ),
         },
     )
@@ -1807,6 +1808,7 @@ def test_wandb_completion_contract_refreshes_before_sync_when_adoption_not_ready
                         "uv run python scripts/tools/verify_taiwan_wandb_completion.py "
                         "--entity llm-leaderboard --project tc-leaderboard --run-id run-1 "
                         "--benchmark agentic_math --expected-total 100 "
+                        "--require-nemoclaw-session-audit "
                         "--expected-run-tag REVIEWED_CANARY_OR_PAID_SCOPE_TAG "
                         "--json outputs/taiwan_full_eval/wandb_completion/agentic_math-run-1.json"
                     ),
@@ -1840,6 +1842,7 @@ def test_wandb_completion_contract_refreshes_before_sync_when_adoption_not_ready
             "uv run python scripts/tools/verify_taiwan_wandb_completion.py "
             "--entity llm-leaderboard --project tc-leaderboard --run-id run-1 "
             "--benchmark agentic_math --expected-total 100 "
+            "--require-nemoclaw-session-audit "
             "--expected-run-tag REVIEWED_CANARY_OR_PAID_SCOPE_TAG "
             "--json outputs/taiwan_full_eval/wandb_completion/agentic_math-run-1.json"
         ),
@@ -1858,6 +1861,7 @@ def test_wandb_completion_contract_keeps_scope_handoff_when_verifier_is_stale():
         "uv run python scripts/tools/verify_taiwan_wandb_completion.py "
         "--entity llm-leaderboard --project tc-leaderboard --run-id run-1 "
         "--benchmark agentic_math --expected-total 100 "
+        "--require-nemoclaw-session-audit "
         "--expected-run-config model.pretrained_model_name_or_path=deepseek/deepseek-v4-pro "
         "--expected-run-job-type evaluation-relog "
         "--json outputs/taiwan_full_eval/wandb_completion/agentic_math-run-1.json"
@@ -1992,6 +1996,7 @@ def test_operator_next_steps_marks_placeholder_commands_as_templates():
                     (
                         "uv run python scripts/tools/verify_taiwan_wandb_completion.py "
                         "--run-id RUN_ID --benchmark agentic_swe "
+                        "--expected-total 80 --require-nemoclaw-session-audit "
                         "--json outputs/taiwan_full_eval/wandb_completion/agentic_swe-RUN_ID.json"
                     )
                 ],

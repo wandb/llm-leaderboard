@@ -174,6 +174,20 @@ def wandb_completion_verifier_payload(
             },
         },
     }
+    if benchmark in {"agentic_math", "agentic_swe"}:
+        expected_total = 100 if benchmark == "agentic_math" else 80
+        payload.setdefault("required_evidence", {})["expected_total"] = expected_total
+        payload["required_evidence"]["nemoclaw_session_audit"] = {
+            "required": True,
+        }
+        payload.setdefault("observed_evidence", {})["expected_total"] = expected_total
+        payload["observed_evidence"]["nemoclaw_session_audit"] = {
+            "ok": True,
+            "required": expected_total,
+            "passed": expected_total,
+            "failed": 0,
+            "expected_total": expected_total,
+        }
     return add_wandb_run_metadata(payload, benchmark=benchmark, run_id=run_id)
 
 
@@ -877,12 +891,14 @@ def test_wandb_completion_requires_all_requested_benchmarks(tmp_path):
         (
             "uv run python scripts/tools/verify_taiwan_wandb_completion.py "
             "--run-id RUN_ID --benchmark agentic_math --expected-total 100 "
+            "--require-nemoclaw-session-audit "
             "--env-file .env "
             "--json outputs/taiwan_full_eval/wandb_completion/agentic_math-RUN_ID.json"
         ),
         (
             "uv run python scripts/tools/verify_taiwan_wandb_completion.py "
             "--run-id RUN_ID --benchmark agentic_swe --expected-total 80 "
+            "--require-nemoclaw-session-audit "
             "--env-file .env "
             "--json outputs/taiwan_full_eval/wandb_completion/agentic_swe-RUN_ID.json"
         )
@@ -918,6 +934,7 @@ def test_wandb_completion_can_require_specific_run_id(tmp_path):
         (
             "uv run python scripts/tools/verify_taiwan_wandb_completion.py "
             "--run-id new-run --benchmark agentic_math --expected-total 100 "
+            "--require-nemoclaw-session-audit "
             "--env-file .env "
             "--json outputs/taiwan_full_eval/wandb_completion/agentic_math-new-run.json"
         )
@@ -936,8 +953,20 @@ def test_wandb_completion_accepts_specific_run_id_match(tmp_path):
             "run_id": "run-1",
             "generated_at": time.time(),
             "verification_schema_version": 1,
+            "required_evidence": {
+                "expected_total": 100,
+                "nemoclaw_session_audit": {"required": True},
+            },
             "observed_evidence": {
                 "run_state": "finished",
+                "expected_total": 100,
+                "nemoclaw_session_audit": {
+                    "ok": True,
+                    "required": 100,
+                    "passed": 100,
+                    "failed": 0,
+                    "expected_total": 100,
+                },
                 "summary_metrics": {
                     "agentic_math/total_instances": {"ok": True, "value": 100},
                 },
@@ -973,6 +1002,47 @@ def test_wandb_completion_accepts_specific_run_id_match(tmp_path):
         == 100
     )
     assert result["records"][0]["observed_evidence_valid"] is True
+    assert result["records"][0]["nemoclaw_session_audit_valid"] is True
+
+
+def test_wandb_completion_rejects_agentic_without_nemoclaw_audit(tmp_path):
+    module = load_module()
+    run = write_json(
+        tmp_path / "completion.json",
+        {
+            "ok": True,
+            "benchmark": "agentic_math",
+            "entity": "test-entity",
+            "project": "test-project",
+            "run_id": "run-1",
+            "generated_at": time.time(),
+            "verification_schema_version": 1,
+            "observed_evidence": {
+                "run_state": "finished",
+                "summary_metrics": {
+                    "agentic_math/total_instances": {"ok": True, "value": 100},
+                },
+            },
+        },
+    )
+
+    result = module.evaluate_wandb_completion(
+        [run],
+        required_benchmarks=["agentic_math"],
+        required_run_ids={"agentic_math": "run-1"},
+        require=True,
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "invalid_evidence"
+    assert result["completed"] == {}
+    record = result["invalid_evidence_records"][0]
+    assert record["path"] == str(run)
+    assert record["observed_evidence_valid"] is True
+    assert record["nemoclaw_session_audit_valid"] is False
+    assert "required_evidence.nemoclaw_session_audit must be an object" in record[
+        "nemoclaw_session_audit_errors"
+    ]
 
 
 def test_wandb_completion_rejects_legacy_schema_as_incomplete(tmp_path):
@@ -2000,8 +2070,20 @@ def test_paid_run_review_package_verifies_wandb_completion_entry(tmp_path):
                 "run_id": "run-1",
                 "generated_at": time.time(),
                 "verification_schema_version": 1,
+                "required_evidence": {
+                    "expected_total": 100,
+                    "nemoclaw_session_audit": {"required": True},
+                },
                 "observed_evidence": {
                     "run_state": "finished",
+                    "expected_total": 100,
+                    "nemoclaw_session_audit": {
+                        "ok": True,
+                        "required": 100,
+                        "passed": 100,
+                        "failed": 0,
+                        "expected_total": 100,
+                    },
                     "summary_metrics": {
                         "agentic_math/accuracy": {"ok": True, "value": 0.86},
                     },
@@ -2111,6 +2193,7 @@ def test_paid_run_review_package_verifies_wandb_completion_entry(tmp_path):
     assert entry["parent_entity_matches"] is True
     assert entry["parent_project_matches"] is True
     assert entry["observed_evidence"]["run_state"] == "finished"
+    assert entry["nemoclaw_session_audit_valid"] is True
     assert (
         entry["observed_evidence"]["summary_metrics"]["agentic_math/accuracy"]["value"]
         == 0.86
@@ -2733,6 +2816,7 @@ def test_build_report_surfaces_blockers(tmp_path):
         "weave_content_canary",
         "nemoclaw_readiness",
         "wandb_completion",
+        "existing_results_formalization",
         "paid_run_review_package",
         "one_model_full_canary",
     }
@@ -2740,10 +2824,14 @@ def test_build_report_surfaces_blockers(tmp_path):
         "weave_content_canary",
         "nemoclaw_readiness",
         "wandb_completion",
+        "existing_results_formalization",
         "paid_run_review_package",
         "one_model_full_canary",
     ]
-    nemoclaw_remediation = report["remediation_plan"][1]["commands"]
+    remediation_by_gate = {
+        item["gate"]: item["commands"] for item in report["remediation_plan"]
+    }
+    nemoclaw_remediation = remediation_by_gate["nemoclaw_readiness"]
     assert any(
         "review_nemoclaw_installer.py" in command
         and "--lock-json scripts/setup/nemoclaw_installer_lock.json" in command
@@ -2779,10 +2867,13 @@ def test_build_report_surfaces_blockers(tmp_path):
         and "--swebench-pro-nemoclaw-sandbox nejumi-taiwan" in command
         and "--swebench-pro-nemoclaw-checkout-transfer-mode copy" in command
         and "--require-nemoclaw-agentic-config" in command
-        for command in report["remediation_plan"][3]["commands"]
+        for command in remediation_by_gate["paid_run_review_package"]
     )
-    assert not any("PHASE --run-purpose" in command for command in report["remediation_plan"][3]["commands"])
-    paid_review_commands = report["remediation_plan"][3]["commands"]
+    assert not any(
+        "PHASE --run-purpose" in command
+        for command in remediation_by_gate["paid_run_review_package"]
+    )
+    paid_review_commands = remediation_by_gate["paid_run_review_package"]
     paid_batch_commands = [
         command for command in paid_review_commands if "run_taiwan_full_eval_batch.py" in command
     ]
@@ -2809,7 +2900,7 @@ def test_build_report_surfaces_blockers(tmp_path):
         in command
         for command in paid_execution_batch_commands
     )
-    one_model_commands = report["remediation_plan"][4]["commands"]
+    one_model_commands = remediation_by_gate["one_model_full_canary"]
     one_model_batch_commands = [
         command for command in one_model_commands if "run_taiwan_full_eval_batch.py" in command
     ]
@@ -2895,8 +2986,20 @@ def test_build_report_summary_includes_benchmark_evidence_matrix(tmp_path):
             "run_id": "run-math",
             "generated_at": time.time(),
             "verification_schema_version": 1,
+            "required_evidence": {
+                "expected_total": 100,
+                "nemoclaw_session_audit": {"required": True},
+            },
             "observed_evidence": {
                 "run_state": "finished",
+                "expected_total": 100,
+                "nemoclaw_session_audit": {
+                    "ok": True,
+                    "required": 100,
+                    "passed": 100,
+                    "failed": 0,
+                    "expected_total": 100,
+                },
                 "summary_metrics": {
                     "agentic_math/accuracy": {"ok": True, "value": 0.86},
                 },

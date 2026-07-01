@@ -8333,6 +8333,10 @@ def collect_wandb_completion_proofs(manifest: dict[str, Any]) -> dict[str, dict[
                 ("standalone_records", False),
                 ("review_entries", True),
             ):
+                if field == "standalone_records" and row.get("standalone_ok") is not True:
+                    continue
+                if field == "review_entries" and row.get("review_ok") is not True:
+                    continue
                 records = row.get(field)
                 if not isinstance(records, list):
                     continue
@@ -8360,6 +8364,21 @@ def collect_wandb_completion_proofs(manifest: dict[str, Any]) -> dict[str, dict[
                 ("review_completion_paths", True),
                 ("formalized_existing_completion_paths", False),
             ):
+                if (
+                    field == "standalone_completion_paths"
+                    and row.get("standalone_completion_ok") is not True
+                ):
+                    continue
+                if (
+                    field == "review_completion_paths"
+                    and row.get("review_completion_ok") is not True
+                ):
+                    continue
+                if (
+                    field == "formalized_existing_completion_paths"
+                    and row.get("formalized_existing_result") is not True
+                ):
+                    continue
                 values = row.get(field)
                 if isinstance(values, list):
                     for value in values:
@@ -8376,6 +8395,8 @@ def collect_wandb_completion_proofs(manifest: dict[str, Any]) -> dict[str, dict[
     if isinstance(candidates, list):
         for candidate in candidates:
             if not isinstance(candidate, dict):
+                continue
+            if candidate.get("sync_ready") is False:
                 continue
             add_wandb_completion_proof(
                 proofs,
@@ -8697,6 +8718,22 @@ def validate_wandb_completion_contract_consistency(manifest: dict[str, Any]) -> 
                         "wandb_completion_contract benchmark "
                         f"{benchmark} release_completion_proven=true requires {field}=true"
                     )
+        recommended_commands = _row_string_list(row, "recommended_commands")
+        if benchmark in NEMOCLAW_AUDIT_REQUIRED_BENCHMARKS:
+            expected_total = "100" if benchmark == "agentic_math" else "80"
+            for command in recommended_commands:
+                if "verify_taiwan_wandb_completion.py" not in command:
+                    continue
+                if "--require-nemoclaw-session-audit" not in command:
+                    errors.append(
+                        "wandb_completion_contract benchmark "
+                        f"{benchmark} verify command missing --require-nemoclaw-session-audit"
+                    )
+                if command_option_value(command, "--expected-total") != expected_total:
+                    errors.append(
+                        "wandb_completion_contract benchmark "
+                        f"{benchmark} verify command missing --expected-total {expected_total}"
+                    )
         sync_ready_count = row.get("sync_ready_adoption_candidate_count")
         sync_ready = False
         if sync_ready_count is not None:
@@ -8722,7 +8759,6 @@ def validate_wandb_completion_contract_consistency(manifest: dict[str, Any]) -> 
                 "match W&B adoption draft"
             )
         if sync_ready:
-            recommended_commands = _row_string_list(row, "recommended_commands")
             for row_field, candidate_field in (
                 (
                     "scope_attestation_template_paths",
@@ -8849,6 +8885,20 @@ def validate_wandb_completion_contract_consistency(manifest: dict[str, Any]) -> 
                             f"{benchmark} stale sync-ready adoption refresh command "
                             f"{index} is not a concrete verify_taiwan_wandb_completion.py command"
                         )
+                    if benchmark in NEMOCLAW_AUDIT_REQUIRED_BENCHMARKS:
+                        expected_total = "100" if benchmark == "agentic_math" else "80"
+                        if "--require-nemoclaw-session-audit" not in command:
+                            errors.append(
+                                "wandb_completion_contract benchmark "
+                                f"{benchmark} stale sync-ready adoption refresh command "
+                                f"{index} missing --require-nemoclaw-session-audit"
+                            )
+                        if command_option_value(command, "--expected-total") != expected_total:
+                            errors.append(
+                                "wandb_completion_contract benchmark "
+                                f"{benchmark} stale sync-ready adoption refresh command "
+                                f"{index} missing --expected-total {expected_total}"
+                            )
                 for candidate in draft_sync_ready_candidates:
                     candidate_run_id = candidate.get("wandb_run_id")
                     candidate_completion_path = source_path_key(
@@ -13796,14 +13846,20 @@ def validate_existing_results_relog_dry_run_plan_payload(
             errors.append(f"{label} post_log_verifier_command_template is missing verifier")
         elif f"--benchmark {benchmark}" not in verifier:
             errors.append(f"{label} verifier command benchmark does not match plan")
-        elif isinstance(source_sha256, dict):
-            for source_key, digest in sorted(source_sha256.items()):
-                expected_arg = f"--expected-run-config relog.source_sha256.{source_key}={digest}"
-                if expected_arg not in verifier:
-                    errors.append(
-                        f"{label} verifier command missing relog source sha expected-run-config "
-                        f"for {source_key}"
-                    )
+        else:
+            expected_total = "100" if benchmark == "agentic_math" else "80"
+            if command_option_value(verifier, "--expected-total") != expected_total:
+                errors.append(f"{label} verifier command missing --expected-total {expected_total}")
+            if "--require-nemoclaw-session-audit" not in verifier:
+                errors.append(f"{label} verifier command missing --require-nemoclaw-session-audit")
+            if isinstance(source_sha256, dict):
+                for source_key, digest in sorted(source_sha256.items()):
+                    expected_arg = f"--expected-run-config relog.source_sha256.{source_key}={digest}"
+                    if expected_arg not in verifier:
+                        errors.append(
+                            f"{label} verifier command missing relog source sha expected-run-config "
+                            f"for {source_key}"
+                        )
         tables = would_log.get("tables") if isinstance(would_log, dict) else {}
         if isinstance(tables, dict):
             output_table = (

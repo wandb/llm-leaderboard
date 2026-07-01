@@ -1768,8 +1768,12 @@ def _completion_verify_command(benchmark: str) -> str:
         "--run-id RUN_ID",
         f"--benchmark {benchmark}",
     ]
+    if benchmark == "agentic_math":
+        parts.append("--expected-total 100")
     if benchmark == "agentic_swe":
         parts.append("--expected-total 80")
+    if benchmark in {"agentic_math", "agentic_swe"}:
+        parts.append("--require-nemoclaw-session-audit")
     parts.extend(
         [
             "--env-file .env",
@@ -1803,6 +1807,12 @@ def _adoption_refresh_wandb_completion_command(
     expected_total = metrics.get("expected_total") if isinstance(metrics, dict) else None
     if isinstance(expected_total, int):
         parts.extend(["--expected-total", str(expected_total)])
+    elif benchmark == "agentic_math":
+        parts.extend(["--expected-total", "100"])
+    elif benchmark == "agentic_swe":
+        parts.extend(["--expected-total", "80"])
+    if benchmark in {"agentic_math", "agentic_swe"}:
+        parts.append("--require-nemoclaw-session-audit")
     model = candidate.get("model")
     if isinstance(model, str) and model:
         parts.extend(
