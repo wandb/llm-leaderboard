@@ -850,6 +850,8 @@ def recover_existing_success_sidecar(
                 continue
             print(f"Relogging successful OpenClaw sidecar to Weave: {sidecar_path}", flush=True)
             sidecar = relog_existing_sidecar(sidecar_path, args)
+            if not sidecar_matches_cache(sidecar, cache_key):
+                continue
         if is_weave_sidecar_failure(sidecar):
             continue
         return build_scored_record_from_sidecar(

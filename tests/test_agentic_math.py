@@ -766,6 +766,61 @@ def test_success_sidecar_recovery_requires_nemoclaw_session_audit_when_cache_is_
     assert module.sidecar_matches_cache(sidecar, cache_key)
 
 
+def test_success_sidecar_recovery_rejects_relogged_cache_mismatch(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    cache_key = {
+        "task_id": "task_1",
+        "prompt_hash": "prompt-hash",
+        "model": "provider/model",
+        "deny_tools": ["web_search"],
+        "deny_argument_patterns": [r"https?://"],
+        "openclaw_config_source": "/sandbox/.openclaw/openclaw.json",
+    }
+    sidecar = {
+        "returncode": 0,
+        "stdout_json": {"finalAssistantVisibleText": "ANSWER: \\boxed{2}"},
+        "metadata": {
+            "task_id": "task_1",
+            "prompt_hash": "prompt-hash",
+            "model_id": "provider/model",
+            "openclaw_config_source": "/sandbox/.openclaw/openclaw.json",
+        },
+        "tool_policy": {"deny_tools": ["web_search"], "deny_argument_patterns": [r"https?://"]},
+        "tool_policy_ok": True,
+        "tool_policy_violations": [],
+        "conversation_order": {"ok": True},
+    }
+    task_dir = tmp_path / "task"
+    sidecar_path = task_dir / "openclaw_attempts" / "attempt-1" / "agentic_math" / "task_1" / "openclaw_result.json"
+    sidecar_path.parent.mkdir(parents=True)
+    sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
+
+    def fake_relog_existing_sidecar(_sidecar_path, _args):
+        relogged = dict(sidecar)
+        relogged["metadata"] = dict(sidecar["metadata"], prompt_hash="other-prompt-hash")
+        relogged["weave_sidecar"] = {"ok": True}
+        return relogged
+
+    monkeypatch.setattr(module, "relog_existing_sidecar", fake_relog_existing_sidecar)
+    args = type(
+        "Args",
+        (),
+        {
+            "weave_sidecar": True,
+            "weave_sidecar_strict": True,
+        },
+    )()
+
+    recovered = module.recover_existing_success_sidecar(
+        {"task_id": "task_1", "answer": "2"},
+        task_dir,
+        cache_key,
+        args,
+    )
+
+    assert recovered is None
+
+
 def test_scored_record_preserves_nemoclaw_session_audit(tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
     sidecar_path = tmp_path / "openclaw_result.json"

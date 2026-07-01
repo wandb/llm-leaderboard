@@ -283,6 +283,11 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "OpenClaw fresh sidecar identity adoption call",
                 "if not sidecar_matches_cache(sidecar, cache_key):\n        raise RuntimeError(",
             ),
+            (
+                "OpenClaw relogged sidecar identity revalidation call",
+                "sidecar = relog_existing_sidecar(sidecar_path, args)\n"
+                "            if not sidecar_matches_cache(sidecar, cache_key):",
+            ),
             ("NeMoClaw session audit sidecar acceptance guard", "def sidecar_nemoclaw_session_audit_matches_cache("),
             (
                 "NeMoClaw session audit fresh sidecar adoption call",
