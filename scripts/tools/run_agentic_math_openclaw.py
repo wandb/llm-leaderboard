@@ -569,12 +569,22 @@ def record_tool_policy_allows_reuse(record: dict[str, Any]) -> bool:
     return True
 
 
+def record_weave_sidecar_allows_reuse(record: dict[str, Any]) -> bool:
+    sidecar = record.get("weave_sidecar")
+    if record.get("weave_sidecar_ok") is False:
+        return False
+    if isinstance(sidecar, dict) and sidecar.get("ok") is False:
+        return False
+    return True
+
+
 def cached_result_matches_cache(record: dict[str, Any], cache_key: dict[str, Any]) -> bool:
     return (
         cache_key_matches(record, cache_key)
         and cached_result_is_reusable(record)
         and record_conversation_order_allows_reuse(record)
         and record_tool_policy_allows_reuse(record)
+        and record_weave_sidecar_allows_reuse(record)
         and record_nemoclaw_session_audit_matches_cache(record, cache_key)
     )
 
@@ -655,6 +665,10 @@ def build_openclaw_error_record(
         "openclaw_tool_error_count": sidecar.get("tool_error_count", 0) if isinstance(sidecar, dict) else 0,
         "tool_policy_ok": sidecar.get("tool_policy_ok") if isinstance(sidecar, dict) else None,
         "tool_policy_violations": sidecar.get("tool_policy_violations", []) if isinstance(sidecar, dict) else [],
+        "weave_sidecar": sidecar.get("weave_sidecar", {}) if isinstance(sidecar, dict) else {},
+        "weave_sidecar_ok": (
+            (sidecar.get("weave_sidecar") or {}).get("ok") if isinstance(sidecar, dict) else None
+        ),
         "conversation_order_ok": (
             (sidecar.get("conversation_order") or {}).get("ok") if isinstance(sidecar, dict) else None
         ),
@@ -706,6 +720,8 @@ def build_scored_record_from_sidecar(
         "openclaw_tool_error_count": sidecar.get("tool_error_count", 0),
         "tool_policy_ok": sidecar.get("tool_policy_ok"),
         "tool_policy_violations": sidecar.get("tool_policy_violations", []),
+        "weave_sidecar": sidecar.get("weave_sidecar", {}),
+        "weave_sidecar_ok": (sidecar.get("weave_sidecar") or {}).get("ok"),
         "conversation_order_ok": (sidecar.get("conversation_order") or {}).get("ok"),
         "conversation_order": sidecar.get("conversation_order", {}),
         "nemoclaw_session_audit_ok": (sidecar.get("nemoclaw_session_audit") or {}).get("ok"),

@@ -212,6 +212,15 @@ def patch_record_tool_policy_allows_reuse(record: dict[str, Any]) -> bool:
     return True
 
 
+def patch_record_weave_sidecar_allows_reuse(record: dict[str, Any]) -> bool:
+    sidecar = record.get("weave_sidecar")
+    if record.get("weave_sidecar_ok") is False:
+        return False
+    if isinstance(sidecar, dict) and sidecar.get("ok") is False:
+        return False
+    return True
+
+
 def patch_mentions_paths(patch: str, paths: list[str]) -> bool:
     for path in paths:
         if f" a/{path} " in patch or f" b/{path}" in patch:
@@ -243,6 +252,8 @@ def load_cached_patch_record(
     if not patch_record_conversation_order_allows_reuse(record):
         return None
     if not patch_record_tool_policy_allows_reuse(record):
+        return None
+    if not patch_record_weave_sidecar_allows_reuse(record):
         return None
     if not record.get("patch") and record.get("patch_capture_version") != PATCH_CAPTURE_VERSION:
         return None
@@ -1228,6 +1239,7 @@ def run_openclaw_for_task(
             "nemoclaw_session_audit": sidecar.get("nemoclaw_session_audit", {}),
             "runtime_budget": sidecar.get("runtime_budget", {}),
             "weave_sidecar": sidecar.get("weave_sidecar", {}),
+            "weave_sidecar_ok": (sidecar.get("weave_sidecar") or {}).get("ok"),
             "openclaw_disqualified_reason": metadata.get("openclaw_disqualified_reason", ""),
         }
     )
@@ -1515,6 +1527,7 @@ def main() -> None:
                     "nemoclaw_checkout_transfer",
                     "runtime_budget",
                     "weave_sidecar",
+                    "weave_sidecar_ok",
                 }
             },
         }

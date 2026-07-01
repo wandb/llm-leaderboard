@@ -14,7 +14,7 @@ References:
 
 ## Current Status
 
-As of 2026-07-01 17:39 JST:
+As of 2026-07-01 17:55 JST:
 
 - Host prerequisites are present: Docker, Node.js, npm, zstd, and OpenClaw.
 - `nemoclaw v0.0.55` and `openshell 0.0.44` are installed on this machine.
@@ -369,8 +369,8 @@ key is NeMoClaw-scoped, the sidecar must also carry a passing required
 NeMoClaw session audit before it can become a patch record, including
 disqualified empty-patch records. Existing cached patch records are held to
 the same audit condition before reuse, and cached patch records with an
-explicit failed conversation-order check or tool-policy violation are not
-reused.
+explicit failed conversation-order check, tool-policy violation, or failed
+Weave sidecar logging result are not reused.
 
 These code paths are covered by unit tests and config-generation tests.
 `nemoclaw`, `openshell`, the `nejumi-taiwan` sandbox, and native
@@ -568,7 +568,8 @@ current runner cache key. When the cache key is NeMoClaw-scoped, a missing or
 failed required NeMoClaw session audit also blocks scoring instead of becoming a
 valid benchmark answer. Existing cached `result.json` files are held to the
 same audit condition before reuse, and cached results with an explicit failed
-conversation-order check or tool-policy violation are not reused.
+conversation-order check, tool-policy violation, or failed Weave sidecar logging
+result are not reused.
 
 For generated Taiwan full-evaluation configs, opt Agentic Math into NeMoClaw
 first:
