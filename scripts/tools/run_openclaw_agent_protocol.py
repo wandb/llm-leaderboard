@@ -957,17 +957,37 @@ def extract_openclaw_meta(sidecar: dict[str, Any]) -> dict[str, Any]:
 def extract_agent_meta(sidecar: dict[str, Any]) -> dict[str, Any]:
     meta = extract_openclaw_meta(sidecar)
     agent_meta = meta.get("agentMeta")
+    copied_session_file = sidecar.get("copied_session_file")
+    sandbox_session_file = sidecar.get("sandbox_session_file")
+    live_session_file = sidecar.get("live_session_file")
     if isinstance(agent_meta, dict):
         merged = dict(agent_meta)
-        copied_session_file = sidecar.get("copied_session_file")
         if isinstance(copied_session_file, str) and copied_session_file:
             merged["sandboxSessionFile"] = merged.get("sessionFile")
             merged["sessionFile"] = copied_session_file
         return merged
-    live_session_file = sidecar.get("live_session_file")
+    if isinstance(copied_session_file, str) and copied_session_file:
+        merged = {"sessionFile": copied_session_file}
+        if isinstance(sandbox_session_file, str) and sandbox_session_file:
+            merged["sandboxSessionFile"] = sandbox_session_file
+        elif isinstance(live_session_file, str) and live_session_file:
+            merged["sandboxSessionFile"] = live_session_file
+        return merged
     if isinstance(live_session_file, str) and live_session_file:
         return {"sessionFile": live_session_file}
     return {}
+
+
+def live_nemoclaw_session_file(sidecar: dict[str, Any]) -> str | None:
+    live_budget = sidecar.get("live_runtime_budget")
+    if not isinstance(live_budget, dict):
+        return None
+    if live_budget.get("session_source") != "nemoclaw_sandbox":
+        return None
+    session_file = live_budget.get("session_file")
+    if not isinstance(session_file, str) or not session_file.startswith("/"):
+        return None
+    return session_file
 
 
 def copy_nemoclaw_session_file(
@@ -982,10 +1002,21 @@ def copy_nemoclaw_session_file(
     raw_meta = extract_openclaw_meta(sidecar)
     agent_meta = raw_meta.get("agentMeta") if isinstance(raw_meta.get("agentMeta"), dict) else {}
     session_file = agent_meta.get("sessionFile") if isinstance(agent_meta, dict) else None
+    session_source = "stdout_agent_meta"
+    if not isinstance(session_file, str) or not session_file.startswith("/"):
+        live_session = live_nemoclaw_session_file(sidecar)
+        if isinstance(live_session, str):
+            session_file = live_session
+            session_source = "live_runtime_budget"
     if not isinstance(session_file, str) or not session_file.startswith("/"):
         return {"attempted": False, "ok": None, "reason": "missing_sandbox_session_file"}
     if "\n" in session_file or "\r" in session_file:
-        return {"attempted": True, "ok": False, "reason": "invalid_session_file_path"}
+        return {
+            "attempted": True,
+            "ok": False,
+            "reason": "invalid_session_file_path",
+            "source": session_source,
+        }
 
     copied_path = output_dir / "nemoclaw_session.jsonl"
     command = [
@@ -1012,6 +1043,7 @@ def copy_nemoclaw_session_file(
             "ok": False,
             "reason": "copy_failed",
             "sandbox_session_file": session_file,
+            "source": session_source,
             "returncode": result.returncode,
             "stderr": result.stderr,
         }
@@ -1023,6 +1055,7 @@ def copy_nemoclaw_session_file(
         "ok": True,
         "sandbox_session_file": session_file,
         "copied_session_file": str(copied_path),
+        "source": session_source,
         "bytes": copied_path.stat().st_size,
     }
 

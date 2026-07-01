@@ -381,6 +381,43 @@ def test_extract_tool_events_prefers_copied_nemoclaw_session(tmp_path):
     assert events[0]["toolName"] == "exec"
 
 
+def test_extract_agent_meta_prefers_copied_live_nemoclaw_session(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    copied = tmp_path / "nemoclaw_session.jsonl"
+    copied.write_text(
+        json.dumps(
+            {
+                "message": {
+                    "role": "assistant",
+                    "timestamp": 123,
+                    "content": [
+                        {
+                            "type": "toolCall",
+                            "id": "call_1",
+                            "name": "exec",
+                            "arguments": {"cmd": "python3 check.py"},
+                        }
+                    ],
+                }
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sidecar = {
+        "live_session_file": "/sandbox/tasks/math/openclaw_agent_state/sessions/session-1.jsonl",
+        "sandbox_session_file": "/sandbox/tasks/math/openclaw_agent_state/sessions/session-1.jsonl",
+        "copied_session_file": str(copied),
+    }
+
+    meta = module.extract_agent_meta(sidecar)
+    events = module.extract_tool_events(sidecar)
+
+    assert meta["sessionFile"] == str(copied)
+    assert meta["sandboxSessionFile"] == "/sandbox/tasks/math/openclaw_agent_state/sessions/session-1.jsonl"
+    assert events[0]["toolName"] == "exec"
+
+
 def test_sandbox_live_session_scan_script_counts_top_level_tool_calls(tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     session_dir = tmp_path / "openclaw_agent_state" / "sessions"
@@ -466,6 +503,77 @@ def test_copy_nemoclaw_session_file_writes_host_audit_copy(tmp_path, monkeypatch
     assert Path(status["copied_session_file"]).read_text(encoding="utf-8").startswith('{"message"')
     assert captured["command"][:4] == ["nemoclaw", "sandbox", "exec", "nejumi-taiwan"]
     assert "/sandbox/.openclaw/agents/main/sessions/s1.jsonl" in captured["command"]
+
+
+def test_copy_nemoclaw_session_file_uses_live_runtime_budget_session_when_stdout_json_missing(
+    tmp_path,
+    monkeypatch,
+):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    sidecar = {
+        "live_runtime_budget": {
+            "enabled": True,
+            "exceeded": True,
+            "reason": "max_tool_calls_exceeded",
+            "session_source": "nemoclaw_sandbox",
+            "session_file": "/sandbox/tasks/math/openclaw_agent_state/sessions/session-1.jsonl",
+            "tool_call_count": 61,
+        },
+        "live_session_file": "/sandbox/tasks/math/openclaw_agent_state/sessions/session-1.jsonl",
+    }
+    args = Namespace(nemoclaw_bin="nemoclaw", nemoclaw_sandbox="nejumi-taiwan")
+    captured = {}
+
+    def fake_run(command, text, capture_output, check, env):
+        captured["command"] = command
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=(
+                json.dumps(
+                    {
+                        "message": {
+                            "role": "user",
+                            "content": "problem",
+                        }
+                    }
+                )
+                + "\n"
+                + json.dumps(
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "toolCall",
+                                    "id": "call_1",
+                                    "name": "exec",
+                                    "arguments": {"cmd": "python3 check.py"},
+                                }
+                            ],
+                        }
+                    }
+                )
+                + "\n"
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    status = module.copy_nemoclaw_session_file(sidecar, args, tmp_path, {"PATH": "/bin"})
+    sidecar["nemoclaw_session_copy"] = status
+    module.enrich_sidecar_with_tool_events(sidecar)
+    audit = module.nemoclaw_session_audit_status(sidecar, args)
+
+    assert status["ok"] is True
+    assert status["source"] == "live_runtime_budget"
+    assert status["sandbox_session_file"] == "/sandbox/tasks/math/openclaw_agent_state/sessions/session-1.jsonl"
+    assert sidecar["copied_session_file"] == status["copied_session_file"]
+    assert captured["command"][-1] == "/sandbox/tasks/math/openclaw_agent_state/sessions/session-1.jsonl"
+    assert sidecar["tool_call_count"] == 1
+    assert audit["ok"] is True
+    assert audit["copy"]["source"] == "live_runtime_budget"
 
 
 def test_nemoclaw_session_audit_requires_copied_checked_session():
