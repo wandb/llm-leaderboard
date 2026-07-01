@@ -495,7 +495,9 @@ swebench_pro:
     assert any(check.name == "agentic config keeps task-agent enabled" for check in checks)
     assert any(check.name == "agentic SWE checkout is sandbox-accessible" for check in checks)
     assert any(check.name == "agentic Math denies remote lookup via deny_tool" for check in checks)
+    assert any(check.name == "agentic Math allows local OpenClaw exec tool" for check in checks)
     assert any(check.name == "agentic SWE denies remote lookup via deny_tool" for check in checks)
+    assert any(check.name == "agentic SWE allows local OpenClaw exec tool" for check in checks)
     assert any(
         check.name == "agentic Math denies remote lookup via deny_argument_pattern"
         for check in checks
@@ -504,6 +506,57 @@ swebench_pro:
         check.name == "agentic SWE denies remote lookup via deny_argument_pattern"
         for check in checks
     )
+
+
+def test_generated_agentic_config_rejects_local_exec_denied_when_nemoclaw_required(tmp_path):
+    module = load_module()
+    base = tmp_path / "base.yaml"
+    generated = tmp_path / "agentic.yaml"
+    base.write_text(
+        """
+model:
+  pretrained_model_name_or_path: gpt-4.1-mini-2025-04-14
+""",
+        encoding="utf-8",
+    )
+    generated.write_text(
+        """
+model:
+  pretrained_model_name_or_path: gpt-4.1-mini-2025-04-14
+agentic_math:
+  openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14
+  deny_tool: [code_execution, exec, web_search, web_fetch, browser, browser_*, '*search*']
+  deny_argument_pattern: ['https?://', '\\b(curl|wget)\\b', '\\b(requests|urllib|httpx)\\.']
+  nemoclaw_sandbox: nejumi-taiwan
+  use_task_agent: true
+swebench_pro:
+  openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14
+  deny_tool: [code_execution, '*exec*', web_search, web_fetch, browser, browser_*, '*search*']
+  deny_argument_pattern: ['https?://', '\\b(curl|wget)\\b', '\\b(requests|urllib|httpx)\\.']
+  nemoclaw_sandbox: nejumi-taiwan
+  nemoclaw_checkout_transfer_mode: copy
+""",
+        encoding="utf-8",
+    )
+
+    checks = module.check_generated_configs(
+        base,
+        {"agentic": generated},
+        expected_pretrained_model="gpt-4.1-mini-2025-04-14",
+        openclaw_model="openai-direct/gpt-4.1-mini-2025-04-14",
+        require_nemoclaw=True,
+        nemoclaw_sandbox="nejumi-taiwan",
+    )
+
+    failed = {check.name: check for check in checks if not check.ok}
+    assert "agentic Math allows local OpenClaw exec tool" in failed
+    assert "agentic SWE allows local OpenClaw exec tool" in failed
+    assert '"conflicting_deny_patterns": ["exec"]' in failed[
+        "agentic Math allows local OpenClaw exec tool"
+    ].detail
+    assert '"conflicting_deny_patterns": ["*exec*"]' in failed[
+        "agentic SWE allows local OpenClaw exec tool"
+    ].detail
 
 
 def test_generated_agentic_config_rejects_non_nemoclaw_routing_when_required(tmp_path):

@@ -9855,6 +9855,44 @@ def test_verify_release_evidence_bundle_rejects_agentic_math_config_missing_deny
     )
 
 
+def test_verify_release_evidence_bundle_rejects_agentic_math_config_denying_local_exec(
+    tmp_path,
+):
+    bundle, _setup = build_bundle_with_nemoclaw_adoption(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    config_record = next(
+        record
+        for record in manifest["files"]
+        if any(
+            str(role).endswith("agentic_math_config:evidence")
+            for role in record.get("roles", [])
+        )
+    )
+    bundled_config = bundle / config_record["bundle_path"]
+    text = bundled_config.read_text(encoding="utf-8")
+    bundled_config.write_text(
+        text.replace("    - code_execution\n", "    - code_execution\n    - exec\n", 1),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, config_record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "agentic_math deny_tool must not block local OpenClaw exec tool: exec" in error
+        for error in payload["errors"]
+    )
+
+
 def test_verify_release_evidence_bundle_rejects_swebench_nemoclaw_config_without_checkout_transfer(
     tmp_path,
 ):

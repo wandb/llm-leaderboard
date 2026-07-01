@@ -6,9 +6,11 @@ Run Taiwan full evaluations sequentially from the generated model configs.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -74,6 +76,7 @@ REQUIRED_NEMOCLAW_AGENTIC_DENIED_TOOLS = set(AGENTIC_DENIED_TOOLS)
 REQUIRED_NEMOCLAW_AGENTIC_DENIED_ARGUMENT_PATTERNS = set(
     AGENTIC_DENIED_ARGUMENT_PATTERNS
 )
+REQUIRED_NEMOCLAW_AGENTIC_ALLOWED_LOCAL_TOOLS = {"exec"}
 AGENTIC_PRODUCTION_EVIDENCE_REQUIREMENTS = {
     "--require-nemoclaw-agentic-config": "Agentic Math/SWE generated configs must route through NeMoClaw with deny-policy guards.",
     "--require-weave-content-canary": "A fresh native Weave content canary must pass before paid agentic execution.",
@@ -290,6 +293,37 @@ def build_nemoclaw_agentic_config_guard(
                     f"{section}.{field} missing required values: {', '.join(missing)}"
                 )
 
+        def tool_name_matches_pattern(tool_name: str, pattern: str) -> bool:
+            tool_name_norm = tool_name.lower()
+            pattern_norm = pattern.lower()
+            if pattern_norm.startswith("re:"):
+                return re.search(pattern_norm[3:], tool_name_norm) is not None
+            if "*" in pattern_norm or "?" in pattern_norm:
+                return fnmatch.fnmatch(tool_name_norm, pattern_norm)
+            return tool_name_norm == pattern_norm
+
+        def local_exec_blocking_patterns(observed_value: object) -> list[str]:
+            observed = string_list(observed_value)
+            if observed is None:
+                return []
+            return sorted(
+                pattern
+                for pattern in observed
+                if any(
+                    tool_name_matches_pattern(tool_name, pattern)
+                    for tool_name in REQUIRED_NEMOCLAW_AGENTIC_ALLOWED_LOCAL_TOOLS
+                )
+            )
+
+        def require_local_exec_allowed(section: str, observed_value: object) -> list[str]:
+            conflicts = local_exec_blocking_patterns(observed_value)
+            if conflicts:
+                issues.append(
+                    f"{section}.deny_tool must not block local OpenClaw exec tool: "
+                    f"{', '.join(conflicts)}"
+                )
+            return conflicts
+
         issues: list[str] = []
         run_agentic_math = lookup("run.agentic_math") is True
         run_swebench_pro = lookup("run.swebench_pro") is True
@@ -310,6 +344,12 @@ def build_nemoclaw_agentic_config_guard(
                 "agentic_math_nemoclaw_sandbox": math_sandbox if isinstance(math_sandbox, str) else "",
                 "agentic_math_use_task_agent": math_use_task_agent,
                 "agentic_math_deny_tool": string_list(math_deny_tools) or [],
+                "agentic_math_local_exec_blocking_patterns": local_exec_blocking_patterns(
+                    math_deny_tools
+                ),
+                "agentic_math_local_exec_allowed": not local_exec_blocking_patterns(
+                    math_deny_tools
+                ),
                 "agentic_math_deny_argument_pattern": (
                     string_list(math_deny_argument_patterns) or []
                 ),
@@ -321,6 +361,12 @@ def build_nemoclaw_agentic_config_guard(
                     swe_checkout_root if isinstance(swe_checkout_root, str) else ""
                 ),
                 "swebench_pro_deny_tool": string_list(swe_deny_tools) or [],
+                "swebench_pro_local_exec_blocking_patterns": local_exec_blocking_patterns(
+                    swe_deny_tools
+                ),
+                "swebench_pro_local_exec_allowed": not local_exec_blocking_patterns(
+                    swe_deny_tools
+                ),
                 "swebench_pro_deny_argument_pattern": (
                     string_list(swe_deny_argument_patterns) or []
                 ),
@@ -341,6 +387,7 @@ def build_nemoclaw_agentic_config_guard(
                 observed_value=math_deny_tools,
                 required_values=REQUIRED_NEMOCLAW_AGENTIC_DENIED_TOOLS,
             )
+            require_local_exec_allowed("agentic_math", math_deny_tools)
             require_string_superset(
                 section="agentic_math",
                 field="deny_argument_pattern",
@@ -363,6 +410,7 @@ def build_nemoclaw_agentic_config_guard(
                 observed_value=swe_deny_tools,
                 required_values=REQUIRED_NEMOCLAW_AGENTIC_DENIED_TOOLS,
             )
+            require_local_exec_allowed("swebench_pro", swe_deny_tools)
             require_string_superset(
                 section="swebench_pro",
                 field="deny_argument_pattern",

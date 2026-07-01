@@ -6,6 +6,7 @@ Check Taiwan canary readiness without calling paid model APIs.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 import re
@@ -50,6 +51,7 @@ AGENTIC_REQUIRED_DENIED_ARGUMENT_PATTERNS = {
     r"\b(requests|urllib|httpx)\.",
     r"https?://",
 }
+AGENTIC_REQUIRED_ALLOWED_LOCAL_TOOLS = {"exec"}
 NEMOCLAW_ALLOWED_RUNTIME_NETWORK_POLICIES = {
     "clawhub",
     "managed_inference",
@@ -181,6 +183,41 @@ def string_set(value: Any) -> set[str]:
     except TypeError:
         return set()
     return {str(item) for item in items if str(item)}
+
+
+def tool_name_matches_pattern(tool_name: str, pattern: str) -> bool:
+    tool_name_norm = tool_name.lower()
+    pattern_norm = pattern.lower()
+    if pattern_norm.startswith("re:"):
+        return re.search(pattern_norm[3:], tool_name_norm) is not None
+    if "*" in pattern_norm or "?" in pattern_norm:
+        return fnmatch.fnmatch(tool_name_norm, pattern_norm)
+    return tool_name_norm == pattern_norm
+
+
+def local_tool_allow_check(cfg: Any, section: str, label: str) -> Check:
+    observed = string_set(cfg_get(cfg, f"{section}.deny_tool"))
+    conflicts = sorted(
+        pattern
+        for pattern in observed
+        if any(
+            tool_name_matches_pattern(tool_name, pattern)
+            for tool_name in AGENTIC_REQUIRED_ALLOWED_LOCAL_TOOLS
+        )
+    )
+    return Check(
+        f"agentic {label} allows local OpenClaw exec tool",
+        not conflicts,
+        json.dumps(
+            {
+                "section": section,
+                "protected_local_tools": sorted(AGENTIC_REQUIRED_ALLOWED_LOCAL_TOOLS),
+                "conflicting_deny_patterns": conflicts,
+                "observed": sorted(observed),
+            },
+            ensure_ascii=False,
+        ),
+    )
 
 
 def deny_policy_check(cfg: Any, section: str, field: str, required: set[str], label: str) -> Check:
@@ -591,6 +628,7 @@ def check_generated_configs(
                         AGENTIC_REQUIRED_DENIED_TOOLS,
                         "Math",
                     ),
+                    local_tool_allow_check(cfg, "agentic_math", "Math"),
                     deny_policy_check(
                         cfg,
                         "swebench_pro",
@@ -598,6 +636,7 @@ def check_generated_configs(
                         AGENTIC_REQUIRED_DENIED_TOOLS,
                         "SWE",
                     ),
+                    local_tool_allow_check(cfg, "swebench_pro", "SWE"),
                     deny_policy_check(
                         cfg,
                         "agentic_math",

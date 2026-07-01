@@ -9,6 +9,7 @@ It is offline and does not query W&B or model providers.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import math
@@ -86,15 +87,20 @@ NEMOCLAW_AGENTIC_CONFIG_REQUIRED_DENIED_ARGUMENT_PATTERNS = {
     r"\b(requests|urllib|httpx)\.",
     "https?://",
 }
+NEMOCLAW_AGENTIC_CONFIG_REQUIRED_ALLOWED_LOCAL_TOOLS = {"exec"}
 NEMOCLAW_CANARY_READINESS_SCRIPT_SOURCE_TOKENS = (
     ("remote lookup deny tools constant", "AGENTIC_REQUIRED_DENIED_TOOLS"),
+    ("local OpenClaw exec allow constant", "AGENTIC_REQUIRED_ALLOWED_LOCAL_TOOLS"),
     (
         "remote lookup deny argument patterns constant",
         "AGENTIC_REQUIRED_DENIED_ARGUMENT_PATTERNS",
     ),
     ("remote lookup deny policy checker", "def deny_policy_check("),
+    ("local OpenClaw exec allow checker", "def local_tool_allow_check("),
     ("Math deny_tool check", '"agentic_math",\n                        "deny_tool"'),
     ("SWE deny_tool check", '"swebench_pro",\n                        "deny_tool"'),
+    ("Math local exec allow check", "local_tool_allow_check(cfg, \"agentic_math\", \"Math\")"),
+    ("SWE local exec allow check", "local_tool_allow_check(cfg, \"swebench_pro\", \"SWE\")"),
     ("Math deny_argument_pattern check", '"agentic_math",\n                        "deny_argument_pattern"'),
     ("SWE deny_argument_pattern check", '"swebench_pro",\n                        "deny_argument_pattern"'),
     ("NeMoClaw status JSON introspection", "def _run_json_status("),
@@ -250,6 +256,14 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             (
                 "NeMoClaw batch deny argument patterns constant",
                 "REQUIRED_NEMOCLAW_AGENTIC_DENIED_ARGUMENT_PATTERNS",
+            ),
+            (
+                "NeMoClaw batch local exec allow constant",
+                "REQUIRED_NEMOCLAW_AGENTIC_ALLOWED_LOCAL_TOOLS",
+            ),
+            (
+                "NeMoClaw batch local exec allow guard",
+                "def require_local_exec_allowed(",
             ),
             (
                 "NeMoClaw W&B verifier config expectations constant",
@@ -7524,6 +7538,36 @@ def validate_config_string_list_superset(
             errors.append(f"{label} {field} missing required value {required}")
 
 
+def tool_name_matches_pattern(tool_name: str, pattern: str) -> bool:
+    tool_name_norm = tool_name.lower()
+    pattern_norm = pattern.lower()
+    if pattern_norm.startswith("re:"):
+        return re.search(pattern_norm[3:], tool_name_norm) is not None
+    if "*" in pattern_norm or "?" in pattern_norm:
+        return fnmatch.fnmatch(tool_name_norm, pattern_norm)
+    return tool_name_norm == pattern_norm
+
+
+def validate_config_local_tools_allowed(
+    *,
+    errors: list[str],
+    section: dict[str, Any],
+    field: str,
+    protected_tools: set[str],
+    label: str,
+) -> None:
+    values = section.get(field)
+    if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+        return
+    conflicts = sorted(
+        pattern
+        for pattern in values
+        if any(tool_name_matches_pattern(tool_name, pattern) for tool_name in protected_tools)
+    )
+    for pattern in conflicts:
+        errors.append(f"{label} {field} must not block local OpenClaw exec tool: {pattern}")
+
+
 def validate_agentic_math_nemoclaw_config_yaml(
     *,
     errors: list[str],
@@ -7552,6 +7596,13 @@ def validate_agentic_math_nemoclaw_config_yaml(
         section=agentic_math,
         field="deny_tool",
         required_values=NEMOCLAW_AGENTIC_CONFIG_REQUIRED_DENIED_TOOLS,
+        label=f"{label} agentic_math",
+    )
+    validate_config_local_tools_allowed(
+        errors=errors,
+        section=agentic_math,
+        field="deny_tool",
+        protected_tools=NEMOCLAW_AGENTIC_CONFIG_REQUIRED_ALLOWED_LOCAL_TOOLS,
         label=f"{label} agentic_math",
     )
     validate_config_string_list_superset(
@@ -7598,6 +7649,13 @@ def validate_swebench_nemoclaw_config_yaml(
         section=swebench_pro,
         field="deny_tool",
         required_values=NEMOCLAW_AGENTIC_CONFIG_REQUIRED_DENIED_TOOLS,
+        label=f"{label} swebench_pro",
+    )
+    validate_config_local_tools_allowed(
+        errors=errors,
+        section=swebench_pro,
+        field="deny_tool",
+        protected_tools=NEMOCLAW_AGENTIC_CONFIG_REQUIRED_ALLOWED_LOCAL_TOOLS,
         label=f"{label} swebench_pro",
     )
     validate_config_string_list_superset(
