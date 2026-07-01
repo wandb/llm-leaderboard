@@ -42,6 +42,8 @@ REQUIRED_SUMMARY_KEYS = {
 OUTPUT_OBSERVABILITY_COLUMNS = (
     "nemoclaw_session_audit_ok",
     "nemoclaw_session_audit",
+    "nemoclaw_session_copy_source",
+    "nemoclaw_session_copied_bytes",
     "conversation_order_ok",
     "conversation_order",
     "tool_policy_ok",
@@ -63,6 +65,7 @@ INVOCATION_HASH_COLUMNS = (
     "openclaw_invocation_sha256",
     "openclaw_command_sha256",
 )
+NEMOCLAW_SESSION_COPY_SOURCES = {"stdout_agent_meta", "live_runtime_budget"}
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -109,10 +112,33 @@ def is_sha256(value: Any) -> bool:
     )
 
 
+def positive_int_like(value: Any) -> bool:
+    if isinstance(value, bool):
+        return False
+    try:
+        return int(value) > 0
+    except (TypeError, ValueError):
+        return False
+
+
 def observability_acceptance_issues(rows: list[dict[str, Any]]) -> list[str]:
     issues: list[str] = []
     for index, row in enumerate(rows, start=1):
         row_id = row.get("task_id") or row.get("id") or index
+        audit = row.get("nemoclaw_session_audit")
+        audit_required = isinstance(audit, dict) and audit.get("required") is True
+        audit_ok = row.get("nemoclaw_session_audit_ok") is True
+        if audit_required and audit_ok:
+            source = row.get("nemoclaw_session_copy_source")
+            if source not in NEMOCLAW_SESSION_COPY_SOURCES:
+                issues.append(
+                    f"row {row_id} has invalid NeMoClaw session copy source: {source!r}"
+                )
+            if not positive_int_like(row.get("nemoclaw_session_copied_bytes")):
+                issues.append(
+                    f"row {row_id} has invalid NeMoClaw copied session bytes: "
+                    f"{row.get('nemoclaw_session_copied_bytes')!r}"
+                )
         missing_invocation = [
             column
             for column in INVOCATION_EVIDENCE_COLUMNS
@@ -265,6 +291,20 @@ def ensure_output_observability_columns(output_df: pd.DataFrame) -> pd.DataFrame
     for column in OUTPUT_OBSERVABILITY_COLUMNS:
         if column not in output_df.columns:
             output_df[column] = None
+    if "nemoclaw_session_audit" in output_df.columns:
+        for index, audit in output_df["nemoclaw_session_audit"].items():
+            if not isinstance(audit, dict):
+                continue
+            copy_status = audit.get("copy")
+            if (
+                output_df.at[index, "nemoclaw_session_copy_source"] in (None, "")
+                and isinstance(copy_status, dict)
+            ):
+                output_df.at[index, "nemoclaw_session_copy_source"] = copy_status.get("source")
+            if output_df.at[index, "nemoclaw_session_copied_bytes"] in (None, ""):
+                output_df.at[index, "nemoclaw_session_copied_bytes"] = audit.get(
+                    "copied_session_bytes"
+                )
     return output_df
 
 

@@ -200,6 +200,19 @@ def patch_record_nemoclaw_session_audit_matches_cache(record: dict[str, Any], ca
     return True
 
 
+def nemoclaw_session_copy_evidence(sidecar: dict[str, Any] | None) -> dict[str, Any]:
+    audit = sidecar.get("nemoclaw_session_audit") if isinstance(sidecar, dict) else None
+    copy_status = audit.get("copy") if isinstance(audit, dict) else None
+    return {
+        "nemoclaw_session_copy_source": (
+            copy_status.get("source") if isinstance(copy_status, dict) else None
+        ),
+        "nemoclaw_session_copied_bytes": (
+            audit.get("copied_session_bytes") if isinstance(audit, dict) else None
+        ),
+    }
+
+
 def patch_record_conversation_order_allows_reuse(record: dict[str, Any]) -> bool:
     order = record.get("conversation_order")
     if record.get("conversation_order_ok") is False:
@@ -1318,6 +1331,7 @@ def run_openclaw_for_task(
             "conversation_order": sidecar.get("conversation_order", {}),
             "nemoclaw_session_audit_ok": (sidecar.get("nemoclaw_session_audit") or {}).get("ok"),
             "nemoclaw_session_audit": sidecar.get("nemoclaw_session_audit", {}),
+            **nemoclaw_session_copy_evidence(sidecar),
             "runtime_budget": sidecar.get("runtime_budget", {}),
             "weave_sidecar": sidecar.get("weave_sidecar", {}),
             "weave_sidecar_ok": (sidecar.get("weave_sidecar") or {}).get("ok"),

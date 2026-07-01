@@ -31,13 +31,24 @@ def summary_payload():
     }
 
 
+def passed_nemoclaw_audit() -> dict:
+    return {
+        "required": True,
+        "ok": True,
+        "copied_session_bytes": 2048,
+        "copy": {"source": "stdout_agent_meta"},
+    }
+
+
 def patch_rows_with_nemoclaw_audit(*, tool_policy_ok: bool = True):
     return [
         {
             "instance_id": "i1",
             "tool_policy_ok": tool_policy_ok,
             "nemoclaw_session_audit_ok": True,
-            "nemoclaw_session_audit": {"required": True, "ok": True},
+            "nemoclaw_session_audit": passed_nemoclaw_audit(),
+            "nemoclaw_session_copy_source": "stdout_agent_meta",
+            "nemoclaw_session_copied_bytes": 2048,
             "openclaw_result_path": "/tmp/i1/openclaw_result.json",
             "openclaw_invocation_path": "/tmp/i1/openclaw_invocation.json",
             "openclaw_invocation_sha256": TEST_SHA,
@@ -47,7 +58,9 @@ def patch_rows_with_nemoclaw_audit(*, tool_policy_ok: bool = True):
             "instance_id": "i2",
             "tool_policy_ok": True,
             "nemoclaw_session_audit_ok": True,
-            "nemoclaw_session_audit": {"required": True, "ok": True},
+            "nemoclaw_session_audit": passed_nemoclaw_audit(),
+            "nemoclaw_session_copy_source": "stdout_agent_meta",
+            "nemoclaw_session_copied_bytes": 2048,
             "openclaw_result_path": "/tmp/i2/openclaw_result.json",
             "openclaw_invocation_path": "/tmp/i2/openclaw_invocation.json",
             "openclaw_invocation_sha256": TEST_SHA,
@@ -57,7 +70,9 @@ def patch_rows_with_nemoclaw_audit(*, tool_policy_ok: bool = True):
             "instance_id": "i3",
             "tool_policy_ok": True,
             "nemoclaw_session_audit_ok": True,
-            "nemoclaw_session_audit": {"required": True, "ok": True},
+            "nemoclaw_session_audit": passed_nemoclaw_audit(),
+            "nemoclaw_session_copy_source": "stdout_agent_meta",
+            "nemoclaw_session_copied_bytes": 2048,
             "openclaw_result_path": "/tmp/i3/openclaw_result.json",
             "openclaw_invocation_path": "/tmp/i3/openclaw_invocation.json",
             "openclaw_invocation_sha256": TEST_SHA,
@@ -156,7 +171,7 @@ def test_build_output_table_preserves_patch_metadata():
                 "weave_sidecar_ok": True,
                 "weave_sidecar": {"ok": True},
                 "nemoclaw_session_audit_ok": True,
-                "nemoclaw_session_audit": {"required": True, "ok": True},
+                "nemoclaw_session_audit": passed_nemoclaw_audit(),
                 "openclaw_tool_call_count": 12,
                 "openclaw_result_path": "path/to/result.json",
                 "openclaw_invocation_path": "path/to/invocation.json",

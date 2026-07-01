@@ -14,6 +14,8 @@ INSTALLER_SHA256 = "a4ebc5710dfd8b10035968fd25562773ad56ec4c73ecf9bfe5c78c777240
 AGENTIC_MATH_OUTPUT_COLUMNS = [
     "nemoclaw_session_audit_ok",
     "nemoclaw_session_audit",
+    "nemoclaw_session_copy_source",
+    "nemoclaw_session_copied_bytes",
     "conversation_order_ok",
     "conversation_order",
     "tool_policy_ok",
@@ -401,6 +403,16 @@ def agentic_math_wandb_completion_payload():
                         "conversation_order",
                         "weave_sidecar",
                     ],
+                    "row_observability_required_copy_source_columns": [
+                        "nemoclaw_session_copy_source",
+                    ],
+                    "row_observability_required_positive_int_columns": [
+                        "nemoclaw_session_copied_bytes",
+                    ],
+                    "row_observability_allowed_copy_sources": [
+                        "stdout_agent_meta",
+                        "live_runtime_budget",
+                    ],
                 },
             ],
             "artifacts": [
@@ -482,6 +494,16 @@ def agentic_math_wandb_completion_payload():
                     "conversation_order",
                     "weave_sidecar",
                 ],
+                "required_copy_source_columns": [
+                    "nemoclaw_session_copy_source",
+                ],
+                "required_positive_int_columns": [
+                    "nemoclaw_session_copied_bytes",
+                ],
+                "allowed_copy_sources": [
+                    "stdout_agent_meta",
+                    "live_runtime_budget",
+                ],
                 "required_columns": [
                     "nemoclaw_session_audit_ok",
                     "conversation_order_ok",
@@ -491,6 +513,8 @@ def agentic_math_wandb_completion_payload():
                     "nemoclaw_session_audit",
                     "conversation_order",
                     "weave_sidecar",
+                    "nemoclaw_session_copy_source",
+                    "nemoclaw_session_copied_bytes",
                 ],
                 "checked_rows": 100,
                 "expected_rows": 100,

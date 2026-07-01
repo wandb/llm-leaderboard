@@ -512,6 +512,8 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("Agentic Math W&B invocation path column", '"openclaw_invocation_path"'),
             ("Agentic Math W&B invocation sha256 column", '"openclaw_invocation_sha256"'),
             ("Agentic Math W&B command sha256 column", '"openclaw_command_sha256"'),
+            ("Agentic Math NeMoClaw session copy source column", '"nemoclaw_session_copy_source"'),
+            ("Agentic Math NeMoClaw copied bytes column", '"nemoclaw_session_copied_bytes"'),
         ),
     },
     "scripts/evaluator/swebench_pro.py": {
@@ -532,6 +534,8 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("SWE-Bench Pro W&B invocation path column", '"openclaw_invocation_path"'),
             ("SWE-Bench Pro W&B invocation sha256 column", '"openclaw_invocation_sha256"'),
             ("SWE-Bench Pro W&B command sha256 column", '"openclaw_command_sha256"'),
+            ("SWE-Bench Pro NeMoClaw session copy source column", '"nemoclaw_session_copy_source"'),
+            ("SWE-Bench Pro NeMoClaw copied bytes column", '"nemoclaw_session_copied_bytes"'),
         ),
     },
     "scripts/tools/run_openclaw_agent_protocol.py": {
@@ -612,6 +616,9 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("OpenClaw invocation sha256 result field", '"openclaw_invocation_sha256"'),
             ("OpenClaw command sha256 result field", '"openclaw_command_sha256"'),
             ("OpenClaw invocation command hash writer", '"command_sha256": command_sha256(command)'),
+            ("NeMoClaw session copy evidence helper", "def nemoclaw_session_copy_evidence("),
+            ("NeMoClaw session copy source result field", '"nemoclaw_session_copy_source"'),
+            ("NeMoClaw copied bytes result field", '"nemoclaw_session_copied_bytes"'),
             ("NeMoClaw session audit mismatch rejection", "OpenClaw NeMoClaw session audit mismatch"),
             ("remote lookup config mutator", "def disable_remote_lookup_tools("),
             ("remote lookup config call", "disable_remote_lookup_tools(config)"),
@@ -681,6 +688,9 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("OpenClaw invocation sha256 patch field", '"openclaw_invocation_sha256"'),
             ("OpenClaw command sha256 patch field", '"openclaw_command_sha256"'),
             ("OpenClaw invocation command hash writer", '"command_sha256": command_sha256(command)'),
+            ("NeMoClaw session copy evidence helper", "def nemoclaw_session_copy_evidence("),
+            ("NeMoClaw session copy source patch field", '"nemoclaw_session_copy_source"'),
+            ("NeMoClaw copied bytes patch field", '"nemoclaw_session_copied_bytes"'),
             ("NeMoClaw session audit mismatch rejection", "OpenClaw NeMoClaw session audit mismatch"),
             ("remote lookup config mutator", "def disable_remote_lookup_tools("),
             ("remote lookup config call", "disable_remote_lookup_tools(config)"),
@@ -1042,9 +1052,14 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("W&B observed table column evidence", '"columns_ok": bool(check.get("ok"))'),
             ("W&B observed invocation evidence", '"invocation_evidence_ok": bool(check.get("ok"))'),
             ("W&B observed row observability evidence", '"row_observability_ok": bool(check.get("ok"))'),
+            ("W&B observed session copy source evidence", '"row_observability_required_copy_source_columns"'),
+            ("W&B observed copied bytes evidence", '"row_observability_required_positive_int_columns"'),
             ("W&B OpenClaw invocation path column", '"openclaw_invocation_path"'),
             ("W&B OpenClaw invocation sha256 column", '"openclaw_invocation_sha256"'),
             ("W&B OpenClaw command sha256 column", '"openclaw_command_sha256"'),
+            ("W&B NeMoClaw session copy source column", '"nemoclaw_session_copy_source"'),
+            ("W&B NeMoClaw copied bytes column", '"nemoclaw_session_copied_bytes"'),
+            ("W&B NeMoClaw allowed session copy sources", "NEMOCLAW_SESSION_COPY_SOURCES"),
         ),
     },
     "scripts/tools/weave_content_canary_gate_contract.py": {
@@ -1312,8 +1327,11 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("Agentic Math relog output invocation path column", '"openclaw_invocation_path",'),
             ("Agentic Math relog output invocation sha256 column", '"openclaw_invocation_sha256",'),
             ("Agentic Math relog output command sha256 column", '"openclaw_command_sha256",'),
+            ("Agentic Math relog session copy source column", '"nemoclaw_session_copy_source",'),
+            ("Agentic Math relog copied bytes column", '"nemoclaw_session_copied_bytes",'),
             ("Agentic Math output table", "agentic_math_output_table"),
             ("Agentic Math NeMoClaw audit field passthrough", "nemoclaw_session_audit_ok"),
+            ("Agentic Math relog session copy source validator", "invalid NeMoClaw session copy source"),
             (
                 "Agentic Math relog audit metric logging",
                 "agentic_math/nemoclaw_session_audit_required_instances",
@@ -1350,7 +1368,16 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "SWE relog output command sha256 field",
                 '"openclaw_command_sha256": patch_row.get("openclaw_command_sha256"),',
             ),
+            (
+                "SWE relog session copy source field",
+                '"nemoclaw_session_copy_source": (',
+            ),
+            (
+                "SWE relog copied bytes field",
+                '"nemoclaw_session_copied_bytes": (',
+            ),
             ("SWE relog NeMoClaw audit field", "nemoclaw_session_audit_ok"),
+            ("SWE relog session copy source validator", "invalid NeMoClaw session copy source"),
             ("SWE output table", "agentic_swe_output_table"),
             (
                 "SWE relog audit metric logging",
@@ -1452,6 +1479,8 @@ AGENTIC_WANDB_OUTPUT_TABLE_REQUIRED_COLUMNS = {
     "agentic_math": (
         "nemoclaw_session_audit_ok",
         "nemoclaw_session_audit",
+        "nemoclaw_session_copy_source",
+        "nemoclaw_session_copied_bytes",
         "conversation_order_ok",
         "conversation_order",
         "tool_policy_ok",
@@ -1466,6 +1495,8 @@ AGENTIC_WANDB_OUTPUT_TABLE_REQUIRED_COLUMNS = {
     "agentic_swe": (
         "nemoclaw_session_audit_ok",
         "nemoclaw_session_audit_required",
+        "nemoclaw_session_copy_source",
+        "nemoclaw_session_copied_bytes",
         "conversation_order_ok",
         "conversation_order",
         "tool_policy_ok",
@@ -1491,6 +1522,16 @@ AGENTIC_WANDB_ROW_DICT_OK_COLUMNS = (
     "nemoclaw_session_audit",
     "conversation_order",
     "weave_sidecar",
+)
+AGENTIC_WANDB_ROW_COPY_SOURCE_COLUMNS = (
+    "nemoclaw_session_copy_source",
+)
+AGENTIC_WANDB_ROW_POSITIVE_INT_COLUMNS = (
+    "nemoclaw_session_copied_bytes",
+)
+NEMOCLAW_SESSION_COPY_SOURCES = (
+    "stdout_agent_meta",
+    "live_runtime_budget",
 )
 SCOPE_ATTESTATION_RENDER_SAFETY_FIELDS = (
     "executes_external_action",
@@ -11531,6 +11572,16 @@ def _validate_output_table_row_observability_check(
         for column in AGENTIC_WANDB_ROW_DICT_OK_COLUMNS
         if column in table_required_columns
     ]
+    required_copy_source = [
+        column
+        for column in AGENTIC_WANDB_ROW_COPY_SOURCE_COLUMNS
+        if column in table_required_columns
+    ]
+    required_positive_int = [
+        column
+        for column in AGENTIC_WANDB_ROW_POSITIVE_INT_COLUMNS
+        if column in table_required_columns
+    ]
     if _string_list_or_empty(check.get("required_true_columns")) != required_true:
         errors.append(
             f"{label} checks output_table_row_observability required_true_columns mismatch"
@@ -11564,6 +11615,42 @@ def _validate_output_table_row_observability_check(
         errors.append(
             f"{label} observed_evidence table {table_name} "
             "row_observability_required_dict_ok_columns mismatch"
+        )
+    if _string_list_or_empty(check.get("required_copy_source_columns")) != required_copy_source:
+        errors.append(
+            f"{label} checks output_table_row_observability required_copy_source_columns mismatch"
+        )
+    if (
+        _string_list_or_empty(observed_row.get("row_observability_required_copy_source_columns"))
+        != required_copy_source
+    ):
+        errors.append(
+            f"{label} observed_evidence table {table_name} "
+            "row_observability_required_copy_source_columns mismatch"
+        )
+    if _string_list_or_empty(check.get("required_positive_int_columns")) != required_positive_int:
+        errors.append(
+            f"{label} checks output_table_row_observability required_positive_int_columns mismatch"
+        )
+    if (
+        _string_list_or_empty(observed_row.get("row_observability_required_positive_int_columns"))
+        != required_positive_int
+    ):
+        errors.append(
+            f"{label} observed_evidence table {table_name} "
+            "row_observability_required_positive_int_columns mismatch"
+        )
+    if _string_list_or_empty(check.get("allowed_copy_sources")) != list(NEMOCLAW_SESSION_COPY_SOURCES):
+        errors.append(
+            f"{label} checks output_table_row_observability allowed_copy_sources mismatch"
+        )
+    if (
+        _string_list_or_empty(observed_row.get("row_observability_allowed_copy_sources"))
+        != list(NEMOCLAW_SESSION_COPY_SOURCES)
+    ):
+        errors.append(
+            f"{label} observed_evidence table {table_name} "
+            "row_observability_allowed_copy_sources mismatch"
         )
     return errors
 

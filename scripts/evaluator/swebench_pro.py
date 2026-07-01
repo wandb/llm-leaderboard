@@ -20,6 +20,8 @@ DEFAULT_MAX_TOOL_CALLS = 60
 AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "nemoclaw_session_audit_ok",
     "nemoclaw_session_audit_required",
+    "nemoclaw_session_copy_source",
+    "nemoclaw_session_copied_bytes",
     "conversation_order_ok",
     "conversation_order",
     "tool_policy_ok",
@@ -397,6 +399,7 @@ def _log_summary(run, cfg, summary: dict[str, Any], output_dir: Path, patch_path
     for iid in sorted(summary.get("resolved_ids", []) + summary.get("unresolved_ids", [])):
         patch = patch_by_instance.get(iid) or {}
         audit = patch.get("nemoclaw_session_audit")
+        copy_status = audit.get("copy") if isinstance(audit, dict) else None
         per_instance_rows.append(
             {
                 "instance_id": iid,
@@ -412,6 +415,12 @@ def _log_summary(run, cfg, summary: dict[str, Any], output_dir: Path, patch_path
                 "nemoclaw_session_audit_ok": patch.get("nemoclaw_session_audit_ok"),
                 "nemoclaw_session_audit_required": (
                     audit.get("required") if isinstance(audit, dict) else None
+                ),
+                "nemoclaw_session_copy_source": (
+                    copy_status.get("source") if isinstance(copy_status, dict) else None
+                ),
+                "nemoclaw_session_copied_bytes": (
+                    audit.get("copied_session_bytes") if isinstance(audit, dict) else None
                 ),
                 "openclaw_tool_call_count": patch.get("openclaw_tool_call_count"),
                 "openclaw_result_path": patch.get("openclaw_result_path"),

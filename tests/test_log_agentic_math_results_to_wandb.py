@@ -17,6 +17,17 @@ def invocation_evidence(row_id: str = "m1") -> dict:
         "openclaw_invocation_path": f"/tmp/{row_id}/openclaw_invocation.json",
         "openclaw_invocation_sha256": TEST_SHA,
         "openclaw_command_sha256": "b" * 64,
+        "nemoclaw_session_copy_source": "stdout_agent_meta",
+        "nemoclaw_session_copied_bytes": 2048,
+    }
+
+
+def passed_nemoclaw_audit() -> dict:
+    return {
+        "required": True,
+        "ok": True,
+        "copied_session_bytes": 2048,
+        "copy": {"source": "stdout_agent_meta"},
     }
 
 
@@ -62,21 +73,21 @@ def test_validate_summary_accepts_consistent_rows():
             "correct": True,
             "predicted_answer": "1",
             "nemoclaw_session_audit_ok": True,
-            "nemoclaw_session_audit": {"required": True, "ok": True},
+            "nemoclaw_session_audit": passed_nemoclaw_audit(),
             **invocation_evidence("m1"),
         },
         {
             "correct": True,
             "predicted_answer": "2",
             "nemoclaw_session_audit_ok": True,
-            "nemoclaw_session_audit": {"required": True, "ok": True},
+            "nemoclaw_session_audit": passed_nemoclaw_audit(),
             **invocation_evidence("m2"),
         },
         {
             "correct": False,
             "predicted_answer": None,
             "nemoclaw_session_audit_ok": True,
-            "nemoclaw_session_audit": {"required": True, "ok": True},
+            "nemoclaw_session_audit": passed_nemoclaw_audit(),
             **invocation_evidence("m3"),
         },
     ]
@@ -102,14 +113,14 @@ def test_validate_summary_rejects_mismatched_counts():
             "correct": True,
             "predicted_answer": "1",
             "nemoclaw_session_audit_ok": True,
-            "nemoclaw_session_audit": {"required": True, "ok": True},
+            "nemoclaw_session_audit": passed_nemoclaw_audit(),
             **invocation_evidence("m1"),
         },
         {
             "correct": False,
             "predicted_answer": "2",
             "nemoclaw_session_audit_ok": True,
-            "nemoclaw_session_audit": {"required": True, "ok": True},
+            "nemoclaw_session_audit": passed_nemoclaw_audit(),
             **invocation_evidence("m2"),
         },
     ]
@@ -137,7 +148,7 @@ def test_validate_summary_rejects_explicit_observability_failures():
             "correct": True,
             "predicted_answer": "1",
             "nemoclaw_session_audit_ok": True,
-            "nemoclaw_session_audit": {"required": True, "ok": True},
+            "nemoclaw_session_audit": passed_nemoclaw_audit(),
             "conversation_order_ok": False,
             **invocation_evidence("m1"),
         },
@@ -146,7 +157,7 @@ def test_validate_summary_rejects_explicit_observability_failures():
             "correct": True,
             "predicted_answer": "2",
             "nemoclaw_session_audit_ok": True,
-            "nemoclaw_session_audit": {"required": True, "ok": True},
+            "nemoclaw_session_audit": passed_nemoclaw_audit(),
             "tool_policy_violations": [{"type": "denied_tool"}],
             **invocation_evidence("m2"),
         },
@@ -155,7 +166,7 @@ def test_validate_summary_rejects_explicit_observability_failures():
             "correct": True,
             "predicted_answer": "3",
             "nemoclaw_session_audit_ok": True,
-            "nemoclaw_session_audit": {"required": True, "ok": True},
+            "nemoclaw_session_audit": passed_nemoclaw_audit(),
             "weave_sidecar": {"ok": False},
             **invocation_evidence("m3"),
         },
@@ -189,7 +200,7 @@ def test_validate_summary_rejects_missing_invocation_evidence():
             "correct": True,
             "predicted_answer": "1",
             "nemoclaw_session_audit_ok": True,
-            "nemoclaw_session_audit": {"required": True, "ok": True},
+            "nemoclaw_session_audit": passed_nemoclaw_audit(),
         }
     ]
 
@@ -215,7 +226,7 @@ def test_validate_summary_rejects_invalid_invocation_hashes():
         "correct": True,
         "predicted_answer": "1",
         "nemoclaw_session_audit_ok": True,
-        "nemoclaw_session_audit": {"required": True, "ok": True},
+        "nemoclaw_session_audit": passed_nemoclaw_audit(),
         **invocation_evidence("m1"),
     }
     row["openclaw_invocation_sha256"] = "not-a-sha"
@@ -265,6 +276,8 @@ def test_math_relog_output_table_keeps_observability_columns():
 
     assert "nemoclaw_session_audit_ok" in output_df.columns
     assert "nemoclaw_session_audit" in output_df.columns
+    assert "nemoclaw_session_copy_source" in output_df.columns
+    assert "nemoclaw_session_copied_bytes" in output_df.columns
     assert "conversation_order_ok" in output_df.columns
     assert "conversation_order" in output_df.columns
     assert "tool_policy_ok" in output_df.columns
@@ -303,7 +316,7 @@ def test_main_dry_run_writes_plan_without_wandb_login(tmp_path, monkeypatch, cap
             "correct": True,
             "predicted_answer": "1",
             "nemoclaw_session_audit_ok": True,
-            "nemoclaw_session_audit": {"required": True, "ok": True},
+            "nemoclaw_session_audit": passed_nemoclaw_audit(),
             **invocation_evidence("m1"),
         },
         {
@@ -311,7 +324,7 @@ def test_main_dry_run_writes_plan_without_wandb_login(tmp_path, monkeypatch, cap
             "correct": False,
             "predicted_answer": "2",
             "nemoclaw_session_audit_ok": True,
-            "nemoclaw_session_audit": {"required": True, "ok": True},
+            "nemoclaw_session_audit": passed_nemoclaw_audit(),
             **invocation_evidence("m2"),
         },
     ]
@@ -408,7 +421,7 @@ def test_main_write_requires_validated_dry_run_plan_before_wandb_login(
                 "correct": True,
                 "predicted_answer": "1",
                 "nemoclaw_session_audit_ok": True,
-                "nemoclaw_session_audit": {"required": True, "ok": True},
+                "nemoclaw_session_audit": passed_nemoclaw_audit(),
                 **invocation_evidence("m1"),
             }
         ) + "\n",
@@ -460,7 +473,7 @@ def test_main_write_rejects_mismatched_validated_plan_before_wandb_login(
                 "correct": True,
                 "predicted_answer": "1",
                 "nemoclaw_session_audit_ok": True,
-                "nemoclaw_session_audit": {"required": True, "ok": True},
+                "nemoclaw_session_audit": passed_nemoclaw_audit(),
                 **invocation_evidence("m1"),
             }
         ) + "\n",
@@ -536,7 +549,7 @@ def test_main_write_rejects_source_file_drift_after_validated_plan(
                 "correct": True,
                 "predicted_answer": "1",
                 "nemoclaw_session_audit_ok": True,
-                "nemoclaw_session_audit": {"required": True, "ok": True},
+                "nemoclaw_session_audit": passed_nemoclaw_audit(),
                 **invocation_evidence("m1"),
             }
         ) + "\n",
@@ -565,7 +578,7 @@ def test_main_write_rejects_source_file_drift_after_validated_plan(
                 "correct": True,
                 "predicted_answer": "2",
                 "nemoclaw_session_audit_ok": True,
-                "nemoclaw_session_audit": {"required": True, "ok": True},
+                "nemoclaw_session_audit": passed_nemoclaw_audit(),
                 **invocation_evidence("m1"),
             }
         ) + "\n",
@@ -619,7 +632,7 @@ def test_main_write_requires_external_action_approval_before_wandb_login(
                 "correct": True,
                 "predicted_answer": "1",
                 "nemoclaw_session_audit_ok": True,
-                "nemoclaw_session_audit": {"required": True, "ok": True},
+                "nemoclaw_session_audit": passed_nemoclaw_audit(),
                 **invocation_evidence("m1"),
             }
         ) + "\n",
@@ -689,7 +702,7 @@ def test_main_write_requires_external_action_approval_source_packet_before_wandb
                 "correct": True,
                 "predicted_answer": "1",
                 "nemoclaw_session_audit_ok": True,
-                "nemoclaw_session_audit": {"required": True, "ok": True},
+                "nemoclaw_session_audit": passed_nemoclaw_audit(),
                 **invocation_evidence("m1"),
             }
         ) + "\n",

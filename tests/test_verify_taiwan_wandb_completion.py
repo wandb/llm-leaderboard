@@ -9,6 +9,8 @@ TEST_SHA = "a" * 64
 AGENTIC_MATH_OUTPUT_COLUMNS = [
     "nemoclaw_session_audit_ok",
     "nemoclaw_session_audit",
+    "nemoclaw_session_copy_source",
+    "nemoclaw_session_copied_bytes",
     "conversation_order_ok",
     "conversation_order",
     "tool_policy_ok",
@@ -23,6 +25,8 @@ AGENTIC_MATH_OUTPUT_COLUMNS = [
 AGENTIC_SWE_OUTPUT_COLUMNS = [
     "nemoclaw_session_audit_ok",
     "nemoclaw_session_audit_required",
+    "nemoclaw_session_copy_source",
+    "nemoclaw_session_copied_bytes",
     "conversation_order_ok",
     "conversation_order",
     "tool_policy_ok",
@@ -45,6 +49,10 @@ def table_value(column, row_index):
         return {"ok": True, "required": True}
     if column == "nemoclaw_session_audit_required":
         return True
+    if column == "nemoclaw_session_copy_source":
+        return "stdout_agent_meta"
+    if column == "nemoclaw_session_copied_bytes":
+        return 1024
     if column == "openclaw_result_path":
         return f"/tmp/task-{row_index}/openclaw_result.json"
     if column == "openclaw_invocation_path":
@@ -290,6 +298,16 @@ def test_verify_agentic_math_wandb_completion_accepts_complete_run():
                 "conversation_order",
                 "weave_sidecar",
             ],
+            "row_observability_required_copy_source_columns": [
+                "nemoclaw_session_copy_source",
+            ],
+            "row_observability_required_positive_int_columns": [
+                "nemoclaw_session_copied_bytes",
+            ],
+            "row_observability_allowed_copy_sources": [
+                "stdout_agent_meta",
+                "live_runtime_budget",
+            ],
         },
     ]
     assert result["observed_evidence"]["artifacts"][0]["aliases"] == ["latest", "production"]
@@ -506,6 +524,40 @@ def test_verify_agentic_swe_wandb_completion_rejects_failed_nested_observability
     assert check["ok"] is False
     assert check["invalid_row_count"] == 1
     assert check["invalid_examples"][0]["dict_not_ok"] == ["conversation_order"]
+
+
+def test_verify_agentic_math_wandb_completion_rejects_invalid_session_copy_evidence():
+    module = load_module()
+    summary = complete_agentic_math_summary()
+    payload = table_payload(AGENTIC_MATH_OUTPUT_COLUMNS, 100)
+    source_index = AGENTIC_MATH_OUTPUT_COLUMNS.index("nemoclaw_session_copy_source")
+    bytes_index = AGENTIC_MATH_OUTPUT_COLUMNS.index("nemoclaw_session_copied_bytes")
+    payload["data"][0][source_index] = "manual_json_transform"
+    payload["data"][0][bytes_index] = 0
+    run = FakeRun(
+        summary=summary,
+        artifacts=[complete_result_artifact()],
+        table_files={
+            "media/table/agentic_math_output_table_0.table.json": payload,
+        },
+    )
+
+    result = module.verify_run(run, module.BENCHMARK_SPECS["agentic_math"])
+
+    assert result["ok"] is False
+    check = next(
+        check
+        for check in result["checks"]
+        if check["name"] == "output_table_row_observability"
+    )
+    assert check["ok"] is False
+    assert check["invalid_row_count"] == 1
+    assert check["invalid_examples"][0]["invalid_copy_sources"] == [
+        "nemoclaw_session_copy_source"
+    ]
+    assert check["invalid_examples"][0]["invalid_positive_ints"] == [
+        "nemoclaw_session_copied_bytes"
+    ]
 
 
 def test_verify_agentic_math_wandb_completion_requires_nemoclaw_session_audit():

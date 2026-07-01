@@ -31,6 +31,8 @@ WANDB_QUERY_SOURCE_KIND = "wandb_sdk"
 AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "nemoclaw_session_audit_ok",
     "nemoclaw_session_audit",
+    "nemoclaw_session_copy_source",
+    "nemoclaw_session_copied_bytes",
     "conversation_order_ok",
     "conversation_order",
     "tool_policy_ok",
@@ -45,6 +47,8 @@ AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (
 AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "nemoclaw_session_audit_ok",
     "nemoclaw_session_audit_required",
+    "nemoclaw_session_copy_source",
+    "nemoclaw_session_copied_bytes",
     "conversation_order_ok",
     "conversation_order",
     "tool_policy_ok",
@@ -80,6 +84,13 @@ AGENTIC_ROW_DICT_OK_COLUMNS = (
     "conversation_order",
     "weave_sidecar",
 )
+AGENTIC_ROW_COPY_SOURCE_COLUMNS = (
+    "nemoclaw_session_copy_source",
+)
+AGENTIC_ROW_POSITIVE_INT_COLUMNS = (
+    "nemoclaw_session_copied_bytes",
+)
+NEMOCLAW_SESSION_COPY_SOURCES = ("stdout_agent_meta", "live_runtime_budget")
 
 
 @dataclass(frozen=True)
@@ -252,6 +263,15 @@ def _is_sha256(value: Any) -> bool:
         and len(value) == 64
         and all(char in "0123456789abcdefABCDEF" for char in value)
     )
+
+
+def _positive_int_like(value: Any) -> bool:
+    if isinstance(value, bool):
+        return False
+    try:
+        return int(value) > 0
+    except (TypeError, ValueError):
+        return False
 
 
 def _download_wandb_table_json(run: Any, table_path: str) -> Any:
@@ -464,10 +484,32 @@ def _output_table_row_observability_check(
         for column in AGENTIC_ROW_DICT_OK_COLUMNS
         if column in spec.output_table_required_columns
     ]
-    if not required_true and not required_empty and not required_dict_ok:
+    required_copy_source = [
+        column
+        for column in AGENTIC_ROW_COPY_SOURCE_COLUMNS
+        if column in spec.output_table_required_columns
+    ]
+    required_positive_int = [
+        column
+        for column in AGENTIC_ROW_POSITIVE_INT_COLUMNS
+        if column in spec.output_table_required_columns
+    ]
+    if (
+        not required_true
+        and not required_empty
+        and not required_dict_ok
+        and not required_copy_source
+        and not required_positive_int
+    ):
         return None
     payload, source, error = _download_table_payload_from_summary(run, summary, spec.output_table)
-    required_columns = required_true + required_empty + required_dict_ok
+    required_columns = (
+        required_true
+        + required_empty
+        + required_dict_ok
+        + required_copy_source
+        + required_positive_int
+    )
     if payload is None:
         return _fail_check(
             "output_table_row_observability",
@@ -476,6 +518,9 @@ def _output_table_row_observability_check(
             required_true_columns=required_true,
             required_empty_list_columns=required_empty,
             required_dict_ok_columns=required_dict_ok,
+            required_copy_source_columns=required_copy_source,
+            required_positive_int_columns=required_positive_int,
+            allowed_copy_sources=list(NEMOCLAW_SESSION_COPY_SOURCES),
             required_columns=required_columns,
             checked_rows=0,
             invalid_row_count=None,
@@ -491,6 +536,9 @@ def _output_table_row_observability_check(
             required_true_columns=required_true,
             required_empty_list_columns=required_empty,
             required_dict_ok_columns=required_dict_ok,
+            required_copy_source_columns=required_copy_source,
+            required_positive_int_columns=required_positive_int,
+            allowed_copy_sources=list(NEMOCLAW_SESSION_COPY_SOURCES),
             required_columns=required_columns,
             checked_rows=0,
             invalid_row_count=None,
@@ -511,7 +559,17 @@ def _output_table_row_observability_check(
             for column in required_dict_ok
             if not isinstance(row.get(column), dict) or row.get(column, {}).get("ok") is not True
         ]
-        if not_true or non_empty_lists or dict_not_ok:
+        invalid_copy_sources = [
+            column
+            for column in required_copy_source
+            if row.get(column) not in NEMOCLAW_SESSION_COPY_SOURCES
+        ]
+        invalid_positive_ints = [
+            column
+            for column in required_positive_int
+            if not _positive_int_like(row.get(column))
+        ]
+        if not_true or non_empty_lists or dict_not_ok or invalid_copy_sources or invalid_positive_ints:
             invalid_count += 1
             if len(invalid_examples) < 5:
                 invalid_examples.append(
@@ -520,6 +578,8 @@ def _output_table_row_observability_check(
                         "not_true": not_true,
                         "non_empty_lists": non_empty_lists,
                         "dict_not_ok": dict_not_ok,
+                        "invalid_copy_sources": invalid_copy_sources,
+                        "invalid_positive_ints": invalid_positive_ints,
                     }
                 )
     if expected_rows is not None and len(rows) != expected_rows:
@@ -530,6 +590,9 @@ def _output_table_row_observability_check(
             required_true_columns=required_true,
             required_empty_list_columns=required_empty,
             required_dict_ok_columns=required_dict_ok,
+            required_copy_source_columns=required_copy_source,
+            required_positive_int_columns=required_positive_int,
+            allowed_copy_sources=list(NEMOCLAW_SESSION_COPY_SOURCES),
             required_columns=required_columns,
             checked_rows=len(rows),
             expected_rows=expected_rows,
@@ -545,6 +608,9 @@ def _output_table_row_observability_check(
             required_true_columns=required_true,
             required_empty_list_columns=required_empty,
             required_dict_ok_columns=required_dict_ok,
+            required_copy_source_columns=required_copy_source,
+            required_positive_int_columns=required_positive_int,
+            allowed_copy_sources=list(NEMOCLAW_SESSION_COPY_SOURCES),
             required_columns=required_columns,
             checked_rows=len(rows),
             expected_rows=expected_rows,
@@ -559,6 +625,9 @@ def _output_table_row_observability_check(
         required_true_columns=required_true,
         required_empty_list_columns=required_empty,
         required_dict_ok_columns=required_dict_ok,
+        required_copy_source_columns=required_copy_source,
+        required_positive_int_columns=required_positive_int,
+        allowed_copy_sources=list(NEMOCLAW_SESSION_COPY_SOURCES),
         required_columns=required_columns,
         checked_rows=len(rows),
         expected_rows=expected_rows,
@@ -1014,6 +1083,15 @@ def _observed_benchmark_evidence(
                     ),
                     "row_observability_required_dict_ok_columns": check.get(
                         "required_dict_ok_columns"
+                    ),
+                    "row_observability_required_copy_source_columns": check.get(
+                        "required_copy_source_columns"
+                    ),
+                    "row_observability_required_positive_int_columns": check.get(
+                        "required_positive_int_columns"
+                    ),
+                    "row_observability_allowed_copy_sources": check.get(
+                        "allowed_copy_sources"
                     ),
                 }
             )

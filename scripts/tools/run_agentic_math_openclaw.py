@@ -589,6 +589,19 @@ def record_nemoclaw_session_audit_matches_cache(record: dict[str, Any], cache_ke
     return True
 
 
+def nemoclaw_session_copy_evidence(sidecar: dict[str, Any] | None) -> dict[str, Any]:
+    audit = sidecar.get("nemoclaw_session_audit") if isinstance(sidecar, dict) else None
+    copy_status = audit.get("copy") if isinstance(audit, dict) else None
+    return {
+        "nemoclaw_session_copy_source": (
+            copy_status.get("source") if isinstance(copy_status, dict) else None
+        ),
+        "nemoclaw_session_copied_bytes": (
+            audit.get("copied_session_bytes") if isinstance(audit, dict) else None
+        ),
+    }
+
+
 def record_conversation_order_allows_reuse(record: dict[str, Any]) -> bool:
     order = record.get("conversation_order")
     if record.get("conversation_order_ok") is False:
@@ -759,6 +772,7 @@ def build_openclaw_error_record(
         "nemoclaw_session_audit": (
             sidecar.get("nemoclaw_session_audit", {}) if isinstance(sidecar, dict) else {}
         ),
+        **nemoclaw_session_copy_evidence(sidecar),
         **(attempt_metadata or {}),
         "prompt_hash": cache_key["prompt_hash"],
         "runner_version": RUNNER_VERSION,
@@ -811,6 +825,7 @@ def build_scored_record_from_sidecar(
         "conversation_order": sidecar.get("conversation_order", {}),
         "nemoclaw_session_audit_ok": (sidecar.get("nemoclaw_session_audit") or {}).get("ok"),
         "nemoclaw_session_audit": sidecar.get("nemoclaw_session_audit", {}),
+        **nemoclaw_session_copy_evidence(sidecar),
         **attempt_metadata,
         "prompt_hash": cache_key["prompt_hash"],
         "runner_version": RUNNER_VERSION,

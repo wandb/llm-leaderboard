@@ -43,6 +43,7 @@ INVOCATION_HASH_COLUMNS = (
     "openclaw_invocation_sha256",
     "openclaw_command_sha256",
 )
+NEMOCLAW_SESSION_COPY_SOURCES = {"stdout_agent_meta", "live_runtime_budget"}
 
 
 def sanitize_artifact_component(value: str) -> str:
@@ -108,10 +109,33 @@ def is_sha256(value: Any) -> bool:
     )
 
 
+def positive_int_like(value: Any) -> bool:
+    if isinstance(value, bool):
+        return False
+    try:
+        return int(value) > 0
+    except (TypeError, ValueError):
+        return False
+
+
 def observability_acceptance_issues(patch_rows: list[dict[str, Any]]) -> list[str]:
     issues: list[str] = []
     for index, row in enumerate(patch_rows, start=1):
         instance_id = row.get("instance_id") or index
+        audit = row.get("nemoclaw_session_audit")
+        audit_required = isinstance(audit, dict) and audit.get("required") is True
+        audit_ok = row.get("nemoclaw_session_audit_ok") is True
+        if audit_required and audit_ok:
+            source = row.get("nemoclaw_session_copy_source")
+            if source not in NEMOCLAW_SESSION_COPY_SOURCES:
+                issues.append(
+                    f"patch {instance_id} has invalid NeMoClaw session copy source: {source!r}"
+                )
+            if not positive_int_like(row.get("nemoclaw_session_copied_bytes")):
+                issues.append(
+                    f"patch {instance_id} has invalid NeMoClaw copied session bytes: "
+                    f"{row.get('nemoclaw_session_copied_bytes')!r}"
+                )
         missing_invocation = [
             column
             for column in INVOCATION_EVIDENCE_COLUMNS
@@ -274,6 +298,8 @@ def build_output_table(summary: dict[str, Any], patch_rows: list[dict[str, Any]]
     }
     for instance_id in sorted(map(str, summary["resolved_ids"] + summary["unresolved_ids"])):
         patch_row = patch_by_instance.get(instance_id, {})
+        audit = patch_row.get("nemoclaw_session_audit")
+        copy_status = audit.get("copy") if isinstance(audit, dict) else None
         output_rows.append(
             {
                 "instance_id": instance_id,
@@ -288,9 +314,15 @@ def build_output_table(summary: dict[str, Any], patch_rows: list[dict[str, Any]]
                 "weave_sidecar": patch_row.get("weave_sidecar"),
                 "nemoclaw_session_audit_ok": patch_row.get("nemoclaw_session_audit_ok"),
                 "nemoclaw_session_audit_required": (
-                    (patch_row.get("nemoclaw_session_audit") or {}).get("required")
-                    if isinstance(patch_row.get("nemoclaw_session_audit"), dict)
+                    audit.get("required")
+                    if isinstance(audit, dict)
                     else None
+                ),
+                "nemoclaw_session_copy_source": (
+                    copy_status.get("source") if isinstance(copy_status, dict) else None
+                ),
+                "nemoclaw_session_copied_bytes": (
+                    audit.get("copied_session_bytes") if isinstance(audit, dict) else None
                 ),
                 "openclaw_tool_call_count": patch_row.get("openclaw_tool_call_count"),
                 "openclaw_result_path": patch_row.get("openclaw_result_path"),
