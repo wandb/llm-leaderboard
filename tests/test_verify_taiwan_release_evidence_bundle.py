@@ -3566,7 +3566,7 @@ def weave_agents_completion_payload():
             "tool_content_required": True,
             "trace_timestamp_quality_required": True,
             "trace_final_answer_order_required": True,
-            "usage_required": False,
+            "usage_required": True,
             "no_error_spans_required": True,
             "required_texts": [],
             "conversation_id": "",
@@ -3631,7 +3631,16 @@ def weave_agents_completion_payload():
             },
             {"name": "message_content_capture", "ok": True, "detail": "message content is visible"},
             {"name": "input_message_capture", "ok": True, "detail": "user/problem input is visible"},
+            {"name": "tool_span_count", "ok": True, "detail": "tool spans are present"},
             {"name": "tool_content_capture", "ok": True, "detail": "tool content is visible"},
+            {
+                "name": "usage",
+                "ok": True,
+                "agent_input_tokens": 0,
+                "agent_output_tokens": 0,
+                "trace_input_tokens": 10,
+                "trace_output_tokens": 5,
+            },
             {
                 "name": "trace_timestamp_quality",
                 "ok": True,
@@ -3648,6 +3657,7 @@ def weave_agents_completion_payload():
                 "ok": True,
                 "detail": "no final-answer marker and tool-order conflict was detected",
             },
+            {"name": "trace_errors", "ok": True, "detail": "latest trace has no error spans"},
         ],
     }
 
@@ -3666,6 +3676,31 @@ def test_validate_weave_agents_completion_payload_rejects_bad_schema_version():
     )
 
     assert "weave proof schema_version is not 1" in errors
+
+
+def test_validate_weave_agents_completion_payload_rejects_missing_tool_usage_requirements():
+    module = load_verify_module()
+    payload = weave_agents_completion_payload()
+    payload["required_evidence"]["tool_content_required"] = False
+    payload["required_evidence"]["usage_required"] = False
+    payload["checks"] = [
+        check
+        for check in payload["checks"]
+        if check.get("name") not in {"tool_content_capture", "usage"}
+    ]
+
+    errors = module.validate_weave_agents_completion_payload(
+        payload,
+        label="weave proof",
+        expected_agent_name="nejumi-taiwan-openclaw",
+        expected_latest_trace_id="trace-1",
+        expected_run_id="run-1",
+    )
+
+    assert "weave proof required_evidence.tool_content_required is not true" in errors
+    assert "weave proof required_evidence.usage_required is not true" in errors
+    assert "weave proof checks missing required check: tool_content_capture" in errors
+    assert "weave proof checks missing required check: usage" in errors
 
 
 def build_bundle_with_weave_agents_completion(tmp_path):

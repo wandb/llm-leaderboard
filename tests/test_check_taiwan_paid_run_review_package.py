@@ -111,8 +111,20 @@ def wandb_completion_payload(*, run_id: str = "run-1"):
         },
         "generated_at": time.time(),
         "verification_schema_version": 1,
+        "required_evidence": {
+            "expected_total": 100,
+            "nemoclaw_session_audit": {"required": True},
+        },
         "observed_evidence": {
             "run_state": "finished",
+            "expected_total": 100,
+            "nemoclaw_session_audit": {
+                "ok": True,
+                "required": 100,
+                "passed": 100,
+                "failed": 0,
+                "expected_total": 100,
+            },
             "summary_metrics": {
                 "agentic_math/accuracy": {"ok": True, "value": 0.86},
             },
@@ -214,11 +226,17 @@ def write_weave_completion(path: Path, *, ok: bool = True, agent_name: str = "ne
             },
             "latest_trace_id": "trace-1" if ok else "",
             "required_evidence": {
+                "content_required": True,
                 "input_message_required": True,
+                "tool_span_required": True,
+                "tool_content_required": True,
                 "trace_timestamp_quality_required": True,
                 "trace_final_answer_order_required": True,
+                "usage_required": True,
+                "no_error_spans_required": True,
                 "conversation_id": "",
                 "conversation_id_contains": "run-1",
+                "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
             },
             "content_capture_health": {
                 "span_count_checked": 2,
@@ -229,6 +247,9 @@ def write_weave_completion(path: Path, *, ok: bool = True, agent_name: str = "ne
                 "tool_spans_with_content": 1 if ok else 0,
                 "spans_with_valid_timestamps": 2,
                 "spans_with_invalid_timestamps": 0,
+                "trace_input_tokens": 10 if ok else 0,
+                "trace_output_tokens": 5 if ok else 0,
+                "request_model_count": 1 if ok else 0,
             },
             "latest_trace_spans_chronological": [
                 {
@@ -243,6 +264,7 @@ def write_weave_completion(path: Path, *, ok: bool = True, agent_name: str = "ne
                     "error_type": None,
                     "has_input_messages": ok,
                     "has_output_messages": ok,
+                    "request_model": "gpt-4.1-mini-2025-04-14" if ok else "",
                 },
                 {
                     "started_at": "2026-06-28T00:00:02Z",
@@ -255,17 +277,34 @@ def write_weave_completion(path: Path, *, ok: bool = True, agent_name: str = "ne
                     "parent_span_id": "span-1",
                     "tool_name": "python",
                     "error_type": None,
+                    "request_model": "gpt-4.1-mini-2025-04-14" if ok else "",
                 },
             ],
             "checks": [
                 {"name": "agent_present", "ok": ok},
+                {
+                    "name": "request_model",
+                    "ok": ok,
+                    "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
+                    "observed_request_models": ["gpt-4.1-mini-2025-04-14"] if ok else [],
+                },
                 {"name": "message_content_capture", "ok": ok},
                 {"name": "input_message_capture", "ok": ok},
+                {"name": "tool_span_count", "ok": ok},
                 {"name": "tool_content_capture", "ok": ok},
+                {
+                    "name": "usage",
+                    "ok": ok,
+                    "agent_input_tokens": 0,
+                    "agent_output_tokens": 0,
+                    "trace_input_tokens": 10 if ok else 0,
+                    "trace_output_tokens": 5 if ok else 0,
+                },
                 {"name": "trace_timestamp_quality", "ok": True},
                 {"name": "trace_order", "ok": ok},
                 {"name": "trace_user_message_order", "ok": ok},
                 {"name": "trace_final_answer_order", "ok": ok},
+                {"name": "trace_errors", "ok": ok},
             ],
         },
     )
@@ -305,6 +344,10 @@ def write_weave_sync_dry_run(
                     "checks_valid": True,
                     "trace_present": True,
                     "run_scope_proven": True,
+                    "request_model_proven": True,
+                    "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
+                    "observed_request_models": ["gpt-4.1-mini-2025-04-14"],
+                    "span_request_models": ["gpt-4.1-mini-2025-04-14"],
                     "conversation_id": "",
                     "conversation_id_contains": run_id,
                     "query_source_kind": "wandb_agents_api",
@@ -695,23 +738,7 @@ def test_paid_review_doctor_rejects_adopted_existing_result_without_attestation(
 def test_paid_review_doctor_accepts_adopted_existing_result_with_attestation(tmp_path):
     completion = write_json(
         tmp_path / "agentic_math-run-1.json",
-        add_wandb_run_metadata(
-            {
-                "ok": True,
-                "benchmark": "agentic_math",
-                "entity": "test-entity",
-                "project": "test-project",
-                "run_id": "run-1",
-                "generated_at": time.time(),
-                "verification_schema_version": 1,
-                "observed_evidence": {
-                    "run_state": "finished",
-                    "summary_metrics": {
-                        "agentic_math/accuracy": {"ok": True, "value": 0.86},
-                    },
-                },
-            }
-        ),
+        wandb_completion_payload(),
     )
     source_review = write_json(
         tmp_path / "source_review.json",

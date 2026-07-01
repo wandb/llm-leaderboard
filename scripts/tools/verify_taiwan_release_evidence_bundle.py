@@ -39,11 +39,17 @@ STANDALONE_OPERATOR_PLAN_MARKDOWN_NAME_RE = re.compile(
     r"^taiwan_release_operator_plan_(\d{8}T\d{6}Z)\.md$"
 )
 REQUIRED_WEAVE_AGENTS_CHECK_NAMES = {
+    "input_message_capture",
+    "message_content_capture",
     "request_model",
     "trace_timestamp_quality",
     "trace_order",
     "trace_user_message_order",
     "trace_final_answer_order",
+    "tool_content_capture",
+    "tool_span_count",
+    "trace_errors",
+    "usage",
 }
 AGENTIC_REQUIRED_WANDB_BENCHMARKS = {"agentic_math", "agentic_swe"}
 WEAVE_AGENTS_CANARY_COMPLETION_PHASES = {"agentic", "full"}
@@ -12246,9 +12252,21 @@ def validate_weave_agents_completion_payload(
         errors.append(f"{label} required_evidence is not an object")
         required = {}
     else:
+        if required.get("content_required") is not True:
+            errors.append(
+                f"{label} required_evidence.content_required is not true"
+            )
         if required.get("input_message_required") is not True:
             errors.append(
                 f"{label} required_evidence.input_message_required is not true"
+            )
+        if required.get("tool_span_required") is not True:
+            errors.append(
+                f"{label} required_evidence.tool_span_required is not true"
+            )
+        if required.get("tool_content_required") is not True:
+            errors.append(
+                f"{label} required_evidence.tool_content_required is not true"
             )
         if required.get("trace_timestamp_quality_required") is not True:
             errors.append(
@@ -12257,6 +12275,14 @@ def validate_weave_agents_completion_payload(
         if required.get("trace_final_answer_order_required") is not True:
             errors.append(
                 f"{label} required_evidence.trace_final_answer_order_required is not true"
+            )
+        if required.get("usage_required") is not True:
+            errors.append(
+                f"{label} required_evidence.usage_required is not true"
+            )
+        if required.get("no_error_spans_required") is not True:
+            errors.append(
+                f"{label} required_evidence.no_error_spans_required is not true"
             )
     required_texts = _required_texts(
         required.get("required_texts"),
@@ -12508,6 +12534,26 @@ def validate_weave_agents_completion_payload(
                 errors.append(
                     f"{label} content_capture_health.spans_with_invalid_timestamps is not zero"
                 )
+        if required.get("usage_required") is True:
+            usage_check = _check_by_name(payload.get("checks"), "usage")
+            if usage_check is None:
+                errors.append(f"{label} checks missing required check: usage")
+            elif usage_check.get("ok") is not True:
+                errors.append(f"{label} usage check is not ok")
+            else:
+                token_fields = (
+                    "agent_input_tokens",
+                    "agent_output_tokens",
+                    "trace_input_tokens",
+                    "trace_output_tokens",
+                )
+                total_tokens = 0
+                for field in token_fields:
+                    value = usage_check.get(field)
+                    if isinstance(value, int):
+                        total_tokens += value
+                if total_tokens <= 0:
+                    errors.append(f"{label} usage check does not expose positive token usage")
 
     return errors
 

@@ -72,11 +72,17 @@ WANDB_COMPLETION_QUERY_SOURCE_KIND = "wandb_sdk"
 WANDB_COMPLETION_API_TIMEOUT_SECONDS = 60
 WEAVE_AGENTS_COMPLETION_SCHEMA_VERSION = 1
 REQUIRED_WEAVE_AGENTS_CHECK_NAMES = {
+    "input_message_capture",
+    "message_content_capture",
     "request_model",
     "trace_timestamp_quality",
     "trace_order",
     "trace_user_message_order",
     "trace_final_answer_order",
+    "tool_content_capture",
+    "tool_span_count",
+    "trace_errors",
+    "usage",
 }
 WEAVE_AGENTS_QUERY_SOURCE_KIND = "wandb_agents_api"
 WEAVE_AGENTS_API_BASE_URL = "https://trace.wandb.ai"
@@ -586,9 +592,14 @@ def paid_run_review_completion_requirements(
             "query_source.conversation_id_contains": "must match required_evidence.conversation_id_contains",
             "query_source.latest_trace_span_count": "must match latest_trace_spans_chronological",
             "required_checks": sorted(REQUIRED_WEAVE_AGENTS_CHECK_NAMES),
+            "required_evidence.content_required": True,
             "required_evidence.input_message_required": True,
+            "required_evidence.tool_span_required": True,
+            "required_evidence.tool_content_required": True,
             "required_evidence.trace_timestamp_quality_required": True,
             "required_evidence.trace_final_answer_order_required": True,
+            "required_evidence.usage_required": True,
+            "required_evidence.no_error_spans_required": True,
             "required_text_capture_when": "required_evidence.required_texts is non-empty",
             "content_capture_health.required_text_count": ">= len(required_evidence.required_texts) when required_texts is non-empty",
             "max_age_seconds": weave_agents_completion_max_age_seconds,
@@ -3035,9 +3046,14 @@ def _verify_review_weave_agents_completion_entry(
     trace_timestamp_quality_required = (
         required_evidence.get("trace_timestamp_quality_required") is True
     )
+    content_required = required_evidence.get("content_required") is True
     input_message_required = (
         required_evidence.get("input_message_required") is True
     )
+    tool_span_required = required_evidence.get("tool_span_required") is True
+    tool_content_required = required_evidence.get("tool_content_required") is True
+    usage_required = required_evidence.get("usage_required") is True
+    no_error_spans_required = required_evidence.get("no_error_spans_required") is True
     run_scope_proven, run_scope, run_scope_error = _weave_agents_run_scope(
         required_evidence,
         expected_run_id=entry.get("run_id"),
@@ -3055,6 +3071,26 @@ def _verify_review_weave_agents_completion_entry(
     input_message_visible = (
         isinstance(content_capture_health.get("message_spans_with_input"), int)
         and content_capture_health.get("message_spans_with_input") > 0
+    )
+    message_content_visible = (
+        isinstance(content_capture_health.get("message_spans_with_content"), int)
+        and content_capture_health.get("message_spans_with_content") > 0
+    )
+    tool_span_visible = (
+        isinstance(content_capture_health.get("tool_span_count"), int)
+        and content_capture_health.get("tool_span_count") > 0
+    )
+    tool_content_visible = (
+        tool_span_visible
+        and isinstance(content_capture_health.get("tool_spans_with_content"), int)
+        and content_capture_health.get("tool_spans_with_content")
+        >= content_capture_health.get("tool_span_count")
+    )
+    usage_check = _check_by_name(payload.get("checks"), "usage")
+    usage_proven = isinstance(usage_check, dict) and usage_check.get("ok") is True
+    trace_errors_check = _check_by_name(payload.get("checks"), "trace_errors")
+    no_error_spans_proven = (
+        isinstance(trace_errors_check, dict) and trace_errors_check.get("ok") is True
     )
     timestamps_valid = (
         isinstance(content_capture_health.get("spans_with_invalid_timestamps"), int)
@@ -3107,8 +3143,18 @@ def _verify_review_weave_agents_completion_entry(
             "required_text_capture_present": required_text_capture_present,
             "required_text_count_ok": required_text_count_ok,
             **request_model_evidence,
+            "content_required": content_required,
+            "message_content_visible": message_content_visible,
             "input_message_required": input_message_required,
             "input_message_visible": input_message_visible,
+            "tool_span_required": tool_span_required,
+            "tool_span_visible": tool_span_visible,
+            "tool_content_required": tool_content_required,
+            "tool_content_visible": tool_content_visible,
+            "usage_required": usage_required,
+            "usage_proven": usage_proven,
+            "no_error_spans_required": no_error_spans_required,
+            "no_error_spans_proven": no_error_spans_proven,
             "trace_timestamp_quality_required": trace_timestamp_quality_required,
             "timestamps_valid": timestamps_valid,
             "trace_final_answer_order_required": trace_final_answer_order_required,
@@ -3126,8 +3172,18 @@ def _verify_review_weave_agents_completion_entry(
             and checks_valid
             and request_model_evidence["request_model_proven"]
             and query_source_valid
+            and content_required
+            and message_content_visible
             and input_message_required
             and input_message_visible
+            and tool_span_required
+            and tool_span_visible
+            and tool_content_required
+            and tool_content_visible
+            and usage_required
+            and usage_proven
+            and no_error_spans_required
+            and no_error_spans_proven
             and trace_timestamp_quality_required
             and timestamps_valid
             and trace_final_answer_order_required
@@ -3180,10 +3236,30 @@ def _verify_review_weave_agents_completion_entry(
                 "Weave Agents verifier JSON query_source is invalid: "
                 + "; ".join(query_source_errors)
             )
+        if not content_required:
+            issues.append("Weave Agents verifier JSON does not require content")
+        if not message_content_visible:
+            issues.append("Weave Agents verifier JSON does not expose message content")
         if not input_message_required:
             issues.append("Weave Agents verifier JSON does not require input_message")
         if not input_message_visible:
             issues.append("Weave Agents verifier JSON does not expose user/problem input")
+        if not tool_span_required:
+            issues.append("Weave Agents verifier JSON does not require tool spans")
+        if not tool_span_visible:
+            issues.append("Weave Agents verifier JSON does not expose tool spans")
+        if not tool_content_required:
+            issues.append("Weave Agents verifier JSON does not require tool content")
+        if not tool_content_visible:
+            issues.append("Weave Agents verifier JSON does not expose tool content")
+        if not usage_required:
+            issues.append("Weave Agents verifier JSON does not require usage")
+        if not usage_proven:
+            issues.append("Weave Agents verifier JSON does not prove usage")
+        if not no_error_spans_required:
+            issues.append("Weave Agents verifier JSON does not require no-error spans")
+        if not no_error_spans_proven:
+            issues.append("Weave Agents verifier JSON does not prove no-error spans")
         if not trace_timestamp_quality_required:
             issues.append(
                 "Weave Agents verifier JSON does not require trace_timestamp_quality"

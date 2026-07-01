@@ -219,9 +219,14 @@ def weave_agents_completion_payload(
         },
         "latest_trace_id": "trace-1",
         "required_evidence": {
+            "content_required": True,
             "input_message_required": True,
+            "tool_span_required": True,
+            "tool_content_required": True,
             "trace_timestamp_quality_required": True,
             "trace_final_answer_order_required": True,
+            "usage_required": True,
+            "no_error_spans_required": True,
             "conversation_id": "",
             "conversation_id_contains": run_id,
             "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
@@ -235,6 +240,8 @@ def weave_agents_completion_payload(
             "tool_spans_with_content": 1,
             "spans_with_valid_timestamps": 2,
             "spans_with_invalid_timestamps": 0,
+            "trace_input_tokens": 10,
+            "trace_output_tokens": 5,
             "request_model_count": 1,
         },
         "latest_trace_spans_chronological": [
@@ -276,11 +283,21 @@ def weave_agents_completion_payload(
             },
             {"name": "message_content_capture", "ok": True},
             {"name": "input_message_capture", "ok": True},
+            {"name": "tool_span_count", "ok": True},
             {"name": "tool_content_capture", "ok": True},
+            {
+                "name": "usage",
+                "ok": True,
+                "agent_input_tokens": 0,
+                "agent_output_tokens": 0,
+                "trace_input_tokens": 10,
+                "trace_output_tokens": 5,
+            },
             {"name": "trace_timestamp_quality", "ok": True},
             {"name": "trace_order", "ok": True},
             {"name": "trace_user_message_order", "ok": True},
             {"name": "trace_final_answer_order", "ok": True},
+            {"name": "trace_errors", "ok": True},
         ],
     }
 
@@ -1584,6 +1601,53 @@ def test_one_model_canary_rejects_weave_agents_completion_without_request_model_
     assert entry["verified"] is False
     assert entry["request_model_proven"] is False
     assert "expected_request_models" in entry["verification_error"]
+
+
+def test_one_model_canary_rejects_weave_agents_completion_without_usage_requirement(tmp_path):
+    module = load_module()
+    payload = weave_agents_completion_payload(run_id="required-run")
+    payload["required_evidence"]["usage_required"] = False
+    payload["checks"] = [
+        check for check in payload["checks"] if check.get("name") != "usage"
+    ]
+    weave_verifier = write_json(tmp_path / "weave.json", payload)
+    agentic_review_before_weave = write_json(
+        tmp_path / "agentic.before_weave.json",
+        {
+            "status": "completed",
+            "phase": "agentic",
+            "canary": True,
+            "model_count": 1,
+            "runs": [{"wandb_run_id": "required-run"}],
+        },
+    )
+    agentic_review_before_weave_sha = sha256(agentic_review_before_weave)
+    weave_sync_dry_run = write_json(
+        tmp_path / "weave.sync_dry_run.json",
+        weave_sync_dry_run_payload(
+            review_path=agentic_review_before_weave,
+            completion_path=weave_verifier,
+            source_review_sha256=agentic_review_before_weave_sha,
+            run_id="required-run",
+        ),
+    )
+    entry = module._verify_review_weave_agents_completion_entry(
+        {
+            "ok": True,
+            "path": str(weave_verifier),
+            "agent_name": "nejumi-taiwan-openclaw",
+            "run_id": "required-run",
+            "sync_dry_run_report_json": str(weave_sync_dry_run),
+            "sync_dry_run_source_review_json": str(agentic_review_before_weave),
+            "sync_dry_run_source_review_sha256": agentic_review_before_weave_sha,
+        },
+        max_age_seconds=86400,
+    )
+
+    assert entry["verified"] is False
+    assert entry["usage_required"] is False
+    assert entry["usage_proven"] is False
+    assert "does not require usage" in entry["verification_error"]
 
 
 def test_one_model_canary_rejects_agentic_benchmark_without_weave_agents_completion(tmp_path):
@@ -3011,15 +3075,26 @@ def test_build_report_surfaces_blockers(tmp_path):
         "weave_agents_completion_verifier_requirements"
     ]
     assert weave_requirements["required_checks"] == [
+        "input_message_capture",
+        "message_content_capture",
         "request_model",
+        "tool_content_capture",
+        "tool_span_count",
+        "trace_errors",
         "trace_final_answer_order",
         "trace_order",
         "trace_timestamp_quality",
         "trace_user_message_order",
+        "usage",
     ]
+    assert weave_requirements["required_evidence.content_required"] is True
     assert weave_requirements["required_evidence.input_message_required"] is True
+    assert weave_requirements["required_evidence.tool_span_required"] is True
+    assert weave_requirements["required_evidence.tool_content_required"] is True
     assert weave_requirements["required_evidence.trace_timestamp_quality_required"] is True
     assert weave_requirements["required_evidence.trace_final_answer_order_required"] is True
+    assert weave_requirements["required_evidence.usage_required"] is True
+    assert weave_requirements["required_evidence.no_error_spans_required"] is True
     assert (
         weave_requirements["required_text_capture_when"]
         == "required_evidence.required_texts is non-empty"
