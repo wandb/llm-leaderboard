@@ -29,6 +29,20 @@ def load_module():
     return module
 
 
+def test_command_script_paths_includes_analysis_scripts():
+    module = load_module()
+
+    command = (
+        "uv run python scripts/analysis/estimate_taiwan_canary_budget.py "
+        "outputs/taiwan_full_eval --target-model openai-direct/gpt-4.1-mini-2025-04-14 "
+        "--output outputs/taiwan_full_eval/openai_canary_budget_estimate.json"
+    )
+
+    assert module.command_script_paths(command) == [
+        "scripts/analysis/estimate_taiwan_canary_budget.py"
+    ]
+
+
 def test_nemoclaw_adoption_summary_preserves_runtime_policy_criteria(tmp_path):
     module = load_module()
     adoption_json = write_json(

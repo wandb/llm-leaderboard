@@ -28,6 +28,8 @@ OPENAI_CANARY_AGENTIC_DIR = "configs/taiwan_full/generated_openai_canary_agentic
 OPENAI_CANARY_AGENTIC_NEMOCLAW_DIR = "configs/taiwan_full/generated_openai_canary_agentic_nemoclaw"
 OPENAI_CANARY_AGENTIC_AGGREGATE_DIR = "configs/taiwan_full/generated_openai_canary_agentic_aggregate"
 OPENAI_CANARY_BUDGET_ESTIMATE_JSON = "outputs/taiwan_full_eval/openai_canary_budget_estimate.json"
+OPENAI_CANARY_BUDGET_ESTIMATE_ROOT = "outputs/taiwan_full_eval"
+OPENAI_CANARY_TARGET_MODEL = "openai-direct/gpt-4.1-mini-2025-04-14"
 NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 EXTERNAL_ACTION_APPROVAL_REPORT_TEMPLATE = (
     "temp/taiwan_external_action_approval_REVIEWED_YYYYMMDDTHHMM.verify.json"
@@ -398,6 +400,13 @@ def wandb_completion_command(benchmark: str, *, run_id: str = "RUN_ID") -> str:
 
 def one_model_canary_commands() -> list[str]:
     budget_flag = f"--pre-run-budget-estimate-json {OPENAI_CANARY_BUDGET_ESTIMATE_JSON}"
+    budget_estimate_command = (
+        "uv run python scripts/analysis/estimate_taiwan_canary_budget.py "
+        f"{OPENAI_CANARY_BUDGET_ESTIMATE_ROOT} "
+        f"--target-model {OPENAI_CANARY_TARGET_MODEL} "
+        "--math-tasks 100 --swe-tasks 80 --nonagentic-buffer-usd 75 "
+        f"--output {OPENAI_CANARY_BUDGET_ESTIMATE_JSON}"
+    )
     approval_flag = (
         "--external-action-approval-source-packet-json "
         f"{EXTERNAL_ACTION_APPROVAL_SOURCE_PACKET_TEMPLATE} "
@@ -405,6 +414,7 @@ def one_model_canary_commands() -> list[str]:
         f"{EXTERNAL_ACTION_APPROVAL_REPORT_TEMPLATE}"
     )
     return [
+        budget_estimate_command,
         (
             "uv run python scripts/tools/run_taiwan_full_eval_batch.py "
             f"--manifest {OPENAI_CANARY_MANIFEST} "

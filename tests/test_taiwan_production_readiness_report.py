@@ -3075,6 +3075,18 @@ def test_build_report_surfaces_blockers(tmp_path):
         for command in remediation_by_gate["paid_run_review_package"]
     )
     paid_review_commands = remediation_by_gate["paid_run_review_package"]
+    paid_budget_commands = [
+        command
+        for command in paid_review_commands
+        if "estimate_taiwan_canary_budget.py" in command
+    ]
+    assert paid_budget_commands
+    assert all(
+        "--target-model openai-direct/gpt-4.1-mini-2025-04-14" in command
+        and "--output outputs/taiwan_full_eval/openai_canary_budget_estimate.json"
+        in command
+        for command in paid_budget_commands
+    )
     paid_batch_commands = [
         command for command in paid_review_commands if "run_taiwan_full_eval_batch.py" in command
     ]
@@ -3102,6 +3114,18 @@ def test_build_report_surfaces_blockers(tmp_path):
         for command in paid_execution_batch_commands
     )
     one_model_commands = remediation_by_gate["one_model_full_canary"]
+    one_model_budget_commands = [
+        command
+        for command in one_model_commands
+        if "estimate_taiwan_canary_budget.py" in command
+    ]
+    assert one_model_budget_commands
+    assert all(
+        "--math-tasks 100" in command
+        and "--swe-tasks 80" in command
+        and "--nonagentic-buffer-usd 75" in command
+        for command in one_model_budget_commands
+    )
     one_model_batch_commands = [
         command for command in one_model_commands if "run_taiwan_full_eval_batch.py" in command
     ]
