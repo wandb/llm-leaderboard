@@ -31,6 +31,9 @@ OPENAI_CANARY_BUDGET_ESTIMATE_JSON = "outputs/taiwan_full_eval/openai_canary_bud
 OPENAI_CANARY_BUDGET_ESTIMATE_ROOT = "outputs/taiwan_full_eval"
 OPENAI_CANARY_TARGET_MODEL = "openai-direct/gpt-4.1-mini-2025-04-14"
 NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
+NEMOCLAW_OPENCLAW_CONFIG_SOURCE_TRACE_TEXT = (
+    f"openclaw_config_source: {NEMOCLAW_OPENCLAW_CONFIG_PATH}"
+)
 EXTERNAL_ACTION_APPROVAL_REPORT_TEMPLATE = (
     "temp/taiwan_external_action_approval_REVIEWED_YYYYMMDDTHHMM.verify.json"
 )
@@ -644,6 +647,10 @@ def paid_run_review_completion_requirements(
             "required_evidence.trace_final_answer_order_required": True,
             "required_evidence.usage_required": True,
             "required_evidence.no_error_spans_required": True,
+            "required_evidence.required_texts": (
+                f"must include {NEMOCLAW_OPENCLAW_CONFIG_SOURCE_TRACE_TEXT!r} "
+                "when NeMoClaw agentic config is required"
+            ),
             "required_text_capture_when": "required_evidence.required_texts is non-empty",
             "content_capture_health.required_text_count": ">= len(required_evidence.required_texts) when required_texts is non-empty",
             "max_age_seconds": weave_agents_completion_max_age_seconds,
@@ -3048,6 +3055,7 @@ def _verify_review_weave_agents_completion_entry(
     entry: dict[str, Any],
     *,
     max_age_seconds: int | None,
+    required_trace_texts: list[str] | None = None,
 ) -> dict[str, Any]:
     result = dict(entry)
     result["entry_ok"] = bool(entry.get("ok"))
@@ -3084,6 +3092,11 @@ def _verify_review_weave_agents_completion_entry(
     required_texts, required_text_errors = _required_texts(
         required_evidence.get("required_texts")
     )
+    missing_required_trace_texts = [
+        text
+        for text in (required_trace_texts or [])
+        if text and text not in required_texts
+    ]
     latest_trace_spans_chronological = payload.get("latest_trace_spans_chronological")
     query_source_errors = _weave_agents_query_source_errors(
         payload,
@@ -3195,6 +3208,8 @@ def _verify_review_weave_agents_completion_entry(
             "query_source_valid": query_source_valid,
             "query_source_errors": query_source_errors,
             "required_texts": required_texts,
+            "required_trace_texts": list(required_trace_texts or []),
+            "missing_required_trace_texts": missing_required_trace_texts,
             "required_text_errors": required_text_errors,
             "required_text_capture_present": required_text_capture_present,
             "required_text_count_ok": required_text_count_ok,
@@ -3226,6 +3241,7 @@ def _verify_review_weave_agents_completion_entry(
             and agent_name_matches
             and schema_valid
             and checks_valid
+            and not missing_required_trace_texts
             and request_model_evidence["request_model_proven"]
             and query_source_valid
             and content_required
@@ -3282,6 +3298,11 @@ def _verify_review_weave_agents_completion_entry(
                 )
             else:
                 issues.append("Weave Agents verifier JSON has missing or failed checks")
+        if missing_required_trace_texts:
+            issues.append(
+                "Weave Agents verifier JSON required_texts missing required trace text: "
+                + ", ".join(repr(text) for text in missing_required_trace_texts)
+            )
         if not request_model_evidence["request_model_proven"]:
             issues.append(
                 "Weave Agents verifier JSON does not prove request_model: "
@@ -3573,6 +3594,36 @@ def _review_requires_nemoclaw_agentic_config(payload: dict[str, Any]) -> bool:
     )
 
 
+def _completion_requirements_need_nemoclaw_agentic_trace_text(
+    payload: dict[str, Any],
+) -> bool:
+    completion_requirements = payload.get("completion_requirements")
+    if not isinstance(completion_requirements, dict):
+        return False
+    wandb_completion = completion_requirements.get("wandb_completion")
+    if not isinstance(wandb_completion, dict):
+        return False
+    return bool(
+        wandb_completion.get("nemoclaw_session_audit_required_for_agentic_benchmarks")
+    )
+
+
+def _review_requires_nemoclaw_weave_config_source_text(payload: dict[str, Any]) -> bool:
+    if _completion_requirements_need_nemoclaw_agentic_trace_text(payload):
+        return True
+    configs = _review_configs(payload)
+    return (
+        _review_requires_nemoclaw_agentic_config(payload)
+        or _configs_include_nemoclaw_agentic_config(configs)
+    )
+
+
+def _required_weave_agents_trace_texts_for_review(payload: dict[str, Any]) -> list[str]:
+    if _review_requires_nemoclaw_weave_config_source_text(payload):
+        return [NEMOCLAW_OPENCLAW_CONFIG_SOURCE_TRACE_TEXT]
+    return []
+
+
 def evaluate_one_model_canary(
     paths: list[Path],
     *,
@@ -3619,6 +3670,9 @@ def evaluate_one_model_canary(
             _verify_review_weave_agents_completion_entry(
                 entry,
                 max_age_seconds=weave_agents_completion_max_age_seconds,
+                required_trace_texts=_required_weave_agents_trace_texts_for_review(
+                    payload
+                ),
             )
             for entry in _review_weave_agents_completion_entries(
                 payload,
@@ -4409,6 +4463,9 @@ def _review_weave_agents_completion_verification_errors(
         _verify_review_weave_agents_completion_entry(
             entry,
             max_age_seconds=max_age_seconds,
+            required_trace_texts=_required_weave_agents_trace_texts_for_review(
+                payload
+            ),
         )
         for entry in _review_weave_agents_completion_entries(
             payload,
@@ -4521,6 +4578,9 @@ def evaluate_paid_run_review_package(
                 _verify_review_weave_agents_completion_entry(
                     entry,
                     max_age_seconds=weave_agents_completion_max_age_seconds,
+                    required_trace_texts=_required_weave_agents_trace_texts_for_review(
+                        payload
+                    ),
                 )
                 for entry in _review_weave_agents_completion_entries(
                     payload,

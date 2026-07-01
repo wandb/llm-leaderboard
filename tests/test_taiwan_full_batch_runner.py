@@ -500,6 +500,9 @@ def test_build_weave_agents_verify_command_adds_strict_trace_options():
             "openai-direct/gpt-4.1-mini-2025-04-14",
             "gpt-4.1-mini-2025-04-14",
         ],
+        required_texts=[
+            "openclaw_config_source: /sandbox/.openclaw/openclaw.json",
+        ],
     )
 
     assert command[:2] == ["python3", str(module.WEAVE_AGENTS_VERIFY_RUNNER)]
@@ -509,6 +512,11 @@ def test_build_weave_agents_verify_command_adds_strict_trace_options():
     assert "--require-tool-span" in command
     assert "--require-tool-content" in command
     assert "--require-usage" in command
+    required_text_index = command.index("--require-text")
+    assert [
+        "--require-text",
+        "openclaw_config_source: /sandbox/.openclaw/openclaw.json",
+    ] == command[required_text_index : required_text_index + 2]
     conversation_filter_index = command.index("--conversation-id-contains")
     assert ["--conversation-id-contains", "agentic_math"] == command[
         conversation_filter_index : conversation_filter_index + 2
@@ -516,6 +524,23 @@ def test_build_weave_agents_verify_command_adds_strict_trace_options():
     assert command.count("--expected-request-model") == 2
     assert "gpt-4.1-mini-2025-04-14" in command
     assert "openai-direct/gpt-4.1-mini-2025-04-14" in command
+
+
+def test_weave_required_texts_for_phase_requires_nemoclaw_config_source():
+    module = load_module()
+
+    assert module.weave_required_texts_for_phase(
+        phase="agentic",
+        require_nemoclaw_agentic_config=True,
+    ) == ["openclaw_config_source: /sandbox/.openclaw/openclaw.json"]
+    assert module.weave_required_texts_for_phase(
+        phase="full",
+        require_nemoclaw_agentic_config=True,
+    ) == ["openclaw_config_source: /sandbox/.openclaw/openclaw.json"]
+    assert module.weave_required_texts_for_phase(
+        phase="agentic",
+        require_nemoclaw_agentic_config=False,
+    ) == []
 
 
 def test_weave_expected_request_models_reads_generated_config(tmp_path):

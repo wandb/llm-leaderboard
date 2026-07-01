@@ -94,6 +94,9 @@ NEMOCLAW_CANARY_READINESS_SCRIPT = "scripts/tools/check_taiwan_canary_readiness.
 NEMOCLAW_ADOPTION_SCRIPT = "scripts/tools/check_taiwan_nemoclaw_adoption.py"
 NEMOCLAW_POST_INSTALL_SCRIPT = "scripts/setup/verify_nemoclaw_post_install.py"
 NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
+NEMOCLAW_OPENCLAW_CONFIG_SOURCE_TRACE_TEXT = (
+    f"openclaw_config_source: {NEMOCLAW_OPENCLAW_CONFIG_PATH}"
+)
 REQUIRED_NEMOCLAW_CANARY_REMOTE_LOOKUP_CHECK_NAMES = {
     "agentic Math denies remote lookup via deny_argument_pattern",
     "agentic Math denies remote lookup via deny_tool",
@@ -878,6 +881,22 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "--weave-agents-require-usage",
             ),
             (
+                "NeMoClaw OpenClaw config source trace text constant",
+                "NEMOCLAW_OPENCLAW_CONFIG_SOURCE_TRACE_TEXT",
+            ),
+            (
+                "Weave required trace-text resolver",
+                "def weave_required_texts_for_phase(",
+            ),
+            (
+                "Weave required trace-text verifier option",
+                "--require-text",
+            ),
+            (
+                "Weave required trace-text verifier pass-through",
+                "required_texts=weave_agents_required_texts",
+            ),
+            (
                 "Weave request-model alias resolver",
                 "def weave_expected_request_models(",
             ),
@@ -1038,6 +1057,10 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             (
                 "Weave request-model CLI option",
                 "--expected-request-model",
+            ),
+            (
+                "Weave required text CLI option",
+                "--require-text",
             ),
             (
                 "Weave request-model check name",
@@ -14066,12 +14089,13 @@ def validate_weave_agents_completion_review_source_evidence(
 
 
 def add_weave_agents_completion_path(
-    paths: dict[str, dict[str, str | None]],
+    paths: dict[str, dict[str, Any]],
     *,
     path_value: Any,
     agent_name: Any = None,
     latest_trace_id: Any = None,
     run_id: Any = None,
+    required_trace_texts: Any = None,
 ) -> None:
     key = source_path_key(path_value)
     if not key:
@@ -14082,6 +14106,7 @@ def add_weave_agents_completion_path(
             "agent_name": None,
             "latest_trace_id": None,
             "run_id": None,
+            "required_trace_texts": [],
         },
     )
     if isinstance(agent_name, str) and agent_name:
@@ -14090,6 +14115,17 @@ def add_weave_agents_completion_path(
         expected["latest_trace_id"] = latest_trace_id
     if isinstance(run_id, str) and run_id:
         expected["run_id"] = run_id
+    if isinstance(required_trace_texts, list):
+        texts = [
+            text
+            for text in required_trace_texts
+            if isinstance(text, str) and text.strip()
+        ]
+        if texts:
+            existing = expected.get("required_trace_texts")
+            if not isinstance(existing, list):
+                existing = []
+            expected["required_trace_texts"] = list(dict.fromkeys([*existing, *texts]))
 
 
 def weave_agents_entry_is_claimed_proof(entry: dict[str, Any]) -> bool:
@@ -14106,7 +14142,7 @@ def weave_agents_entry_is_claimed_proof(entry: dict[str, Any]) -> bool:
 
 def collect_weave_agents_completion_proof_paths(
     manifest: dict[str, Any],
-) -> dict[str, dict[str, str | None]]:
+) -> dict[str, dict[str, Any]]:
     current_gate = manifest.get("current_gate")
     if not isinstance(current_gate, dict):
         return {}
@@ -14132,6 +14168,7 @@ def collect_weave_agents_completion_proof_paths(
                 agent_name=entry.get("agent_name"),
                 latest_trace_id=entry.get("latest_trace_id"),
                 run_id=entry.get("run_id"),
+                required_trace_texts=entry.get("required_trace_texts"),
             )
     return paths
 
@@ -14317,6 +14354,7 @@ def validate_weave_agents_completion_payload(
     expected_agent_name: str | None,
     expected_latest_trace_id: str | None,
     expected_run_id: str | None = None,
+    expected_required_trace_texts: list[str] | None = None,
 ) -> list[str]:
     errors: list[str] = []
     if payload.get("ok") is not True:
@@ -14420,6 +14458,11 @@ def validate_weave_agents_completion_payload(
         label=label,
         errors=errors,
     )
+    for text in expected_required_trace_texts or []:
+        if text and text not in required_texts:
+            errors.append(
+                f"{label} required_evidence.required_texts does not include {text!r}"
+            )
     if isinstance(query_source, dict):
         for field in ("conversation_id", "conversation_id_contains"):
             expected = required.get(field) if isinstance(required.get(field), str) else ""
@@ -14723,6 +14766,9 @@ def validate_weave_agents_completion_proof_evidence(
                 expected_agent_name=expected.get("agent_name"),
                 expected_latest_trace_id=expected.get("latest_trace_id"),
                 expected_run_id=expected.get("run_id"),
+                expected_required_trace_texts=expected.get("required_trace_texts")
+                if isinstance(expected.get("required_trace_texts"), list)
+                else [],
             )
         )
     return errors

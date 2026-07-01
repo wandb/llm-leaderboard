@@ -1106,6 +1106,14 @@ def weave_agents_completion_summary(report: dict[str, Any]) -> list[dict[str, An
                             "trace_present": bool(entry.get("trace_present")),
                             "fresh": bool(entry.get("fresh")),
                             "latest_trace_id": entry.get("latest_trace_id"),
+                            "required_trace_texts": entry.get("required_trace_texts")
+                            if isinstance(entry.get("required_trace_texts"), list)
+                            else [],
+                            "missing_required_trace_texts": entry.get(
+                                "missing_required_trace_texts"
+                            )
+                            if isinstance(entry.get("missing_required_trace_texts"), list)
+                            else [],
                             "sync_dry_run_report_json": entry.get("sync_dry_run_report_json"),
                             "sync_dry_run_source_review_json": entry.get(
                                 "sync_dry_run_source_review_json"

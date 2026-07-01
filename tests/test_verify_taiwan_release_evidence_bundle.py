@@ -3870,7 +3870,57 @@ def build_bundle_with_nemoclaw_installer_review(tmp_path):
     return output_dir, review, lock, installer_sha
 
 
-def weave_agents_completion_payload():
+def weave_agents_completion_payload(required_texts: list[str] | None = None):
+    required_texts = list(required_texts or [])
+    checks = [
+        {"name": "agent_present", "ok": True, "detail": "agent is present"},
+        {"name": "latest_trace", "ok": True, "detail": "latest trace id is present"},
+        {"name": "trace_span_count", "ok": True, "detail": "latest trace has enough spans"},
+        {
+            "name": "request_model",
+            "ok": True,
+            "detail": "latest trace request_model matches an expected model alias",
+            "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
+            "observed_request_models": ["gpt-4.1-mini-2025-04-14"],
+        },
+        {"name": "message_content_capture", "ok": True, "detail": "message content is visible"},
+        {"name": "input_message_capture", "ok": True, "detail": "user/problem input is visible"},
+        {"name": "tool_span_count", "ok": True, "detail": "tool spans are present"},
+        {"name": "tool_content_capture", "ok": True, "detail": "tool content is visible"},
+        {
+            "name": "usage",
+            "ok": True,
+            "agent_input_tokens": 0,
+            "agent_output_tokens": 0,
+            "trace_input_tokens": 10,
+            "trace_output_tokens": 5,
+        },
+        {
+            "name": "trace_timestamp_quality",
+            "ok": True,
+            "detail": "all latest trace spans have parseable start/end timestamps",
+        },
+        {"name": "trace_order", "ok": True, "detail": "tool spans do not start before messages"},
+        {
+            "name": "trace_user_message_order",
+            "ok": True,
+            "detail": "tool spans do not start before visible user/problem input",
+        },
+        {
+            "name": "trace_final_answer_order",
+            "ok": True,
+            "detail": "no final-answer marker and tool-order conflict was detected",
+        },
+        {"name": "trace_errors", "ok": True, "detail": "latest trace has no error spans"},
+    ]
+    if required_texts:
+        checks.append(
+            {
+                "name": "required_text_capture",
+                "ok": True,
+                "required_text_count": len(required_texts),
+            }
+        )
     return {
         "ok": True,
         "schema_version": 1,
@@ -3907,7 +3957,7 @@ def weave_agents_completion_payload():
             "trace_final_answer_order_required": True,
             "usage_required": True,
             "no_error_spans_required": True,
-            "required_texts": [],
+            "required_texts": required_texts,
             "conversation_id": "",
             "conversation_id_contains": "run-1",
             "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
@@ -3923,7 +3973,7 @@ def weave_agents_completion_payload():
             "spans_with_invalid_timestamps": 0,
             "trace_input_tokens": 10,
             "trace_output_tokens": 5,
-            "required_text_count": 0,
+            "required_text_count": len(required_texts),
             "request_model_count": 1,
         },
         "latest_trace_spans_chronological": [
@@ -3957,47 +4007,7 @@ def weave_agents_completion_payload():
                 "request_model": "gpt-4.1-mini-2025-04-14",
             },
         ],
-        "checks": [
-            {"name": "agent_present", "ok": True, "detail": "agent is present"},
-            {"name": "latest_trace", "ok": True, "detail": "latest trace id is present"},
-            {"name": "trace_span_count", "ok": True, "detail": "latest trace has enough spans"},
-            {
-                "name": "request_model",
-                "ok": True,
-                "detail": "latest trace request_model matches an expected model alias",
-                "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
-                "observed_request_models": ["gpt-4.1-mini-2025-04-14"],
-            },
-            {"name": "message_content_capture", "ok": True, "detail": "message content is visible"},
-            {"name": "input_message_capture", "ok": True, "detail": "user/problem input is visible"},
-            {"name": "tool_span_count", "ok": True, "detail": "tool spans are present"},
-            {"name": "tool_content_capture", "ok": True, "detail": "tool content is visible"},
-            {
-                "name": "usage",
-                "ok": True,
-                "agent_input_tokens": 0,
-                "agent_output_tokens": 0,
-                "trace_input_tokens": 10,
-                "trace_output_tokens": 5,
-            },
-            {
-                "name": "trace_timestamp_quality",
-                "ok": True,
-                "detail": "all latest trace spans have parseable start/end timestamps",
-            },
-            {"name": "trace_order", "ok": True, "detail": "tool spans do not start before messages"},
-            {
-                "name": "trace_user_message_order",
-                "ok": True,
-                "detail": "tool spans do not start before visible user/problem input",
-            },
-            {
-                "name": "trace_final_answer_order",
-                "ok": True,
-                "detail": "no final-answer marker and tool-order conflict was detected",
-            },
-            {"name": "trace_errors", "ok": True, "detail": "latest trace has no error spans"},
-        ],
+        "checks": checks,
     }
 
 
@@ -4042,10 +4052,56 @@ def test_validate_weave_agents_completion_payload_rejects_missing_tool_usage_req
     assert "weave proof checks missing required check: usage" in errors
 
 
-def build_bundle_with_weave_agents_completion(tmp_path):
+def test_validate_weave_agents_completion_payload_rejects_missing_config_source_text():
+    module = load_verify_module()
+    payload = weave_agents_completion_payload()
+
+    errors = module.validate_weave_agents_completion_payload(
+        payload,
+        label="weave proof",
+        expected_agent_name="nejumi-taiwan-openclaw",
+        expected_latest_trace_id="trace-1",
+        expected_run_id="run-1",
+        expected_required_trace_texts=[
+            "openclaw_config_source: /sandbox/.openclaw/openclaw.json"
+        ],
+    )
+
+    assert (
+        "weave proof required_evidence.required_texts does not include "
+        "'openclaw_config_source: /sandbox/.openclaw/openclaw.json'"
+    ) in errors
+
+
+def test_validate_weave_agents_completion_payload_accepts_config_source_text():
+    module = load_verify_module()
+    payload = weave_agents_completion_payload(
+        required_texts=["openclaw_config_source: /sandbox/.openclaw/openclaw.json"]
+    )
+
+    errors = module.validate_weave_agents_completion_payload(
+        payload,
+        label="weave proof",
+        expected_agent_name="nejumi-taiwan-openclaw",
+        expected_latest_trace_id="trace-1",
+        expected_run_id="run-1",
+        expected_required_trace_texts=[
+            "openclaw_config_source: /sandbox/.openclaw/openclaw.json"
+        ],
+    )
+
+    assert errors == []
+
+
+def build_bundle_with_weave_agents_completion(
+    tmp_path,
+    *,
+    completion_required_texts: list[str] | None = None,
+    entry_required_trace_texts: list[str] | None = None,
+):
     completion = write_json(
         tmp_path / "weave_agents_completion.json",
-        weave_agents_completion_payload(),
+        weave_agents_completion_payload(completion_required_texts),
     )
     source_review = write_json(
         tmp_path / "canary_agentic_paid_run_review.before_weave_sync.json",
@@ -4192,6 +4248,10 @@ def build_bundle_with_weave_agents_completion(tmp_path):
                                     "trace_present": True,
                                     "fresh": True,
                                     "latest_trace_id": "trace-1",
+                                    "required_trace_texts": list(
+                                        entry_required_trace_texts or []
+                                    ),
+                                    "missing_required_trace_texts": [],
                                     "sync_dry_run_report_json": str(sync_dry_run_report),
                                     "sync_dry_run_source_review_json": str(source_review),
                                     "sync_dry_run_source_review_sha256": source_review_sha256,
@@ -13099,6 +13159,51 @@ def test_verify_release_evidence_bundle_accepts_weave_agents_completion_proof(tm
         in record.get("roles", [])
         for record in manifest["files"]
     )
+
+
+def test_verify_release_evidence_bundle_rejects_weave_agents_missing_config_source_text(tmp_path):
+    bundle, _completion = build_bundle_with_weave_agents_completion(
+        tmp_path,
+        entry_required_trace_texts=[
+            "openclaw_config_source: /sandbox/.openclaw/openclaw.json"
+        ],
+    )
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "required_evidence.required_texts does not include "
+        "'openclaw_config_source: /sandbox/.openclaw/openclaw.json'" in error
+        for error in payload["errors"]
+    )
+
+
+def test_verify_release_evidence_bundle_accepts_weave_agents_config_source_text(tmp_path):
+    required_text = "openclaw_config_source: /sandbox/.openclaw/openclaw.json"
+    bundle, _completion = build_bundle_with_weave_agents_completion(
+        tmp_path,
+        completion_required_texts=[required_text],
+        entry_required_trace_texts=[required_text],
+    )
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_verify_release_evidence_bundle_rejects_weave_agents_sync_without_usage_proof(tmp_path):

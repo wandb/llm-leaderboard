@@ -233,7 +233,43 @@ def weave_agents_completion_payload(
     *,
     run_id: str = "run-1",
     agent_name: str = "nejumi-taiwan-openclaw",
+    required_texts: list[str] | None = None,
 ):
+    required_texts = list(required_texts or [])
+    checks = [
+        {"name": "agent_present", "ok": True},
+        {
+            "name": "request_model",
+            "ok": True,
+            "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
+            "observed_request_models": ["gpt-4.1-mini-2025-04-14"],
+        },
+        {"name": "message_content_capture", "ok": True},
+        {"name": "input_message_capture", "ok": True},
+        {"name": "tool_span_count", "ok": True},
+        {"name": "tool_content_capture", "ok": True},
+        {
+            "name": "usage",
+            "ok": True,
+            "agent_input_tokens": 0,
+            "agent_output_tokens": 0,
+            "trace_input_tokens": 10,
+            "trace_output_tokens": 5,
+        },
+        {"name": "trace_timestamp_quality", "ok": True},
+        {"name": "trace_order", "ok": True},
+        {"name": "trace_user_message_order", "ok": True},
+        {"name": "trace_final_answer_order", "ok": True},
+        {"name": "trace_errors", "ok": True},
+    ]
+    if required_texts:
+        checks.append(
+            {
+                "name": "required_text_capture",
+                "ok": True,
+                "required_text_count": len(required_texts),
+            }
+        )
     return {
         "ok": True,
         "agent_name": agent_name,
@@ -265,6 +301,7 @@ def weave_agents_completion_payload(
             "trace_final_answer_order_required": True,
             "usage_required": True,
             "no_error_spans_required": True,
+            "required_texts": required_texts,
             "conversation_id": "",
             "conversation_id_contains": run_id,
             "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
@@ -280,6 +317,7 @@ def weave_agents_completion_payload(
             "spans_with_invalid_timestamps": 0,
             "trace_input_tokens": 10,
             "trace_output_tokens": 5,
+            "required_text_count": len(required_texts),
             "request_model_count": 1,
         },
         "latest_trace_spans_chronological": [
@@ -311,32 +349,7 @@ def weave_agents_completion_payload(
                 "request_model": "gpt-4.1-mini-2025-04-14",
             },
         ],
-        "checks": [
-            {"name": "agent_present", "ok": True},
-            {
-                "name": "request_model",
-                "ok": True,
-                "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
-                "observed_request_models": ["gpt-4.1-mini-2025-04-14"],
-            },
-            {"name": "message_content_capture", "ok": True},
-            {"name": "input_message_capture", "ok": True},
-            {"name": "tool_span_count", "ok": True},
-            {"name": "tool_content_capture", "ok": True},
-            {
-                "name": "usage",
-                "ok": True,
-                "agent_input_tokens": 0,
-                "agent_output_tokens": 0,
-                "trace_input_tokens": 10,
-                "trace_output_tokens": 5,
-            },
-            {"name": "trace_timestamp_quality", "ok": True},
-            {"name": "trace_order", "ok": True},
-            {"name": "trace_user_message_order", "ok": True},
-            {"name": "trace_final_answer_order", "ok": True},
-            {"name": "trace_errors", "ok": True},
-        ],
+        "checks": checks,
     }
 
 
@@ -1724,6 +1737,101 @@ def test_one_model_canary_rejects_weave_agents_completion_without_request_model_
     assert entry["verified"] is False
     assert entry["request_model_proven"] is False
     assert "expected_request_models" in entry["verification_error"]
+
+
+def test_weave_agents_completion_requires_nemoclaw_config_source_text(tmp_path):
+    module = load_module()
+    payload = weave_agents_completion_payload(run_id="required-run")
+    weave_verifier = write_json(tmp_path / "weave.json", payload)
+    agentic_review_before_weave = write_json(
+        tmp_path / "agentic.before_weave.json",
+        {
+            "status": "completed",
+            "phase": "agentic",
+            "canary": True,
+            "model_count": 1,
+            "configs": [NEMOCLAW_AGENTIC_CONFIG],
+            "runs": [{"wandb_run_id": "required-run"}],
+        },
+    )
+    agentic_review_before_weave_sha = sha256(agentic_review_before_weave)
+    weave_sync_dry_run = write_json(
+        tmp_path / "weave.sync_dry_run.json",
+        weave_sync_dry_run_payload(
+            review_path=agentic_review_before_weave,
+            completion_path=weave_verifier,
+            source_review_sha256=agentic_review_before_weave_sha,
+            run_id="required-run",
+        ),
+    )
+    entry = module._verify_review_weave_agents_completion_entry(
+        {
+            "ok": True,
+            "path": str(weave_verifier),
+            "agent_name": "nejumi-taiwan-openclaw",
+            "run_id": "required-run",
+            "sync_dry_run_report_json": str(weave_sync_dry_run),
+            "sync_dry_run_source_review_json": str(agentic_review_before_weave),
+            "sync_dry_run_source_review_sha256": agentic_review_before_weave_sha,
+        },
+        max_age_seconds=86400,
+        required_trace_texts=[module.NEMOCLAW_OPENCLAW_CONFIG_SOURCE_TRACE_TEXT],
+    )
+
+    assert entry["verified"] is False
+    assert entry["missing_required_trace_texts"] == [
+        "openclaw_config_source: /sandbox/.openclaw/openclaw.json"
+    ]
+    assert "required_texts missing required trace text" in entry["verification_error"]
+
+
+def test_weave_agents_completion_accepts_nemoclaw_config_source_text(tmp_path):
+    module = load_module()
+    payload = weave_agents_completion_payload(
+        run_id="required-run",
+        required_texts=[module.NEMOCLAW_OPENCLAW_CONFIG_SOURCE_TRACE_TEXT],
+    )
+    weave_verifier = write_json(tmp_path / "weave.json", payload)
+    agentic_review_before_weave = write_json(
+        tmp_path / "agentic.before_weave.json",
+        {
+            "status": "completed",
+            "phase": "agentic",
+            "canary": True,
+            "model_count": 1,
+            "configs": [NEMOCLAW_AGENTIC_CONFIG],
+            "runs": [{"wandb_run_id": "required-run"}],
+        },
+    )
+    agentic_review_before_weave_sha = sha256(agentic_review_before_weave)
+    weave_sync_dry_run = write_json(
+        tmp_path / "weave.sync_dry_run.json",
+        weave_sync_dry_run_payload(
+            review_path=agentic_review_before_weave,
+            completion_path=weave_verifier,
+            source_review_sha256=agentic_review_before_weave_sha,
+            run_id="required-run",
+        ),
+    )
+    entry = module._verify_review_weave_agents_completion_entry(
+        {
+            "ok": True,
+            "path": str(weave_verifier),
+            "agent_name": "nejumi-taiwan-openclaw",
+            "run_id": "required-run",
+            "sync_dry_run_report_json": str(weave_sync_dry_run),
+            "sync_dry_run_source_review_json": str(agentic_review_before_weave),
+            "sync_dry_run_source_review_sha256": agentic_review_before_weave_sha,
+        },
+        max_age_seconds=86400,
+        required_trace_texts=[module.NEMOCLAW_OPENCLAW_CONFIG_SOURCE_TRACE_TEXT],
+    )
+
+    assert entry["verified"] is True
+    assert entry["required_trace_texts"] == [
+        "openclaw_config_source: /sandbox/.openclaw/openclaw.json"
+    ]
+    assert entry["missing_required_trace_texts"] == []
 
 
 def test_one_model_canary_rejects_weave_agents_completion_without_usage_requirement(tmp_path):

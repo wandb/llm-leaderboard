@@ -51,6 +51,9 @@ DEFAULT_EXPECTED_TOTALS = {
     "agentic_swe": 80,
 }
 CANONICAL_NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
+NEMOCLAW_OPENCLAW_CONFIG_SOURCE_TRACE_TEXT = (
+    f"openclaw_config_source: {CANONICAL_NEMOCLAW_OPENCLAW_CONFIG_PATH}"
+)
 BENCHMARK_RUN_FLAG_EXPECTATIONS = {
     "agentic_math": "run.agentic_math",
     "agentic_swe": "run.swebench_pro",
@@ -1053,6 +1056,16 @@ def weave_expected_request_models(config_path: Path, *, phase: str) -> list[str]
     return sorted(dict.fromkeys(models))
 
 
+def weave_required_texts_for_phase(
+    *,
+    phase: str,
+    require_nemoclaw_agentic_config: bool,
+) -> list[str]:
+    if phase in AGENTIC_GENERATION_PHASES and require_nemoclaw_agentic_config:
+        return [NEMOCLAW_OPENCLAW_CONFIG_SOURCE_TRACE_TEXT]
+    return []
+
+
 def build_wandb_verify_command(
     *,
     python: str,
@@ -1178,6 +1191,7 @@ def build_weave_agents_verify_command(
     require_usage: bool,
     conversation_id_contains: str | None = None,
     expected_request_models: list[str] | None = None,
+    required_texts: list[str] | None = None,
 ) -> list[str]:
     command = [
         python,
@@ -1197,6 +1211,8 @@ def build_weave_agents_verify_command(
         command.append("--require-usage")
     if conversation_id_contains:
         command.extend(["--conversation-id-contains", conversation_id_contains])
+    for text in sorted(dict.fromkeys(required_texts or [])):
+        command.extend(["--require-text", text])
     for model in sorted(dict.fromkeys(expected_request_models or [])):
         command.extend(["--expected-request-model", model])
     return command
@@ -1284,6 +1300,7 @@ def run_weave_agents_verification(
     require_usage: bool,
     conversation_id_contains: str | None = None,
     expected_request_models: list[str] | None = None,
+    required_texts: list[str] | None = None,
 ) -> dict:
     command = build_weave_agents_verify_command(
         python=python,
@@ -1295,6 +1312,7 @@ def run_weave_agents_verification(
         require_usage=require_usage,
         conversation_id_contains=conversation_id_contains,
         expected_request_models=expected_request_models,
+        required_texts=required_texts,
     )
     result = subprocess.run(
         command,
@@ -1326,6 +1344,7 @@ def run_weave_agents_verification(
             "tool_content_required": require_tool_content,
             "usage_required": require_usage,
             "conversation_id_contains": conversation_id_contains or "",
+            "required_texts": list(required_texts or []),
             "expected_request_models": list(expected_request_models or []),
         },
     )
@@ -1527,6 +1546,10 @@ def main() -> None:
         configs,
         phase=args.phase,
     )
+    weave_agents_required_texts = weave_required_texts_for_phase(
+        phase=args.phase,
+        require_nemoclaw_agentic_config=bool(args.require_nemoclaw_agentic_config),
+    )
     agentic_production_evidence_guard = build_agentic_production_evidence_guard(
         args,
         phase=args.phase,
@@ -1591,6 +1614,7 @@ def main() -> None:
         "weave_agents_require_tool_span": bool(args.weave_agents_require_tool_span),
         "weave_agents_require_tool_content": bool(args.weave_agents_require_tool_content),
         "weave_agents_require_usage": bool(args.weave_agents_require_usage),
+        "weave_agents_required_texts": weave_agents_required_texts,
         "weave_agents_conversation_id_contains": args.weave_agents_conversation_id_contains or "",
         "weave_content_canary_gate": weave_content_canary_gate,
         "run_eval_preflights": run_eval_preflights,
@@ -1632,6 +1656,7 @@ def main() -> None:
         "weave_agents_require_tool_span": bool(args.weave_agents_require_tool_span),
         "weave_agents_require_tool_content": bool(args.weave_agents_require_tool_content),
         "weave_agents_require_usage": bool(args.weave_agents_require_usage),
+        "weave_agents_required_texts": weave_agents_required_texts,
         "weave_agents_conversation_id_contains": args.weave_agents_conversation_id_contains or "",
         "weave_content_canary_gate": weave_content_canary_gate,
         "run_eval_preflights": run_eval_preflights,
@@ -1735,6 +1760,7 @@ def main() -> None:
                 "tool_span_required": bool(args.weave_agents_require_tool_span),
                 "tool_content_required": bool(args.weave_agents_require_tool_content),
                 "usage_required": bool(args.weave_agents_require_usage),
+                "required_texts": weave_agents_required_texts,
                 "run_scope_required": bool(args.verify_weave_agents),
                 "conversation_id_contains_default": (
                     "wandb_run_id when --weave-agents-conversation-id-contains is not set"
@@ -2058,6 +2084,7 @@ def main() -> None:
                     config_path,
                     phase=args.phase,
                 ),
+                required_texts=weave_agents_required_texts,
             )
             row["weave_agents_completion"] = {
                 "ok": bool(weave_result.get("ok")),
@@ -2065,6 +2092,7 @@ def main() -> None:
                 "agent_name": args.weave_agent_name,
                 "run_id": row["wandb_run_id"],
                 "conversation_id_contains": weave_conversation_id_contains,
+                "required_texts": weave_agents_required_texts,
                 "expected_request_models": weave_expected_request_models(
                     config_path,
                     phase=args.phase,
