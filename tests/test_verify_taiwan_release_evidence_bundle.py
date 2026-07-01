@@ -13587,6 +13587,90 @@ def test_verify_release_evidence_bundle_rejects_swe_relog_missing_observability_
     ) in payload["errors"]
 
 
+def test_verify_release_evidence_bundle_rejects_math_relog_missing_weave_output_column(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path") == "scripts/tools/log_agentic_math_results_to_wandb.py"
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace(
+            '    "weave_sidecar_ok",\n',
+            "",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "agentic runner script missing source contract "
+        "Agentic Math relog output Weave-sidecar column: "
+        "scripts/tools/log_agentic_math_results_to_wandb.py: "
+        '"weave_sidecar_ok",'
+    ) in payload["errors"]
+
+
+def test_verify_release_evidence_bundle_rejects_swe_relog_missing_weave_output_column(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path") == "scripts/tools/log_agentic_swe_results_to_wandb.py"
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace(
+            '                "weave_sidecar_ok": patch_row.get("weave_sidecar_ok"),\n',
+            "",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "agentic runner script missing source contract "
+        "SWE relog output Weave-sidecar field: "
+        "scripts/tools/log_agentic_swe_results_to_wandb.py: "
+        '"weave_sidecar_ok": patch_row.get("weave_sidecar_ok"),'
+    ) in payload["errors"]
+
+
 def test_verify_release_evidence_bundle_rejects_existing_results_audit_missing_math_observability_call(
     tmp_path,
 ):

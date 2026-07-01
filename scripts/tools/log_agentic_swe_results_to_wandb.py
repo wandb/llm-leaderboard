@@ -243,7 +243,11 @@ def build_output_table(summary: dict[str, Any], patch_rows: list[dict[str, Any]]
                 "has_patch_record": bool(patch_row),
                 "openclaw_returncode": patch_row.get("openclaw_returncode"),
                 "tool_policy_ok": patch_row.get("tool_policy_ok"),
+                "tool_policy_violations": patch_row.get("tool_policy_violations"),
                 "conversation_order_ok": patch_row.get("conversation_order_ok"),
+                "conversation_order": patch_row.get("conversation_order"),
+                "weave_sidecar_ok": patch_row.get("weave_sidecar_ok"),
+                "weave_sidecar": patch_row.get("weave_sidecar"),
                 "nemoclaw_session_audit_ok": patch_row.get("nemoclaw_session_audit_ok"),
                 "nemoclaw_session_audit_required": (
                     (patch_row.get("nemoclaw_session_audit") or {}).get("required")

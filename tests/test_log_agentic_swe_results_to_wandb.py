@@ -119,6 +119,11 @@ def test_build_output_table_preserves_patch_metadata():
                 "instance_id": "i1",
                 "openclaw_returncode": 0,
                 "tool_policy_ok": True,
+                "tool_policy_violations": [],
+                "conversation_order_ok": True,
+                "conversation_order": {"ok": True},
+                "weave_sidecar_ok": True,
+                "weave_sidecar": {"ok": True},
                 "nemoclaw_session_audit_ok": True,
                 "nemoclaw_session_audit": {"required": True, "ok": True},
                 "openclaw_tool_call_count": 12,
@@ -134,6 +139,12 @@ def test_build_output_table_preserves_patch_metadata():
     assert i1["resolved"] is True
     assert i1["has_patch_record"] is True
     assert i1["openclaw_tool_call_count"] == 12
+    assert i1["tool_policy_ok"] is True
+    assert i1["tool_policy_violations"] == []
+    assert i1["conversation_order_ok"] is True
+    assert i1["conversation_order"] == {"ok": True}
+    assert i1["weave_sidecar_ok"] is True
+    assert i1["weave_sidecar"] == {"ok": True}
     assert i1["nemoclaw_session_audit_ok"] is True
     assert i1["nemoclaw_session_audit_required"] is True
     assert i2["resolved"] is False

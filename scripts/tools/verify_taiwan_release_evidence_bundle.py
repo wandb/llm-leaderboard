@@ -561,6 +561,9 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("Agentic Math relog source validation", "validate_summary(summary, rows)"),
             ("Agentic Math relog observability validator", "def validate_observability_acceptance("),
             ("Agentic Math relog observability validation call", "validate_observability_acceptance(rows)"),
+            ("Agentic Math relog output observability columns", "OUTPUT_OBSERVABILITY_COLUMNS = ("),
+            ("Agentic Math relog output tool-policy column", '"tool_policy_violations",'),
+            ("Agentic Math relog output Weave-sidecar column", '"weave_sidecar_ok",'),
             ("Agentic Math output table", "agentic_math_output_table"),
             ("Agentic Math NeMoClaw audit field passthrough", "nemoclaw_session_audit_ok"),
             (
@@ -579,6 +582,14 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("SWE relog observability validator", "def validate_observability_acceptance("),
             ("SWE relog observability validation call", "validate_observability_acceptance(rows_for_audit)"),
             ("SWE relog conversation-order field", "conversation_order_ok"),
+            (
+                "SWE relog output tool-policy violations field",
+                '"tool_policy_violations": patch_row.get("tool_policy_violations"),',
+            ),
+            (
+                "SWE relog output Weave-sidecar field",
+                '"weave_sidecar_ok": patch_row.get("weave_sidecar_ok"),',
+            ),
             ("SWE relog NeMoClaw audit field", "nemoclaw_session_audit_ok"),
             ("SWE output table", "agentic_swe_output_table"),
             (

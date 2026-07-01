@@ -39,7 +39,16 @@ REQUIRED_SUMMARY_KEYS = {
     "nemoclaw_session_audit_passed_instances",
     "nemoclaw_session_audit_failed_instances",
 }
-NEMOCLAW_SESSION_AUDIT_COLUMNS = ("nemoclaw_session_audit_ok", "nemoclaw_session_audit")
+OUTPUT_OBSERVABILITY_COLUMNS = (
+    "nemoclaw_session_audit_ok",
+    "nemoclaw_session_audit",
+    "conversation_order_ok",
+    "conversation_order",
+    "tool_policy_ok",
+    "tool_policy_violations",
+    "weave_sidecar_ok",
+    "weave_sidecar",
+)
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -211,7 +220,7 @@ def build_leaderboard(
 
 
 def ensure_output_observability_columns(output_df: pd.DataFrame) -> pd.DataFrame:
-    for column in NEMOCLAW_SESSION_AUDIT_COLUMNS:
+    for column in OUTPUT_OBSERVABILITY_COLUMNS:
         if column not in output_df.columns:
             output_df[column] = None
     return output_df
