@@ -39,6 +39,8 @@ def weave_content_canary_gate_contract_issues(payload: dict[str, Any]) -> list[s
         issues.append("command_ok must be true")
     if payload.get("command_returncode") != 0:
         issues.append("command_returncode must be 0")
+    if not empty_list(payload.get("command_result_contract_issues")):
+        issues.append("command_result_contract_issues must be an empty list")
     if payload.get("paid_api_attempted") is not True:
         issues.append("paid_api_attempted must be true")
     if payload.get("weave_verifier_ok") is not True:

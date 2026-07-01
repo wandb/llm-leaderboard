@@ -174,6 +174,7 @@ def passing_weave_content_canary_gate_payload() -> dict:
         "paid_api_attempted": True,
         "command_ok": True,
         "command_returncode": 0,
+        "command_result_contract_issues": [],
         "weave_verifier_ok": True,
         "weave_verifier_schema_version": 1,
         "weave_verifier_latest_trace_id": "trace-1",

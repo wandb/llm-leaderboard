@@ -1,4 +1,5 @@
 import importlib.util
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -31,6 +32,22 @@ def write_plan(tmp_path, *, will_call_paid_model_api=False, task_id="weave_agent
     plan_dir = tmp_path / "plans"
     plan_dir.mkdir(parents=True)
     plan_file = plan_dir / f"{task_id}.json"
+    run_command = [
+        sys.executable,
+        str(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py"),
+        "run",
+        "--benchmark-id",
+        "agentic_math",
+        "--task-id",
+        task_id,
+        "--model",
+        "openai-direct/test-mini",
+    ]
+    run_command_sha256 = hashlib.sha256(
+        json.dumps(run_command, ensure_ascii=False, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
     plan_file.write_text(
         json.dumps(
             {
@@ -50,6 +67,8 @@ def write_plan(tmp_path, *, will_call_paid_model_api=False, task_id="weave_agent
                 "verification_requirements": {
                     "expected_request_models": ["openai-direct/test-mini", "test-mini"],
                 },
+                "run_command": run_command,
+                "run_command_sha256": run_command_sha256,
                 "nemoclaw": {
                     "required": True,
                     "enabled": True,
@@ -118,6 +137,21 @@ def write_plan(tmp_path, *, will_call_paid_model_api=False, task_id="weave_agent
 
 
 def write_command_result(plan_file, task_id, payload):
+    plan = json.loads(plan_file.read_text(encoding="utf-8"))
+    payload = {
+        **{
+            "canary_id": plan.get("canary_id"),
+            "task_id": plan.get("task_id"),
+            "model": plan.get("model"),
+            "thinking": plan.get("thinking"),
+            "plan_file": str(plan_file),
+            "prompt_file": plan.get("prompt_file"),
+            "expected_sidecar": plan.get("expected_sidecar"),
+            "run_command": plan.get("run_command"),
+            "run_command_sha256": plan.get("run_command_sha256"),
+        },
+        **payload,
+    }
     path = plan_file.with_name(f"{task_id}.command_result.json")
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
@@ -467,6 +501,32 @@ def test_successful_verifier_passes_gate(tmp_path):
     assert summary["span_request_models"] == ["test-mini"]
     assert summary["request_model_proven"] is True
     assert summary["nemoclaw_openclaw_config_preflight"]["ok"] is True
+    assert summary["command_result_contract_issues"] == []
+
+
+def test_successful_command_result_must_match_plan_identity(tmp_path):
+    module = load_module()
+    task_id = "weave_agents_content_canary_COMMAND_MISMATCH"
+    plan_file = write_plan(tmp_path, will_call_paid_model_api=True, task_id=task_id)
+    write_command_result(
+        plan_file,
+        task_id,
+        {
+            "ok": True,
+            "returncode": 0,
+            "task_id": "weave_agents_content_canary_OTHER",
+            "run_command_sha256": "0" * 64,
+        },
+    )
+    write_verifier(tmp_path, task_id, passing_verifier_payload(task_id))
+    write_agents_diagnostic(tmp_path, task_id, passing_agents_diagnostic_payload(task_id))
+
+    summary = module.build_gate_summary(plan_file=plan_file)
+
+    assert summary["ok"] is False
+    assert summary["status"] == "command_result_contract_invalid"
+    assert "command_result.task_id must match plan.task_id" in summary["detail"]
+    assert "command_result.run_command_sha256 must match" in summary["detail"]
 
 
 def test_successful_verifier_summary_satisfies_shared_gate_contract(tmp_path):

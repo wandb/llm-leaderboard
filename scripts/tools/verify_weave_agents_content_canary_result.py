@@ -9,6 +9,7 @@ does not query W&B or call a model.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import time
 from datetime import datetime, timezone
@@ -772,6 +773,68 @@ def command_failure_detail(command_result: dict[str, Any] | None) -> str:
     return "OpenClaw command failed before the canary was scoreable"
 
 
+def stable_command_sha256(command: Any) -> str:
+    if not isinstance(command, list):
+        return ""
+    payload = json.dumps(command, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _same_path(left: Any, right: Any) -> bool:
+    if not isinstance(left, str) or not isinstance(right, str) or not left or not right:
+        return False
+    try:
+        return repo_relative_path(left).resolve() == repo_relative_path(right).resolve()
+    except OSError:
+        return left == right
+
+
+def command_result_contract_issues(
+    *,
+    plan: dict[str, Any],
+    command_result: dict[str, Any] | None,
+    task_id: str,
+    plan_file: Path,
+) -> list[str]:
+    if command_result is None:
+        return []
+    issues: list[str] = []
+    expected_fields = {
+        "task_id": task_id,
+        "canary_id": plan.get("canary_id"),
+        "model": plan.get("model"),
+        "thinking": plan.get("thinking"),
+    }
+    for field, expected in expected_fields.items():
+        if isinstance(expected, str) and expected:
+            if command_result.get(field) != expected:
+                issues.append(f"command_result.{field} must match plan.{field}")
+
+    if not _same_path(command_result.get("plan_file"), str(plan_file)):
+        issues.append("command_result.plan_file must match the gate plan_file")
+    for field in ("prompt_file", "expected_sidecar"):
+        expected_path = plan.get(field)
+        if isinstance(expected_path, str) and expected_path:
+            if not _same_path(command_result.get(field), expected_path):
+                issues.append(f"command_result.{field} must match plan.{field}")
+
+    expected_sha = plan.get("run_command_sha256")
+    if not isinstance(expected_sha, str) or not expected_sha:
+        expected_sha = stable_command_sha256(plan.get("run_command"))
+    observed_sha = command_result.get("run_command_sha256")
+    if not isinstance(observed_sha, str) or not observed_sha:
+        issues.append("command_result.run_command_sha256 must be a non-empty string")
+    elif expected_sha and observed_sha != expected_sha:
+        issues.append("command_result.run_command_sha256 must match the plan run command")
+
+    observed_command = command_result.get("run_command")
+    if not isinstance(observed_command, list) or not observed_command:
+        issues.append("command_result.run_command must be a non-empty list")
+    elif stable_command_sha256(observed_command) != observed_sha:
+        issues.append("command_result.run_command must hash to command_result.run_command_sha256")
+    return issues
+
+
 def status_from_verifier(
     verifier: dict[str, Any] | None,
     verifier_error: str | None,
@@ -855,6 +918,8 @@ def recommendation(status: str, failure_kind: str | None) -> str:
         return "Resolve the provider failure and rerun the same canary."
     if status == "model_configuration_failure":
         return "Fix the OpenClaw model id/provider mapping, then rerun the canary."
+    if status == "command_result_contract_invalid":
+        return "Regenerate the canary command result from the matching plan, then rerun the gate."
     if status in {"trace_missing", "content_missing", "tool_trace_missing", "tool_content_missing", "canary_text_missing"}:
         return "Investigate native OpenClaw/Weave content capture and rerun a fresh canary before production runs."
     if status == "usage_missing":
@@ -912,6 +977,12 @@ def build_gate_summary(
     sidecar_path_value = plan.get("expected_sidecar")
     sidecar_path = repo_relative_path(sidecar_path_value) if isinstance(sidecar_path_value, str) else None
     sidecar, _sidecar_error = read_json(sidecar_path)
+    command_contract_issues = command_result_contract_issues(
+        plan=plan,
+        command_result=command_result,
+        task_id=task_id,
+        plan_file=plan_file,
+    )
 
     will_call_paid_model_api = bool(plan.get("will_call_paid_model_api"))
     if isinstance(command_result, dict) and "paid_api_attempted" in command_result:
@@ -934,6 +1005,9 @@ def build_gate_summary(
             detail = "prepare-only canary; no paid model call was attempted"
     elif command_result.get("ok") is not True:
         status, detail = status_from_command_failure(command_result, failure_kind, failure_detail)
+    elif command_contract_issues:
+        status = "command_result_contract_invalid"
+        detail = "; ".join(command_contract_issues)
     else:
         status, detail = status_from_verifier(
             verifier,
@@ -1019,6 +1093,7 @@ def build_gate_summary(
         "paid_api_attempted": paid_api_attempted,
         "command_ok": command_result.get("ok") if isinstance(command_result, dict) else None,
         "command_returncode": command_result.get("returncode") if isinstance(command_result, dict) else None,
+        "command_result_contract_issues": command_contract_issues,
         "weave_verifier_ok": verifier.get("ok") if isinstance(verifier, dict) else None,
         "weave_verifier_schema_version": (
             verifier.get("verification_schema_version") if isinstance(verifier, dict) else None

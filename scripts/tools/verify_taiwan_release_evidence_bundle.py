@@ -1014,6 +1014,10 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("Content canary expected request-model proof", '"expected_request_models"'),
             ("Content canary observed request-model proof", '"observed_request_models"'),
             ("Content canary request-model proven flag", '"request_model_proven"'),
+            (
+                "Content canary command-result contract proof",
+                '"command_result_contract_issues"',
+            ),
         ),
     },
     WEAVE_CONTENT_CANARY_RUNNER_SCRIPT: {
@@ -1068,6 +1072,14 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "def write_blocked_command_result(",
             ),
             (
+                "command result identity writer",
+                "def command_result_identity(",
+            ),
+            (
+                "command result run-command hash",
+                '"run_command_sha256"',
+            ),
+            (
                 "blocked command result is not paid API",
                 '"paid_api_attempted": False',
             ),
@@ -1114,6 +1126,10 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             (
                 "required canary final-answer text",
                 "CANARY_RESULT {paths.canary_id} 91",
+            ),
+            (
+                "planned command hash writer",
+                '"run_command_sha256": command_sha256(run_command)',
             ),
             (
                 "Weave verifier expected request-model option",
@@ -1167,6 +1183,14 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             (
                 "required passing verifier checks constant",
                 "REQUIRED_PASSING_VERIFIER_CHECKS = (",
+            ),
+            (
+                "command-result contract validator",
+                "def command_result_contract_issues(",
+            ),
+            (
+                "command-result contract invalid status",
+                '"command_result_contract_invalid"',
             ),
             (
                 "final-answer order check requirement",

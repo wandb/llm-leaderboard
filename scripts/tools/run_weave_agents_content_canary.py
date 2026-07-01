@@ -126,6 +126,11 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def command_sha256(command: list[str]) -> str:
+    payload = json.dumps(command, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def build_external_action_approval_record(
     approval_report_path: Path | None,
     *,
@@ -667,6 +672,7 @@ def write_canary_files(
         "agents_diagnostic_file": str(paths.agents_diagnostic_file),
         "gate_result_file": str(paths.gate_result_file),
         "run_command": run_command,
+        "run_command_sha256": command_sha256(run_command),
         "verify_attempts": args.verify_attempts,
         "verify_sleep_seconds": args.verify_sleep_seconds,
         "verification_requirements": {
@@ -710,9 +716,24 @@ def write_command_result(paths: CanaryPaths, payload: dict[str, Any]) -> dict[st
     return payload
 
 
+def command_result_identity(plan: dict[str, Any], paths: CanaryPaths) -> dict[str, Any]:
+    return {
+        "canary_id": plan.get("canary_id") or paths.canary_id,
+        "task_id": plan.get("task_id") or paths.task_id,
+        "model": plan.get("model"),
+        "thinking": plan.get("thinking"),
+        "plan_file": str(paths.plan_file),
+        "prompt_file": plan.get("prompt_file") or str(paths.prompt_file),
+        "expected_sidecar": plan.get("expected_sidecar") or str(paths.expected_sidecar),
+        "run_command": plan.get("run_command") if isinstance(plan.get("run_command"), list) else [],
+        "run_command_sha256": plan.get("run_command_sha256") or "",
+    }
+
+
 def write_blocked_command_result(
     paths: CanaryPaths,
     *,
+    plan: dict[str, Any],
     failure_kind: str,
     failure_detail: str,
     payload: dict[str, Any],
@@ -732,6 +753,7 @@ def write_blocked_command_result(
             "kind": failure_kind,
             "detail": failure_detail,
         },
+        **command_result_identity(plan, paths),
         **payload,
     }
     return write_command_result(paths, command_result)
@@ -920,6 +942,7 @@ def main(argv: list[str] | None = None) -> None:
     if not external_action_approval.get("valid"):
         command_result = write_blocked_command_result(
             paths,
+            plan=plan,
             failure_kind="external_action_approval_missing",
             failure_detail=(
                 "external-action approval was missing or invalid; OpenClaw and "
@@ -973,6 +996,7 @@ def main(argv: list[str] | None = None) -> None:
     if not nemoclaw_openclaw_config_preflight.get("ok"):
         command_result = write_blocked_command_result(
             paths,
+            plan=plan,
             failure_kind="nemoclaw_config_preflight_failed",
             failure_detail=(
                 "NeMoClaw sandbox OpenClaw config preflight failed before "
@@ -1010,6 +1034,7 @@ def main(argv: list[str] | None = None) -> None:
         "blocked_before_openclaw": False,
         "stdout_tail": completed.stdout[-4000:],
         "stderr_tail": completed.stderr[-4000:],
+        **command_result_identity(plan, paths),
     }
     failure = classify_openclaw_failure(paths.expected_sidecar, completed.stderr)
     if failure:

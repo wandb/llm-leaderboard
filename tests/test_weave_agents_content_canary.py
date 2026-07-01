@@ -183,6 +183,8 @@ def test_prepare_only_writes_plan_without_paid_execution(tmp_path):
     assert plan["verification_requirements"]["expected_request_models"] == [
         "gpt-5.4-mini-2026-03-17"
     ]
+    assert plan["run_command"]
+    assert len(plan["run_command_sha256"]) == 64
     assert plan["nemoclaw_openclaw_config_preflight"] == {
         "required_before_openclaw": False,
         "ran": False,
@@ -284,6 +286,10 @@ def test_execute_requires_external_action_approval_before_openclaw(tmp_path, cap
     assert command_result["blocked_before_openclaw"] is True
     assert command_result["paid_api_attempted"] is False
     assert command_result["failure"]["kind"] == "external_action_approval_missing"
+    assert command_result["task_id"] == "weave_agents_content_canary_TEST_CANARY_APPROVAL"
+    assert command_result["model"] == "openai-direct/gpt-4.1-nano-2025-04-14"
+    assert command_result["run_command"] == plan["run_command"]
+    assert command_result["run_command_sha256"] == plan["run_command_sha256"]
     gate = json.loads(Path(payload["gate_result_file"]).read_text(encoding="utf-8"))
     assert gate["status"] == "external_action_approval_missing"
     assert gate["paid_api_attempted"] is False
@@ -538,6 +544,11 @@ def test_execute_blocks_before_openclaw_when_nemoclaw_openclaw_config_is_stale(
     assert command_result["blocked_before_openclaw"] is True
     assert command_result["paid_api_attempted"] is False
     assert command_result["failure"]["kind"] == "nemoclaw_config_preflight_failed"
+    plan = json.loads(Path(payload["plan_file"]).read_text(encoding="utf-8"))
+    assert command_result["task_id"] == "weave_agents_content_canary_TEST_CANARY_STALE_CONFIG"
+    assert command_result["model"] == "openai-direct/gpt-4.1-nano-2025-04-14"
+    assert command_result["run_command"] == plan["run_command"]
+    assert command_result["run_command_sha256"] == plan["run_command_sha256"]
     gate = json.loads(Path(payload["gate_result_file"]).read_text(encoding="utf-8"))
     assert gate["status"] == "nemoclaw_config_preflight_failed"
     assert gate["paid_api_attempted"] is False
