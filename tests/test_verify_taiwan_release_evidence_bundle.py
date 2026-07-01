@@ -4285,17 +4285,19 @@ def build_bundle_with_weave_agents_completion(
 def build_bundle_with_weave_content_canary(tmp_path):
     canary_id = "TEST_CANARY"
     task_id = "weave_agents_content_canary_TEST_CANARY"
+    required_texts = [
+        canary_id,
+        f"CANARY_RESULT {canary_id} 91",
+        "openclaw_config_source: /sandbox/.openclaw/openclaw.json",
+    ]
     verifier_payload = weave_agents_completion_payload()
     verifier_payload["query_source"]["conversation_id_contains"] = task_id
     verifier_payload["required_evidence"]["conversation_id_contains"] = task_id
-    verifier_payload["required_evidence"]["required_texts"] = [
-        canary_id,
-        f"CANARY_RESULT {canary_id} 91",
-    ]
+    verifier_payload["required_evidence"]["required_texts"] = required_texts
     verifier_payload["required_evidence"]["expected_request_models"] = [
         "gpt-4.1-mini-2025-04-14"
     ]
-    verifier_payload["content_capture_health"]["required_text_count"] = 2
+    verifier_payload["content_capture_health"]["required_text_count"] = len(required_texts)
     verifier_payload["checks"].append(
         {
             "name": "required_text_capture",
@@ -4414,10 +4416,7 @@ def build_bundle_with_weave_content_canary(tmp_path):
                 "require_tool_content": True,
                 "require_usage": False,
                 "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
-                "required_texts": [
-                    canary_id,
-                    f"CANARY_RESULT {canary_id} 91",
-                ],
+                "required_texts": required_texts,
             },
         },
     )
@@ -4578,6 +4577,7 @@ def build_bundle_with_weave_content_canary(tmp_path):
             "entity": "llm-leaderboard",
             "project": "tc-leaderboard",
             "expected_request_models": ["gpt-4.1-mini-2025-04-14"],
+            "expected_required_texts": required_texts,
             "observed_request_models": ["gpt-4.1-mini-2025-04-14"],
             "span_request_models": ["gpt-4.1-mini-2025-04-14"],
             "request_model_proven": True,
@@ -4671,6 +4671,7 @@ def build_bundle_with_weave_content_canary(tmp_path):
             "weave_verifier_schema_version": 1,
             "weave_verifier_latest_trace_id": "trace-1",
             "weave_verifier_validation_issues": [],
+            "plan_required_text_validation_issues": [],
             "agents_diagnostic_ok": True,
             "agents_diagnostic_schema_version": 1,
             "agents_diagnostic_latest_trace_id": "trace-1",

@@ -1181,6 +1181,15 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("Content canary expected request-model proof", '"expected_request_models"'),
             ("Content canary observed request-model proof", '"observed_request_models"'),
             ("Content canary request-model proven flag", '"request_model_proven"'),
+            ("Content canary expected required-text proof", '"expected_required_texts"'),
+            (
+                "Content canary plan required-text proof",
+                '"plan_required_text_validation_issues"',
+            ),
+            (
+                "Content canary config-source text proof",
+                "openclaw_config_source:",
+            ),
             (
                 "Content canary command-result contract proof",
                 '"command_result_contract_issues"',
@@ -1271,6 +1280,14 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "--nemoclaw-openclaw-config-path",
             ),
             (
+                "NeMoClaw OpenClaw config source protocol handoff",
+                "--openclaw-config-source",
+            ),
+            (
+                "NeMoClaw OpenClaw config-source trace text helper",
+                "def openclaw_config_source_trace_text(",
+            ),
+            (
                 "NeMoClaw config preflight provider check",
                 "NeMoClaw sandbox OpenClaw {provider_id} provider exists",
             ),
@@ -1305,6 +1322,10 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             (
                 "Weave verifier required text option",
                 "--require-text",
+            ),
+            (
+                "Weave verifier required trace text resolver",
+                "def required_trace_texts(",
             ),
             (
                 "Agents diagnostic command",
@@ -15170,6 +15191,24 @@ def _content_canary_conversation_values(payload: dict[str, Any]) -> list[str]:
     return values
 
 
+def _expected_weave_content_canary_required_texts(
+    gate_payload: dict[str, Any],
+) -> list[str]:
+    texts: list[str] = []
+    canary_id = gate_payload.get("canary_id")
+    if isinstance(canary_id, str) and canary_id:
+        texts.append(canary_id)
+        texts.append(f"CANARY_RESULT {canary_id} 91")
+    nemoclaw = gate_payload.get("nemoclaw")
+    preflight = gate_payload.get("nemoclaw_openclaw_config_preflight")
+    if isinstance(nemoclaw, dict) and nemoclaw.get("enabled") is True:
+        if isinstance(preflight, dict):
+            config_path = preflight.get("config_path")
+            if isinstance(config_path, str) and config_path:
+                texts.append(f"openclaw_config_source: {config_path}")
+    return list(dict.fromkeys(texts))
+
+
 def validate_weave_content_canary_support_evidence(
     *,
     gate_payload: dict[str, Any],
@@ -15187,6 +15226,18 @@ def validate_weave_content_canary_support_evidence(
     expected_final_text = (
         f"CANARY_RESULT {canary_id} 91" if isinstance(canary_id, str) and canary_id else ""
     )
+    expected_required_texts = _expected_weave_content_canary_required_texts(gate_payload)
+
+    gate_required_texts = gate_payload.get("expected_required_texts")
+    if not isinstance(gate_required_texts, list):
+        errors.append(f"{label} gate.expected_required_texts is not a list")
+    else:
+        for required_text in expected_required_texts:
+            if required_text and required_text not in gate_required_texts:
+                errors.append(
+                    f"{label} gate.expected_required_texts does not include "
+                    f"{required_text!r}"
+                )
 
     if isinstance(plan_payload, dict):
         expected_pairs = {
@@ -15225,7 +15276,7 @@ def validate_weave_content_canary_support_evidence(
             if not isinstance(required_texts, list):
                 errors.append(f"{label} plan.verification_requirements.required_texts is not a list")
             else:
-                for required_text in (canary_id, expected_final_text):
+                for required_text in expected_required_texts:
                     if required_text and required_text not in required_texts:
                         errors.append(
                             f"{label} plan.verification_requirements.required_texts "
@@ -15278,7 +15329,7 @@ def validate_weave_content_canary_support_evidence(
             if not isinstance(required_texts, list):
                 errors.append(f"{label} verifier.required_evidence.required_texts is not a list")
             else:
-                for required_text in (canary_id, expected_final_text):
+                for required_text in expected_required_texts:
                     if required_text and required_text not in required_texts:
                         errors.append(
                             f"{label} verifier.required_evidence.required_texts "

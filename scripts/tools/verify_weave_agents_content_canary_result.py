@@ -340,6 +340,48 @@ def expected_request_models_from_plan(plan: dict[str, Any]) -> list[str]:
     )
 
 
+def expected_required_texts_from_plan(plan: dict[str, Any]) -> list[str]:
+    texts: list[str] = []
+    canary_id = plan.get("canary_id")
+    if isinstance(canary_id, str) and canary_id:
+        texts.append(canary_id)
+        texts.append(f"CANARY_RESULT {canary_id} 91")
+    nemoclaw = plan.get("nemoclaw")
+    preflight = plan.get("nemoclaw_openclaw_config_preflight")
+    nemoclaw_enabled = isinstance(nemoclaw, dict) and bool(nemoclaw.get("enabled"))
+    if nemoclaw_enabled and isinstance(preflight, dict):
+        config_path = preflight.get("config_path")
+        if isinstance(config_path, str) and config_path:
+            texts.append(f"openclaw_config_source: {config_path}")
+    return list(dict.fromkeys(texts))
+
+
+def plan_required_text_validation_issues(
+    plan: dict[str, Any],
+    *,
+    expected_required_texts: list[str],
+) -> list[str]:
+    if not expected_required_texts:
+        return []
+    requirements = plan.get("verification_requirements")
+    if not isinstance(requirements, dict):
+        return ["verification_requirements must be an object"]
+    required_texts = requirements.get("required_texts")
+    if not isinstance(required_texts, list):
+        return ["verification_requirements.required_texts must be a list"]
+    missing = [
+        text
+        for text in expected_required_texts
+        if text and text not in required_texts
+    ]
+    if missing:
+        return [
+            "verification_requirements.required_texts missing required text(s): "
+            + ", ".join(repr(text) for text in missing)
+        ]
+    return []
+
+
 def request_model_evidence(verifier: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(verifier, dict):
         return {
@@ -513,6 +555,7 @@ def passing_verifier_validation_issues(
     expected_agent_name: str | None = None,
     expected_task_id: str | None = None,
     expected_request_models: list[str] | None = None,
+    expected_required_texts: list[str] | None = None,
 ) -> list[str]:
     if verifier is None:
         return ["Weave verifier JSON is missing"]
@@ -567,6 +610,12 @@ def passing_verifier_validation_issues(
         )
     )
     required_texts = required_texts_from_verifier(verifier, issues)
+    for required_text in expected_required_texts or []:
+        if required_text and required_text not in required_texts:
+            issues.append(
+                "required_evidence.required_texts missing required text: "
+                f"{required_text!r}"
+            )
     if required_texts and "required_text_capture" not in verifier_check_names(verifier):
         issues.append("checks missing required check(s): required_text_capture")
     if required_texts:
@@ -843,6 +892,7 @@ def status_from_verifier(
     expected_agent_name: str | None,
     expected_task_id: str | None,
     expected_request_models: list[str],
+    expected_required_texts: list[str],
 ) -> tuple[str, str]:
     if verifier is None:
         return "trace_missing", verifier_error or "Weave verifier JSON is missing"
@@ -853,6 +903,7 @@ def status_from_verifier(
             expected_agent_name=expected_agent_name,
             expected_task_id=expected_task_id,
             expected_request_models=expected_request_models,
+            expected_required_texts=expected_required_texts,
         )
         if issues:
             return "weave_verifier_schema_invalid", "; ".join(issues)
@@ -974,6 +1025,11 @@ def build_gate_summary(
     project = plan.get("project") if isinstance(plan.get("project"), str) else None
     expected_project_id = f"{entity}/{project}" if entity and project else None
     expected_request_models = expected_request_models_from_plan(plan)
+    expected_required_texts = expected_required_texts_from_plan(plan)
+    plan_required_text_issues = plan_required_text_validation_issues(
+        plan,
+        expected_required_texts=expected_required_texts,
+    )
     sidecar_path_value = plan.get("expected_sidecar")
     sidecar_path = repo_relative_path(sidecar_path_value) if isinstance(sidecar_path_value, str) else None
     sidecar, _sidecar_error = read_json(sidecar_path)
@@ -1008,6 +1064,9 @@ def build_gate_summary(
     elif command_contract_issues:
         status = "command_result_contract_invalid"
         detail = "; ".join(command_contract_issues)
+    elif plan_required_text_issues:
+        status = "weave_verifier_schema_invalid"
+        detail = "; ".join(plan_required_text_issues)
     else:
         status, detail = status_from_verifier(
             verifier,
@@ -1016,6 +1075,7 @@ def build_gate_summary(
             expected_agent_name=expected_agent_name,
             expected_task_id=task_id,
             expected_request_models=expected_request_models,
+            expected_required_texts=expected_required_texts,
         )
         if status == "passed":
             diagnostic_issues = agents_diagnostic_validation_issues(
@@ -1043,6 +1103,7 @@ def build_gate_summary(
             expected_agent_name=expected_agent_name,
             expected_task_id=task_id,
             expected_request_models=expected_request_models,
+            expected_required_texts=expected_required_texts,
         )
         if isinstance(verifier, dict) and verifier.get("ok") is True
         else []
@@ -1078,6 +1139,7 @@ def build_gate_summary(
             else {}
         ),
         "expected_request_models": expected_request_models,
+        "expected_required_texts": expected_required_texts,
         "observed_request_models": request_model["observed_request_models"],
         "span_request_models": request_model["span_request_models"],
         "request_model_proven": status == "passed"
@@ -1094,6 +1156,7 @@ def build_gate_summary(
         "command_ok": command_result.get("ok") if isinstance(command_result, dict) else None,
         "command_returncode": command_result.get("returncode") if isinstance(command_result, dict) else None,
         "command_result_contract_issues": command_contract_issues,
+        "plan_required_text_validation_issues": plan_required_text_issues,
         "weave_verifier_ok": verifier.get("ok") if isinstance(verifier, dict) else None,
         "weave_verifier_schema_version": (
             verifier.get("verification_schema_version") if isinstance(verifier, dict) else None

@@ -66,6 +66,11 @@ def write_plan(tmp_path, *, will_call_paid_model_api=False, task_id="weave_agent
                 "project": "tc-leaderboard",
                 "verification_requirements": {
                     "expected_request_models": ["openai-direct/test-mini", "test-mini"],
+                    "required_texts": [
+                        "TEST",
+                        "CANARY_RESULT TEST 91",
+                        "openclaw_config_source: /sandbox/.openclaw/openclaw.json",
+                    ],
                 },
                 "run_command": run_command,
                 "run_command_sha256": run_command_sha256,
@@ -198,6 +203,11 @@ def passing_verifier_payload(task_id="weave_agents_content_canary_PASS"):
             "trace_timestamp_quality_required": True,
             "trace_final_answer_order_required": True,
             "expected_request_models": ["openai-direct/test-mini", "test-mini"],
+            "required_texts": [
+                "TEST",
+                "CANARY_RESULT TEST 91",
+                "openclaw_config_source: /sandbox/.openclaw/openclaw.json",
+            ],
             "conversation_id": "",
             "conversation_id_contains": task_id,
         },
@@ -210,6 +220,7 @@ def passing_verifier_payload(task_id="weave_agents_content_canary_PASS"):
             "trace_input_tokens": 10,
             "trace_output_tokens": 2,
             "request_model_count": 1,
+            "required_text_count": 3,
         },
         "checks": [
             {"name": "message_content_capture", "ok": True},
@@ -226,6 +237,7 @@ def passing_verifier_payload(task_id="weave_agents_content_canary_PASS"):
             {"name": "trace_order", "ok": True},
             {"name": "trace_user_message_order", "ok": True},
             {"name": "trace_final_answer_order", "ok": True},
+            {"name": "required_text_capture", "ok": True},
         ],
         "latest_trace_spans_chronological": [
             {
@@ -769,11 +781,11 @@ def test_ok_verifier_without_required_text_capture_does_not_pass_gate(tmp_path):
     plan_file = write_plan(tmp_path, will_call_paid_model_api=True, task_id=task_id)
     write_command_result(plan_file, task_id, {"ok": True, "returncode": 0})
     payload = passing_verifier_payload(task_id)
-    payload["required_evidence"]["required_texts"] = [
-        "TEST",
-        "CANARY_RESULT TEST 91",
+    payload["checks"] = [
+        check
+        for check in payload["checks"]
+        if check.get("name") != "required_text_capture"
     ]
-    payload["content_capture_health"]["required_text_count"] = 2
     write_verifier(tmp_path, task_id, payload)
 
     summary = module.build_gate_summary(plan_file=plan_file)
@@ -789,19 +801,37 @@ def test_ok_verifier_with_low_required_text_count_does_not_pass_gate(tmp_path):
     plan_file = write_plan(tmp_path, will_call_paid_model_api=True, task_id=task_id)
     write_command_result(plan_file, task_id, {"ok": True, "returncode": 0})
     payload = passing_verifier_payload(task_id)
-    payload["required_evidence"]["required_texts"] = [
-        "TEST",
-        "CANARY_RESULT TEST 91",
-    ]
-    payload["checks"].append({"name": "required_text_capture", "ok": True})
-    payload["content_capture_health"]["required_text_count"] = 1
+    payload["content_capture_health"]["required_text_count"] = 2
     write_verifier(tmp_path, task_id, payload)
 
     summary = module.build_gate_summary(plan_file=plan_file)
 
     assert summary["ok"] is False
     assert summary["status"] == "weave_verifier_schema_invalid"
-    assert "content_capture_health.required_text_count must be at least 2" in summary["detail"]
+    assert "content_capture_health.required_text_count must be at least 3" in summary["detail"]
+
+
+def test_ok_verifier_without_config_source_required_text_does_not_pass_gate(tmp_path):
+    module = load_module()
+    task_id = "weave_agents_content_canary_CONFIG_SOURCE_TEXT_MISSING"
+    plan_file = write_plan(tmp_path, will_call_paid_model_api=True, task_id=task_id)
+    write_command_result(plan_file, task_id, {"ok": True, "returncode": 0})
+    payload = passing_verifier_payload(task_id)
+    payload["required_evidence"]["required_texts"] = [
+        "TEST",
+        "CANARY_RESULT TEST 91",
+    ]
+    payload["content_capture_health"]["required_text_count"] = 2
+    write_verifier(tmp_path, task_id, payload)
+
+    summary = module.build_gate_summary(plan_file=plan_file)
+
+    assert summary["ok"] is False
+    assert summary["status"] == "weave_verifier_schema_invalid"
+    assert (
+        "required_evidence.required_texts missing required text: "
+        "'openclaw_config_source: /sandbox/.openclaw/openclaw.json'"
+    ) in summary["detail"]
 
 
 def test_ok_verifier_without_final_answer_check_does_not_pass_gate(tmp_path):

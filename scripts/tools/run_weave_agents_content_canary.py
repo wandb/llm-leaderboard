@@ -32,6 +32,9 @@ DEFAULT_ENTITY = "llm-leaderboard"
 DEFAULT_PROJECT = "tc-leaderboard"
 DEFAULT_OUTPUT_DIR = Path("outputs/weave_agents_content_canary")
 DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
+DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_SOURCE_TRACE_TEXT = (
+    f"openclaw_config_source: {DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH}"
+)
 NETWORK_DENY_PATTERNS = ("curl", "wget", "requests", "urllib", "httpx", r"https?://")
 CANARY_GATE_RUNNER = REPO_ROOT / "scripts" / "tools" / "verify_weave_agents_content_canary_result.py"
 
@@ -334,6 +337,25 @@ def canary_paths(output_dir: Path, canary_id: str) -> CanaryPaths:
     )
 
 
+def openclaw_config_source_trace_text(config_path: str | os.PathLike[str] | None) -> str:
+    value = str(config_path or "").strip()
+    if not value:
+        return ""
+    return f"openclaw_config_source: {value}"
+
+
+def required_trace_texts(args: argparse.Namespace, paths: CanaryPaths) -> list[str]:
+    texts = [
+        paths.canary_id,
+        f"CANARY_RESULT {paths.canary_id} 91",
+    ]
+    if args.nemoclaw_sandbox:
+        config_source = openclaw_config_source_trace_text(args.nemoclaw_openclaw_config_path)
+        if config_source:
+            texts.append(config_source)
+    return texts
+
+
 def build_run_command(args: argparse.Namespace, paths: CanaryPaths) -> list[str]:
     command = [
         sys.executable,
@@ -369,6 +391,7 @@ def build_run_command(args: argparse.Namespace, paths: CanaryPaths) -> list[str]
     if args.openclaw_config_path:
         command.extend(["--openclaw-config-path", str(args.openclaw_config_path)])
     if args.nemoclaw_sandbox:
+        config_source = str(args.nemoclaw_openclaw_config_path or "").strip()
         command.extend(
             [
                 "--nemoclaw-bin",
@@ -379,6 +402,8 @@ def build_run_command(args: argparse.Namespace, paths: CanaryPaths) -> list[str]
                 args.nemoclaw_workdir,
             ]
         )
+        if config_source:
+            command.extend(["--openclaw-config-source", config_source])
     if args.allow_failed_preflight:
         command.append("--allow-failed-preflight")
     if args.weave_sidecar:
@@ -611,8 +636,8 @@ def build_verify_command(
         command.append("--require-usage")
     for model in request_model_aliases(args.model):
         command.extend(["--expected-request-model", model])
-    command.extend(["--require-text", paths.canary_id])
-    command.extend(["--require-text", f"CANARY_RESULT {paths.canary_id} 91"])
+    for required_text in required_trace_texts(args, paths):
+        command.extend(["--require-text", required_text])
     return command
 
 
@@ -681,10 +706,7 @@ def write_canary_files(
             "require_tool_content": not bool(args.no_require_tool),
             "require_usage": not bool(args.no_require_usage),
             "expected_request_models": request_model_aliases(args.model),
-            "required_texts": [
-                paths.canary_id,
-                f"CANARY_RESULT {paths.canary_id} 91",
-            ],
+            "required_texts": required_trace_texts(args, paths),
         },
         "agent_name": args.agent_name,
         "entity": args.entity,

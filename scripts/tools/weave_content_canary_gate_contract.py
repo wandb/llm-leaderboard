@@ -29,6 +29,20 @@ def nonempty_string_list(value: Any) -> list[str]:
     return [str(item).strip() for item in value if isinstance(item, str) and item.strip()]
 
 
+def expected_required_texts(payload: dict[str, Any]) -> list[str]:
+    texts: list[str] = []
+    canary_id = payload.get("canary_id")
+    if nonempty_string(canary_id):
+        texts.append(str(canary_id))
+        texts.append(f"CANARY_RESULT {canary_id} 91")
+    nemoclaw = payload.get("nemoclaw")
+    preflight = payload.get("nemoclaw_openclaw_config_preflight")
+    if isinstance(nemoclaw, dict) and nemoclaw.get("enabled") is True:
+        if isinstance(preflight, dict) and nonempty_string(preflight.get("config_path")):
+            texts.append(f"openclaw_config_source: {preflight.get('config_path')}")
+    return list(dict.fromkeys(texts))
+
+
 def weave_content_canary_gate_contract_issues(payload: dict[str, Any]) -> list[str]:
     """Validate native Weave proof carried by a passed content-canary gate."""
 
@@ -54,6 +68,8 @@ def weave_content_canary_gate_contract_issues(payload: dict[str, Any]) -> list[s
         issues.append("weave_verifier_latest_trace_id must be a non-empty string")
     if not empty_list(payload.get("weave_verifier_validation_issues")):
         issues.append("weave_verifier_validation_issues must be an empty list")
+    if not empty_list(payload.get("plan_required_text_validation_issues")):
+        issues.append("plan_required_text_validation_issues must be an empty list")
     if payload.get("agents_diagnostic_ok") is not True:
         issues.append("agents_diagnostic_ok must be true")
     if payload.get("agents_diagnostic_schema_version") != AGENTS_DIAGNOSTIC_SCHEMA_VERSION:
@@ -100,6 +116,13 @@ def weave_content_canary_gate_contract_issues(payload: dict[str, Any]) -> list[s
         span_request_models
     ):
         issues.append("span_request_models must include an expected model alias")
+
+    gate_required_texts = nonempty_string_list(payload.get("expected_required_texts"))
+    for required_text in expected_required_texts(payload):
+        if required_text not in gate_required_texts:
+            issues.append(
+                f"expected_required_texts must include {required_text!r}"
+            )
 
     nemoclaw = payload.get("nemoclaw")
     if not isinstance(nemoclaw, dict):

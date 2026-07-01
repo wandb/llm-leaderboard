@@ -179,11 +179,14 @@ def test_prepare_only_writes_plan_without_paid_execution(tmp_path):
     assert plan["verification_requirements"]["required_texts"] == [
         "TEST_CANARY_001",
         "CANARY_RESULT TEST_CANARY_001 91",
+        "openclaw_config_source: /sandbox/.openclaw/openclaw.json",
     ]
     assert plan["verification_requirements"]["expected_request_models"] == [
         "gpt-5.4-mini-2026-03-17"
     ]
     assert plan["run_command"]
+    assert "--openclaw-config-source" in plan["run_command"]
+    assert "/sandbox/.openclaw/openclaw.json" in plan["run_command"]
     assert len(plan["run_command_sha256"]) == 64
     assert plan["nemoclaw_openclaw_config_preflight"] == {
         "required_before_openclaw": False,
@@ -381,9 +384,10 @@ def test_verify_command_uses_sidecar_conversation_or_task_id(tmp_path):
     fallback = module.build_verify_command(args, paths, tmp_path / "verify.json")
     assert "--conversation-id-contains" in fallback
     assert paths.task_id in fallback
-    assert fallback.count("--require-text") == 2
+    assert fallback.count("--require-text") == 3
     assert "TEST_CANARY_001" in fallback
     assert "CANARY_RESULT TEST_CANARY_001 91" in fallback
+    assert "openclaw_config_source: /sandbox/.openclaw/openclaw.json" in fallback
     assert fallback.count("--expected-request-model") == 2
     assert "openai-direct/gpt-4.1-nano-2025-04-14" in fallback
     assert "gpt-4.1-nano-2025-04-14" in fallback
