@@ -16,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = REPO_ROOT / "configs"
 DEFAULT_MANIFEST = CONFIG_DIR / "taiwan_openai_canary_models.yaml"
 DEFAULT_OUTPUT_DIR = CONFIG_DIR / "taiwan_full" / "generated"
+DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 
 
 RUN_FLAGS: dict[str, bool] = {
@@ -107,8 +108,10 @@ def _with_cli_nemoclaw_overrides(
         if swe_config_path:
             updated["swebench_pro_nemoclaw_openclaw_config_path"] = str(swe_config_path)
     math_config_path = getattr(args, "agentic_math_nemoclaw_openclaw_config_path", None)
-    if sandbox and math_config_path:
-        updated["agentic_math_nemoclaw_openclaw_config_path"] = str(math_config_path)
+    if sandbox:
+        updated["agentic_math_nemoclaw_openclaw_config_path"] = str(
+            math_config_path or DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH
+        )
     return updated
 
 
@@ -127,9 +130,12 @@ def _apply_agentic_math_nemoclaw_config(
         model.get("agentic_math_nemoclaw_workdir") or model.get("nemoclaw_workdir") or "/sandbox"
     )
     agentic_math["use_task_agent"] = bool(model.get("agentic_math_use_task_agent", True))
-    config_path = model.get("agentic_math_nemoclaw_openclaw_config_path")
-    if config_path:
-        agentic_math["nemoclaw_openclaw_config_path"] = str(config_path)
+    config_path = (
+        model.get("agentic_math_nemoclaw_openclaw_config_path")
+        or model.get("nemoclaw_openclaw_config_path")
+        or DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH
+    )
+    agentic_math["nemoclaw_openclaw_config_path"] = str(config_path)
 
 
 def _apply_swebench_pro_nemoclaw_config(
@@ -155,9 +161,12 @@ def _apply_swebench_pro_nemoclaw_config(
     transfer_timeout = model.get("swebench_pro_nemoclaw_checkout_transfer_timeout")
     if transfer_timeout:
         swebench_pro["nemoclaw_checkout_transfer_timeout"] = int(transfer_timeout)
-    config_path = model.get("swebench_pro_nemoclaw_openclaw_config_path")
-    if config_path:
-        swebench_pro["nemoclaw_openclaw_config_path"] = str(config_path)
+    config_path = (
+        model.get("swebench_pro_nemoclaw_openclaw_config_path")
+        or model.get("nemoclaw_openclaw_config_path")
+        or DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH
+    )
+    swebench_pro["nemoclaw_openclaw_config_path"] = str(config_path)
 
 
 def build_override(model: dict[str, Any], output_root: Path, phase: str = "full") -> dict[str, Any]:

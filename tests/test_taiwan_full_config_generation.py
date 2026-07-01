@@ -13,6 +13,7 @@ if str(TOOLS_DIR) not in sys.path:
 
 from prepare_taiwan_full_eval_configs import (
     DEFAULT_MANIFEST,
+    DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH,
     build_override,
     generate_configs,
     select_models,
@@ -31,11 +32,13 @@ def _args(tmp_path: Path, phase: str) -> argparse.Namespace:
         agentic_math_nemoclaw_sandbox=None,
         agentic_math_nemoclaw_bin="nemoclaw",
         agentic_math_nemoclaw_workdir="/sandbox",
+        agentic_math_nemoclaw_openclaw_config_path=None,
         swebench_pro_nemoclaw_sandbox=None,
         swebench_pro_nemoclaw_bin="nemoclaw",
         swebench_pro_nemoclaw_checkout_sandbox_root=None,
         swebench_pro_nemoclaw_checkout_transfer_mode=None,
         swebench_pro_nemoclaw_workdir=None,
+        swebench_pro_nemoclaw_openclaw_config_path=None,
     )
 
 
@@ -102,6 +105,7 @@ def test_agentic_math_nemoclaw_cli_override_is_agentic_math_only(tmp_path):
     assert cfg.agentic_math.nemoclaw_sandbox == "nejumi-taiwan"
     assert cfg.agentic_math.nemoclaw_bin == "nemoclaw"
     assert cfg.agentic_math.nemoclaw_workdir == "/workspace"
+    assert cfg.agentic_math.nemoclaw_openclaw_config_path == DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH
     assert cfg.agentic_math.use_task_agent is True
     assert "nemoclaw_sandbox" not in cfg.swebench_pro
 
@@ -119,7 +123,22 @@ def test_swebench_pro_nemoclaw_cli_override_is_swe_only(tmp_path):
     assert cfg.swebench_pro.nemoclaw_bin == "nemoclaw"
     assert cfg.swebench_pro.nemoclaw_checkout_sandbox_root == "/sandbox/checkouts"
     assert cfg.swebench_pro.nemoclaw_checkout_transfer_mode == "copy"
+    assert cfg.swebench_pro.nemoclaw_openclaw_config_path == DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH
     assert "nemoclaw_sandbox" not in cfg.agentic_math
+
+
+def test_nemoclaw_cli_openclaw_config_path_override(tmp_path):
+    args = _args(tmp_path, "agentic")
+    args.agentic_math_nemoclaw_sandbox = "nejumi-taiwan"
+    args.agentic_math_nemoclaw_openclaw_config_path = "/custom/math/openclaw.json"
+    args.swebench_pro_nemoclaw_sandbox = "nejumi-taiwan"
+    args.swebench_pro_nemoclaw_openclaw_config_path = "/custom/swe/openclaw.json"
+
+    [config_path] = generate_configs(args)
+    cfg = OmegaConf.load(config_path)
+
+    assert cfg.agentic_math.nemoclaw_openclaw_config_path == "/custom/math/openclaw.json"
+    assert cfg.swebench_pro.nemoclaw_openclaw_config_path == "/custom/swe/openclaw.json"
 
 
 def test_agentic_math_nemoclaw_manifest_override_does_not_touch_swebench_pro(tmp_path):
@@ -139,6 +158,10 @@ def test_agentic_math_nemoclaw_manifest_override_does_not_touch_swebench_pro(tmp
     assert override["agentic_math"]["nemoclaw_sandbox"] == "nejumi-taiwan"
     assert override["agentic_math"]["nemoclaw_bin"] == "/usr/local/bin/nemoclaw"
     assert override["agentic_math"]["nemoclaw_workdir"] == "/sandbox/work"
+    assert (
+        override["agentic_math"]["nemoclaw_openclaw_config_path"]
+        == DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH
+    )
     assert override["agentic_math"]["use_task_agent"] is True
     assert "nemoclaw_sandbox" not in override["swebench_pro"]
 
@@ -162,6 +185,10 @@ def test_swebench_pro_nemoclaw_manifest_override_does_not_touch_agentic_math(tmp
     assert override["swebench_pro"]["nemoclaw_bin"] == "/usr/local/bin/nemoclaw"
     assert override["swebench_pro"]["nemoclaw_checkout_sandbox_root"] == "/sandbox/checkouts"
     assert override["swebench_pro"]["nemoclaw_checkout_transfer_mode"] == "copy"
+    assert (
+        override["swebench_pro"]["nemoclaw_openclaw_config_path"]
+        == DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH
+    )
     assert "nemoclaw_sandbox" not in override["agentic_math"]
 
 
