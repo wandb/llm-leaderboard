@@ -1148,6 +1148,18 @@ def test_swebench_patch_cache_rejects_nemoclaw_record_without_session_audit(tmp_
     cached = module.load_cached_patch_record(task_dir, cache_key, "new-prefix")
     assert cached is not None
     assert cached["prefix"] == "new-prefix"
+    record["conversation_order_ok"] = False
+    record_path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+    assert module.load_cached_patch_record(task_dir, cache_key, "new-prefix") is None
+    record["conversation_order_ok"] = True
+    record["conversation_order"] = {"ok": False}
+    record_path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+    assert module.load_cached_patch_record(task_dir, cache_key, "new-prefix") is None
+    record["conversation_order"] = {"ok": True}
+    record_path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+    cached = module.load_cached_patch_record(task_dir, cache_key, "new-prefix")
+    assert cached is not None
+    assert cached["prefix"] == "new-prefix"
 
 
 def test_swebench_session_prefix_is_bound_to_wandb_run_id(monkeypatch):

@@ -552,10 +552,20 @@ def record_nemoclaw_session_audit_matches_cache(record: dict[str, Any], cache_ke
     return True
 
 
+def record_conversation_order_allows_reuse(record: dict[str, Any]) -> bool:
+    order = record.get("conversation_order")
+    if record.get("conversation_order_ok") is False:
+        return False
+    if isinstance(order, dict) and order.get("ok") is False:
+        return False
+    return True
+
+
 def cached_result_matches_cache(record: dict[str, Any], cache_key: dict[str, Any]) -> bool:
     return (
         cache_key_matches(record, cache_key)
         and cached_result_is_reusable(record)
+        and record_conversation_order_allows_reuse(record)
         and record_nemoclaw_session_audit_matches_cache(record, cache_key)
     )
 

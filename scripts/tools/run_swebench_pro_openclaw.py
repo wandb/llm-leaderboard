@@ -195,6 +195,15 @@ def patch_record_nemoclaw_session_audit_matches_cache(record: dict[str, Any], ca
     return True
 
 
+def patch_record_conversation_order_allows_reuse(record: dict[str, Any]) -> bool:
+    order = record.get("conversation_order")
+    if record.get("conversation_order_ok") is False:
+        return False
+    if isinstance(order, dict) and order.get("ok") is False:
+        return False
+    return True
+
+
 def patch_mentions_paths(patch: str, paths: list[str]) -> bool:
     for path in paths:
         if f" a/{path} " in patch or f" b/{path}" in patch:
@@ -222,6 +231,8 @@ def load_cached_patch_record(
     if record.get("instance_id") != cache_key["instance_id"] or "patch" not in record:
         return None
     if not patch_record_nemoclaw_session_audit_matches_cache(record, cache_key):
+        return None
+    if not patch_record_conversation_order_allows_reuse(record):
         return None
     if not record.get("patch") and record.get("patch_capture_version") != PATCH_CAPTURE_VERSION:
         return None

@@ -169,6 +169,13 @@ def test_cached_nemoclaw_result_requires_session_audit():
     record["nemoclaw_session_audit"] = {"required": True, "ok": True}
     record["nemoclaw_session_audit_ok"] = True
     assert module.cached_result_matches_cache(record, cache_key)
+    record["conversation_order_ok"] = False
+    assert not module.cached_result_matches_cache(record, cache_key)
+    record["conversation_order_ok"] = True
+    record["conversation_order"] = {"ok": False}
+    assert not module.cached_result_matches_cache(record, cache_key)
+    record["conversation_order"] = {"ok": True}
+    assert module.cached_result_matches_cache(record, cache_key)
 
 
 def test_transient_openclaw_failure_ignores_tool_policy_violation():
