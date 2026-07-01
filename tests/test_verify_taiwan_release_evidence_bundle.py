@@ -5587,11 +5587,11 @@ def test_verify_release_evidence_bundle_rejects_operator_renderer_missing_approv
         item
         for item in manifest["files"]
         if item.get("source_path")
-        == "scripts/tools/render_taiwan_operator_execution_plan.py"
+        == "scripts/tools/external_action_approval_checks.py"
     )
-    renderer_script = bundle / record["bundle_path"]
-    renderer_script.write_text(
-        renderer_script.read_text(encoding="utf-8").replace(
+    approval_checks_script = bundle / record["bundle_path"]
+    approval_checks_script.write_text(
+        approval_checks_script.read_text(encoding="utf-8").replace(
             "def validate_approval_results(",
             "def removed_approval_results(",
         ),
@@ -5611,8 +5611,9 @@ def test_verify_release_evidence_bundle_rejects_operator_renderer_missing_approv
     payload = json.loads(result.stdout)
     assert payload["integrity_ok"] is False
     assert (
-        "operator execution plan renderer script missing source contract "
-        "external approval results budget-floor validator: "
+        "agentic runner script missing source contract "
+        "approval results validator: "
+        "scripts/tools/external_action_approval_checks.py: "
         "def validate_approval_results("
     ) in payload["errors"]
 

@@ -87,8 +87,8 @@ def write_external_action_approval_report(
                 "ok": True,
                 "status": "approved",
                 "approval_packet_json": "temp/reviewed_approval.json",
-                "required_approval_count": 6,
-                "granted_approval_count": 6,
+                "required_approval_count": 1,
+                "granted_approval_count": 1,
                 "all_required_approvals_granted": True,
                 "source_binding": {
                     "source_packet_json": str(source_packet),

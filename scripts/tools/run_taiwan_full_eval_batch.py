@@ -18,6 +18,11 @@ from pathlib import Path
 
 from omegaconf import OmegaConf
 
+from external_action_approval_checks import (
+    approval_results as normalized_approval_results,
+    extract_paid_api_approval,
+    validate_approval_results,
+)
 from prepare_taiwan_full_eval_configs import (
     AGENTIC_DENIED_ARGUMENT_PATTERNS,
     AGENTIC_DENIED_TOOLS,
@@ -683,7 +688,10 @@ def build_external_action_approval_record(
         "source_packet_sha256_matches_expected": False,
         "will_execute_external_actions": None,
         "approval_results": [],
+        "approval_results_validation": {},
         "paid_api_approved_budget_usd": None,
+        "paid_api_minimum_approved_budget_usd": None,
+        "paid_api_minimum_approved_budget_source": "",
         "paid_api_approved_model_scope": "",
         "errors": [],
     }
@@ -735,26 +743,9 @@ def build_external_action_approval_record(
 
     required_count = payload.get("required_approval_count")
     granted_count = payload.get("granted_approval_count")
-    approval_results = (
-        payload.get("approval_results")
-        if isinstance(payload.get("approval_results"), list)
-        else []
-    )
-    paid_api_result = next(
-        (
-            item
-            for item in approval_results
-            if isinstance(item, dict) and item.get("requirement") == "paid_api"
-        ),
-        {},
-    )
-    paid_api_approved_budget = paid_api_result.get("approved_budget_usd")
-    if isinstance(paid_api_approved_budget, bool) or not isinstance(
-        paid_api_approved_budget,
-        (int, float),
-    ):
-        paid_api_approved_budget = None
-    paid_api_model_scope = paid_api_result.get("approved_model_scope")
+    approval_results = normalized_approval_results(payload)
+    approval_results_validation = validate_approval_results(payload)
+    paid_api = extract_paid_api_approval(payload)
     record.update(
         {
             "schema_version": payload.get("schema_version"),
@@ -772,13 +763,21 @@ def build_external_action_approval_record(
             "source_binding": source_binding,
             "will_execute_external_actions": payload.get("will_execute_external_actions"),
             "approval_results": approval_results,
-            "paid_api_approved_budget_usd": paid_api_approved_budget,
-            "paid_api_approved_model_scope": (
-                paid_api_model_scope.strip()
-                if isinstance(paid_api_model_scope, str)
-                else ""
+            "approval_results_validation": approval_results_validation,
+            "paid_api_approved_budget_usd": paid_api.get("approved_budget_usd"),
+            "paid_api_minimum_approved_budget_usd": paid_api.get(
+                "minimum_approved_budget_usd"
             ),
+            "paid_api_minimum_approved_budget_source": (
+                paid_api.get("minimum_approved_budget_source") or ""
+            ),
+            "paid_api_approved_model_scope": paid_api.get("approved_model_scope") or "",
         }
+    )
+    record["errors"].extend(
+        str(error)
+        for error in approval_results_validation.get("errors", [])
+        if isinstance(error, str)
     )
 
     if payload.get("schema_version") != 1:

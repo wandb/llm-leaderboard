@@ -77,6 +77,9 @@ RELOG_COMMAND_SCRIPT_PATHS = {
 OPERATOR_EXECUTION_PLAN_RENDERER_SCRIPT = (
     "scripts/tools/render_taiwan_operator_execution_plan.py"
 )
+EXTERNAL_ACTION_APPROVAL_CHECKS_SCRIPT = (
+    "scripts/tools/external_action_approval_checks.py"
+)
 WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT = (
     "scripts/tools/weave_content_canary_gate_contract.py"
 )
@@ -362,12 +365,30 @@ OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
         "approval_scope_policy = validate_canary_approval_scope(",
     ),
     (
-        "external approval results budget-floor validator",
+        "external approval shared checker import",
+        "from external_action_approval_checks import",
+    ),
+    (
+        "external approval results budget-floor validator call",
+        "validate_approval_results(payload)",
+    ),
+)
+EXTERNAL_ACTION_APPROVAL_CHECKS_SOURCE_TOKENS = (
+    (
+        "approval results validator",
         "def validate_approval_results(",
     ),
     (
-        "external approval paid budget floor comparison",
+        "paid API minimum budget extraction",
+        "minimum_approved_budget_usd",
+    ),
+    (
+        "paid budget floor comparison",
         "elif budget is not None and budget < minimum_budget:",
+    ),
+    (
+        "required approval row-count check",
+        "approval_results required=true row count must equal ",
     ),
 )
 WEAVE_AGENTS_SYNC_SCRIPT = "scripts/tools/sync_weave_agents_completion_to_paid_review.py"
@@ -765,6 +786,14 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "paid_api_approved_budget_usd",
             ),
             (
+                "external approval shared checker import",
+                "from external_action_approval_checks import",
+            ),
+            (
+                "external approval shared result validation call",
+                "approval_results_validation = validate_approval_results(payload)",
+            ),
+            (
                 "budget approval alignment function",
                 "def build_budget_approval_alignment_record(",
             ),
@@ -777,6 +806,10 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "budget_approval_alignment_failed",
             ),
         ),
+    },
+    EXTERNAL_ACTION_APPROVAL_CHECKS_SCRIPT: {
+        "role": "agentic_runner:external_action_approval_checks_script",
+        "tokens": EXTERNAL_ACTION_APPROVAL_CHECKS_SOURCE_TOKENS,
     },
     "scripts/analysis/estimate_taiwan_canary_budget.py": {
         "role": "agentic_runner:budget_estimator_script",
@@ -1001,6 +1034,14 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             (
                 "external action approval validator",
                 "def build_external_action_approval_record(",
+            ),
+            (
+                "external approval shared checker import",
+                "from external_action_approval_checks import",
+            ),
+            (
+                "external approval shared result validation call",
+                "approval_results_validation = validate_approval_results(payload)",
             ),
             (
                 "external action source packet path match",
@@ -2897,6 +2938,13 @@ def validate_operator_execution_plan_renderer(
                     bundle_path=bundle_path,
                 )
             )
+    validate_file_role(
+        errors=errors,
+        records=records,
+        path_value=EXTERNAL_ACTION_APPROVAL_CHECKS_SCRIPT,
+        role="operator_execution_plan_renderer:dependency_script",
+        label="operator execution plan renderer approval checks dependency script",
+    )
     validate_file_role(
         errors=errors,
         records=records,
@@ -5495,28 +5543,32 @@ def validate_existing_results_relog_command_scripts(
             errors.append(f"existing_results relog command script missing bundle_path: {script}")
 
     if any(script in RELOG_COMMAND_SCRIPT_PATHS for script in scripts):
-        helper_record = records.get(source_path_key(RELOG_WANDB_APPROVAL_HELPER_SCRIPT))
-        if not isinstance(helper_record, dict):
-            errors.append(
-                "existing_results relog dependency script is not bundled: "
-                f"{RELOG_WANDB_APPROVAL_HELPER_SCRIPT}"
-            )
-        else:
-            roles = helper_record.get("roles")
-            if not isinstance(roles, list) or (
-                "existing_results_audit:relog_dependency_script" not in roles
-            ):
+        for dependency_script in (
+            RELOG_WANDB_APPROVAL_HELPER_SCRIPT,
+            EXTERNAL_ACTION_APPROVAL_CHECKS_SCRIPT,
+        ):
+            helper_record = records.get(source_path_key(dependency_script))
+            if not isinstance(helper_record, dict):
                 errors.append(
-                    "existing_results relog dependency script missing role "
-                    "existing_results_audit:relog_dependency_script: "
-                    f"{RELOG_WANDB_APPROVAL_HELPER_SCRIPT}"
+                    "existing_results relog dependency script is not bundled: "
+                    f"{dependency_script}"
                 )
-            bundle_path = helper_record.get("bundle_path")
-            if not isinstance(bundle_path, str) or not bundle_path:
-                errors.append(
-                    "existing_results relog dependency script missing bundle_path: "
-                    f"{RELOG_WANDB_APPROVAL_HELPER_SCRIPT}"
-                )
+            else:
+                roles = helper_record.get("roles")
+                if not isinstance(roles, list) or (
+                    "existing_results_audit:relog_dependency_script" not in roles
+                ):
+                    errors.append(
+                        "existing_results relog dependency script missing role "
+                        "existing_results_audit:relog_dependency_script: "
+                        f"{dependency_script}"
+                    )
+                bundle_path = helper_record.get("bundle_path")
+                if not isinstance(bundle_path, str) or not bundle_path:
+                    errors.append(
+                        "existing_results relog dependency script missing bundle_path: "
+                        f"{dependency_script}"
+                    )
     return errors
 
 

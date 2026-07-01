@@ -55,6 +55,7 @@ def write_external_action_approval_report(
     *,
     source_packet: Path | None = None,
     approved_budget_usd: float = 25.0,
+    minimum_approved_budget_usd: float = 20.0,
 ) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     if source_packet is None:
@@ -81,8 +82,8 @@ def write_external_action_approval_report(
                 "generated_at": time.time(),
                 "approval_packet_json": "temp/reviewed_external_action_approval.json",
                 "external_action_checklist_sha256": "b" * 64,
-                "required_approval_count": 6,
-                "granted_approval_count": 6,
+                "required_approval_count": 1,
+                "granted_approval_count": 1,
                 "all_required_approvals_granted": True,
                 "approval_results": [
                     {
@@ -90,6 +91,10 @@ def write_external_action_approval_report(
                         "required": True,
                         "approved": True,
                         "approved_budget_usd": approved_budget_usd,
+                        "minimum_approved_budget_usd": minimum_approved_budget_usd,
+                        "minimum_approved_budget_source": (
+                            "max_pre_run_budget_estimate_high"
+                        ),
                         "approved_model_scope": "OpenAI mini canary",
                         "errors": [],
                     }
@@ -1042,16 +1047,47 @@ def test_external_action_approval_record_accepts_source_bound_verifier_report(tm
     assert record["present"] is True
     assert record["valid"] is True
     assert record["status"] == "approved"
-    assert record["required_approval_count"] == 6
-    assert record["granted_approval_count"] == 6
+    assert record["required_approval_count"] == 1
+    assert record["granted_approval_count"] == 1
     assert record["source_binding"]["bound"] is True
     assert record["source_packet_path_matches_expected"] is True
     assert record["source_packet_sha256_matches_expected"] is True
     assert record["expected_source_packet_json"] == str(source_packet)
     assert record["paid_api_approved_budget_usd"] == 25.0
+    assert record["paid_api_minimum_approved_budget_usd"] == 20.0
+    assert (
+        record["paid_api_minimum_approved_budget_source"]
+        == "max_pre_run_budget_estimate_high"
+    )
     assert record["paid_api_approved_model_scope"] == "OpenAI mini canary"
+    assert record["approval_results_validation"]["valid"] is True
     assert len(record["sha256"]) == 64
     assert record["errors"] == []
+
+
+def test_external_action_approval_record_rejects_budget_below_minimum(tmp_path):
+    module = load_module()
+    report = tmp_path / "external_action_approval.verify.json"
+    source_packet = write_external_action_approval_report(
+        report,
+        approved_budget_usd=19.0,
+        minimum_approved_budget_usd=20.0,
+    )
+
+    record = module.build_external_action_approval_record(
+        report,
+        required_before_external_action=True,
+        expected_source_packet_path=source_packet,
+    )
+
+    assert record["valid"] is False
+    assert record["paid_api_approved_budget_usd"] == 19.0
+    assert record["paid_api_minimum_approved_budget_usd"] == 20.0
+    assert record["approval_results_validation"]["valid"] is False
+    assert any(
+        "greater than or equal to minimum_approved_budget_usd" in error
+        for error in record["errors"]
+    )
 
 
 def test_budget_approval_alignment_rejects_approval_below_high_estimate(tmp_path):
@@ -2010,6 +2046,7 @@ def test_paid_run_rejects_approval_budget_below_pre_run_high(tmp_path, monkeypat
     source_packet = write_external_action_approval_report(
         approval,
         approved_budget_usd=2.5,
+        minimum_approved_budget_usd=1.0,
     )
     monkeypatch.setattr(
         sys,

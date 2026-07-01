@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from external_action_approval_checks import validate_approval_results
+
 
 HEX_CHARS = set("0123456789abcdef")
 
@@ -87,6 +89,12 @@ def validate_external_action_approval_for_wandb_write(
         errors.append("external action approval report must grant all required approvals")
     if report.get("granted_approval_count") != report.get("required_approval_count"):
         errors.append("external action approval granted count must equal required count")
+    approval_results_validation = validate_approval_results(report)
+    errors.extend(
+        str(error)
+        for error in approval_results_validation.get("errors", [])
+        if isinstance(error, str)
+    )
 
     source_binding = report.get("source_binding")
     if not isinstance(source_binding, dict) or source_binding.get("bound") is not True:

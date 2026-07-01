@@ -19,6 +19,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from external_action_approval_checks import (
+    approval_results as normalized_approval_results,
+    extract_paid_api_approval,
+    validate_approval_results,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ENV_FILE = REPO_ROOT / ".env"
@@ -149,6 +154,9 @@ def build_external_action_approval_record(
         "source_packet_path_matches_expected": False,
         "source_packet_sha256_matches_expected": False,
         "will_execute_external_actions": None,
+        "approval_results": [],
+        "approval_results_validation": {},
+        "paid_api_approval": {},
         "errors": [],
     }
     if required_before_external_action and expected_source_packet_path is None:
@@ -199,6 +207,8 @@ def build_external_action_approval_record(
 
     required_count = payload.get("required_approval_count")
     granted_count = payload.get("granted_approval_count")
+    approval_results = normalized_approval_results(payload)
+    approval_results_validation = validate_approval_results(payload)
     record.update(
         {
             "schema_version": payload.get("schema_version"),
@@ -215,7 +225,15 @@ def build_external_action_approval_record(
             ),
             "source_binding": source_binding,
             "will_execute_external_actions": payload.get("will_execute_external_actions"),
+            "approval_results": approval_results,
+            "approval_results_validation": approval_results_validation,
+            "paid_api_approval": extract_paid_api_approval(payload),
         }
+    )
+    record["errors"].extend(
+        str(error)
+        for error in approval_results_validation.get("errors", [])
+        if isinstance(error, str)
     )
 
     if payload.get("schema_version") != 1:

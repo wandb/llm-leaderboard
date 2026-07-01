@@ -8,10 +8,13 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+TOOLS_DIR = REPO_ROOT / "scripts" / "tools"
 
 
 def load_module():
-    path = REPO_ROOT / "scripts" / "tools" / "run_weave_agents_content_canary.py"
+    if str(TOOLS_DIR) not in sys.path:
+        sys.path.insert(0, str(TOOLS_DIR))
+    path = TOOLS_DIR / "run_weave_agents_content_canary.py"
     spec = importlib.util.spec_from_file_location(path.stem, path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -65,7 +68,13 @@ def expected_nemoclaw_metadata() -> dict:
     }
 
 
-def write_external_action_approval_report(path: Path, *, source_packet: Path | None = None) -> Path:
+def write_external_action_approval_report(
+    path: Path,
+    *,
+    source_packet: Path | None = None,
+    approved_budget_usd: float = 25.0,
+    minimum_approved_budget_usd: float = 20.0,
+) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     if source_packet is None:
         source_packet = path.parent / "external_action_approval_packet.json"
@@ -91,9 +100,35 @@ def write_external_action_approval_report(path: Path, *, source_packet: Path | N
                 "generated_at": 123.0,
                 "approval_packet_json": "temp/reviewed_external_action_approval.json",
                 "external_action_checklist_sha256": "b" * 64,
-                "required_approval_count": 6,
-                "granted_approval_count": 6,
+                "required_approval_count": 3,
+                "granted_approval_count": 3,
                 "all_required_approvals_granted": True,
+                "approval_results": [
+                    {
+                        "requirement": "paid_api",
+                        "required": True,
+                        "approved": True,
+                        "approved_budget_usd": approved_budget_usd,
+                        "minimum_approved_budget_usd": minimum_approved_budget_usd,
+                        "minimum_approved_budget_source": (
+                            "max_pre_run_budget_estimate_high"
+                        ),
+                        "approved_model_scope": "OpenAI content canary",
+                        "errors": [],
+                    },
+                    {
+                        "requirement": "wandb_access",
+                        "required": True,
+                        "approved": True,
+                        "errors": [],
+                    },
+                    {
+                        "requirement": "wandb_write",
+                        "required": True,
+                        "approved": True,
+                        "errors": [],
+                    },
+                ],
                 "source_binding": {
                     "source_packet_json": str(source_packet),
                     "source_packet_readable": True,
@@ -283,6 +318,31 @@ def test_external_action_approval_record_requires_matching_source_packet(tmp_pat
     assert bad_record["source_packet_path_matches_expected"] is False
     assert bad_record["source_packet_sha256_matches_expected"] is False
     assert any("source_packet_json does not match" in item for item in bad_record["errors"])
+
+
+def test_external_action_approval_record_rejects_paid_budget_below_floor(tmp_path):
+    module = load_module()
+    report = tmp_path / "external_action_approval.verify.json"
+    source_packet = write_external_action_approval_report(
+        report,
+        approved_budget_usd=19.0,
+        minimum_approved_budget_usd=20.0,
+    )
+
+    record = module.build_external_action_approval_record(
+        report,
+        required_before_external_action=True,
+        expected_source_packet_path=source_packet,
+    )
+
+    assert record["valid"] is False
+    assert record["paid_api_approval"]["approved_budget_usd"] == 19.0
+    assert record["paid_api_approval"]["minimum_approved_budget_usd"] == 20.0
+    assert record["approval_results_validation"]["valid"] is False
+    assert any(
+        "greater than or equal to minimum_approved_budget_usd" in error
+        for error in record["errors"]
+    )
 
 
 def test_verify_command_uses_sidecar_conversation_or_task_id(tmp_path):

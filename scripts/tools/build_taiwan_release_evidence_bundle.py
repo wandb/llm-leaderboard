@@ -38,6 +38,9 @@ EXTERNAL_ACTION_APPROVAL_TEMPLATE_RENDERER_SCRIPT = (
 EXTERNAL_ACTION_APPROVAL_HANDOFF_PREPARER_SCRIPT = (
     "scripts/tools/prepare_taiwan_external_action_approval.py"
 )
+EXTERNAL_ACTION_APPROVAL_CHECKS_SCRIPT = (
+    "scripts/tools/external_action_approval_checks.py"
+)
 WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT = (
     "scripts/tools/weave_content_canary_gate_contract.py"
 )
@@ -58,6 +61,9 @@ AGENTIC_RUNNER_SCRIPT_ROLES = {
     "scripts/tools/run_agentic_math_openclaw.py": "agentic_runner:math_script",
     "scripts/tools/run_swebench_pro_openclaw.py": "agentic_runner:swe_script",
     "scripts/tools/run_taiwan_full_eval_batch.py": "agentic_runner:full_batch_script",
+    EXTERNAL_ACTION_APPROVAL_CHECKS_SCRIPT: (
+        "agentic_runner:external_action_approval_checks_script"
+    ),
     "scripts/analysis/estimate_taiwan_canary_budget.py": (
         "agentic_runner:budget_estimator_script"
     ),
@@ -449,16 +455,20 @@ def add_existing_results_audit_paths(
                         path_value=script_path,
                     )
                     if script_path in RELOG_COMMAND_SCRIPT_PATHS:
-                        add_evidence(
-                            evidence,
-                            role=f"{role}:relog_dependency_script",
-                            path_value=RELOG_WANDB_APPROVAL_HELPER_SCRIPT,
-                        )
-                        add_evidence(
-                            evidence,
-                            role=f"{record_role_prefix}:relog_dependency_script",
-                            path_value=RELOG_WANDB_APPROVAL_HELPER_SCRIPT,
-                        )
+                        for dependency_script in (
+                            RELOG_WANDB_APPROVAL_HELPER_SCRIPT,
+                            EXTERNAL_ACTION_APPROVAL_CHECKS_SCRIPT,
+                        ):
+                            add_evidence(
+                                evidence,
+                                role=f"{role}:relog_dependency_script",
+                                path_value=dependency_script,
+                            )
+                            add_evidence(
+                                evidence,
+                                role=f"{record_role_prefix}:relog_dependency_script",
+                                path_value=dependency_script,
+                            )
 
 
 def add_scope_attestation_source_path(
@@ -3345,6 +3355,11 @@ def add_computed_operator_command_script_evidence(
         evidence,
         role="operator_execution_plan_renderer:script",
         path_value="scripts/tools/render_taiwan_operator_execution_plan.py",
+    )
+    add_evidence(
+        evidence,
+        role="operator_execution_plan_renderer:dependency_script",
+        path_value=EXTERNAL_ACTION_APPROVAL_CHECKS_SCRIPT,
     )
     add_evidence(
         evidence,
