@@ -240,6 +240,69 @@ OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
         "def validate_canary_approval_scope(",
     ),
 )
+WEAVE_AGENTS_SYNC_SCRIPT = "scripts/tools/sync_weave_agents_completion_to_paid_review.py"
+WEAVE_AGENTS_SYNC_SCRIPT_SOURCE_TOKENS = (
+    (
+        "required Weave input-message check",
+        '"input_message_capture"',
+    ),
+    (
+        "required Weave message-content check",
+        '"message_content_capture"',
+    ),
+    (
+        "required Weave tool-span check",
+        '"tool_span_count"',
+    ),
+    (
+        "required Weave tool-content check",
+        '"tool_content_capture"',
+    ),
+    (
+        "required Weave usage check",
+        '"usage"',
+    ),
+    (
+        "required Weave no-error check",
+        '"trace_errors"',
+    ),
+    (
+        "required content evidence flag",
+        'required.get("content_required") is not True',
+    ),
+    (
+        "required usage evidence flag",
+        'required.get("usage_required") is not True',
+    ),
+    (
+        "usage positive-token proof",
+        "usage check must expose positive token usage",
+    ),
+    (
+        "synced message-content proof flag",
+        '"message_content_proven"',
+    ),
+    (
+        "synced input-message proof flag",
+        '"input_message_proven"',
+    ),
+    (
+        "synced tool-span proof flag",
+        '"tool_span_proven"',
+    ),
+    (
+        "synced tool-content proof flag",
+        '"tool_content_proven"',
+    ),
+    (
+        "synced usage proof flag",
+        '"usage_proven"',
+    ),
+    (
+        "synced no-error proof flag",
+        '"no_error_spans_proven"',
+    ),
+)
 AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
     "scripts/evaluator/agentic_math.py": {
         "role": "agentic_runner:math_evaluator_script",
@@ -4706,6 +4769,50 @@ def validate_nemoclaw_adoption_script_source(
             errors.append(
                 "NeMoClaw adoption script missing source contract "
                 f"{label}: {NEMOCLAW_ADOPTION_SCRIPT}: {token}"
+            )
+    return errors
+
+
+def validate_weave_agents_sync_script_source(
+    *,
+    bundle_dir: Path,
+    manifest: dict[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    records = file_records_by_source(manifest)
+    record = records.get(source_path_key(WEAVE_AGENTS_SYNC_SCRIPT))
+    if not isinstance(record, dict):
+        return errors
+    roles = record.get("roles")
+    if not isinstance(roles, list) or not (
+        "operator_plan:command_script" in roles
+        or "current_gate:remediation_plan:command_script" in roles
+    ):
+        errors.append(
+            "Weave Agents sync script missing command-script role: "
+            f"{WEAVE_AGENTS_SYNC_SCRIPT}"
+        )
+    bundle_path = record.get("bundle_path")
+    if not isinstance(bundle_path, str) or not bundle_path:
+        errors.append(
+            "Weave Agents sync script missing bundle_path: "
+            f"{WEAVE_AGENTS_SYNC_SCRIPT}"
+        )
+        return errors
+    script_file = bundle_dir / bundle_path
+    try:
+        text = script_file.read_text(encoding="utf-8")
+    except OSError as exc:
+        errors.append(
+            "Weave Agents sync script is not readable: "
+            f"{WEAVE_AGENTS_SYNC_SCRIPT}: {exc}"
+        )
+        return errors
+    for label, token in WEAVE_AGENTS_SYNC_SCRIPT_SOURCE_TOKENS:
+        if token not in text:
+            errors.append(
+                "Weave Agents sync script missing source contract "
+                f"{label}: {WEAVE_AGENTS_SYNC_SCRIPT}: {token}"
             )
     return errors
 
@@ -14588,6 +14695,7 @@ def verify_bundle(
     errors.extend(validate_agentic_runner_script_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_nemoclaw_canary_readiness_script_source(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_nemoclaw_adoption_script_source(bundle_dir=bundle_dir, manifest=manifest))
+    errors.extend(validate_weave_agents_sync_script_source(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_wandb_adoption_draft_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_wandb_adoption_unconfirmed_checks_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_weave_agents_adoption_validation_failures_evidence(bundle_dir=bundle_dir, manifest=manifest))
