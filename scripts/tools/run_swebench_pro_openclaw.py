@@ -26,7 +26,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROTOCOL_RUNNER = REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py"
-RUNNER_VERSION = "swebench-pro-openclaw-2026-06-27-cache-v3"
+RUNNER_VERSION = "swebench-pro-openclaw-2026-07-01-config-cache-v4"
 PATCH_CAPTURE_VERSION = "git-diff-with-untracked-excluding-selected-tests-v2"
 DEFAULT_MAX_INPUT_TOKENS = 1_000_000
 DEFAULT_MAX_TOOL_CALLS = 60
@@ -130,6 +130,7 @@ def build_cache_key(row: dict[str, Any], prompt_text: str, args: argparse.Namesp
         "thinking": args.thinking,
         "deny_tools": effective_deny_tools(args),
         "deny_argument_patterns": effective_deny_argument_patterns(args),
+        "openclaw_config_source": openclaw_config_cache_source(args),
         "max_input_tokens": int(getattr(args, "max_input_tokens", 0) or 0),
         "max_tool_calls": int(getattr(args, "max_tool_calls", 0) or 0),
         "nemoclaw_sandbox": str(getattr(args, "nemoclaw_sandbox", "") or ""),
@@ -288,6 +289,15 @@ def read_openclaw_config_template(args: argparse.Namespace) -> tuple[dict[str, A
         return json.loads(result.stdout), sandbox_path
     template_path = default_openclaw_config_template()
     return json.loads(template_path.read_text(encoding="utf-8")), str(template_path)
+
+
+def openclaw_config_cache_source(args: argparse.Namespace) -> str:
+    template = getattr(args, "openclaw_config_template", None)
+    if template:
+        return str(Path(template).expanduser())
+    if getattr(args, "nemoclaw_sandbox", None):
+        return str(getattr(args, "nemoclaw_openclaw_config_path", NEMOCLAW_OPENCLAW_CONFIG_PATH))
+    return str(default_openclaw_config_template())
 
 
 def is_weave_sidecar_failure(sidecar: dict[str, Any] | None) -> bool:
@@ -909,6 +919,7 @@ def run_openclaw_for_task(
     task_dir.mkdir(parents=True, exist_ok=True)
     prompt_text = build_prompt(row)
     prompt_hash = sha256_text(prompt_text)
+    cache_key = build_cache_key(row, prompt_text, args)
     prompt_file = task_dir / "prompt.md"
     prompt_file.write_text(prompt_text, encoding="utf-8")
     checkout_transfer = ensure_nemoclaw_checkout_ready(checkout_dir, task_dir, args)
@@ -954,6 +965,7 @@ def run_openclaw_for_task(
         ]
         if openclaw_config_path:
             command.extend(["--openclaw-config-path", str(openclaw_config_path)])
+        command.extend(["--openclaw-config-source", str(cache_key["openclaw_config_source"])])
         if getattr(args, "nemoclaw_sandbox", None):
             command.extend(["--nemoclaw-bin", str(getattr(args, "nemoclaw_bin", "nemoclaw"))])
             command.extend(["--nemoclaw-sandbox", str(args.nemoclaw_sandbox)])
@@ -992,6 +1004,7 @@ def run_openclaw_for_task(
             "command": command,
             "session_key": session_key,
             "runner_version": RUNNER_VERSION,
+            "cache_key": cache_key,
             "prompt_hash": prompt_hash,
             "expected_openclaw_result_path": str(sidecar_path),
             "nemoclaw_sandbox": getattr(args, "nemoclaw_sandbox", None),

@@ -359,6 +359,11 @@ Copy mode uploads the prepared git checkout into the sandbox, runs OpenClaw
 against that sandbox-side checkout, and captures `git diff --binary` in the
 sandbox before returning the patch record to the host.
 
+SWE-Bench Pro patch records also bind their cache key to the OpenClaw config
+source used to create the per-task sandbox-visible config. A run prepared with
+one NeMoClaw OpenClaw config path is therefore not reused after the config
+source path changes.
+
 These code paths are covered by unit tests and config-generation tests.
 `nemoclaw`, `openshell`, the `nejumi-taiwan` sandbox, and native
 `weave-openclaw` config are present on this machine. A no-inference local git
@@ -546,7 +551,10 @@ uv run python scripts/tools/run_agentic_math_openclaw.py \
 The runner now keeps task-agent mode enabled for NeMoClaw by default. It reads
 the sandbox OpenClaw config template from `/sandbox/.openclaw/openclaw.json`,
 writes the per-task config under the sandbox task workspace, and points OpenClaw
-at that sandbox-visible file.
+at that sandbox-visible file. The config source path is also included in the
+runner cache key and in the OpenClaw protocol sidecar metadata, so changing the
+sandbox OpenClaw config source cannot silently reuse an older Agentic Math
+result.
 
 For generated Taiwan full-evaluation configs, opt Agentic Math into NeMoClaw
 first:

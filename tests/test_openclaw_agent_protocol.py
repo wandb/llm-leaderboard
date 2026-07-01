@@ -44,6 +44,25 @@ def test_extract_openclaw_text_prefers_meta_visible_text():
     assert module.extract_assistant_text(sidecar) == "visible answer"
 
 
+def test_metadata_header_records_openclaw_config_source():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    args = Namespace(
+        benchmark_id="agentic_math",
+        task_id="task_1",
+        model="openai-direct/example-model",
+        verifier=None,
+        tool_policy=None,
+        deny_tool=[],
+        deny_argument_pattern=[],
+        openclaw_config_source="/sandbox/.openclaw/openclaw.json",
+    )
+
+    header, metadata = module.metadata_header(args, "problem text")
+
+    assert metadata["openclaw_config_source"] == "/sandbox/.openclaw/openclaw.json"
+    assert "openclaw_config_source: /sandbox/.openclaw/openclaw.json" in header
+
+
 def test_extract_gateway_openclaw_result_shape(tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     session = tmp_path / "session.jsonl"

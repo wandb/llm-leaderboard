@@ -299,6 +299,7 @@ def metadata_header(args: argparse.Namespace, prompt_text: str) -> tuple[str, di
         "prompt_hash": sha256_text(prompt_text),
         "tool_policy_hash": sha256_text(tool_policy),
         "verifier_hash": sha256_text(verifier),
+        "openclaw_config_source": getattr(args, "openclaw_config_source", None) or "",
     }
     header = "\n".join(
         [
@@ -2002,6 +2003,13 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--local", action=argparse.BooleanOptionalAction, default=True)
     run_parser.add_argument("--cwd", type=Path, default=Path.cwd())
     run_parser.add_argument("--openclaw-config-path", type=Path)
+    run_parser.add_argument(
+        "--openclaw-config-source",
+        help=(
+            "Source config/template identity used by the caller to create "
+            "--openclaw-config-path. Recorded in sidecar metadata for cache validation."
+        ),
+    )
     run_parser.add_argument("--output-dir", type=Path, default=Path("outputs/openclaw_agent"))
     run_parser.add_argument("--dry-run", action="store_true")
     run_parser.add_argument("--allow-failed-preflight", action="store_true")

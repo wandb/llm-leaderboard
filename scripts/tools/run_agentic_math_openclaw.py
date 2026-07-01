@@ -21,7 +21,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROTOCOL_RUNNER = REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py"
-RUNNER_VERSION = "agentic-math-openclaw-2026-06-30-nemoclaw-task-config-v1"
+RUNNER_VERSION = "agentic-math-openclaw-2026-07-01-config-cache-v2"
 NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 DEFAULT_DENIED_TOOLS = [
     "code_execution",
@@ -142,6 +142,7 @@ def build_cache_key(row: dict[str, Any], prompt_text: str, args: argparse.Namesp
         "answer_format": str(row.get("answer_format", "integer_0_999")),
         "deny_tools": effective_deny_tools(args),
         "deny_argument_patterns": effective_deny_argument_patterns(args),
+        "openclaw_config_source": openclaw_config_cache_source(args),
         "agent_runtime": "nemoclaw" if getattr(args, "nemoclaw_sandbox", None) else "host",
         "nemoclaw_sandbox": str(getattr(args, "nemoclaw_sandbox", "") or ""),
         "use_task_agent": bool(getattr(args, "use_task_agent", True)),
@@ -155,6 +156,15 @@ def cache_key_matches(record: dict[str, Any], cache_key: dict[str, Any]) -> bool
 
 def default_openclaw_config_template() -> Path:
     return Path(os.environ.get("OPENCLAW_CONFIG_PATH", "~/.openclaw/openclaw.json")).expanduser()
+
+
+def openclaw_config_cache_source(args: argparse.Namespace) -> str:
+    template = getattr(args, "openclaw_config_template", None)
+    if template:
+        return str(Path(template).expanduser())
+    if getattr(args, "nemoclaw_sandbox", None):
+        return str(getattr(args, "nemoclaw_openclaw_config_path", NEMOCLAW_OPENCLAW_CONFIG_PATH))
+    return str(default_openclaw_config_template())
 
 
 def effective_deny_tools(args: argparse.Namespace) -> list[str]:
@@ -673,11 +683,14 @@ def is_weave_sidecar_failure(sidecar: dict[str, Any] | None) -> bool:
 def sidecar_matches_cache(sidecar: dict[str, Any], cache_key: dict[str, Any]) -> bool:
     metadata = sidecar.get("metadata") if isinstance(sidecar.get("metadata"), dict) else {}
     policy = sidecar.get("tool_policy") if isinstance(sidecar.get("tool_policy"), dict) else {}
+    expected_config = cache_key.get("openclaw_config_source")
+    observed_config = metadata.get("openclaw_config_source")
     return (
         sidecar.get("returncode") == 0
         and metadata.get("task_id") == cache_key["task_id"]
         and metadata.get("prompt_hash") == cache_key["prompt_hash"]
         and (not cache_key.get("model") or metadata.get("model_id") == cache_key.get("model"))
+        and (not expected_config or observed_config == expected_config)
         and sorted(policy.get("deny_tools") or []) == sorted(cache_key.get("deny_tools") or [])
         and sorted(policy.get("deny_argument_patterns") or [])
         == sorted(cache_key.get("deny_argument_patterns") or [])
@@ -1263,6 +1276,7 @@ def run_openclaw_for_task(
             command.extend(["--deny-argument-pattern", pattern])
         if openclaw_config_path:
             command.extend(["--openclaw-config-path", str(openclaw_config_path)])
+        command.extend(["--openclaw-config-source", str(cache_key["openclaw_config_source"])])
         if args.dry_run:
             command.append("--dry-run")
 

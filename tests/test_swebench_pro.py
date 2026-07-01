@@ -504,6 +504,7 @@ def test_swebench_nemoclaw_run_forwards_sandbox_command_args(tmp_path, monkeypat
     assert captured_command[captured_command.index("--nemoclaw-sandbox") + 1] == "nejumi-taiwan"
     assert captured_command[captured_command.index("--nemoclaw-workdir") + 1] == expected_checkout
     assert captured_command[captured_command.index("--openclaw-config-path") + 1] == expected_config
+    assert captured_command[captured_command.index("--openclaw-config-source") + 1] == str(template)
     session_key = captured_command[captured_command.index("--session-key") + 1]
     assert session_key.startswith(f"twcanary-swe-run:swebench-pro:{row['instance_id']}:")
 
@@ -910,6 +911,48 @@ def test_swebench_patch_cache_reuses_only_matching_cache_key(tmp_path):
         deny_argument_pattern=None,
     )
     changed_key = module.build_cache_key(row, prompt, changed_args)
+    assert module.load_cached_patch_record(task_dir, changed_key, "new-prefix") is None
+
+
+def test_swebench_patch_cache_rejects_nemoclaw_config_source_change(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    row = sample_row()
+    args = SimpleNamespace(
+        model="openai-direct/example-model",
+        thinking="high",
+        deny_tool=None,
+        deny_argument_pattern=None,
+        nemoclaw_sandbox="nejumi-taiwan",
+        nemoclaw_openclaw_config_path="/sandbox/.openclaw/openclaw.json",
+    )
+    prompt = module.build_prompt(row)
+    cache_key = module.build_cache_key(row, prompt, args)
+    task_dir = tmp_path / "task"
+    task_dir.mkdir()
+    (task_dir / "patch_record.json").write_text(
+        json.dumps(
+            {
+                "instance_id": row["instance_id"],
+                "patch": "diff --git a/x b/x\n",
+                "cache_key": cache_key,
+                "patch_capture_version": module.PATCH_CAPTURE_VERSION,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    changed_args = SimpleNamespace(
+        model="openai-direct/example-model",
+        thinking="high",
+        deny_tool=None,
+        deny_argument_pattern=None,
+        nemoclaw_sandbox="nejumi-taiwan",
+        nemoclaw_openclaw_config_path="/sandbox/other-openclaw.json",
+    )
+    changed_key = module.build_cache_key(row, prompt, changed_args)
+
+    assert cache_key["openclaw_config_source"] == "/sandbox/.openclaw/openclaw.json"
     assert module.load_cached_patch_record(task_dir, changed_key, "new-prefix") is None
 
 

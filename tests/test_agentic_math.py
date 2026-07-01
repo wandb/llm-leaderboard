@@ -275,6 +275,41 @@ def test_cache_key_requires_prompt_model_thinking_and_runner_version():
     assert not module.cache_key_matches({"cache_key": stale}, key)
 
 
+def test_cache_key_includes_nemoclaw_openclaw_config_source():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    args = type(
+        "Args",
+        (),
+        {
+            "model": "openai-direct/example-model",
+            "thinking": "high",
+            "deny_tool": None,
+            "deny_argument_pattern": None,
+            "nemoclaw_sandbox": "nejumi-taiwan",
+            "nemoclaw_openclaw_config_path": "/sandbox/.openclaw/openclaw.json",
+        },
+    )()
+    row = {"task_id": "task_1", "answer_format": "math_expression"}
+
+    key = module.build_cache_key(row, "prompt", args)
+    changed_args = type(
+        "Args",
+        (),
+        {
+            "model": "openai-direct/example-model",
+            "thinking": "high",
+            "deny_tool": None,
+            "deny_argument_pattern": None,
+            "nemoclaw_sandbox": "nejumi-taiwan",
+            "nemoclaw_openclaw_config_path": "/sandbox/other-openclaw.json",
+        },
+    )()
+    changed_key = module.build_cache_key(row, "prompt", changed_args)
+
+    assert key["openclaw_config_source"] == "/sandbox/.openclaw/openclaw.json"
+    assert not module.cache_key_matches({"cache_key": changed_key}, key)
+
+
 def test_agentic_math_session_prefix_is_bound_to_wandb_run_id(monkeypatch):
     monkeypatch.setenv("WANDB_RUN_ID", "twcanary-run-1")
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
@@ -371,7 +406,9 @@ def test_agentic_math_run_passes_wandb_scoped_session_key(tmp_path, monkeypatch)
     record = module.run_openclaw_for_task(row, tmp_path / "task", args)
 
     session_key = captured_command[captured_command.index("--session-key") + 1]
+    config_source = captured_command[captured_command.index("--openclaw-config-source") + 1]
     assert session_key.startswith("twcanary-run-3:agentic-math:math_1:")
+    assert config_source == record["cache_key"]["openclaw_config_source"]
     assert record["correct"] is True
     assert record["cache_key"]["session_prefix"] == "twcanary-run-3:agentic-math"
 
@@ -423,10 +460,16 @@ def test_success_sidecar_matches_cache_and_recovers_attempt_metadata(tmp_path):
         "answer_format": "math_expression",
         "deny_tools": ["code_execution", "web_search"],
         "deny_argument_patterns": [r"https?://"],
+        "openclaw_config_source": "/sandbox/.openclaw/openclaw.json",
     }
     sidecar = {
         "returncode": 0,
-        "metadata": {"task_id": "task_1", "prompt_hash": "prompt-hash", "model_id": "provider/model"},
+        "metadata": {
+            "task_id": "task_1",
+            "prompt_hash": "prompt-hash",
+            "model_id": "provider/model",
+            "openclaw_config_source": "/sandbox/.openclaw/openclaw.json",
+        },
         "tool_policy": {"deny_tools": ["web_search", "code_execution"], "deny_argument_patterns": [r"https?://"]},
         "tool_policy_ok": True,
         "tool_policy_violations": [],
@@ -438,6 +481,32 @@ def test_success_sidecar_matches_cache_and_recovers_attempt_metadata(tmp_path):
     metadata = module.attempt_metadata_from_sidecar_path(task_dir, sidecar_path)
     assert metadata["openclaw_attempt_id"] == "attempt-1"
     assert metadata["openclaw_attempt_output_dir"].endswith("openclaw_attempts/attempt-1")
+
+
+def test_success_sidecar_recovery_rejects_config_source_mismatch():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    cache_key = {
+        "task_id": "task_1",
+        "prompt_hash": "prompt-hash",
+        "model": "provider/model",
+        "deny_tools": ["web_search"],
+        "deny_argument_patterns": [r"https?://"],
+        "openclaw_config_source": "/sandbox/.openclaw/openclaw.json",
+    }
+    sidecar = {
+        "returncode": 0,
+        "metadata": {
+            "task_id": "task_1",
+            "prompt_hash": "prompt-hash",
+            "model_id": "provider/model",
+            "openclaw_config_source": "/sandbox/other-openclaw.json",
+        },
+        "tool_policy": {"deny_tools": ["web_search"], "deny_argument_patterns": [r"https?://"]},
+        "tool_policy_ok": True,
+        "tool_policy_violations": [],
+    }
+
+    assert not module.sidecar_matches_cache(sidecar, cache_key)
 
 
 def test_scored_record_preserves_nemoclaw_session_audit(tmp_path):
