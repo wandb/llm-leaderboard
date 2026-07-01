@@ -123,6 +123,22 @@ NEMOCLAW_CANARY_READINESS_SCRIPT_SOURCE_TOKENS = (
         "unknown_runtime_network_policies",
     ),
     ("NeMoClaw runtime policy anti-cheat note", "OpenClaw deny_tool"),
+    (
+        "NeMoClaw sandbox OpenClaw config default path",
+        "DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH",
+    ),
+    (
+        "NeMoClaw sandbox OpenClaw config reusable parser",
+        "def openclaw_config_data_checks(",
+    ),
+    (
+        "NeMoClaw sandbox OpenClaw config readability check",
+        "NeMoClaw sandbox OpenClaw config is readable",
+    ),
+    (
+        "NeMoClaw sandbox OpenClaw provider/model check",
+        'label="NeMoClaw sandbox OpenClaw"',
+    ),
 )
 NEMOCLAW_ADOPTION_SCRIPT_SOURCE_TOKENS = (
     ("W&B/Weave runtime policy criterion", "def runtime_wandb_weave_policy("),
@@ -4601,6 +4617,45 @@ def validate_nemoclaw_canary_readiness_runtime_policy_checks(
     return errors
 
 
+def validate_nemoclaw_canary_readiness_sandbox_openclaw_config_checks(
+    payload: dict[str, Any],
+) -> list[str]:
+    if payload.get("ok") is not True:
+        return []
+    checks = payload.get("checks")
+    if not isinstance(checks, list):
+        return ["NeMoClaw canary readiness checks is not a list"]
+    checks_by_name = {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+    required = (
+        "NeMoClaw sandbox OpenClaw config is readable: /sandbox/.openclaw/openclaw.json",
+        "NeMoClaw sandbox OpenClaw openai-direct provider exists",
+        (
+            "NeMoClaw sandbox OpenClaw model is registered: "
+            "openai-direct/gpt-4.1-mini-2025-04-14"
+        ),
+        "NeMoClaw sandbox OpenClaw Weave plugin is enabled",
+    )
+    errors: list[str] = []
+    for name in required:
+        check = checks_by_name.get(name)
+        if not isinstance(check, dict):
+            errors.append(
+                "NeMoClaw canary readiness missing sandbox OpenClaw config check: "
+                f"{name}"
+            )
+            continue
+        if check.get("ok") is not True:
+            errors.append(
+                "NeMoClaw canary readiness sandbox OpenClaw config check is not ok: "
+                f"{name}"
+            )
+    return errors
+
+
 def validate_nemoclaw_adoption_runtime_policy_criterion(
     payload: dict[str, Any],
 ) -> list[str]:
@@ -8129,6 +8184,11 @@ def validate_nemoclaw_post_install_verification_evidence(
     if isinstance(readiness_payload, dict):
         errors.extend(validate_nemoclaw_canary_readiness_remote_lookup_checks(readiness_payload))
         errors.extend(validate_nemoclaw_canary_readiness_runtime_policy_checks(readiness_payload))
+        errors.extend(
+            validate_nemoclaw_canary_readiness_sandbox_openclaw_config_checks(
+                readiness_payload
+            )
+        )
     adoption_payload = output_payloads.get("adoption_json")
     if isinstance(adoption_payload, dict):
         errors.extend(validate_nemoclaw_adoption_runtime_policy_criterion(adoption_payload))

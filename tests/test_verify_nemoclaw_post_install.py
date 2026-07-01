@@ -117,7 +117,11 @@ payload = {{
     {{"name": "OpenClaw runs inside NeMoClaw sandbox: nejumi-taiwan", "ok": {py_bool}}},
     {{"name": "NeMoClaw sandbox runtime policy is introspectable: nejumi-taiwan", "ok": {py_bool}, "detail": json.dumps(policy_detail)}},
     {{"name": "NeMoClaw W&B/Weave runtime policy is present: nejumi-taiwan", "ok": {py_bool}, "detail": json.dumps(policy_detail)}},
-    {{"name": "NeMoClaw runtime network policies are allowlisted: nejumi-taiwan", "ok": {py_bool}, "detail": json.dumps(policy_detail)}}
+    {{"name": "NeMoClaw runtime network policies are allowlisted: nejumi-taiwan", "ok": {py_bool}, "detail": json.dumps(policy_detail)}},
+    {{"name": "NeMoClaw sandbox OpenClaw config is readable: /sandbox/.openclaw/openclaw.json", "ok": {py_bool}, "detail": "bytes=7465"}},
+    {{"name": "NeMoClaw sandbox OpenClaw openai-direct provider exists", "ok": {py_bool}}},
+    {{"name": "NeMoClaw sandbox OpenClaw model is registered: openai-direct/gpt-4.1-mini-2025-04-14", "ok": {py_bool}}},
+    {{"name": "NeMoClaw sandbox OpenClaw Weave plugin is enabled", "ok": {py_bool}}}
   ]
 }}
 open(args.json, 'w', encoding='utf-8').write(json.dumps(payload) + '\\n')
@@ -310,6 +314,8 @@ def test_verify_nemoclaw_post_install_defaults_to_openai_nemoclaw_canary(tmp_pat
     assert "gpt-4_1-mini-openai-direct-canary" in readiness_command
     assert "--openclaw-model" in readiness_command
     assert "openai-direct/gpt-4.1-mini-2025-04-14" in readiness_command
+    assert "--nemoclaw-openclaw-config-path" in readiness_command
+    assert "/sandbox/.openclaw/openclaw.json" in readiness_command
     assert "--generated-full-dir" in readiness_command
     assert str((REPO_ROOT / "configs/taiwan_full/generated_openai_canary").resolve()) in readiness_command
     assert "--generated-nonagentic-dir" in readiness_command
@@ -361,6 +367,63 @@ raise SystemExit(0)
     assert canary["payload_ok"] is True
     assert canary["payload_contract_ok"] is False
     assert "checks must be a list" in canary["payload_contract_errors"]
+
+
+def test_verify_nemoclaw_post_install_rejects_missing_sandbox_openai_config_proof(
+    tmp_path,
+):
+    scripts = write_fake_scripts(tmp_path, ok=True)
+    scripts["canary"] = write_executable(
+        tmp_path / "canary_missing_sandbox_openai_config.py",
+        """#!/usr/bin/env python3
+import argparse, json
+p = argparse.ArgumentParser()
+p.add_argument('--json')
+args, _unknown = p.parse_known_args()
+policy_detail = {
+  "sandbox": "nejumi-taiwan",
+  "sandbox_found": True,
+  "policy_count": 7,
+  "policies": ["clawhub", "managed_inference", "npm_registry", "nvidia", "openclaw_api", "openclaw_docs", "wandb-weave"],
+  "policy_configured": True,
+  "summary_policy_count": 0,
+  "summary_policies": [],
+  "detailed_status_network_policy_count": 7,
+  "detailed_status_network_policies": ["clawhub", "managed_inference", "npm_registry", "nvidia", "openclaw_api", "openclaw_docs", "wandb-weave"],
+  "allowed_runtime_network_policies": ["clawhub", "managed_inference", "npm_registry", "nvidia", "openclaw_api", "openclaw_docs", "wandb-weave"],
+  "runtime_network_policy_allowlist_ok": True,
+  "unknown_runtime_network_policies": [],
+  "wandb_weave_policy_present": True,
+  "non_wandb_network_policies": ["clawhub", "managed_inference", "npm_registry", "nvidia", "openclaw_api", "openclaw_docs"]
+}
+payload = {
+  "ok": True,
+  "checks": [
+    {"name": "NeMoClaw command is available", "ok": True},
+    {"name": "OpenShell command is available", "ok": True},
+    {"name": "NeMoClaw version command succeeds", "ok": True},
+    {"name": "NeMoClaw sandbox status succeeds: nejumi-taiwan", "ok": True},
+    {"name": "OpenClaw runs inside NeMoClaw sandbox: nejumi-taiwan", "ok": True},
+    {"name": "NeMoClaw sandbox runtime policy is introspectable: nejumi-taiwan", "ok": True, "detail": json.dumps(policy_detail)},
+    {"name": "NeMoClaw W&B/Weave runtime policy is present: nejumi-taiwan", "ok": True, "detail": json.dumps(policy_detail)}
+  ]
+}
+open(args.json, 'w', encoding='utf-8').write(json.dumps(payload) + '\\n')
+raise SystemExit(0)
+""",
+    )
+
+    result = run_verifier(tmp_path, ok=True, scripts=scripts)
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    canary = next(step for step in payload["steps"] if step["name"] == "canary_readiness")
+    assert canary["payload_ok"] is True
+    assert canary["payload_contract_ok"] is False
+    assert (
+        "missing required check 'NeMoClaw sandbox OpenClaw openai-direct provider exists'"
+        in canary["payload_contract_errors"]
+    )
 
 
 def test_verify_nemoclaw_post_install_rejects_runtime_without_sandbox(tmp_path):

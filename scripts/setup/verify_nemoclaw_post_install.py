@@ -29,6 +29,7 @@ DEFAULT_ADOPTION_SCRIPT = REPO_ROOT / "scripts" / "tools" / "check_taiwan_nemocl
 DEFAULT_CANARY_MANIFEST = REPO_ROOT / "configs" / "taiwan_openai_canary_models.yaml"
 DEFAULT_CANARY_SLUG = "gpt-4_1-mini-openai-direct-canary"
 DEFAULT_CANARY_OPENCLAW_MODEL = "openai-direct/gpt-4.1-mini-2025-04-14"
+DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 DEFAULT_GENERATED_FULL_DIR = REPO_ROOT / "configs" / "taiwan_full" / "generated_openai_canary"
 DEFAULT_GENERATED_NONAGENTIC_DIR = (
     REPO_ROOT / "configs" / "taiwan_full" / "generated_openai_canary_nonagentic"
@@ -70,6 +71,7 @@ REQUIRED_POST_INSTALL_COMMAND_TOKENS = {
     "protocol_preflight": ("preflight",),
     "canary_readiness": (
         "--require-nemoclaw",
+        "--nemoclaw-openclaw-config-path",
         "--json",
     ),
     "adoption_check": (
@@ -249,6 +251,7 @@ def validate_step_payload_contract(
     payload: dict[str, Any] | None,
     *,
     sandbox: str,
+    nemoclaw_openclaw_config_path: str = DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH,
 ) -> list[str]:
     if not isinstance(payload, dict):
         return ["output JSON must be a readable object"]
@@ -293,6 +296,10 @@ def validate_step_payload_contract(
             f"OpenClaw runs inside NeMoClaw sandbox: {sandbox}",
             f"NeMoClaw sandbox runtime policy is introspectable: {sandbox}",
             f"NeMoClaw W&B/Weave runtime policy is present: {sandbox}",
+            f"NeMoClaw sandbox OpenClaw config is readable: {nemoclaw_openclaw_config_path}",
+            "NeMoClaw sandbox OpenClaw openai-direct provider exists",
+            "NeMoClaw sandbox OpenClaw model is registered: openai-direct/gpt-4.1-mini-2025-04-14",
+            "NeMoClaw sandbox OpenClaw Weave plugin is enabled",
         ):
             require_check_ok(errors, payload, check_name)
     elif name == "adoption_check":
@@ -365,10 +372,16 @@ def command_record(
     output_json: Path | None = None,
     ok_from_json_key: str = "ok",
     sandbox: str,
+    nemoclaw_openclaw_config_path: str = DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH,
 ) -> dict[str, Any]:
     payload = read_json(output_json) if output_json else None
     payload_ok = bool(payload.get(ok_from_json_key)) if isinstance(payload, dict) else None
-    payload_contract_errors = validate_step_payload_contract(name, payload, sandbox=sandbox)
+    payload_contract_errors = validate_step_payload_contract(
+        name,
+        payload,
+        sandbox=sandbox,
+        nemoclaw_openclaw_config_path=nemoclaw_openclaw_config_path,
+    )
     payload_contract_ok = not payload_contract_errors
     returncode_ok = completed.returncode == 0
     ok = returncode_ok and (payload_ok if payload_ok is not None else True) and payload_contract_ok
@@ -550,6 +563,8 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         args.nemoclaw_bin,
         "--nemoclaw-sandbox",
         args.sandbox,
+        "--nemoclaw-openclaw-config-path",
+        args.nemoclaw_openclaw_config_path,
         "--json",
         str(readiness_json),
     ]
@@ -626,6 +641,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
             completed=readiness_completed,
             output_json=readiness_json,
             sandbox=args.sandbox,
+            nemoclaw_openclaw_config_path=args.nemoclaw_openclaw_config_path,
         ),
         command_record(
             name="adoption_check",
@@ -682,6 +698,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--canary-manifest", type=Path, default=DEFAULT_CANARY_MANIFEST)
     parser.add_argument("--canary-slug", default=DEFAULT_CANARY_SLUG)
     parser.add_argument("--canary-openclaw-model", default=DEFAULT_CANARY_OPENCLAW_MODEL)
+    parser.add_argument(
+        "--nemoclaw-openclaw-config-path",
+        default=DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH,
+    )
     parser.add_argument("--canary-expected-pretrained-model")
     parser.add_argument("--generated-full-dir", type=Path, default=DEFAULT_GENERATED_FULL_DIR)
     parser.add_argument(

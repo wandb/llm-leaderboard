@@ -11315,6 +11315,129 @@ def test_verify_release_evidence_bundle_rejects_nemoclaw_readiness_missing_remot
     ) in payload["errors"]
 
 
+def test_verify_release_evidence_bundle_rejects_nemoclaw_readiness_missing_sandbox_config_check(
+    tmp_path,
+):
+    bundle, post_install = build_bundle_with_nemoclaw_post_install(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    post_install_record = next(
+        record for record in manifest["files"] if record["source_path"] == str(post_install)
+    )
+    post_install_payload = json.loads(
+        (bundle / post_install_record["bundle_path"]).read_text(encoding="utf-8")
+    )
+    readiness_source = post_install_payload["outputs"]["readiness_json"]
+    readiness_record = next(
+        record for record in manifest["files"] if record["source_path"] == readiness_source
+    )
+    bundled_readiness = bundle / readiness_record["bundle_path"]
+    readiness_payload = json.loads(bundled_readiness.read_text(encoding="utf-8"))
+    policy_detail = {
+        "sandbox": "nejumi-taiwan",
+        "sandbox_found": True,
+        "policy_count": 7,
+        "policies": [
+            "clawhub",
+            "managed_inference",
+            "npm_registry",
+            "nvidia",
+            "openclaw_api",
+            "openclaw_docs",
+            "wandb-weave",
+        ],
+        "policy_configured": True,
+        "summary_policy_count": 0,
+        "summary_policies": [],
+        "detailed_status_network_policy_count": 7,
+        "detailed_status_network_policies": [
+            "clawhub",
+            "managed_inference",
+            "npm_registry",
+            "nvidia",
+            "openclaw_api",
+            "openclaw_docs",
+            "wandb-weave",
+        ],
+        "allowed_runtime_network_policies": [
+            "clawhub",
+            "managed_inference",
+            "npm_registry",
+            "nvidia",
+            "openclaw_api",
+            "openclaw_docs",
+            "wandb-weave",
+        ],
+        "runtime_network_policy_allowlist_ok": True,
+        "unknown_runtime_network_policies": [],
+        "wandb_weave_policy_present": True,
+        "non_wandb_network_policies": [
+            "clawhub",
+            "managed_inference",
+            "npm_registry",
+            "nvidia",
+            "openclaw_api",
+            "openclaw_docs",
+        ],
+    }
+    readiness_payload["ok"] = True
+    readiness_payload["checks"].extend(
+        [
+            {
+                "name": "NeMoClaw sandbox runtime policy is introspectable: nejumi-taiwan",
+                "ok": True,
+                "detail": json.dumps(policy_detail),
+            },
+            {
+                "name": "NeMoClaw W&B/Weave runtime policy is present: nejumi-taiwan",
+                "ok": True,
+                "detail": json.dumps(policy_detail),
+            },
+            {
+                "name": "NeMoClaw runtime network policies are allowlisted: nejumi-taiwan",
+                "ok": True,
+                "detail": json.dumps(policy_detail),
+            },
+            {
+                "name": (
+                    "NeMoClaw sandbox OpenClaw config is readable: "
+                    "/sandbox/.openclaw/openclaw.json"
+                ),
+                "ok": True,
+                "detail": "bytes=7465",
+            },
+            {
+                "name": (
+                    "NeMoClaw sandbox OpenClaw model is registered: "
+                    "openai-direct/gpt-4.1-mini-2025-04-14"
+                ),
+                "ok": True,
+            },
+            {
+                "name": "NeMoClaw sandbox OpenClaw Weave plugin is enabled",
+                "ok": True,
+            },
+        ]
+    )
+    bundled_readiness.write_text(json.dumps(readiness_payload), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, readiness_record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "NeMoClaw canary readiness missing sandbox OpenClaw config check: "
+        "NeMoClaw sandbox OpenClaw openai-direct provider exists"
+    ) in payload["errors"]
+
+
 def test_verify_release_evidence_bundle_rejects_nemoclaw_post_install_missing_payload_contract(
     tmp_path,
 ):
@@ -12724,6 +12847,47 @@ def test_verify_release_evidence_bundle_rejects_canary_readiness_script_missing_
         "NeMoClaw canary readiness script missing source contract "
         "NeMoClaw status JSON introspection: "
         "scripts/tools/check_taiwan_canary_readiness.py: def _run_json_status("
+    ) in payload["errors"]
+
+
+def test_verify_release_evidence_bundle_rejects_canary_readiness_script_missing_sandbox_config_contract(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_weave_content_canary_command(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path") == "scripts/tools/check_taiwan_canary_readiness.py"
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace(
+            "def openclaw_config_data_checks(",
+            "def removed_openclaw_config_data_checks(",
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "NeMoClaw canary readiness script missing source contract "
+        "NeMoClaw sandbox OpenClaw config reusable parser: "
+        "scripts/tools/check_taiwan_canary_readiness.py: "
+        "def openclaw_config_data_checks("
     ) in payload["errors"]
 
 
