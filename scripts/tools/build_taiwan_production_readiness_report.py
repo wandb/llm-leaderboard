@@ -611,7 +611,9 @@ def existing_results_audit_commands() -> list[str]:
             "For each agentic_math or agentic_swe local complete result reported as "
             "local_complete_needs_wandb_relog, run the benchmark-specific relogger "
             "(log_agentic_math_results_to_wandb.py or log_agentic_swe_results_to_wandb.py) "
-            "and then verify_taiwan_wandb_completion.py. For taiwan_full provisional full "
+            "and then verify_taiwan_wandb_completion.py. For records reported as "
+            "local_complete_missing_nemoclaw_audit, rerun the benchmark with NeMoClaw-native "
+            "session audit enabled before W&B formalization. For taiwan_full provisional full "
             "runs, verify the source run_id directly with verify_taiwan_wandb_completion.py."
         ),
     ]
@@ -1641,6 +1643,7 @@ def evaluate_existing_results_formalization(paths: list[Path], *, require: bool)
                 "complete_local_count": summary.get("complete_local_count"),
                 "formalized_wandb_complete_count": summary.get("formalized_wandb_complete_count"),
                 "unformalized_complete_count": summary.get("unformalized_complete_count"),
+                "nemoclaw_audit_blocked_complete_count": summary.get("nemoclaw_audit_blocked_complete_count"),
                 "partial_or_probe_count": summary.get("partial_or_probe_count"),
                 "unformalized_complete_records": payload.get("unformalized_complete_records", []),
             }
@@ -1678,7 +1681,11 @@ def evaluate_existing_results_formalization(paths: list[Path], *, require: bool)
         next_action=(
             "Keep this audit JSON in the release evidence bundle."
             if ok
-            else "Relog each complete local result to W&B, verify completion, and rerun audit_taiwan_existing_results.py."
+            else (
+                "Relog complete local results only when NeMoClaw audit evidence is valid; "
+                "rerun local_complete_missing_nemoclaw_audit records with NeMoClaw-native tracing, "
+                "verify W&B completion, and rerun audit_taiwan_existing_results.py."
+            )
         ),
         extra={
             "latest_audit": latest,

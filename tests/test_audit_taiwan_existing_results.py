@@ -38,7 +38,13 @@ def write_csv(path: Path, text: str):
     return path
 
 
-def write_agentic_math_result(root: Path, *, model_slug="model-a", total=3):
+def write_agentic_math_result(
+    root: Path,
+    *,
+    model_slug="model-a",
+    total=3,
+    with_nemoclaw_audit=True,
+):
     result_dir = root / "agentic_math" / model_slug / "openclaw"
     rows = [
         {
@@ -48,22 +54,32 @@ def write_agentic_math_result(root: Path, *, model_slug="model-a", total=3):
         }
         for index in range(total)
     ]
+    if with_nemoclaw_audit:
+        for row in rows:
+            row["nemoclaw_session_audit_ok"] = True
+            row["nemoclaw_session_audit"] = {"required": True, "ok": True}
     write_jsonl(result_dir / "results.jsonl", rows)
     write_jsonl(result_dir / "results.partial.jsonl", rows)
-    write_json(
-        result_dir / "summary.json",
-        {
-            "total_instances": total,
-            "answered_instances": total,
-            "correct_instances": 2,
-            "incorrect_instances": total - 2,
-            "accuracy": 2 / total,
-            "correctness": 2 / total,
-            "model": "provider/model-a",
-            "thinking": "low",
-            "dry_run": False,
-        },
-    )
+    summary = {
+        "total_instances": total,
+        "answered_instances": total,
+        "correct_instances": 2,
+        "incorrect_instances": total - 2,
+        "accuracy": 2 / total,
+        "correctness": 2 / total,
+        "model": "provider/model-a",
+        "thinking": "low",
+        "dry_run": False,
+    }
+    if with_nemoclaw_audit:
+        summary.update(
+            {
+                "nemoclaw_session_audit_required_instances": total,
+                "nemoclaw_session_audit_passed_instances": total,
+                "nemoclaw_session_audit_failed_instances": 0,
+            }
+        )
+    write_json(result_dir / "summary.json", summary)
     return result_dir
 
 
@@ -589,8 +605,11 @@ def test_existing_result_audit_rejects_complete_local_without_wandb(tmp_path, mo
     assert audit["ok"] is False
     assert audit["status"] == "unformalized_complete_results"
     assert audit["summary"]["unformalized_complete_count"] == 1
+    assert audit["summary"]["nemoclaw_audit_blocked_complete_count"] == 0
     assert audit["unformalized_complete_records"][0]["formalization_status"] == "local_complete_needs_wandb_relog"
     record = audit["unformalized_complete_records"][0]
+    assert record["reloggable_to_wandb"] is True
+    assert record["nemoclaw_session_audit_valid"] is True
     assert "log_agentic_math_results_to_wandb.py" in record["relog_dry_run_command"]
     assert "--dry-run" in record["relog_dry_run_command"]
     assert "--plan-json" in record["relog_dry_run_command"]
@@ -612,6 +631,31 @@ def test_existing_result_audit_rejects_complete_local_without_wandb(tmp_path, mo
     assert "verify_taiwan_wandb_completion.py" in verify_command
     assert "--require-nemoclaw-session-audit" in verify_command
     assert verify_command.count("uv run python scripts/tools/verify_taiwan_wandb_completion.py") == 1
+
+
+def test_existing_result_audit_blocks_agentic_math_relog_without_nemoclaw_audit(tmp_path, monkeypatch):
+    module = load_module()
+    monkeypatch.setattr(module, "AGENTIC_MATH_EXPECTED_TOTAL", 3)
+    write_agentic_math_result(tmp_path, total=3, with_nemoclaw_audit=False)
+
+    audit = module.build_audit(
+        output_root=tmp_path,
+        completion_dir=tmp_path / "wandb_completion",
+    )
+
+    assert audit["ok"] is False
+    assert audit["summary"]["unformalized_complete_count"] == 1
+    assert audit["summary"]["nemoclaw_audit_blocked_complete_count"] == 1
+    record = audit["unformalized_complete_records"][0]
+    assert record["formalization_status"] == "local_complete_missing_nemoclaw_audit"
+    assert record["reloggable_to_wandb"] is False
+    assert record["nemoclaw_session_audit_valid"] is False
+    assert record["relog_blocked_reason"] == "missing_or_invalid_nemoclaw_session_audit"
+    assert "summary.json missing NeMoClaw audit keys" in record["nemoclaw_session_audit_errors"][0]
+    assert record["relog_dry_run_command"] == ""
+    assert record["relog_command"] == ""
+    assert record["verify_command"] == ""
+    assert record["rerun_required"] is True
 
 
 def test_existing_result_audit_accepts_formalized_taiwan_full_provisional_run(tmp_path):
@@ -769,7 +813,14 @@ def test_existing_result_audit_reports_swe_relog_command_for_complete_local_eval
     model_dir = tmp_path / "swebench_pro" / "model-c"
     write_json(
         model_dir / "openclaw" / "patches.json",
-        [{"instance_id": "i1", "patch": "diff --git a/x b/x"}],
+        [
+            {
+                "instance_id": "i1",
+                "patch": "diff --git a/x b/x",
+                "nemoclaw_session_audit_ok": True,
+                "nemoclaw_session_audit": {"required": True, "ok": True},
+            }
+        ],
     )
     write_json(
         model_dir / "official_eval" / "summary.json",
@@ -808,3 +859,41 @@ def test_existing_result_audit_reports_swe_relog_command_for_complete_local_eval
         "agentic-swe-model-c.plan.json"
     )
     assert "verify_taiwan_wandb_completion.py" in record["verify_command"]
+
+
+def test_existing_result_audit_blocks_swe_relog_without_nemoclaw_audit(tmp_path, monkeypatch):
+    module = load_module()
+    monkeypatch.setattr(module, "AGENTIC_SWE_EXPECTED_TOTAL", 1)
+    model_dir = tmp_path / "swebench_pro" / "model-c"
+    write_json(
+        model_dir / "openclaw" / "patches.json",
+        [{"instance_id": "i1", "patch": "diff --git a/x b/x"}],
+    )
+    write_json(
+        model_dir / "official_eval" / "summary.json",
+        {
+            "total_instances": 1,
+            "resolved_instances": 1,
+            "unresolved_instances": 0,
+            "pass_at_1": 1.0,
+            "resolved_ids": ["i1"],
+            "unresolved_ids": [],
+        },
+    )
+
+    audit = module.build_audit(
+        output_root=tmp_path,
+        completion_dir=tmp_path / "wandb_completion",
+    )
+
+    assert audit["ok"] is False
+    assert audit["summary"]["nemoclaw_audit_blocked_complete_count"] == 1
+    record = audit["unformalized_complete_records"][0]
+    assert record["benchmark"] == "agentic_swe"
+    assert record["formalization_status"] == "local_complete_missing_nemoclaw_audit"
+    assert record["reloggable_to_wandb"] is False
+    assert record["nemoclaw_session_audit_valid"] is False
+    assert record["relog_dry_run_command"] == ""
+    assert record["relog_command"] == ""
+    assert record["verify_command"] == ""
+    assert record["rerun_required"] is True

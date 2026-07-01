@@ -26,6 +26,13 @@ WANDB_COMPLETION_SCHEMA_VERSION = 1
 WANDB_COMPLETION_QUERY_SOURCE_KIND = "wandb_sdk"
 FULL_BENCHMARK_ID = "taiwan_full"
 NEMOCLAW_AUDIT_REQUIRED_BENCHMARKS = {"agentic_math", "agentic_swe"}
+LOCAL_COMPLETE_NEEDS_WANDB_RELOG = "local_complete_needs_wandb_relog"
+LOCAL_COMPLETE_MISSING_NEMOCLAW_AUDIT = "local_complete_missing_nemoclaw_audit"
+AGENTIC_MATH_NEMOCLAW_SUMMARY_KEYS = (
+    "nemoclaw_session_audit_required_instances",
+    "nemoclaw_session_audit_passed_instances",
+    "nemoclaw_session_audit_failed_instances",
+)
 
 
 def repo_path(path: Path | str) -> Path:
@@ -175,6 +182,112 @@ def nemoclaw_session_audit_issues(completion: dict[str, Any]) -> list[str]:
         issues.append("observed_evidence.nemoclaw_session_audit.required must equal passed")
     if failed_count is not None and failed_count != 0:
         issues.append("observed_evidence.nemoclaw_session_audit.failed must be 0")
+    return issues
+
+
+def agentic_math_local_nemoclaw_audit_issues(
+    *,
+    summary: dict[str, Any],
+    rows: list[dict[str, Any]],
+    expected_total: int,
+) -> list[str]:
+    issues: list[str] = []
+    missing = [key for key in AGENTIC_MATH_NEMOCLAW_SUMMARY_KEYS if key not in summary]
+    if missing:
+        issues.append(f"summary.json missing NeMoClaw audit keys: {missing}")
+        return issues
+
+    required = int_like(summary.get("nemoclaw_session_audit_required_instances"))
+    passed = int_like(summary.get("nemoclaw_session_audit_passed_instances"))
+    failed = int_like(summary.get("nemoclaw_session_audit_failed_instances"))
+    if required is None:
+        issues.append("nemoclaw_session_audit_required_instances must be an integer")
+    if passed is None:
+        issues.append("nemoclaw_session_audit_passed_instances must be an integer")
+    if failed is None:
+        issues.append("nemoclaw_session_audit_failed_instances must be an integer")
+
+    row_required = sum(
+        1
+        for row in rows
+        if isinstance(row.get("nemoclaw_session_audit"), dict)
+        and row["nemoclaw_session_audit"].get("required") is True
+    )
+    row_passed = sum(1 for row in rows if row.get("nemoclaw_session_audit_ok") is True)
+    row_failed = sum(
+        1
+        for row in rows
+        if isinstance(row.get("nemoclaw_session_audit"), dict)
+        and row["nemoclaw_session_audit"].get("required") is True
+        and row.get("nemoclaw_session_audit_ok") is False
+    )
+    if required is not None and required != expected_total:
+        issues.append("nemoclaw_session_audit_required_instances must equal expected_total")
+    if passed is not None and passed != expected_total:
+        issues.append("nemoclaw_session_audit_passed_instances must equal expected_total")
+    if failed is not None and failed != 0:
+        issues.append("nemoclaw_session_audit_failed_instances must be 0")
+    if required is not None and required != row_required:
+        issues.append("summary NeMoClaw required count does not match row audit required count")
+    if passed is not None and passed != row_passed:
+        issues.append("summary NeMoClaw passed count does not match row audit passed count")
+    if failed is not None and failed != row_failed:
+        issues.append("summary NeMoClaw failed count does not match row audit failed count")
+    if row_required != expected_total:
+        issues.append("every result row must require NeMoClaw session audit")
+    if row_passed != expected_total:
+        issues.append("every result row must pass NeMoClaw session audit")
+    if row_failed != 0:
+        issues.append("no result row may have failed NeMoClaw session audit")
+    return issues
+
+
+def agentic_swe_local_nemoclaw_audit_issues(
+    *,
+    official: dict[str, Any],
+    patch_rows: list[Any],
+    expected_total: int,
+) -> list[str]:
+    issues: list[str] = []
+    resolved_ids = official.get("resolved_ids")
+    unresolved_ids = official.get("unresolved_ids")
+    if not isinstance(resolved_ids, list) or not isinstance(unresolved_ids, list):
+        issues.append("official summary must include resolved_ids and unresolved_ids for NeMoClaw audit")
+        expected_ids: set[str] = set()
+    else:
+        expected_ids = {str(value) for value in [*resolved_ids, *unresolved_ids]}
+        if len(expected_ids) != expected_total:
+            issues.append("resolved_ids plus unresolved_ids must equal expected_total")
+
+    typed_rows = [row for row in patch_rows if isinstance(row, dict)]
+    patch_by_instance = {
+        str(row.get("instance_id")): row
+        for row in typed_rows
+        if row.get("instance_id") is not None
+    }
+    missing_patch_rows = sorted(expected_ids - set(patch_by_instance))
+    if missing_patch_rows:
+        issues.append(f"patches.json missing official instance ids: {missing_patch_rows[:5]}")
+
+    rows_for_audit = [
+        patch_by_instance[instance_id]
+        for instance_id in sorted(expected_ids)
+        if instance_id in patch_by_instance
+    ] or typed_rows
+    required = [
+        row
+        for row in rows_for_audit
+        if isinstance(row.get("nemoclaw_session_audit"), dict)
+        and row["nemoclaw_session_audit"].get("required") is True
+    ]
+    passed = [row for row in required if row.get("nemoclaw_session_audit_ok") is True]
+    failed = [row for row in required if row.get("nemoclaw_session_audit_ok") is False]
+    if len(required) != expected_total:
+        issues.append("agentic_swe NeMoClaw audit required patch count must equal expected_total")
+    if len(passed) != expected_total:
+        issues.append("agentic_swe NeMoClaw audit passed patch count must equal expected_total")
+    if failed:
+        issues.append("agentic_swe NeMoClaw audit failed patch count must be 0")
     return issues
 
 
@@ -477,6 +590,8 @@ def relog_command(record: dict[str, Any], *, include_validated_plan: bool = True
 
 
 def relog_inputs_present(record: dict[str, Any]) -> bool:
+    if record.get("formalization_status") == LOCAL_COMPLETE_MISSING_NEMOCLAW_AUDIT:
+        return False
     if record.get("benchmark") == "agentic_math":
         return all(
             isinstance(record.get(field), str) and bool(record.get(field))
@@ -563,6 +678,10 @@ def agentic_math_record(model_dir: Path, result_dir: Path, *, run_kind: str) -> 
         "partial_row_count": jsonl_count(partial_path),
         "complete_local": False,
         "formalization_status": "missing_results",
+        "reloggable_to_wandb": False,
+        "nemoclaw_session_audit_present": False,
+        "nemoclaw_session_audit_valid": False,
+        "nemoclaw_session_audit_errors": [],
         "warnings": [],
         "errors": [],
     }
@@ -606,8 +725,24 @@ def agentic_math_record(model_dir: Path, result_dir: Path, *, run_kind: str) -> 
             and summary.get("total_instances") == AGENTIC_MATH_EXPECTED_TOTAL
             and len(rows) == AGENTIC_MATH_EXPECTED_TOTAL
         )
+        audit_issues = agentic_math_local_nemoclaw_audit_issues(
+            summary=summary,
+            rows=rows,
+            expected_total=AGENTIC_MATH_EXPECTED_TOTAL,
+        )
+        record["nemoclaw_session_audit_errors"] = audit_issues
+        record["nemoclaw_session_audit_present"] = not any(
+            issue.startswith("summary.json missing NeMoClaw audit keys")
+            for issue in audit_issues
+        )
+        record["nemoclaw_session_audit_valid"] = not audit_issues
     if record["complete_local"]:
-        record["formalization_status"] = "local_complete_needs_wandb_relog"
+        if record["nemoclaw_session_audit_valid"]:
+            record["formalization_status"] = LOCAL_COMPLETE_NEEDS_WANDB_RELOG
+            record["reloggable_to_wandb"] = True
+        else:
+            record["formalization_status"] = LOCAL_COMPLETE_MISSING_NEMOCLAW_AUDIT
+            record["relog_blocked_reason"] = "missing_or_invalid_nemoclaw_session_audit"
     elif record["partial_row_count"] or record["row_count"]:
         record["formalization_status"] = (
             "probe_not_reloggable" if run_kind != "final" else "partial_not_reloggable"
@@ -675,6 +810,10 @@ def discover_agentic_swe(output_root: Path) -> list[dict[str, Any]]:
             "row_count": official.get("total_instances") if isinstance(official, dict) else len(patches),
             "complete_local": False,
             "formalization_status": "missing_results",
+            "reloggable_to_wandb": False,
+            "nemoclaw_session_audit_present": False,
+            "nemoclaw_session_audit_valid": False,
+            "nemoclaw_session_audit_errors": [],
             "warnings": [],
             "errors": [],
         }
@@ -692,8 +831,24 @@ def discover_agentic_swe(output_root: Path) -> list[dict[str, Any]]:
             record["complete_local"] = bool(
                 official.get("total_instances") == AGENTIC_SWE_EXPECTED_TOTAL
             )
+            audit_issues = agentic_swe_local_nemoclaw_audit_issues(
+                official=official,
+                patch_rows=patches,
+                expected_total=AGENTIC_SWE_EXPECTED_TOTAL,
+            )
+            record["nemoclaw_session_audit_errors"] = audit_issues
+            record["nemoclaw_session_audit_present"] = any(
+                isinstance(row, dict) and isinstance(row.get("nemoclaw_session_audit"), dict)
+                for row in patches
+            )
+            record["nemoclaw_session_audit_valid"] = not audit_issues
         if record["complete_local"]:
-            record["formalization_status"] = "local_complete_needs_wandb_relog"
+            if record["nemoclaw_session_audit_valid"]:
+                record["formalization_status"] = LOCAL_COMPLETE_NEEDS_WANDB_RELOG
+                record["reloggable_to_wandb"] = True
+            else:
+                record["formalization_status"] = LOCAL_COMPLETE_MISSING_NEMOCLAW_AUDIT
+                record["relog_blocked_reason"] = "missing_or_invalid_nemoclaw_session_audit"
         elif record["patch_count"]:
             record["formalization_status"] = "partial_not_reloggable"
             if record["patch_count"] >= AGENTIC_SWE_EXPECTED_TOTAL and not official:
@@ -923,11 +1078,22 @@ def build_audit(
         and record.get("formalization_status") != "formalized_wandb_complete"
     ]
     for record in unformalized:
-        record["relog_command"] = relog_command(record)
-        record["verify_command"] = verifier_command(
-            record,
-            run_id=str(record.get("run_id") or "RUN_ID"),
-        )
+        if record.get("formalization_status") == LOCAL_COMPLETE_MISSING_NEMOCLAW_AUDIT:
+            record["relog_dry_run_plan_json"] = ""
+            record["relog_dry_run_command"] = ""
+            record["relog_command"] = ""
+            record["verify_command"] = ""
+            record["rerun_required"] = True
+            record["rerun_required_reason"] = (
+                "Local complete result is missing valid NeMoClaw session audit evidence; "
+                "rerun the benchmark with NeMoClaw-native tracing before W&B formalization."
+            )
+        else:
+            record["relog_command"] = relog_command(record)
+            record["verify_command"] = verifier_command(
+                record,
+                run_id=str(record.get("run_id") or "RUN_ID"),
+            )
         dry_run_command = relog_dry_run_command(record)
         if dry_run_command:
             record["relog_dry_run_plan_json"] = relog_dry_run_plan_json(record)
@@ -946,6 +1112,13 @@ def build_audit(
             "complete_local_count": len([record for record in records if record.get("complete_local")]),
             "formalized_wandb_complete_count": len(formalized),
             "unformalized_complete_count": len(unformalized),
+            "nemoclaw_audit_blocked_complete_count": len(
+                [
+                    record
+                    for record in unformalized
+                    if record.get("formalization_status") == LOCAL_COMPLETE_MISSING_NEMOCLAW_AUDIT
+                ]
+            ),
             "partial_or_probe_count": len(partial),
             "wandb_completion_json_count": len(completions),
         },
@@ -996,6 +1169,7 @@ def summary_markdown(audit: dict[str, Any]) -> str:
         f"- Complete local: `{summary.get('complete_local_count', 0)}`",
         f"- Formalized in W&B: `{summary.get('formalized_wandb_complete_count', 0)}`",
         f"- Unformalized complete: `{summary.get('unformalized_complete_count', 0)}`",
+        f"- NeMoClaw-audit blocked complete: `{summary.get('nemoclaw_audit_blocked_complete_count', 0)}`",
         f"- Partial/probe: `{summary.get('partial_or_probe_count', 0)}`",
         "",
         "## Complete Local Records",
@@ -1023,17 +1197,19 @@ def summary_markdown(audit: dict[str, Any]) -> str:
             "",
             "## Unformalized Complete Records",
             "",
-        "| Benchmark | Model | Dry-run command | Relog command | Verify command |",
-        "| --- | --- | --- | --- | --- |",
+        "| Benchmark | Model | Status | Action | Dry-run command | Relog command | Verify command |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
         ]
     )
     for record in audit.get("unformalized_complete_records", []):
         if not isinstance(record, dict):
             continue
         lines.append(
-            "| {benchmark} | {model} | `{dry_run}` | `{relog}` | `{verify}` |".format(
+            "| {benchmark} | {model} | {status} | {action} | `{dry_run}` | `{relog}` | `{verify}` |".format(
                 benchmark=record.get("benchmark"),
                 model=record.get("model_slug"),
+                status=record.get("formalization_status"),
+                action=record.get("rerun_required_reason", ""),
                 dry_run=record.get("relog_dry_run_command", ""),
                 relog=record.get("relog_command", ""),
                 verify=record.get("verify_command", ""),
