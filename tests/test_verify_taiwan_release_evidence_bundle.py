@@ -12872,6 +12872,43 @@ def test_verify_release_evidence_bundle_rejects_weave_sync_script_without_proof_
     )
 
 
+def test_verify_release_evidence_bundle_rejects_weave_sync_script_without_native_query_source_contract(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    sync_record = next(
+        record
+        for record in manifest["files"]
+        if record.get("source_path")
+        == "scripts/tools/sync_weave_agents_completion_to_paid_review.py"
+    )
+    bundled_sync_script = bundle / sync_record["bundle_path"]
+    text = bundled_sync_script.read_text(encoding="utf-8")
+    bundled_sync_script.write_text(
+        text.replace("def _query_source_issues(", "def _manual_source_issues("),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, sync_record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "Weave Agents sync script missing source contract "
+        "native Weave query source validator" in error
+        for error in payload["errors"]
+    )
+
+
 def test_verify_release_evidence_bundle_rejects_operator_step_semantic_mismatch(tmp_path):
     bundle = build_bundle_with_operator_command_script(tmp_path)
     manifest_path = bundle / "manifest.json"

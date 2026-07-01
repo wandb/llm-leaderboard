@@ -302,6 +302,46 @@ WEAVE_AGENTS_SYNC_SCRIPT_SOURCE_TOKENS = (
         "synced no-error proof flag",
         '"no_error_spans_proven"',
     ),
+    (
+        "native Weave query source validator",
+        "def _query_source_issues(",
+    ),
+    (
+        "native Weave query source kind constant",
+        'WEAVE_AGENTS_QUERY_SOURCE_KIND = "wandb_agents_api"',
+    ),
+    (
+        "native Weave query source base URL constant",
+        'WEAVE_AGENTS_API_BASE_URL = "https://trace.wandb.ai"',
+    ),
+    (
+        "native Weave query source agents endpoint constant",
+        'WEAVE_AGENTS_QUERY_ENDPOINT = "/agents/query"',
+    ),
+    (
+        "native Weave query source spans endpoint constant",
+        'WEAVE_AGENTS_SPANS_QUERY_ENDPOINT = "/agents/spans/query"',
+    ),
+    (
+        "native Weave query count fields",
+        "WEAVE_AGENTS_QUERY_COUNT_FIELDS",
+    ),
+    (
+        "native Weave query source validator invocation",
+        "_query_source_issues(",
+    ),
+    (
+        "synced native Weave query source kind field",
+        '"query_source_kind": query_source.get("kind")',
+    ),
+    (
+        "synced native Weave query source agents endpoint field",
+        '"query_source_agents_endpoint": query_source.get("agents_endpoint")',
+    ),
+    (
+        "synced native Weave query source spans endpoint field",
+        '"query_source_spans_endpoint": query_source.get("spans_endpoint")',
+    ),
 )
 AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
     "scripts/evaluator/agentic_math.py": {
