@@ -5006,6 +5006,35 @@ def test_verify_release_evidence_bundle_rejects_operator_renderer_missing_weave_
     )
 
 
+def test_verify_release_evidence_bundle_rejects_operator_renderer_missing_canary_approval_scope_safety(tmp_path):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    operator_plan_path = bundle / "operator_plan.json"
+    payload = json.loads(operator_plan_path.read_text(encoding="utf-8"))
+    renderer = payload["operator_execution_plan_renderer"]
+    renderer["safety"].pop(
+        "requires_canary_approval_scope_match_for_shell_script",
+        None,
+    )
+    operator_plan_path.write_text(json.dumps(payload), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, "operator_plan.json")
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "operator_plan renderer safety must require canary approval scope match for shell script"
+        in payload["errors"]
+    )
+
+
 def test_verify_release_evidence_bundle_rejects_operator_renderer_script_missing_weave_gate_contract(tmp_path):
     bundle = build_bundle_with_operator_command_script(tmp_path)
     manifest_path = bundle / "manifest.json"

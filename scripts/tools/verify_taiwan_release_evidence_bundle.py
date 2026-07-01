@@ -1927,6 +1927,13 @@ def validate_operator_execution_plan_renderer(
             errors.append(
                 "operator_plan renderer safety must require Weave content canary gate validation for shell script"
             )
+        if (
+            safety.get("requires_canary_approval_scope_match_for_shell_script")
+            is not True
+        ):
+            errors.append(
+                "operator_plan renderer safety must require canary approval scope match for shell script"
+            )
     operator_steps = operator_payload.get("operator_next_steps")
     expected_tokens = []
     if isinstance(operator_steps, dict):
@@ -2047,6 +2054,7 @@ def validate_operator_execution_plan_renderer(
             OPERATOR_EXECUTION_PLAN_RENDERER_SCRIPT,
             "Placeholder-ready shell",
             "External approval source packet",
+            "requires_canary_approval_scope_match_for_shell_script",
         ):
             if snippet not in markdown_text:
                 errors.append(f"operator_plan markdown missing renderer content: {snippet}")

@@ -1155,6 +1155,10 @@ def test_release_evidence_bundle_copies_report_references(tmp_path):
         ]
         is True
     )
+    assert (
+        renderer["safety"]["requires_canary_approval_scope_match_for_shell_script"]
+        is True
+    )
     assert "operator_plan.json" in renderer["review_command_template"]
     assert renderer["approval_report_json_template"].endswith(".verify.json")
     assert "--external-action-approval-report-json" in renderer["require_ready_command_template"]

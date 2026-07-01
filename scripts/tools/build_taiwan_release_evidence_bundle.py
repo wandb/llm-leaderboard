@@ -3366,6 +3366,7 @@ def operator_execution_plan_renderer_summary(
             "requires_release_gate_match_for_shell_script": True,
             "requires_command_policy_validation_for_shell_script": True,
             "requires_weave_content_canary_gate_validation_for_shell_script": True,
+            "requires_canary_approval_scope_match_for_shell_script": True,
         },
     }
 
@@ -3930,6 +3931,19 @@ def operator_plan_markdown(plan: dict[str, Any]) -> str:
                 f"- Placeholder-ready shell: `{renderer.get('require_ready_command_template', '')}`",
                 f"- External approval source packet: `{renderer.get('approval_source_packet_json_template', '')}`",
                 f"- External approval report: `{renderer.get('approval_report_json_template', '')}`",
+                "",
+                "Safety flags:",
+                "",
+            ]
+        )
+        safety = renderer.get("safety")
+        if isinstance(safety, dict):
+            for key in sorted(safety):
+                lines.append(f"- `{key}`: `{format_bool(safety.get(key))}`")
+        else:
+            lines.append("- none")
+        lines.extend(
+            [
                 "",
                 "Expected outputs:",
                 "",
