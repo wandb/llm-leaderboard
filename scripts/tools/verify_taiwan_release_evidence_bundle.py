@@ -1275,6 +1275,8 @@ EXTERNAL_ACTION_APPROVAL_HANDOFF_PREPARER_REQUIRED_SOURCE_TOKENS = (
     ("W&B query disabled", '"queries_wandb": False'),
     ("W&B write disabled", '"writes_wandb": False'),
     ("model inference disabled", '"launches_model_inference": False'),
+    ("approval requirement handoff summary", '"approval_requirements"'),
+    ("minimum budget handoff column", "Minimum approved budget USD"),
     ("handoff JSON write", 'write_json(paths["handoff_json"], handoff)'),
 )
 EXTERNAL_ACTION_REQUIREMENTS = (
