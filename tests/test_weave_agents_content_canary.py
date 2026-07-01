@@ -40,6 +40,7 @@ def make_args(tmp_path, **overrides):
         "nemoclaw_bin": "nemoclaw",
         "nemoclaw_sandbox": None,
         "nemoclaw_workdir": "/sandbox",
+        "nemoclaw_openclaw_config_path": "/sandbox/.openclaw/openclaw.json",
         "allow_failed_preflight": False,
         "verify_attempts": 8,
         "verify_sleep_seconds": 0.0,
@@ -147,6 +148,19 @@ def test_prepare_only_writes_plan_without_paid_execution(tmp_path):
     assert plan["verification_requirements"]["expected_request_models"] == [
         "gpt-5.4-mini-2026-03-17"
     ]
+    assert plan["nemoclaw_openclaw_config_preflight"] == {
+        "required_before_openclaw": False,
+        "ran": False,
+        "ok": True,
+        "model": "gpt-5.4-mini-2026-03-17",
+        "provider": "",
+        "model_id": "",
+        "config_path": "/sandbox/.openclaw/openclaw.json",
+        "command": [],
+        "returncode": None,
+        "checks": [],
+        "errors": [],
+    }
     assert plan["verification_requirements"]["require_tool_content"] is True
     assert Path(plan["prompt_file"]).exists()
     assert Path(plan["expected_sidecar"]).name == "openclaw_result.json"
@@ -222,6 +236,8 @@ def test_execute_requires_external_action_approval_before_openclaw(tmp_path, cap
         "gpt-4.1-nano-2025-04-14",
     ]
     assert plan["external_action_approval"]["valid"] is False
+    assert plan["nemoclaw_openclaw_config_preflight"]["required_before_openclaw"] is True
+    assert plan["nemoclaw_openclaw_config_preflight"]["ran"] is False
     assert not (tmp_path / "plans" / "weave_agents_content_canary_TEST_CANARY_APPROVAL.command_result.json").exists()
 
 
@@ -322,6 +338,125 @@ def test_run_command_routes_through_nemoclaw_when_sandbox_is_set(tmp_path):
     assert "--nemoclaw-workdir" in command
     assert "/sandbox" in command
     assert module.build_nemoclaw_metadata(args) == expected_nemoclaw_metadata()
+
+
+def test_nemoclaw_openclaw_config_preflight_accepts_expected_model(tmp_path, monkeypatch):
+    module = load_module()
+    args = make_args(
+        tmp_path,
+        execute=True,
+        model="openai-direct/test-mini",
+        nemoclaw_sandbox="nejumi-taiwan",
+    )
+
+    def fake_run_subprocess(command, *, cwd):
+        assert command[:4] == ["nemoclaw", "sandbox", "exec", "nejumi-taiwan"]
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                {
+                    "models": {
+                        "providers": {
+                            "openai-direct": {
+                                "models": [{"id": "test-mini"}],
+                            }
+                        }
+                    },
+                    "plugins": {"entries": {"weave": {"enabled": True}}},
+                }
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(module, "run_subprocess", fake_run_subprocess)
+
+    record = module.build_nemoclaw_openclaw_config_preflight(args, run=True)
+
+    assert record["ok"] is True
+    assert record["ran"] is True
+    assert record["returncode"] == 0
+    assert record["model"] == "openai-direct/test-mini"
+    assert record["provider"] == "openai-direct"
+    assert record["model_id"] == "test-mini"
+    assert record["errors"] == []
+    assert all(check["ok"] for check in record["checks"])
+
+
+def test_execute_blocks_before_openclaw_when_nemoclaw_openclaw_config_is_stale(
+    tmp_path,
+    capsys,
+    monkeypatch,
+):
+    module = load_module()
+    report = tmp_path / "external_action_approval.verify.json"
+    source_packet = write_external_action_approval_report(report)
+
+    def fake_run_subprocess(command, *, cwd):
+        assert command[:4] == ["nemoclaw", "sandbox", "exec", "nejumi-taiwan"]
+        assert command[-2:] == ["cat", "/sandbox/.openclaw/openclaw.json"]
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                {
+                    "models": {
+                        "providers": {
+                            "openai-direct": {
+                                "models": [{"id": "other-model"}],
+                            }
+                        }
+                    },
+                    "plugins": {"entries": {"weave": {"enabled": True}}},
+                }
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(module, "run_subprocess", fake_run_subprocess)
+
+    try:
+        module.main(
+            [
+                "--execute",
+                "--model",
+                "openai-direct/gpt-4.1-nano-2025-04-14",
+                "--nemoclaw-sandbox",
+                "nejumi-taiwan",
+                "--canary-id",
+                "TEST_CANARY_STALE_CONFIG",
+                "--output-dir",
+                str(tmp_path),
+                "--verify-sleep-seconds",
+                "0",
+                "--external-action-approval-source-packet-json",
+                str(source_packet),
+                "--external-action-approval-report-json",
+                str(report),
+            ]
+        )
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("main should block before OpenClaw when sandbox config is stale")
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["executed"] is False
+    assert payload["blocked_before_openclaw"] is True
+    preflight = payload["nemoclaw_openclaw_config_preflight"]
+    assert preflight["ok"] is False
+    assert preflight["ran"] is True
+    assert any(
+        check["name"]
+        == "NeMoClaw sandbox OpenClaw model is registered: openai-direct/gpt-4.1-nano-2025-04-14"
+        and check["ok"] is False
+        for check in preflight["checks"]
+    )
+    assert not (
+        tmp_path
+        / "plans"
+        / "weave_agents_content_canary_TEST_CANARY_STALE_CONFIG.command_result.json"
+    ).exists()
 
 
 def test_classify_openclaw_failure_detects_provider_quota(tmp_path):

@@ -466,6 +466,10 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("Agents diagnostic artifact existence proof", '"agents_diagnostic_json_exists"'),
             ("NeMoClaw content canary proof", '"nemoclaw"'),
             ("NeMoClaw sandbox proof", '"sandbox"'),
+            (
+                "NeMoClaw sandbox OpenClaw content-canary preflight proof",
+                '"nemoclaw_openclaw_config_preflight"',
+            ),
             ("Content canary expected request-model proof", '"expected_request_models"'),
             ("Content canary observed request-model proof", '"observed_request_models"'),
             ("Content canary request-model proven flag", '"request_model_proven"'),
@@ -12486,6 +12490,47 @@ def validate_weave_content_canary_gate_payload(
         for field in ("sandbox", "bin", "workdir"):
             if not isinstance(nemoclaw.get(field), str) or not nemoclaw.get(field):
                 errors.append(f"{label} nemoclaw.{field} is missing for a passed gate")
+    preflight = payload.get("nemoclaw_openclaw_config_preflight")
+    if not isinstance(preflight, dict):
+        errors.append(
+            f"{label} nemoclaw_openclaw_config_preflight is not an object for a passed gate"
+        )
+    else:
+        if preflight.get("required_before_openclaw") is not True:
+            errors.append(
+                f"{label} nemoclaw_openclaw_config_preflight.required_before_openclaw is not true"
+            )
+        if preflight.get("ran") is not True:
+            errors.append(f"{label} nemoclaw_openclaw_config_preflight.ran is not true")
+        if preflight.get("ok") is not True:
+            errors.append(f"{label} nemoclaw_openclaw_config_preflight.ok is not true")
+        if preflight.get("returncode") != 0:
+            errors.append(f"{label} nemoclaw_openclaw_config_preflight.returncode is not 0")
+        if preflight.get("model") != payload.get("model"):
+            errors.append(
+                f"{label} nemoclaw_openclaw_config_preflight.model does not match gate model"
+            )
+        if not isinstance(preflight.get("config_path"), str) or not preflight.get("config_path"):
+            errors.append(
+                f"{label} nemoclaw_openclaw_config_preflight.config_path is missing"
+            )
+        preflight_errors = preflight.get("errors")
+        if not isinstance(preflight_errors, list):
+            errors.append(f"{label} nemoclaw_openclaw_config_preflight.errors is not a list")
+        elif preflight_errors:
+            errors.append(f"{label} nemoclaw_openclaw_config_preflight.errors is not empty")
+        preflight_checks = preflight.get("checks")
+        if not isinstance(preflight_checks, list) or not preflight_checks:
+            errors.append(
+                f"{label} nemoclaw_openclaw_config_preflight.checks is not a non-empty list"
+            )
+        elif any(
+            not isinstance(check, dict) or check.get("ok") is not True
+            for check in preflight_checks
+        ):
+            errors.append(
+                f"{label} nemoclaw_openclaw_config_preflight.checks are not all ok"
+            )
     issues = payload.get("weave_verifier_validation_issues")
     if not isinstance(issues, list):
         errors.append(f"{label} weave_verifier_validation_issues is not a list")

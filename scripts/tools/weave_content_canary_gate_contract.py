@@ -111,6 +111,34 @@ def weave_content_canary_gate_contract_issues(payload: dict[str, Any]) -> list[s
             if not nonempty_string(nemoclaw.get(field)):
                 issues.append(f"nemoclaw.{field} must be a non-empty string")
 
+    preflight = payload.get("nemoclaw_openclaw_config_preflight")
+    if not isinstance(preflight, dict):
+        issues.append("nemoclaw_openclaw_config_preflight must be an object")
+    else:
+        if preflight.get("required_before_openclaw") is not True:
+            issues.append(
+                "nemoclaw_openclaw_config_preflight.required_before_openclaw must be true"
+            )
+        if preflight.get("ran") is not True:
+            issues.append("nemoclaw_openclaw_config_preflight.ran must be true")
+        if preflight.get("ok") is not True:
+            issues.append("nemoclaw_openclaw_config_preflight.ok must be true")
+        if preflight.get("returncode") != 0:
+            issues.append("nemoclaw_openclaw_config_preflight.returncode must be 0")
+        if preflight.get("model") != payload.get("model"):
+            issues.append("nemoclaw_openclaw_config_preflight.model must match model")
+        if not nonempty_string(preflight.get("config_path")):
+            issues.append(
+                "nemoclaw_openclaw_config_preflight.config_path must be a non-empty string"
+            )
+        if not empty_list(preflight.get("errors")):
+            issues.append("nemoclaw_openclaw_config_preflight.errors must be an empty list")
+        checks = preflight.get("checks")
+        if not isinstance(checks, list) or not checks:
+            issues.append("nemoclaw_openclaw_config_preflight.checks must be a non-empty list")
+        elif any(not isinstance(check, dict) or check.get("ok") is not True for check in checks):
+            issues.append("nemoclaw_openclaw_config_preflight.checks must all have ok=true")
+
     health = payload.get("content_capture_health")
     if not isinstance(health, dict):
         issues.append("content_capture_health must be an object")

@@ -3795,6 +3795,57 @@ def build_bundle_with_weave_content_canary(tmp_path):
                 "sandbox": "nejumi-taiwan",
                 "workdir": "/sandbox",
             },
+            "nemoclaw_openclaw_config_preflight": {
+                "required_before_openclaw": True,
+                "ran": True,
+                "ok": True,
+                "model": "openai-direct/test-mini",
+                "provider": "openai-direct",
+                "model_id": "test-mini",
+                "config_path": "/sandbox/.openclaw/openclaw.json",
+                "command": [
+                    "nemoclaw",
+                    "sandbox",
+                    "exec",
+                    "nejumi-taiwan",
+                    "--no-tty",
+                    "--timeout",
+                    "30",
+                    "--",
+                    "cat",
+                    "/sandbox/.openclaw/openclaw.json",
+                ],
+                "returncode": 0,
+                "checks": [
+                    {
+                        "name": (
+                            "NeMoClaw sandbox OpenClaw config is readable: "
+                            "/sandbox/.openclaw/openclaw.json"
+                        ),
+                        "ok": True,
+                        "detail": "bytes=1234",
+                    },
+                    {
+                        "name": "NeMoClaw sandbox OpenClaw openai-direct provider exists",
+                        "ok": True,
+                        "detail": "present",
+                    },
+                    {
+                        "name": (
+                            "NeMoClaw sandbox OpenClaw model is registered: "
+                            "openai-direct/test-mini"
+                        ),
+                        "ok": True,
+                        "detail": '["test-mini"]',
+                    },
+                    {
+                        "name": "NeMoClaw sandbox OpenClaw Weave plugin is enabled",
+                        "ok": True,
+                        "detail": "True",
+                    },
+                ],
+                "errors": [],
+            },
             "agent_name": "nejumi-taiwan-openclaw",
             "entity": "llm-leaderboard",
             "project": "tc-leaderboard",
@@ -3979,6 +4030,57 @@ def build_bundle_with_weave_content_canary(tmp_path):
                 "sandbox": "nejumi-taiwan",
                 "workdir": "/sandbox",
             },
+            "nemoclaw_openclaw_config_preflight": {
+                "required_before_openclaw": True,
+                "ran": True,
+                "ok": True,
+                "model": "openai-direct/test-mini",
+                "provider": "openai-direct",
+                "model_id": "test-mini",
+                "config_path": "/sandbox/.openclaw/openclaw.json",
+                "command": [
+                    "nemoclaw",
+                    "sandbox",
+                    "exec",
+                    "nejumi-taiwan",
+                    "--no-tty",
+                    "--timeout",
+                    "30",
+                    "--",
+                    "cat",
+                    "/sandbox/.openclaw/openclaw.json",
+                ],
+                "returncode": 0,
+                "checks": [
+                    {
+                        "name": (
+                            "NeMoClaw sandbox OpenClaw config is readable: "
+                            "/sandbox/.openclaw/openclaw.json"
+                        ),
+                        "ok": True,
+                        "detail": "bytes=1234",
+                    },
+                    {
+                        "name": "NeMoClaw sandbox OpenClaw openai-direct provider exists",
+                        "ok": True,
+                        "detail": "present",
+                    },
+                    {
+                        "name": (
+                            "NeMoClaw sandbox OpenClaw model is registered: "
+                            "openai-direct/test-mini"
+                        ),
+                        "ok": True,
+                        "detail": '["test-mini"]',
+                    },
+                    {
+                        "name": "NeMoClaw sandbox OpenClaw Weave plugin is enabled",
+                        "ok": True,
+                        "detail": "True",
+                    },
+                ],
+                "errors": [],
+            },
             "weave_verifier_ok": True,
             "weave_verifier_schema_version": 1,
             "weave_verifier_latest_trace_id": "trace-1",
@@ -4092,6 +4194,75 @@ def test_verify_release_evidence_bundle_accepts_weave_content_canary_proof(tmp_p
         "gate:weave_content_canary:evidence:agents_diagnostic_json"
         in record.get("roles", [])
         for record in sources.values()
+    )
+
+
+def test_verify_release_evidence_bundle_rejects_weave_content_canary_without_nemoclaw_openclaw_config_preflight(
+    tmp_path,
+):
+    bundle, gate, _verifier = build_bundle_with_weave_content_canary(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    gate_record = next(
+        record for record in manifest["files"] if record["source_path"] == str(gate)
+    )
+    bundled_gate = bundle / gate_record["bundle_path"]
+    payload = json.loads(bundled_gate.read_text(encoding="utf-8"))
+    payload.pop("nemoclaw_openclaw_config_preflight")
+    bundled_gate.write_text(json.dumps(payload), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, gate_record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "nemoclaw_openclaw_config_preflight is not an object" in error
+        for error in payload["errors"]
+    )
+
+
+def test_verify_release_evidence_bundle_rejects_weave_content_canary_failed_nemoclaw_openclaw_config_preflight(
+    tmp_path,
+):
+    bundle, gate, _verifier = build_bundle_with_weave_content_canary(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    gate_record = next(
+        record for record in manifest["files"] if record["source_path"] == str(gate)
+    )
+    bundled_gate = bundle / gate_record["bundle_path"]
+    payload = json.loads(bundled_gate.read_text(encoding="utf-8"))
+    payload["nemoclaw_openclaw_config_preflight"]["ok"] = False
+    payload["nemoclaw_openclaw_config_preflight"]["errors"] = [
+        "NeMoClaw sandbox OpenClaw model is registered: openai-direct/test-mini",
+    ]
+    bundled_gate.write_text(json.dumps(payload), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, gate_record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "nemoclaw_openclaw_config_preflight.ok is not true" in error
+        for error in payload["errors"]
+    )
+    assert any(
+        "nemoclaw_openclaw_config_preflight.errors is not empty" in error
+        for error in payload["errors"]
     )
 
 

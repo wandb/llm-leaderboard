@@ -26,6 +26,7 @@ DEFAULT_AGENT_NAME = "nejumi-taiwan-openclaw"
 DEFAULT_ENTITY = "llm-leaderboard"
 DEFAULT_PROJECT = "tc-leaderboard"
 DEFAULT_OUTPUT_DIR = Path("outputs/weave_agents_content_canary")
+DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 NETWORK_DENY_PATTERNS = ("curl", "wget", "requests", "urllib", "httpx", r"https?://")
 CANARY_GATE_RUNNER = REPO_ROOT / "scripts" / "tools" / "verify_weave_agents_content_canary_result.py"
 
@@ -67,6 +68,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--nemoclaw-bin", default="nemoclaw")
     parser.add_argument("--nemoclaw-sandbox")
     parser.add_argument("--nemoclaw-workdir", default="/sandbox")
+    parser.add_argument(
+        "--nemoclaw-openclaw-config-path",
+        default=DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH,
+        help=(
+            "Sandbox-local OpenClaw config path checked immediately before live "
+            "NeMoClaw canary execution."
+        ),
+    )
     parser.add_argument("--allow-failed-preflight", action="store_true")
     parser.add_argument("--verify-attempts", type=int, default=8)
     parser.add_argument("--verify-sleep-seconds", type=float, default=10.0)
@@ -367,6 +376,133 @@ def build_nemoclaw_metadata(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def openclaw_provider_and_model(openclaw_model: str | None) -> tuple[str, str]:
+    provider, sep, model_id = str(openclaw_model or "").strip().partition("/")
+    return provider, model_id if sep else ""
+
+
+def _preflight_check(name: str, ok: bool, detail: str) -> dict[str, Any]:
+    return {"name": name, "ok": bool(ok), "detail": detail}
+
+
+def build_nemoclaw_openclaw_config_preflight(
+    args: argparse.Namespace,
+    *,
+    run: bool,
+) -> dict[str, Any]:
+    required = bool(args.execute and args.nemoclaw_sandbox)
+    config_path = str(args.nemoclaw_openclaw_config_path or "").strip()
+    record: dict[str, Any] = {
+        "required_before_openclaw": required,
+        "ran": False,
+        "ok": not required,
+        "model": args.model or "",
+        "provider": "",
+        "model_id": "",
+        "config_path": config_path,
+        "command": [],
+        "returncode": None,
+        "checks": [],
+        "errors": [],
+    }
+    if not required:
+        return record
+
+    provider_id, model_id = openclaw_provider_and_model(args.model)
+    record["provider"] = provider_id
+    record["model_id"] = model_id
+    if not provider_id or not model_id:
+        record["errors"].append("model must be provider/model for NeMoClaw OpenClaw config preflight")
+    if not config_path:
+        record["errors"].append("nemoclaw OpenClaw config path is required")
+    if record["errors"] or not run:
+        record["ok"] = False
+        return record
+
+    command = [
+        args.nemoclaw_bin,
+        "sandbox",
+        "exec",
+        args.nemoclaw_sandbox,
+        "--no-tty",
+        "--timeout",
+        "30",
+        "--",
+        "cat",
+        config_path,
+    ]
+    record["command"] = command
+    completed = run_subprocess(command, cwd=REPO_ROOT)
+    record["ran"] = True
+    record["returncode"] = completed.returncode
+    readable = completed.returncode == 0
+    record["checks"].append(
+        _preflight_check(
+            f"NeMoClaw sandbox OpenClaw config is readable: {config_path}",
+            readable,
+            f"bytes={len(completed.stdout.encode('utf-8'))}"
+            if readable
+            else (completed.stderr or completed.stdout)[-1000:],
+        )
+    )
+    if not readable:
+        record["errors"].append("NeMoClaw sandbox OpenClaw config is not readable")
+        record["ok"] = False
+        return record
+
+    try:
+        data = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        record["checks"].append(
+            _preflight_check(
+                f"NeMoClaw sandbox OpenClaw config parses: {config_path}",
+                False,
+                str(exc),
+            )
+        )
+        record["errors"].append("NeMoClaw sandbox OpenClaw config is not valid JSON")
+        record["ok"] = False
+        return record
+    if not isinstance(data, dict):
+        record["checks"].append(
+            _preflight_check(
+                f"NeMoClaw sandbox OpenClaw config parses: {config_path}",
+                False,
+                "JSON output is not an object",
+            )
+        )
+        record["errors"].append("NeMoClaw sandbox OpenClaw config JSON is not an object")
+        record["ok"] = False
+        return record
+
+    provider = data.get("models", {}).get("providers", {}).get(provider_id, {})
+    models = provider.get("models") if isinstance(provider, dict) else None
+    model_ids = [model.get("id") for model in models or [] if isinstance(model, dict)]
+    entries = data.get("plugins", {}).get("entries", {})
+    weave = entries.get("weave") if isinstance(entries, dict) else {}
+    checks = [
+        _preflight_check(
+            f"NeMoClaw sandbox OpenClaw {provider_id} provider exists",
+            bool(provider),
+            "present" if provider else "missing",
+        ),
+        _preflight_check(
+            f"NeMoClaw sandbox OpenClaw model is registered: {args.model}",
+            model_id in model_ids,
+            json.dumps(model_ids, ensure_ascii=False),
+        ),
+        _preflight_check(
+            "NeMoClaw sandbox OpenClaw Weave plugin is enabled",
+            bool(weave and weave.get("enabled")),
+            str(weave.get("enabled") if isinstance(weave, dict) else None),
+        ),
+    ]
+    record["checks"].extend(checks)
+    record["errors"] = [check["name"] for check in record["checks"] if not check["ok"]]
+    record["ok"] = not record["errors"]
+    return record
+
+
 def request_model_aliases(model_id: str | None) -> list[str]:
     value = str(model_id or "").strip()
     if not value:
@@ -493,6 +629,7 @@ def write_canary_files(
     run_command: list[str],
     *,
     external_action_approval: dict[str, Any],
+    nemoclaw_openclaw_config_preflight: dict[str, Any],
 ) -> dict[str, Any]:
     paths.prompt_file.parent.mkdir(parents=True, exist_ok=True)
     paths.plan_file.parent.mkdir(parents=True, exist_ok=True)
@@ -529,6 +666,7 @@ def write_canary_files(
         "entity": args.entity,
         "project": args.project,
         "nemoclaw": build_nemoclaw_metadata(args),
+        "nemoclaw_openclaw_config_preflight": nemoclaw_openclaw_config_preflight,
         "external_action_approval": external_action_approval,
     }
     paths.plan_file.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -702,11 +840,16 @@ def main(argv: list[str] | None = None) -> None:
         required_before_external_action=bool(args.execute),
         expected_source_packet_path=args.external_action_approval_source_packet_json,
     )
+    nemoclaw_openclaw_config_preflight = build_nemoclaw_openclaw_config_preflight(
+        args,
+        run=False,
+    )
     plan = write_canary_files(
         args,
         paths,
         run_command,
         external_action_approval=external_action_approval,
+        nemoclaw_openclaw_config_preflight=nemoclaw_openclaw_config_preflight,
     )
 
     if not args.execute:
@@ -744,6 +887,28 @@ def main(argv: list[str] | None = None) -> None:
                 }.items()
                 if not value
             ],
+        }
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        raise SystemExit(2)
+
+    nemoclaw_openclaw_config_preflight = build_nemoclaw_openclaw_config_preflight(
+        args,
+        run=True,
+    )
+    plan = write_canary_files(
+        args,
+        paths,
+        run_command,
+        external_action_approval=external_action_approval,
+        nemoclaw_openclaw_config_preflight=nemoclaw_openclaw_config_preflight,
+    )
+    if not nemoclaw_openclaw_config_preflight.get("ok"):
+        result = {
+            "ok": False,
+            "executed": False,
+            "blocked_before_openclaw": True,
+            "plan_file": str(paths.plan_file),
+            "nemoclaw_openclaw_config_preflight": nemoclaw_openclaw_config_preflight,
         }
         print(json.dumps(result, ensure_ascii=False, indent=2))
         raise SystemExit(2)

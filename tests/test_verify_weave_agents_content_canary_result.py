@@ -57,6 +57,59 @@ def write_plan(tmp_path, *, will_call_paid_model_api=False, task_id="weave_agent
                     "sandbox": "nejumi-taiwan",
                     "workdir": "/sandbox",
                 },
+                "nemoclaw_openclaw_config_preflight": {
+                    "required_before_openclaw": bool(will_call_paid_model_api),
+                    "ran": bool(will_call_paid_model_api),
+                    "ok": True,
+                    "model": "openai-direct/test-mini",
+                    "provider": "openai-direct",
+                    "model_id": "test-mini",
+                    "config_path": "/sandbox/.openclaw/openclaw.json",
+                    "command": [
+                        "nemoclaw",
+                        "sandbox",
+                        "exec",
+                        "nejumi-taiwan",
+                        "--no-tty",
+                        "--timeout",
+                        "30",
+                        "--",
+                        "cat",
+                        "/sandbox/.openclaw/openclaw.json",
+                    ],
+                    "returncode": 0 if will_call_paid_model_api else None,
+                    "checks": [
+                        {
+                            "name": (
+                                "NeMoClaw sandbox OpenClaw config is readable: "
+                                "/sandbox/.openclaw/openclaw.json"
+                            ),
+                            "ok": True,
+                            "detail": "bytes=1234",
+                        },
+                        {
+                            "name": "NeMoClaw sandbox OpenClaw openai-direct provider exists",
+                            "ok": True,
+                            "detail": "present",
+                        },
+                        {
+                            "name": (
+                                "NeMoClaw sandbox OpenClaw model is registered: "
+                                "openai-direct/test-mini"
+                            ),
+                            "ok": True,
+                            "detail": '["test-mini"]',
+                        },
+                        {
+                            "name": "NeMoClaw sandbox OpenClaw Weave plugin is enabled",
+                            "ok": True,
+                            "detail": "True",
+                        },
+                    ]
+                    if will_call_paid_model_api
+                    else [],
+                    "errors": [],
+                },
             }
         ),
         encoding="utf-8",
@@ -382,6 +435,7 @@ def test_successful_verifier_passes_gate(tmp_path):
     assert summary["observed_request_models"] == ["test-mini"]
     assert summary["span_request_models"] == ["test-mini"]
     assert summary["request_model_proven"] is True
+    assert summary["nemoclaw_openclaw_config_preflight"]["ok"] is True
 
 
 def test_successful_verifier_summary_satisfies_shared_gate_contract(tmp_path):
@@ -396,6 +450,49 @@ def test_successful_verifier_summary_satisfies_shared_gate_contract(tmp_path):
     summary = module.build_gate_summary(plan_file=plan_file)
 
     assert contract_module.weave_content_canary_gate_contract_issues(summary) == []
+
+
+def test_successful_verifier_without_nemoclaw_openclaw_config_preflight_does_not_pass_gate(
+    tmp_path,
+):
+    module = load_module()
+    task_id = "weave_agents_content_canary_PREFLIGHT_MISSING"
+    plan_file = write_plan(tmp_path, will_call_paid_model_api=True, task_id=task_id)
+    plan = json.loads(plan_file.read_text(encoding="utf-8"))
+    plan.pop("nemoclaw_openclaw_config_preflight")
+    plan_file.write_text(json.dumps(plan), encoding="utf-8")
+    write_command_result(plan_file, task_id, {"ok": True, "returncode": 0})
+    write_verifier(tmp_path, task_id, passing_verifier_payload(task_id))
+    write_agents_diagnostic(tmp_path, task_id, passing_agents_diagnostic_payload(task_id))
+
+    summary = module.build_gate_summary(plan_file=plan_file)
+
+    assert summary["ok"] is False
+    assert summary["status"] == "nemoclaw_config_preflight_invalid"
+    assert "nemoclaw_openclaw_config_preflight must be an object" in summary["detail"]
+
+
+def test_successful_verifier_with_failed_nemoclaw_openclaw_config_preflight_does_not_pass_gate(
+    tmp_path,
+):
+    module = load_module()
+    task_id = "weave_agents_content_canary_PREFLIGHT_FAILED"
+    plan_file = write_plan(tmp_path, will_call_paid_model_api=True, task_id=task_id)
+    plan = json.loads(plan_file.read_text(encoding="utf-8"))
+    plan["nemoclaw_openclaw_config_preflight"]["ok"] = False
+    plan["nemoclaw_openclaw_config_preflight"]["errors"] = [
+        "NeMoClaw sandbox OpenClaw model is registered: openai-direct/test-mini"
+    ]
+    plan_file.write_text(json.dumps(plan), encoding="utf-8")
+    write_command_result(plan_file, task_id, {"ok": True, "returncode": 0})
+    write_verifier(tmp_path, task_id, passing_verifier_payload(task_id))
+    write_agents_diagnostic(tmp_path, task_id, passing_agents_diagnostic_payload(task_id))
+
+    summary = module.build_gate_summary(plan_file=plan_file)
+
+    assert summary["ok"] is False
+    assert summary["status"] == "nemoclaw_config_preflight_invalid"
+    assert "nemoclaw_openclaw_config_preflight.ok must be true" in summary["detail"]
 
 
 def test_successful_verifier_summary_requires_nemoclaw_metadata(tmp_path):

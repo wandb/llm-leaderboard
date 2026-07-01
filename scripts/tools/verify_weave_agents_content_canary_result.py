@@ -449,6 +449,62 @@ def request_model_validation_issues(
     return issues
 
 
+def nemoclaw_openclaw_config_preflight_validation_issues(
+    plan: dict[str, Any],
+) -> list[str]:
+    if plan.get("will_call_paid_model_api") is not True:
+        return []
+    preflight = plan.get("nemoclaw_openclaw_config_preflight")
+    if not isinstance(preflight, dict):
+        return ["nemoclaw_openclaw_config_preflight must be an object"]
+    issues: list[str] = []
+    if preflight.get("required_before_openclaw") is not True:
+        issues.append("nemoclaw_openclaw_config_preflight.required_before_openclaw must be true")
+    if preflight.get("ran") is not True:
+        issues.append("nemoclaw_openclaw_config_preflight.ran must be true")
+    if preflight.get("ok") is not True:
+        issues.append("nemoclaw_openclaw_config_preflight.ok must be true")
+    if preflight.get("returncode") != 0:
+        issues.append("nemoclaw_openclaw_config_preflight.returncode must be 0")
+    model = plan.get("model")
+    if isinstance(model, str) and model:
+        if preflight.get("model") != model:
+            issues.append("nemoclaw_openclaw_config_preflight.model must match plan model")
+    else:
+        issues.append("plan.model must be a non-empty string")
+    config_path = preflight.get("config_path")
+    if not isinstance(config_path, str) or not config_path:
+        issues.append("nemoclaw_openclaw_config_preflight.config_path must be a non-empty string")
+    checks = preflight.get("checks")
+    if not isinstance(checks, list):
+        issues.append("nemoclaw_openclaw_config_preflight.checks must be a list")
+        return issues
+    checks_by_name = {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+    provider = preflight.get("provider")
+    required_names = [
+        f"NeMoClaw sandbox OpenClaw config is readable: {config_path}",
+        f"NeMoClaw sandbox OpenClaw {provider} provider exists",
+        f"NeMoClaw sandbox OpenClaw model is registered: {model}",
+        "NeMoClaw sandbox OpenClaw Weave plugin is enabled",
+    ]
+    for name in required_names:
+        check = checks_by_name.get(name)
+        if not isinstance(check, dict):
+            issues.append(f"nemoclaw_openclaw_config_preflight missing check: {name}")
+        elif check.get("ok") is not True:
+            issues.append(f"nemoclaw_openclaw_config_preflight check is not ok: {name}")
+    errors = preflight.get("errors")
+    if not isinstance(errors, list):
+        issues.append("nemoclaw_openclaw_config_preflight.errors must be a list")
+    elif errors:
+        issues.append("nemoclaw_openclaw_config_preflight.errors must be empty")
+    return issues
+
+
 def passing_verifier_validation_issues(
     verifier: dict[str, Any] | None,
     *,
@@ -886,6 +942,13 @@ def build_gate_summary(
             if diagnostic_issues:
                 status = "agents_diagnostic_invalid"
                 detail = "; ".join(diagnostic_issues)
+        if status == "passed":
+            nemoclaw_preflight_issues = (
+                nemoclaw_openclaw_config_preflight_validation_issues(plan)
+            )
+            if nemoclaw_preflight_issues:
+                status = "nemoclaw_config_preflight_invalid"
+                detail = "; ".join(nemoclaw_preflight_issues)
 
     ok = status == "passed"
     verifier_validation_issues = (
@@ -924,6 +987,11 @@ def build_gate_summary(
         "project": plan.get("project"),
         "entity": plan.get("entity"),
         "nemoclaw": plan.get("nemoclaw") if isinstance(plan.get("nemoclaw"), dict) else {},
+        "nemoclaw_openclaw_config_preflight": (
+            plan.get("nemoclaw_openclaw_config_preflight")
+            if isinstance(plan.get("nemoclaw_openclaw_config_preflight"), dict)
+            else {}
+        ),
         "expected_request_models": expected_request_models,
         "observed_request_models": request_model["observed_request_models"],
         "span_request_models": request_model["span_request_models"],
