@@ -80,6 +80,7 @@ OPERATOR_EXECUTION_PLAN_RENDERER_SCRIPT = (
 WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT = (
     "scripts/tools/weave_content_canary_gate_contract.py"
 )
+NEMOCLAW_INSTALL_SCRIPT = "scripts/setup/install_nemoclaw.sh"
 NEMOCLAW_CANARY_READINESS_SCRIPT = "scripts/tools/check_taiwan_canary_readiness.py"
 NEMOCLAW_ADOPTION_SCRIPT = "scripts/tools/check_taiwan_nemoclaw_adoption.py"
 NEMOCLAW_POST_INSTALL_SCRIPT = "scripts/setup/verify_nemoclaw_post_install.py"
@@ -104,6 +105,41 @@ NEMOCLAW_AGENTIC_CONFIG_REQUIRED_DENIED_ARGUMENT_PATTERNS = {
     "https?://",
 }
 NEMOCLAW_AGENTIC_CONFIG_REQUIRED_ALLOWED_LOCAL_TOOLS = {"exec"}
+NEMOCLAW_INSTALL_SCRIPT_SOURCE_TOKENS = (
+    ("check-only mode", "--check-only"),
+    ("third-party acceptance flag", "--yes-i-accept-third-party-software"),
+    ("installer review JSON option", "--installer-review-json"),
+    ("installer SHA option", "--installer-sha256"),
+    ("installer review validator", "validate_installer_review_json"),
+    ("installer review ok check", "ok must be true"),
+    ("installer review status check", "status must be reviewed"),
+    ("installer SHA comparison", "sha256 does not match --installer-sha256"),
+    ("installer URL comparison", "installer_url does not match install URL"),
+    ("installer lock verification", "lock_verified must be true"),
+    (
+        "no external action in installer review proof",
+        '"will_execute_installer",',
+    ),
+    (
+        "explicit install acceptance rejection",
+        "Refusing to install NemoClaw without explicit third-party software acceptance.",
+    ),
+    (
+        "explicit onboard acceptance rejection",
+        "Refusing to onboard NemoClaw without explicit third-party software acceptance.",
+    ),
+    (
+        "installer digest computation",
+        "hashlib.sha256()",
+    ),
+    (
+        "verified installer execution",
+        'bash "$installer_path" --non-interactive --yes-i-accept-third-party-software',
+    ),
+    ("operation log path function", "operation_log_path()"),
+    ("operation results JSON", '"operation_results"'),
+    ("setup plan operator sequence", '"operator_sequence"'),
+)
 NEMOCLAW_CANARY_READINESS_SCRIPT_SOURCE_TOKENS = (
     ("remote lookup deny tools constant", "AGENTIC_REQUIRED_DENIED_TOOLS"),
     ("local OpenClaw exec allow constant", "AGENTIC_REQUIRED_ALLOWED_LOCAL_TOOLS"),
@@ -4924,6 +4960,70 @@ def validate_agentic_runner_script_evidence(
                     "agentic runner script missing source contract "
                     f"{label}: {script_path}: {token}"
                 )
+    return errors
+
+
+def validate_nemoclaw_install_script_source(
+    *,
+    bundle_dir: Path,
+    manifest: dict[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    records = file_records_by_source(manifest)
+    record = records.get(source_path_key(NEMOCLAW_INSTALL_SCRIPT))
+    current_gate = manifest.get("current_gate")
+    runner = (
+        current_gate.get("runner_evidence")
+        if isinstance(current_gate, dict)
+        and isinstance(current_gate.get("runner_evidence"), dict)
+        else {}
+    )
+    has_setup_evidence = isinstance(runner.get("nemoclaw_check"), dict) and bool(
+        runner.get("nemoclaw_check")
+    )
+    has_post_install_evidence = isinstance(
+        runner.get("nemoclaw_post_install_verification"), dict
+    ) and bool(runner.get("nemoclaw_post_install_verification"))
+    if not isinstance(record, dict):
+        if has_setup_evidence or has_post_install_evidence:
+            errors.append(
+                "NeMoClaw install/setup script is not bundled: "
+                f"{NEMOCLAW_INSTALL_SCRIPT}"
+            )
+        return errors
+    roles = record.get("roles")
+    if not isinstance(roles, list) or not (
+        "operator_plan:command_script" in roles
+        or "current_gate:remediation_plan:command_script" in roles
+        or "nemoclaw_setup_check:script" in roles
+        or "nemoclaw_post_install_verification:setup_script" in roles
+    ):
+        errors.append(
+            "NeMoClaw install/setup script missing required role: "
+            f"{NEMOCLAW_INSTALL_SCRIPT}"
+        )
+    bundle_path = record.get("bundle_path")
+    if not isinstance(bundle_path, str) or not bundle_path:
+        errors.append(
+            "NeMoClaw install/setup script missing bundle_path: "
+            f"{NEMOCLAW_INSTALL_SCRIPT}"
+        )
+        return errors
+    script_file = bundle_dir / bundle_path
+    try:
+        text = script_file.read_text(encoding="utf-8")
+    except OSError as exc:
+        errors.append(
+            "NeMoClaw install/setup script is not readable: "
+            f"{NEMOCLAW_INSTALL_SCRIPT}: {exc}"
+        )
+        return errors
+    for label, token in NEMOCLAW_INSTALL_SCRIPT_SOURCE_TOKENS:
+        if token not in text:
+            errors.append(
+                "NeMoClaw install/setup script missing source contract "
+                f"{label}: {NEMOCLAW_INSTALL_SCRIPT}: {token}"
+            )
     return errors
 
 
@@ -15071,6 +15171,7 @@ def verify_bundle(
     errors.extend(validate_current_gate_remediation_command_scripts(manifest=manifest))
     errors.extend(validate_existing_results_relog_command_scripts(manifest=manifest))
     errors.extend(validate_agentic_runner_script_evidence(bundle_dir=bundle_dir, manifest=manifest))
+    errors.extend(validate_nemoclaw_install_script_source(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_nemoclaw_canary_readiness_script_source(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_nemoclaw_adoption_script_source(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_nemoclaw_post_install_script_source(bundle_dir=bundle_dir, manifest=manifest))

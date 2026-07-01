@@ -38,6 +38,7 @@ EXTERNAL_ACTION_APPROVAL_TEMPLATE_RENDERER_SCRIPT = (
 WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT = (
     "scripts/tools/weave_content_canary_gate_contract.py"
 )
+NEMOCLAW_INSTALL_SCRIPT = "scripts/setup/install_nemoclaw.sh"
 NEMOCLAW_CANARY_READINESS_SCRIPT = "scripts/tools/check_taiwan_canary_readiness.py"
 NEMOCLAW_ADOPTION_SCRIPT = "scripts/tools/check_taiwan_nemoclaw_adoption.py"
 NEMOCLAW_POST_INSTALL_SCRIPT = "scripts/setup/verify_nemoclaw_post_install.py"
@@ -628,6 +629,11 @@ def collect_evidence(report_path: Path, report: dict[str, Any]) -> dict[str, dic
         nemoclaw_check = runner.get("nemoclaw_check")
         if isinstance(nemoclaw_check, dict):
             add_evidence(evidence, role="nemoclaw_setup_check", path_value=nemoclaw_check.get("path"))
+            add_evidence(
+                evidence,
+                role="nemoclaw_setup_check:script",
+                path_value=NEMOCLAW_INSTALL_SCRIPT,
+            )
         existing_results = runner.get("existing_results_audit")
         if isinstance(existing_results, dict):
             add_evidence(evidence, role="existing_results_audit", path_value=existing_results.get("path"))
@@ -729,6 +735,11 @@ def collect_evidence(report_path: Path, report: dict[str, Any]) -> dict[str, dic
                 evidence,
                 role="nemoclaw_post_install_verification:script",
                 path_value=NEMOCLAW_POST_INSTALL_SCRIPT,
+            )
+            add_evidence(
+                evidence,
+                role="nemoclaw_post_install_verification:setup_script",
+                path_value=NEMOCLAW_INSTALL_SCRIPT,
             )
             add_evidence(
                 evidence,
