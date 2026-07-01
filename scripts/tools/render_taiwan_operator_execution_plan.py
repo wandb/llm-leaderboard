@@ -118,6 +118,65 @@ def apply_replacements(value: str, replacements: dict[str, str]) -> str:
     return rendered
 
 
+def command_option_value(raw_command: str, option: str) -> str:
+    parts = split_command(raw_command)
+    return option_value(parts, option) or ""
+
+
+def replace_command_option_value(command: str, option: str, value: Path | None) -> str:
+    if value is None:
+        return command
+    parts = split_command(command)
+    if option not in parts:
+        return command
+    output: list[str] = []
+    index = 0
+    replaced = False
+    while index < len(parts):
+        output.append(parts[index])
+        if parts[index] == option and index + 1 < len(parts):
+            output.append(str(value))
+            index += 2
+            replaced = True
+            continue
+        index += 1
+    if not replaced:
+        return command
+    return shlex.join(output)
+
+
+def bind_template_command_approval_paths(
+    raw_command: str,
+    rendered_command: str,
+    *,
+    external_action_approval_source_packet_json: Path | None,
+    external_action_approval_report_json: Path | None,
+) -> str:
+    """Bind placeholder approval paths to the reviewed source/report paths."""
+
+    source_value = command_option_value(
+        raw_command,
+        "--external-action-approval-source-packet-json",
+    )
+    if "YYYYMMDDTHHMM" in source_value:
+        rendered_command = replace_command_option_value(
+            rendered_command,
+            "--external-action-approval-source-packet-json",
+            external_action_approval_source_packet_json,
+        )
+    report_value = command_option_value(
+        raw_command,
+        "--external-action-approval-report-json",
+    )
+    if "YYYYMMDDTHHMM" in report_value:
+        rendered_command = replace_command_option_value(
+            rendered_command,
+            "--external-action-approval-report-json",
+            external_action_approval_report_json,
+        )
+    return rendered_command
+
+
 def count_required(steps: list[dict[str, Any]], key: str) -> int:
     return sum(1 for step in steps if bool(step.get(key)))
 
@@ -818,6 +877,9 @@ def select_steps(
     operator_plan: dict[str, Any],
     selected_gates: set[str],
     replacements: dict[str, str],
+    *,
+    external_action_approval_source_packet_json: Path | None = None,
+    external_action_approval_report_json: Path | None = None,
 ) -> list[dict[str, Any]]:
     operator_next_steps = operator_plan.get("operator_next_steps")
     if not isinstance(operator_next_steps, dict):
@@ -833,10 +895,21 @@ def select_steps(
         gate = raw_step.get("gate")
         if selected_gates and gate not in selected_gates:
             continue
-        commands = [
-            apply_replacements(str(command), replacements)
-            for command in raw_step.get("commands") or []
-        ]
+        commands = []
+        for command in raw_step.get("commands") or []:
+            raw_command = str(command)
+            rendered_command = apply_replacements(raw_command, replacements)
+            rendered_command = bind_template_command_approval_paths(
+                raw_command,
+                rendered_command,
+                external_action_approval_source_packet_json=(
+                    external_action_approval_source_packet_json
+                ),
+                external_action_approval_report_json=(
+                    external_action_approval_report_json
+                ),
+            )
+            commands.append(rendered_command)
         evidence = [
             apply_replacements(str(path), replacements)
             for path in raw_step.get("evidence_to_produce") or []
@@ -888,7 +961,15 @@ def build_execution_plan(
     external_action_approval_source_packet_json: Path | None = None,
     expected_release_gate_json: Path | None = None,
 ) -> dict[str, Any]:
-    steps = select_steps(operator_plan, selected_gates, replacements)
+    steps = select_steps(
+        operator_plan,
+        selected_gates,
+        replacements,
+        external_action_approval_source_packet_json=(
+            external_action_approval_source_packet_json
+        ),
+        external_action_approval_report_json=external_action_approval_report_json,
+    )
     all_values = [
         value
         for step in steps

@@ -579,6 +579,61 @@ def test_render_operator_execution_plan_resolves_timestamp_canary_tokens(tmp_pat
     assert "CONTENT_CANARY_YYYYMMDDTHHMM" not in rendered
 
 
+def test_render_operator_execution_plan_binds_placeholder_approval_paths_to_reviewed_paths(tmp_path):
+    operator_plan = write_operator_plan(tmp_path / "operator_plan.json")
+    source_packet = write_source_packet(tmp_path / "external_action_approval_packet.json")
+    approval_report = write_external_action_approval_report(
+        tmp_path / "approval.verify.json",
+        source_packet,
+    )
+    payload = json.loads(operator_plan.read_text(encoding="utf-8"))
+    payload["operator_next_steps"]["steps"][1]["commands"][0] = (
+        "uv run python scripts/tools/run_weave_agents_content_canary.py "
+        "--execute --canary-id CONTENT_CANARY_YYYYMMDDTHHMM "
+        "--nemoclaw-sandbox nejumi-taiwan "
+        "--external-action-approval-source-packet-json "
+        "outputs/taiwan_release_evidence/bundle_YYYYMMDDTHHMM/"
+        "external_action_approval_packet.json "
+        "--external-action-approval-report-json "
+        "temp/taiwan_external_action_approval_REVIEWED_YYYYMMDDTHHMM.verify.json"
+    )
+    operator_plan.write_text(json.dumps(payload), encoding="utf-8")
+    output_json = tmp_path / "execution_plan.json"
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--operator-plan-json",
+            str(operator_plan),
+            "--gate",
+            "weave_content_canary",
+            "--timestamp",
+            "20260701T123456",
+            "--external-action-approval-source-packet-json",
+            str(source_packet),
+            "--external-action-approval-report-json",
+            str(approval_report),
+            "--output-json",
+            str(output_json),
+            "--require-ready",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(output_json.read_text(encoding="utf-8"))
+    assert payload["command_policy"]["valid"] is True
+    command = payload["steps"][0]["commands"][0]
+    assert str(source_packet) in command
+    assert str(approval_report) in command
+    assert "bundle_20260701T123456/external_action_approval_packet.json" not in command
+    assert "taiwan_external_action_approval_REVIEWED_20260701T123456.verify.json" not in command
+
+
 def test_render_operator_execution_plan_rejects_command_source_packet_mismatch(tmp_path):
     source_packet = write_source_packet(tmp_path / "external_action_approval_packet.json")
     other_packet = write_source_packet(
