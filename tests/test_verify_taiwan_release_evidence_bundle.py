@@ -17437,6 +17437,50 @@ def test_verify_release_evidence_bundle_rejects_agents_check_noncanonical_json_o
     )
 
 
+def test_verify_release_evidence_bundle_rejects_wandb_sync_script_without_session_copy_contract(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    attach_command_script_source(
+        bundle,
+        "scripts/tools/sync_wandb_completion_to_paid_review.py",
+    )
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    sync_record = next(
+        record
+        for record in manifest["files"]
+        if record.get("source_path")
+        == "scripts/tools/sync_wandb_completion_to_paid_review.py"
+    )
+    bundled_sync_script = bundle / sync_record["bundle_path"]
+    text = bundled_sync_script.read_text(encoding="utf-8")
+    bundled_sync_script.write_text(
+        text.replace(
+            "def nemoclaw_session_copy_evidence_current(",
+            "def removed_nemoclaw_session_copy_evidence_current(",
+        ),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, sync_record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "W&B completion sync script missing source contract "
+        "NeMoClaw session-copy evidence validator" in error
+        for error in payload["errors"]
+    )
+
+
 def test_verify_release_evidence_bundle_rejects_wandb_sync_apply_without_dry_run(tmp_path):
     bundle = build_bundle_with_operator_command_script(tmp_path)
     manifest_path = bundle / "manifest.json"

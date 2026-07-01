@@ -494,6 +494,41 @@ WEAVE_AGENTS_SYNC_SCRIPT_SOURCE_TOKENS = (
         '"query_source_spans_endpoint": query_source.get("spans_endpoint")',
     ),
 )
+WANDB_COMPLETION_SYNC_SCRIPT = "scripts/tools/sync_wandb_completion_to_paid_review.py"
+WANDB_COMPLETION_SYNC_SCRIPT_SOURCE_TOKENS = (
+    (
+        "NeMoClaw session-copy evidence validator",
+        "def nemoclaw_session_copy_evidence_current(",
+    ),
+    (
+        "NeMoClaw session-copy validator invocation",
+        "copy_ok, copy_issues = nemoclaw_session_copy_evidence_current(",
+    ),
+    (
+        "NeMoClaw session-copy source column",
+        '"nemoclaw_session_copy_source"',
+    ),
+    (
+        "NeMoClaw copied bytes column",
+        '"nemoclaw_session_copied_bytes"',
+    ),
+    (
+        "NeMoClaw allowed session-copy sources",
+        "NEMOCLAW_SESSION_COPY_SOURCES",
+    ),
+    (
+        "row-observability copy-source proof",
+        '"row_observability_required_copy_source_columns"',
+    ),
+    (
+        "row-observability copied-bytes proof",
+        '"row_observability_required_positive_int_columns"',
+    ),
+    (
+        "row-observability allowed copy-source proof",
+        '"row_observability_allowed_copy_sources"',
+    ),
+)
 AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
     "scripts/evaluator/agentic_math.py": {
         "role": "agentic_runner:math_evaluator_script",
@@ -6092,6 +6127,50 @@ def validate_weave_agents_sync_script_source(
             errors.append(
                 "Weave Agents sync script missing source contract "
                 f"{label}: {WEAVE_AGENTS_SYNC_SCRIPT}: {token}"
+            )
+    return errors
+
+
+def validate_wandb_completion_sync_script_source(
+    *,
+    bundle_dir: Path,
+    manifest: dict[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    records = file_records_by_source(manifest)
+    record = records.get(source_path_key(WANDB_COMPLETION_SYNC_SCRIPT))
+    if not isinstance(record, dict):
+        return errors
+    roles = record.get("roles")
+    if not isinstance(roles, list) or not (
+        "operator_plan:command_script" in roles
+        or "current_gate:remediation_plan:command_script" in roles
+    ):
+        errors.append(
+            "W&B completion sync script missing command-script role: "
+            f"{WANDB_COMPLETION_SYNC_SCRIPT}"
+        )
+    bundle_path = record.get("bundle_path")
+    if not isinstance(bundle_path, str) or not bundle_path:
+        errors.append(
+            "W&B completion sync script missing bundle_path: "
+            f"{WANDB_COMPLETION_SYNC_SCRIPT}"
+        )
+        return errors
+    script_file = bundle_dir / bundle_path
+    try:
+        text = script_file.read_text(encoding="utf-8")
+    except OSError as exc:
+        errors.append(
+            "W&B completion sync script is not readable: "
+            f"{WANDB_COMPLETION_SYNC_SCRIPT}: {exc}"
+        )
+        return errors
+    for label, token in WANDB_COMPLETION_SYNC_SCRIPT_SOURCE_TOKENS:
+        if token not in text:
+            errors.append(
+                "W&B completion sync script missing source contract "
+                f"{label}: {WANDB_COMPLETION_SYNC_SCRIPT}: {token}"
             )
     return errors
 
@@ -16481,6 +16560,7 @@ def verify_bundle(
     errors.extend(validate_nemoclaw_adoption_script_source(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_nemoclaw_post_install_script_source(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_weave_agents_sync_script_source(bundle_dir=bundle_dir, manifest=manifest))
+    errors.extend(validate_wandb_completion_sync_script_source(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_wandb_adoption_draft_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_wandb_adoption_unconfirmed_checks_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_weave_agents_adoption_validation_failures_evidence(bundle_dir=bundle_dir, manifest=manifest))
