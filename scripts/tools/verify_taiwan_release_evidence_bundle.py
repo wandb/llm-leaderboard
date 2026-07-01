@@ -199,7 +199,7 @@ OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
     ),
     (
         "Weave content canary command-policy call",
-        "validate_weave_content_canary_gate_option(",
+        "command_errors.extend(\n                            validate_weave_content_canary_gate_option(",
     ),
     ("Weave content canary NeMoClaw command policy", "--nemoclaw-sandbox"),
     ("Weave Agents usage command policy", "--weave-agents-require-usage"),
@@ -208,8 +208,16 @@ OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
         "def validate_external_action_source_packet_option(",
     ),
     (
+        "command approval source packet path validator invocation",
+        "command_errors.extend(\n                    validate_external_action_source_packet_option(",
+    ),
+    (
         "command approval report path validator",
         "def validate_external_action_approval_report_option(",
+    ),
+    (
+        "command approval report path validator invocation",
+        "command_errors.extend(\n                    validate_external_action_approval_report_option(",
     ),
     (
         "command approval source packet expectation",
@@ -232,12 +240,20 @@ OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
         "def validate_openai_direct_canary_batch_command(",
     ),
     (
+        "OpenAI-direct canary batch validator invocation",
+        "command_errors.extend(\n                    validate_openai_direct_canary_batch_command(",
+    ),
+    (
         "OpenAI-direct canary approval scope marker",
         "OPENAI_DIRECT_CANARY_APPROVAL_SCOPE_MARKER",
     ),
     (
         "OpenAI-direct canary approval scope validator",
         "def validate_canary_approval_scope(",
+    ),
+    (
+        "OpenAI-direct canary approval scope validator invocation",
+        "approval_scope_policy = validate_canary_approval_scope(",
     ),
 )
 WEAVE_AGENTS_SYNC_SCRIPT = "scripts/tools/sync_weave_agents_completion_to_paid_review.py"
