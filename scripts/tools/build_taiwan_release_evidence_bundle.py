@@ -58,6 +58,9 @@ AGENTIC_RUNNER_SCRIPT_ROLES = {
     "scripts/tools/run_agentic_math_openclaw.py": "agentic_runner:math_script",
     "scripts/tools/run_swebench_pro_openclaw.py": "agentic_runner:swe_script",
     "scripts/tools/run_taiwan_full_eval_batch.py": "agentic_runner:full_batch_script",
+    "scripts/analysis/estimate_taiwan_canary_budget.py": (
+        "agentic_runner:budget_estimator_script"
+    ),
     "scripts/tools/verify_taiwan_weave_agents.py": "agentic_runner:weave_agents_verifier_script",
     "scripts/tools/verify_taiwan_wandb_completion.py": (
         "agentic_runner:wandb_completion_verifier_script"

@@ -740,6 +740,39 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "W&B completion audit requirement flag",
                 "require_nemoclaw_session_audit",
             ),
+            (
+                "pre-run budget agentic breakdown loop",
+                'for category in ("agentic_math", "swebench_pro"):',
+            ),
+            (
+                "pre-run budget historical evidence check",
+                "historical_records must be positive when",
+            ),
+            (
+                "pre-run budget estimate band check",
+                "estimate_usd.{key} is missing or not numeric",
+            ),
+        ),
+    },
+    "scripts/analysis/estimate_taiwan_canary_budget.py": {
+        "role": "agentic_runner:budget_estimator_script",
+        "tokens": (
+            (
+                "budget estimate completeness helper",
+                "def estimate_band_complete(",
+            ),
+            (
+                "budget estimate category completeness check",
+                "if not estimate_band_complete(summary)",
+            ),
+            (
+                "budget estimate missing-evidence failure",
+                "cannot estimate paid canary budget without local token evidence",
+            ),
+            (
+                "budget estimate Agentic Math/SWE evidence categories",
+                '(("agentic_math", math), ("swebench_pro", swe))',
+            ),
         ),
     },
     "scripts/tools/verify_taiwan_weave_agents.py": {
