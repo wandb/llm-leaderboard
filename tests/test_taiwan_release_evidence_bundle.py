@@ -1264,6 +1264,12 @@ def test_release_evidence_bundle_copies_report_references(tmp_path):
     assert current_gate["external_action_checklist"]["item_count"] == (
         current_gate["operator_next_steps"]["step_count"]
     )
+    assert current_gate["external_budget"] == {
+        "minimum_approved_budget_usd": 20.0,
+        "minimum_approved_budget_source": "max_pre_run_budget_estimate_high",
+        "source_budget_paths": [str(pre_run_budget)],
+        "source_review_paths": [str(review)],
+    }
     assert current_gate["required_next_actions"] == [
         {
             "gate": "nemoclaw_readiness",

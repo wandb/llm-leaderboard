@@ -565,6 +565,7 @@ def test_release_gate_writes_report_bundle_and_verification(tmp_path):
     assert latest_pointer["operator_next_steps"] == release["operator_next_steps"]
     assert latest_pointer["operator_plan"] == release["operator_plan"]
     assert latest_pointer["external_action_checklist"] == release["external_action_checklist"]
+    assert latest_pointer["external_budget"] == release["external_budget"]
     assert (
         latest_pointer["external_action_approval_packet"]
         == release["external_action_approval_packet"]
@@ -583,10 +584,27 @@ def test_release_gate_writes_report_bundle_and_verification(tmp_path):
     assert isinstance(release["nemoclaw_adoption"], dict)
     assert isinstance(release["operator_next_steps"], dict)
     assert isinstance(release["external_action_checklist"], dict)
+    assert isinstance(release["external_budget"], dict)
     assert isinstance(release["external_action_approval_packet"], dict)
     assert release["external_action_checklist"]["item_count"] == (
         release["operator_next_steps"]["step_count"]
     )
+    paid_api_constraints = release["external_action_checklist"][
+        "approval_requirement_constraints"
+    ]["paid_api"]
+    assert release["external_budget"] == {
+        "minimum_approved_budget_usd": paid_api_constraints[
+            "minimum_approved_budget_usd"
+        ],
+        "minimum_approved_budget_source": paid_api_constraints[
+            "minimum_approved_budget_source"
+        ],
+        "source_budget_paths": paid_api_constraints["source_budget_paths"],
+        "source_review_paths": paid_api_constraints["source_review_paths"],
+    }
+    assert release["external_budget"]["minimum_approved_budget_usd"] > 0
+    assert release["external_budget"]["source_budget_paths"]
+    assert release["external_budget"]["source_review_paths"]
     assert release["external_action_approval_packet"]["json"] == (
         "external_action_approval_packet.json"
     )

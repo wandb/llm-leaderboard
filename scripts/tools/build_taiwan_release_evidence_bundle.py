@@ -3231,6 +3231,7 @@ def build_current_gate_summary(
         blocking_gates=blocking_gates if isinstance(blocking_gates, list) else [],
         paid_run_review_package=paid_run_review_package,
     )
+    external_budget = external_budget_summary(external_action_checklist)
     return {
         "readiness_report_source": path_display(report_path),
         "readiness_report_schema_version": report.get("schema_version"),
@@ -3252,6 +3253,7 @@ def build_current_gate_summary(
         "nemoclaw_installer_review": nemoclaw_installer_review,
         "operator_next_steps": operator_next_steps,
         "external_action_checklist": external_action_checklist,
+        "external_budget": external_budget,
         "remediation_plan": remediation_plan,
         "runner_evidence": runner_evidence_summary(report),
     }
@@ -3663,6 +3665,30 @@ def external_action_approval_requirement_constraints(
             "source_budget_paths": list(dict.fromkeys(source_budget_paths)),
             "source_review_paths": list(dict.fromkeys(source_review_paths)),
         }
+    }
+
+
+def external_budget_summary(external_action_checklist: dict[str, Any]) -> dict[str, Any]:
+    constraints = (
+        external_action_checklist.get("approval_requirement_constraints")
+        if isinstance(external_action_checklist.get("approval_requirement_constraints"), dict)
+        else {}
+    )
+    paid_api = constraints.get("paid_api") if isinstance(constraints, dict) else {}
+    if not isinstance(paid_api, dict):
+        return {}
+    minimum_budget = numeric_usd_value(paid_api.get("minimum_approved_budget_usd"))
+    if minimum_budget is None:
+        return {}
+    return {
+        "minimum_approved_budget_usd": minimum_budget,
+        "minimum_approved_budget_source": (
+            paid_api.get("minimum_approved_budget_source")
+            if isinstance(paid_api.get("minimum_approved_budget_source"), str)
+            else ""
+        ),
+        "source_budget_paths": _string_list(paid_api.get("source_budget_paths")),
+        "source_review_paths": _string_list(paid_api.get("source_review_paths")),
     }
 
 

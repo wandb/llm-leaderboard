@@ -38,6 +38,7 @@ POINTER_GATE_SUMMARY_FIELDS = (
     "operator_next_steps",
     "operator_plan",
     "external_action_checklist",
+    "external_budget",
     "external_action_approval_packet",
     "bundle_file_count",
     "bundle_missing_file_count",
@@ -61,6 +62,7 @@ MANIFEST_CURRENT_GATE_SUMMARY_FIELDS = (
     "nemoclaw_adoption",
     "operator_next_steps",
     "external_action_checklist",
+    "external_budget",
 )
 
 

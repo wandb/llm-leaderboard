@@ -662,6 +662,9 @@ def build_result(
         blocking_gates=blocking_gates if isinstance(blocking_gates, list) else [],
         paid_run_review_package=paid_run_review_package,
     )
+    external_budget = bundle_builder.external_budget_summary(
+        external_action_checklist
+    )
     readiness_ok = bool(report.get("ok"))
     bundle_integrity_ok = bool(verification.get("integrity_ok"))
     release_ready = readiness_ok and bundle_integrity_ok
@@ -695,6 +698,7 @@ def build_result(
         "nemoclaw_adoption": nemoclaw_adoption,
         "operator_next_steps": operator_next_steps,
         "external_action_checklist": external_action_checklist,
+        "external_budget": external_budget,
         "external_action_approval_packet": (
             bundle.get("external_action_approval_packet")
             if isinstance(bundle.get("external_action_approval_packet"), dict)
@@ -793,6 +797,7 @@ def build_latest_pointer(result: dict[str, Any]) -> dict[str, Any]:
         "operator_next_steps": result.get("operator_next_steps") or {},
         "operator_plan": result.get("operator_plan") or {},
         "external_action_checklist": result.get("external_action_checklist") or {},
+        "external_budget": result.get("external_budget") or {},
         "external_action_approval_packet": result.get("external_action_approval_packet") or {},
         "release_gate_json": result.get("release_gate_json"),
         "latest_pointer_json": result.get("latest_pointer_json"),
@@ -840,6 +845,7 @@ def release_gate_pointer_summary(result: dict[str, Any]) -> dict[str, Any]:
             "latest_pointer_verification_issue_count"
         ),
         "operator_plan": result.get("operator_plan") or {},
+        "external_budget": result.get("external_budget") or {},
     }
 
 
