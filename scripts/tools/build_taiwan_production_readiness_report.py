@@ -613,7 +613,9 @@ def existing_results_audit_commands() -> list[str]:
             "(log_agentic_math_results_to_wandb.py or log_agentic_swe_results_to_wandb.py) "
             "and then verify_taiwan_wandb_completion.py. For records reported as "
             "local_complete_missing_nemoclaw_audit, rerun the benchmark with NeMoClaw-native "
-            "session audit enabled before W&B formalization. For taiwan_full provisional full "
+            "session audit enabled before W&B formalization, or record the exact source hashes "
+            "in outputs/taiwan_full_eval/existing_results_archive_manifest.json when the result "
+            "is explicitly not a release candidate. For taiwan_full provisional full "
             "runs, verify the source run_id directly with verify_taiwan_wandb_completion.py."
         ),
     ]
@@ -1600,8 +1602,9 @@ def evaluate_wandb_completion(
 def evaluate_existing_results_formalization(paths: list[Path], *, require: bool) -> dict[str, Any]:
     requirement = (
         "Every complete local Taiwan benchmark result must either be formalized "
-        "by a passing W&B completion verifier JSON or be explicitly absent from "
-        "the release evidence as partial/probe output."
+        "by a passing W&B completion verifier JSON, be explicitly archived as "
+        "a hash-bound non-release candidate, or be absent from the release "
+        "evidence as partial/probe output."
     )
     if not paths:
         return gate_record(
@@ -1643,9 +1646,11 @@ def evaluate_existing_results_formalization(paths: list[Path], *, require: bool)
                 "complete_local_count": summary.get("complete_local_count"),
                 "formalized_wandb_complete_count": summary.get("formalized_wandb_complete_count"),
                 "unformalized_complete_count": summary.get("unformalized_complete_count"),
+                "archived_complete_count": summary.get("archived_complete_count"),
                 "nemoclaw_audit_blocked_complete_count": summary.get("nemoclaw_audit_blocked_complete_count"),
                 "partial_or_probe_count": summary.get("partial_or_probe_count"),
                 "unformalized_complete_records": payload.get("unformalized_complete_records", []),
+                "archived_complete_records": payload.get("archived_complete_records", []),
             }
         )
     latest = max(
@@ -1672,7 +1677,7 @@ def evaluate_existing_results_formalization(paths: list[Path], *, require: bool)
         requirement=requirement,
         evidence_paths=[repo_path(latest["path"])] if latest and isinstance(latest.get("path"), str) else paths,
         detail=(
-            "Existing complete local results are formalized in W&B or classified as partial/probe."
+            "Existing complete local results are formalized in W&B, archived as non-release candidates, or classified as partial/probe."
             if ok
             else "At least one complete local result is not backed by passing W&B completion evidence."
             if latest and latest.get("status") == "unformalized_complete_results"

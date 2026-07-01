@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -19,6 +20,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_ROOT = Path("outputs") / "taiwan_full_eval"
 DEFAULT_WANDB_COMPLETION_DIR = DEFAULT_OUTPUT_ROOT / "wandb_completion"
+DEFAULT_ARCHIVE_MANIFEST = DEFAULT_OUTPUT_ROOT / "existing_results_archive_manifest.json"
 DEFAULT_PROVISIONAL_LEADERBOARD_DIR = DEFAULT_OUTPUT_ROOT / "provisional_leaderboard"
 AGENTIC_MATH_EXPECTED_TOTAL = 100
 AGENTIC_SWE_EXPECTED_TOTAL = 80
@@ -28,6 +30,7 @@ FULL_BENCHMARK_ID = "taiwan_full"
 NEMOCLAW_AUDIT_REQUIRED_BENCHMARKS = {"agentic_math", "agentic_swe"}
 LOCAL_COMPLETE_NEEDS_WANDB_RELOG = "local_complete_needs_wandb_relog"
 LOCAL_COMPLETE_MISSING_NEMOCLAW_AUDIT = "local_complete_missing_nemoclaw_audit"
+ARCHIVED_NOT_RELEASE_CANDIDATE = "archived_not_release_candidate"
 AGENTIC_MATH_NEMOCLAW_SUMMARY_KEYS = (
     "nemoclaw_session_audit_required_instances",
     "nemoclaw_session_audit_passed_instances",
@@ -84,6 +87,43 @@ def jsonl_count(path: Path) -> int:
         return 0
     with path.open(encoding="utf-8") as handle:
         return sum(1 for line in handle if line.strip())
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def source_sha256s_for_record(record: dict[str, Any]) -> dict[str, str]:
+    path_fields = {
+        "summary_json": "summary_path",
+        "results_jsonl": "results_path",
+        "partial_results_jsonl": "partial_results_path",
+        "patches_json": "patches_path",
+        "official_summary_json": "official_summary_path",
+        "leaderboard_csv": "leaderboard_path",
+        "unit_scores_csv": "unit_scores_path",
+        "run_status_csv": "run_status_path",
+    }
+    hashes: dict[str, str] = {}
+    for key, field in path_fields.items():
+        value = record.get(field)
+        if not isinstance(value, str) or not value.strip():
+            continue
+        path = repo_path(value)
+        if path.exists() and path.is_file():
+            hashes[key] = sha256_file(path)
+    return hashes
+
+
+def attach_source_sha256s(records: list[dict[str, Any]]) -> None:
+    for record in records:
+        hashes = source_sha256s_for_record(record)
+        if hashes:
+            record["source_sha256s"] = hashes
 
 
 def metric_from_checks(completion: dict[str, Any], name: str) -> Any:
@@ -289,6 +329,125 @@ def agentic_swe_local_nemoclaw_audit_issues(
     if failed:
         issues.append("agentic_swe NeMoClaw audit failed patch count must be 0")
     return issues
+
+
+def load_archive_manifest(path: Path | None) -> tuple[list[dict[str, Any]], list[str], list[str], str]:
+    if path is None:
+        return [], [], [], ""
+    if not path.exists():
+        return [], [], [], path_display(path)
+    try:
+        payload = read_json(path)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        return [], [f"archive manifest is not readable JSON: {exc}"], [], path_display(path)
+    errors: list[str] = []
+    warnings: list[str] = []
+    if payload.get("schema_version") != 1:
+        errors.append("archive manifest schema_version must be 1")
+    entries = payload.get("archives")
+    if not isinstance(entries, list):
+        errors.append("archive manifest archives must be a list")
+        return [], errors, warnings, path_display(path)
+    valid_entries: list[dict[str, Any]] = []
+    for index, entry in enumerate(entries, start=1):
+        label = f"archive manifest entry {index}"
+        if not isinstance(entry, dict):
+            errors.append(f"{label} must be an object")
+            continue
+        entry_errors: list[str] = []
+        for field in ("benchmark", "model_slug", "result_dir", "reason"):
+            if not isinstance(entry.get(field), str) or not entry.get(field, "").strip():
+                entry_errors.append(f"{field} must be a non-empty string")
+        status = entry.get("archive_status", ARCHIVED_NOT_RELEASE_CANDIDATE)
+        if status != ARCHIVED_NOT_RELEASE_CANDIDATE:
+            entry_errors.append(
+                f"archive_status must be {ARCHIVED_NOT_RELEASE_CANDIDATE}"
+            )
+        source_sha256s = entry.get("source_sha256s")
+        if not isinstance(source_sha256s, dict) or not source_sha256s:
+            entry_errors.append("source_sha256s must be a non-empty object")
+        else:
+            for key, value in source_sha256s.items():
+                if not isinstance(key, str) or not key.strip():
+                    entry_errors.append("source_sha256s keys must be non-empty strings")
+                if (
+                    not isinstance(value, str)
+                    or len(value) != 64
+                    or any(char not in "0123456789abcdef" for char in value.lower())
+                ):
+                    entry_errors.append(f"source_sha256s.{key} must be a sha256 hex string")
+        if entry_errors:
+            errors.extend(f"{label}: {error}" for error in entry_errors)
+            continue
+        normalized = dict(entry)
+        normalized["archive_status"] = status
+        valid_entries.append(normalized)
+    return valid_entries, errors, warnings, path_display(path)
+
+
+def archive_entry_matches_record(
+    record: dict[str, Any],
+    entry: dict[str, Any],
+) -> bool:
+    for field in ("benchmark", "model_slug", "result_dir"):
+        if entry.get(field) != record.get(field):
+            return False
+    expected_status = entry.get("formalization_status")
+    if isinstance(expected_status, str) and expected_status.strip():
+        if expected_status != record.get("formalization_status"):
+            return False
+    actual_hashes = record.get("source_sha256s")
+    expected_hashes = entry.get("source_sha256s")
+    if not isinstance(actual_hashes, dict) or not isinstance(expected_hashes, dict):
+        return False
+    for key, expected in expected_hashes.items():
+        if actual_hashes.get(key) != expected:
+            return False
+    return True
+
+
+def apply_archive_manifest(
+    records: list[dict[str, Any]],
+    entries: list[dict[str, Any]],
+    *,
+    manifest_path: str,
+) -> list[str]:
+    warnings: list[str] = []
+    matched_indexes: set[int] = set()
+    for record in records:
+        if not record.get("complete_local"):
+            continue
+        if record.get("formalization_status") == "formalized_wandb_complete":
+            continue
+        for index, entry in enumerate(entries):
+            if not archive_entry_matches_record(record, entry):
+                continue
+            matched_indexes.add(index)
+            record["formalization_status"] = ARCHIVED_NOT_RELEASE_CANDIDATE
+            record["archived_existing_result"] = True
+            record["archive_manifest_path"] = manifest_path
+            record["archive_manifest_entry"] = {
+                "reason": entry.get("reason"),
+                "archive_status": entry.get("archive_status"),
+                "reviewed_by": entry.get("reviewed_by"),
+                "reviewed_at": entry.get("reviewed_at"),
+                "source_sha256s": entry.get("source_sha256s"),
+            }
+            record["reloggable_to_wandb"] = False
+            record["rerun_required"] = False
+            record["relog_dry_run_plan_json"] = ""
+            record["relog_dry_run_command"] = ""
+            record["relog_command"] = ""
+            record["verify_command"] = ""
+            break
+    for index, entry in enumerate(entries):
+        if index in matched_indexes:
+            continue
+        warnings.append(
+            "archive manifest entry did not match any current complete local record: "
+            f"{entry.get('benchmark')}/{entry.get('model_slug')} {entry.get('result_dir')}"
+        )
+    return warnings
 
 
 def completion_schema_issues(completion: dict[str, Any]) -> list[str]:
@@ -590,7 +749,10 @@ def relog_command(record: dict[str, Any], *, include_validated_plan: bool = True
 
 
 def relog_inputs_present(record: dict[str, Any]) -> bool:
-    if record.get("formalization_status") == LOCAL_COMPLETE_MISSING_NEMOCLAW_AUDIT:
+    if record.get("formalization_status") in {
+        LOCAL_COMPLETE_MISSING_NEMOCLAW_AUDIT,
+        ARCHIVED_NOT_RELEASE_CANDIDATE,
+    }:
         return False
     if record.get("benchmark") == "agentic_math":
         return all(
@@ -1055,14 +1217,27 @@ def build_audit(
     *,
     output_root: Path,
     completion_dir: Path,
+    archive_manifest: Path | None = None,
 ) -> dict[str, Any]:
     records = [
         *discover_agentic_math(output_root),
         *discover_agentic_swe(output_root),
         *discover_taiwan_full(output_root),
     ]
+    attach_source_sha256s(records)
     completions = load_completions(completion_dir)
     attach_wandb_formalization(records, completions)
+    archive_entries, archive_errors, archive_warnings, archive_manifest_path = load_archive_manifest(
+        archive_manifest
+    )
+    if archive_entries:
+        archive_warnings.extend(
+            apply_archive_manifest(
+                records,
+                archive_entries,
+                manifest_path=archive_manifest_path,
+            )
+        )
     for record in records:
         dry_run_command = relog_dry_run_command(record)
         if dry_run_command:
@@ -1075,7 +1250,8 @@ def build_audit(
         record
         for record in records
         if record.get("complete_local")
-        and record.get("formalization_status") != "formalized_wandb_complete"
+        and record.get("formalization_status")
+        not in {"formalized_wandb_complete", ARCHIVED_NOT_RELEASE_CANDIDATE}
     ]
     for record in unformalized:
         if record.get("formalization_status") == LOCAL_COMPLETE_MISSING_NEMOCLAW_AUDIT:
@@ -1101,17 +1277,34 @@ def build_audit(
     partial = [
         record for record in records if record.get("formalization_status") in {"partial_not_reloggable", "probe_not_reloggable"}
     ]
+    archived = [
+        record
+        for record in records
+        if record.get("formalization_status") == ARCHIVED_NOT_RELEASE_CANDIDATE
+    ]
+    ok = not unformalized and not archive_errors
+    status = (
+        "invalid_archive_manifest"
+        if archive_errors
+        else "passed"
+        if not unformalized
+        else "unformalized_complete_results"
+    )
     return {
-        "ok": not unformalized,
-        "status": "passed" if not unformalized else "unformalized_complete_results",
+        "ok": ok,
+        "status": status,
         "generated_at": time.time(),
         "output_root": path_display(output_root),
         "completion_dir": path_display(completion_dir),
+        "archive_manifest_path": archive_manifest_path,
+        "archive_manifest_errors": archive_errors,
+        "archive_manifest_warnings": archive_warnings,
         "summary": {
             "record_count": len(records),
             "complete_local_count": len([record for record in records if record.get("complete_local")]),
             "formalized_wandb_complete_count": len(formalized),
             "unformalized_complete_count": len(unformalized),
+            "archived_complete_count": len(archived),
             "nemoclaw_audit_blocked_complete_count": len(
                 [
                     record
@@ -1133,6 +1326,7 @@ def build_audit(
             if isinstance(command, str) and command
         ],
         "formalized_records": formalized,
+        "archived_complete_records": archived,
         "unformalized_complete_records": unformalized,
         "partial_records": partial,
         "records": records,
@@ -1168,9 +1362,11 @@ def summary_markdown(audit: dict[str, Any]) -> str:
         f"- Records: `{summary.get('record_count', 0)}`",
         f"- Complete local: `{summary.get('complete_local_count', 0)}`",
         f"- Formalized in W&B: `{summary.get('formalized_wandb_complete_count', 0)}`",
+        f"- Archived non-release candidates: `{summary.get('archived_complete_count', 0)}`",
         f"- Unformalized complete: `{summary.get('unformalized_complete_count', 0)}`",
         f"- NeMoClaw-audit blocked complete: `{summary.get('nemoclaw_audit_blocked_complete_count', 0)}`",
         f"- Partial/probe: `{summary.get('partial_or_probe_count', 0)}`",
+        f"- Archive manifest: `{audit.get('archive_manifest_path', '')}`",
         "",
         "## Complete Local Records",
         "",
@@ -1189,6 +1385,28 @@ def summary_markdown(audit: dict[str, Any]) -> str:
                 model=record.get("model_slug"),
                 status=record.get("formalization_status"),
                 run_id=run_id or "",
+                result_dir=record.get("result_dir"),
+            )
+        )
+    lines.extend(
+        [
+            "",
+            "## Archived Non-Release Candidates",
+            "",
+            "| Benchmark | Model | Reason | Result dir |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for record in audit.get("archived_complete_records", []):
+        if not isinstance(record, dict):
+            continue
+        entry = record.get("archive_manifest_entry")
+        reason = entry.get("reason") if isinstance(entry, dict) else ""
+        lines.append(
+            "| {benchmark} | {model} | {reason} | `{result_dir}` |".format(
+                benchmark=record.get("benchmark"),
+                model=record.get("model_slug"),
+                reason=reason or "",
                 result_dir=record.get("result_dir"),
             )
         )
@@ -1249,6 +1467,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--wandb-completion-dir", type=Path, default=DEFAULT_WANDB_COMPLETION_DIR)
+    parser.add_argument("--archive-manifest", type=Path, default=DEFAULT_ARCHIVE_MANIFEST)
     parser.add_argument("--json", type=Path)
     parser.add_argument("--markdown", type=Path)
     parser.add_argument("--fail-on-unformalized", action="store_true")
@@ -1260,6 +1479,7 @@ def main(argv: list[str] | None = None) -> None:
     audit = build_audit(
         output_root=repo_path(args.output_root),
         completion_dir=repo_path(args.wandb_completion_dir),
+        archive_manifest=repo_path(args.archive_manifest) if args.archive_manifest else None,
     )
     if args.json:
         write_json(repo_path(args.json), audit)

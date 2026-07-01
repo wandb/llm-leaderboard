@@ -379,7 +379,12 @@ def add_existing_results_audit_paths(
     except (OSError, json.JSONDecodeError, ValueError):
         return
 
-    for field in ("formalized_records", "unformalized_complete_records", "partial_records", "records"):
+    add_existing_evidence(
+        evidence,
+        role=f"{role}:archive_manifest",
+        path_value=payload.get("archive_manifest_path"),
+    )
+    for field in ("formalized_records", "archived_complete_records", "unformalized_complete_records", "partial_records", "records"):
         records = payload.get(field)
         if not isinstance(records, list):
             continue
@@ -1098,6 +1103,14 @@ def compact_existing_result_record(record: dict[str, Any]) -> dict[str, Any]:
         "wandb_completion": completion_summary,
         "warnings": record.get("warnings") if isinstance(record.get("warnings"), list) else [],
         "errors": record.get("errors") if isinstance(record.get("errors"), list) else [],
+        "source_sha256s": record.get("source_sha256s") if isinstance(record.get("source_sha256s"), dict) else {},
+        "archived_existing_result": bool(record.get("archived_existing_result")),
+        "archive_manifest_path": record.get("archive_manifest_path"),
+        "archive_manifest_entry": (
+            record.get("archive_manifest_entry")
+            if isinstance(record.get("archive_manifest_entry"), dict)
+            else {}
+        ),
         "relog_dry_run_plan_json": record.get("relog_dry_run_plan_json"),
         "relog_dry_run_command": record.get("relog_dry_run_command"),
         "relog_command": record.get("relog_command"),
@@ -1121,6 +1134,7 @@ def existing_results_formalization_summary(report: dict[str, Any]) -> dict[str, 
         "status": audit.get("status"),
         "summary": audit.get("summary") if isinstance(audit.get("summary"), dict) else {},
         "formalized_records": [],
+        "archived_complete_records": [],
         "unformalized_complete_records": [],
         "partial_records": [],
         "wandb_completion_records": [],
@@ -1153,7 +1167,7 @@ def existing_results_formalization_summary(report: dict[str, Any]) -> dict[str, 
             ),
         }
     )
-    for field in ("formalized_records", "unformalized_complete_records", "partial_records"):
+    for field in ("formalized_records", "archived_complete_records", "unformalized_complete_records", "partial_records"):
         records = payload.get(field)
         if isinstance(records, list):
             result[field] = [
@@ -4829,6 +4843,7 @@ def summary_markdown(manifest: dict[str, Any]) -> str:
             f"| Record count | {md_cell(((existing_results_formalization or {}).get('summary') or {}).get('record_count'))} |",
             f"| Complete local | {md_cell(((existing_results_formalization or {}).get('summary') or {}).get('complete_local_count'))} |",
             f"| Formalized in W&B | {md_cell(((existing_results_formalization or {}).get('summary') or {}).get('formalized_wandb_complete_count'))} |",
+            f"| Archived non-release candidates | {md_cell(((existing_results_formalization or {}).get('summary') or {}).get('archived_complete_count'))} |",
             f"| Unformalized complete | {md_cell(((existing_results_formalization or {}).get('summary') or {}).get('unformalized_complete_count'))} |",
             f"| Partial/probe | {md_cell(((existing_results_formalization or {}).get('summary') or {}).get('partial_or_probe_count'))} |",
             "",
@@ -4838,7 +4853,7 @@ def summary_markdown(manifest: dict[str, Any]) -> str:
     )
     existing_rows: list[dict[str, Any]] = []
     if isinstance(existing_results_formalization, dict):
-        for field in ("formalized_records", "unformalized_complete_records", "partial_records"):
+        for field in ("formalized_records", "archived_complete_records", "unformalized_complete_records", "partial_records"):
             records = existing_results_formalization.get(field)
             if isinstance(records, list):
                 existing_rows.extend(record for record in records if isinstance(record, dict))

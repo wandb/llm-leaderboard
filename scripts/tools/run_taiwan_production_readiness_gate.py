@@ -48,6 +48,9 @@ DEFAULT_OPENAI_CANARY_GENERATED_AGENTIC_AGGREGATE_DIR = (
 )
 DEFAULT_EXISTING_RESULTS_OUTPUT_ROOT = Path("outputs") / "taiwan_full_eval"
 DEFAULT_EXISTING_RESULTS_WANDB_COMPLETION_DIR = DEFAULT_EXISTING_RESULTS_OUTPUT_ROOT / "wandb_completion"
+DEFAULT_EXISTING_RESULTS_ARCHIVE_MANIFEST = (
+    DEFAULT_EXISTING_RESULTS_OUTPUT_ROOT / "existing_results_archive_manifest.json"
+)
 
 
 def utc_timestamp() -> str:
@@ -124,6 +127,9 @@ def run_existing_results_audit(args: argparse.Namespace, timestamp: str) -> dict
     audit = existing_results_audit.build_audit(
         output_root=repo_path(args.existing_results_output_root),
         completion_dir=repo_path(args.existing_results_wandb_completion_dir),
+        archive_manifest=repo_path(args.existing_results_archive_manifest)
+        if args.existing_results_archive_manifest
+        else None,
     )
     existing_results_audit.write_json(output_path, audit)
     markdown_path.parent.mkdir(parents=True, exist_ok=True)
@@ -906,6 +912,11 @@ def parse_args(argv: list[str] | None = None) -> tuple[argparse.Namespace, list[
         "--existing-results-wandb-completion-dir",
         type=Path,
         default=DEFAULT_EXISTING_RESULTS_WANDB_COMPLETION_DIR,
+    )
+    parser.add_argument(
+        "--existing-results-archive-manifest",
+        type=Path,
+        default=DEFAULT_EXISTING_RESULTS_ARCHIVE_MANIFEST,
     )
     parser.add_argument("--skip-existing-results-audit", action="store_true")
     parser.add_argument("--wandb-adoption-draft-json", type=Path)

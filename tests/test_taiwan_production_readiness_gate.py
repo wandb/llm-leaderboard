@@ -151,7 +151,8 @@ readiness.write_text(json.dumps({
         {"name": "OpenShell command is available", "ok": True},
         {"name": "NeMoClaw version command succeeds", "ok": True},
         {"name": "NeMoClaw sandbox status succeeds: nejumi-taiwan", "ok": True},
-        {"name": "OpenClaw runs inside NeMoClaw sandbox: nejumi-taiwan", "ok": True}
+        {"name": "OpenClaw runs inside NeMoClaw sandbox: nejumi-taiwan", "ok": True},
+        {"name": "NeMoClaw runtime network policies are allowlisted", "ok": True}
     ]
 }), encoding="utf-8")
 json_path.parent.mkdir(parents=True, exist_ok=True)

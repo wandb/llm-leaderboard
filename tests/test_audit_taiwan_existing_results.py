@@ -658,6 +658,134 @@ def test_existing_result_audit_blocks_agentic_math_relog_without_nemoclaw_audit(
     assert record["rerun_required"] is True
 
 
+def test_existing_result_audit_archives_hash_bound_nonrelease_result(tmp_path, monkeypatch):
+    module = load_module()
+    monkeypatch.setattr(module, "AGENTIC_MATH_EXPECTED_TOTAL", 3)
+    result_dir = write_agentic_math_result(tmp_path, total=3, with_nemoclaw_audit=False)
+    manifest = tmp_path / "existing_results_archive_manifest.json"
+    write_json(
+        manifest,
+        {
+            "schema_version": 1,
+            "archives": [
+                {
+                    "archive_status": "archived_not_release_candidate",
+                    "benchmark": "agentic_math",
+                    "model_slug": "model-a",
+                    "result_dir": module.path_display(result_dir),
+                    "formalization_status": "local_complete_missing_nemoclaw_audit",
+                    "reason": "historical pre-NeMoClaw local run, not a release candidate",
+                    "source_sha256s": {
+                        "summary_json": module.sha256_file(result_dir / "summary.json"),
+                        "results_jsonl": module.sha256_file(result_dir / "results.jsonl"),
+                    },
+                    "reviewed_by": "test",
+                    "reviewed_at": "2026-07-01T00:00:00Z",
+                }
+            ],
+        },
+    )
+
+    audit = module.build_audit(
+        output_root=tmp_path,
+        completion_dir=tmp_path / "wandb_completion",
+        archive_manifest=manifest,
+    )
+
+    assert audit["ok"] is True
+    assert audit["status"] == "passed"
+    assert audit["summary"]["complete_local_count"] == 1
+    assert audit["summary"]["archived_complete_count"] == 1
+    assert audit["summary"]["unformalized_complete_count"] == 0
+    assert audit["summary"]["nemoclaw_audit_blocked_complete_count"] == 0
+    assert audit["remediation_commands"] == []
+    record = audit["archived_complete_records"][0]
+    assert record["formalization_status"] == "archived_not_release_candidate"
+    assert record["archived_existing_result"] is True
+    assert record["archive_manifest_entry"]["reason"].startswith("historical pre-NeMoClaw")
+    assert record["reloggable_to_wandb"] is False
+    assert record["relog_dry_run_command"] == ""
+
+
+def test_existing_result_audit_rejects_archive_manifest_hash_mismatch(tmp_path, monkeypatch):
+    module = load_module()
+    monkeypatch.setattr(module, "AGENTIC_MATH_EXPECTED_TOTAL", 3)
+    result_dir = write_agentic_math_result(tmp_path, total=3, with_nemoclaw_audit=False)
+    manifest = tmp_path / "existing_results_archive_manifest.json"
+    write_json(
+        manifest,
+        {
+            "schema_version": 1,
+            "archives": [
+                {
+                    "archive_status": "archived_not_release_candidate",
+                    "benchmark": "agentic_math",
+                    "model_slug": "model-a",
+                    "result_dir": module.path_display(result_dir),
+                    "formalization_status": "local_complete_missing_nemoclaw_audit",
+                    "reason": "hash mismatch should not archive",
+                    "source_sha256s": {
+                        "summary_json": "0" * 64,
+                        "results_jsonl": module.sha256_file(result_dir / "results.jsonl"),
+                    },
+                }
+            ],
+        },
+    )
+
+    audit = module.build_audit(
+        output_root=tmp_path,
+        completion_dir=tmp_path / "wandb_completion",
+        archive_manifest=manifest,
+    )
+
+    assert audit["ok"] is False
+    assert audit["summary"]["archived_complete_count"] == 0
+    assert audit["summary"]["unformalized_complete_count"] == 1
+    assert audit["summary"]["nemoclaw_audit_blocked_complete_count"] == 1
+    assert audit["archive_manifest_warnings"]
+    record = audit["unformalized_complete_records"][0]
+    assert record["formalization_status"] == "local_complete_missing_nemoclaw_audit"
+
+
+def test_existing_result_audit_rejects_archive_manifest_non_hex_hash(tmp_path, monkeypatch):
+    module = load_module()
+    monkeypatch.setattr(module, "AGENTIC_MATH_EXPECTED_TOTAL", 3)
+    result_dir = write_agentic_math_result(tmp_path, total=3, with_nemoclaw_audit=False)
+    manifest = tmp_path / "existing_results_archive_manifest.json"
+    write_json(
+        manifest,
+        {
+            "schema_version": 1,
+            "archives": [
+                {
+                    "archive_status": "archived_not_release_candidate",
+                    "benchmark": "agentic_math",
+                    "model_slug": "model-a",
+                    "result_dir": module.path_display(result_dir),
+                    "formalization_status": "local_complete_missing_nemoclaw_audit",
+                    "reason": "non-hex hash must fail manifest validation",
+                    "source_sha256s": {
+                        "summary_json": "g" * 64,
+                    },
+                }
+            ],
+        },
+    )
+
+    audit = module.build_audit(
+        output_root=tmp_path,
+        completion_dir=tmp_path / "wandb_completion",
+        archive_manifest=manifest,
+    )
+
+    assert audit["ok"] is False
+    assert audit["status"] == "invalid_archive_manifest"
+    assert audit["archive_manifest_errors"]
+    assert "sha256 hex string" in audit["archive_manifest_errors"][0]
+    assert audit["summary"]["archived_complete_count"] == 0
+
+
 def test_existing_result_audit_accepts_formalized_taiwan_full_provisional_run(tmp_path):
     module = load_module()
     write_taiwan_full_provisional(tmp_path)
