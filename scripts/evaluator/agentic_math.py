@@ -13,6 +13,7 @@ from config_singleton import WandbConfigSingleton
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OPENCLAW_RUNNER = REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py"
+DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 DEFAULT_MAX_INPUT_TOKENS = 500_000
 DEFAULT_MAX_TOOL_CALLS = 60
 AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (
@@ -152,9 +153,12 @@ def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
         command.extend(
             ["--nemoclaw-workdir", str(_cfg_get(cfg.agentic_math, "nemoclaw_workdir", "/sandbox"))]
         )
-        nemoclaw_openclaw_config_path = _cfg_get(cfg.agentic_math, "nemoclaw_openclaw_config_path")
-        if nemoclaw_openclaw_config_path:
-            command.extend(["--nemoclaw-openclaw-config-path", str(nemoclaw_openclaw_config_path)])
+        nemoclaw_openclaw_config_path = _cfg_get(
+            cfg.agentic_math,
+            "nemoclaw_openclaw_config_path",
+            DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH,
+        )
+        command.extend(["--nemoclaw-openclaw-config-path", str(nemoclaw_openclaw_config_path)])
     if _cfg_get(cfg.agentic_math, "allow_failed_preflight", False):
         command.append("--allow-failed-preflight")
     if _cfg_get(cfg.agentic_math, "no_local", False):

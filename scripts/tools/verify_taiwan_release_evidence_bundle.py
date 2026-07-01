@@ -556,6 +556,8 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("Agentic Math runner path", "run_agentic_math_openclaw.py"),
             ("Agentic Math session-prefix config lookup", 'session_prefix = _cfg_get(cfg.agentic_math, "session_prefix")'),
             ("Agentic Math session-prefix pass-through", 'command.extend(["--session-prefix", str(session_prefix)])'),
+            ("Agentic Math NeMoClaw OpenClaw config default", "DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH"),
+            ("Agentic Math NeMoClaw OpenClaw config flag", '"--nemoclaw-openclaw-config-path"'),
             (
                 "Agentic Math W&B audit metric logging",
                 "agentic_math/nemoclaw_session_audit_required_instances",
@@ -577,6 +579,8 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("SWE-Bench Pro runner path", "run_swebench_pro_openclaw.py"),
             ("SWE-Bench Pro session-prefix config lookup", 'session_prefix = _cfg_get(cfg.swebench_pro, "session_prefix")'),
             ("SWE-Bench Pro session-prefix pass-through", 'command.extend(["--session-prefix", str(session_prefix)])'),
+            ("SWE-Bench Pro NeMoClaw OpenClaw config default", "DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH"),
+            ("SWE-Bench Pro NeMoClaw OpenClaw config flag", '"--nemoclaw-openclaw-config-path"'),
             ("SWE-Bench Pro patch audit row loading", "def _read_patch_rows("),
             (
                 "SWE-Bench Pro W&B audit metric logging",

@@ -1315,6 +1315,10 @@ def test_evaluator_passes_no_use_task_agent_when_explicitly_disabled(tmp_path, m
     agentic_module._run_openclaw(cfg, tmp_path / "dataset.jsonl", tmp_path / "outputs")
 
     assert "--no-use-task-agent" in commands[0]
+    assert (
+        commands[0][commands[0].index("--nemoclaw-openclaw-config-path") + 1]
+        == "/sandbox/.openclaw/openclaw.json"
+    )
 
 
 def test_prepare_agentic_math_normalizes_unit_answer():

@@ -1557,3 +1557,38 @@ def test_evaluator_passes_session_prefix_to_swebench_runner(tmp_path, monkeypatc
 
     [command] = commands
     assert command[command.index("--session-prefix") + 1] == "{wandb_run_id}:swebench-pro"
+
+
+def test_evaluator_defaults_nemoclaw_openclaw_config_path_to_swebench_runner(
+    tmp_path,
+    monkeypatch,
+):
+    from omegaconf import OmegaConf
+
+    module = load_script_module(REPO_ROOT / "scripts" / "evaluator" / "swebench_pro.py")
+    commands = []
+
+    def fake_run_command(command):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(module, "_run_command", fake_run_command)
+    cfg = OmegaConf.create(
+        {
+            "testmode": False,
+            "model": {"pretrained_model_name_or_path": "provider/model"},
+            "swebench_pro": {
+                "checkout_root": str(tmp_path / "checkouts"),
+                "nemoclaw_sandbox": "nejumi-taiwan",
+            },
+        }
+    )
+
+    module._run_openclaw(cfg, tmp_path / "dataset.jsonl", tmp_path / "outputs")
+
+    [command] = commands
+    assert command[command.index("--nemoclaw-sandbox") + 1] == "nejumi-taiwan"
+    assert (
+        command[command.index("--nemoclaw-openclaw-config-path") + 1]
+        == "/sandbox/.openclaw/openclaw.json"
+    )

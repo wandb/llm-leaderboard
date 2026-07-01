@@ -15,6 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 OPENCLAW_RUNNER = REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py"
 EVAL_RUNNER = REPO_ROOT / "scripts" / "tools" / "evaluate_swebench_pro_patches.py"
 DEFAULT_TAIWAN_SUBSET = "leaderboard_compact_80"
+DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 DEFAULT_MAX_INPUT_TOKENS = 1_000_000
 DEFAULT_MAX_TOOL_CALLS = 60
 AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (
@@ -156,14 +157,17 @@ def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
     if nemoclaw_sandbox:
         command.extend(["--nemoclaw-sandbox", str(nemoclaw_sandbox)])
         command.extend(["--nemoclaw-bin", str(_cfg_get(cfg.swebench_pro, "nemoclaw_bin", "nemoclaw"))])
-        nemoclaw_openclaw_config_path = _cfg_get(cfg.swebench_pro, "nemoclaw_openclaw_config_path")
-        if nemoclaw_openclaw_config_path:
-            command.extend(
-                [
-                    "--nemoclaw-openclaw-config-path",
-                    str(nemoclaw_openclaw_config_path),
-                ]
-            )
+        nemoclaw_openclaw_config_path = _cfg_get(
+            cfg.swebench_pro,
+            "nemoclaw_openclaw_config_path",
+            DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH,
+        )
+        command.extend(
+            [
+                "--nemoclaw-openclaw-config-path",
+                str(nemoclaw_openclaw_config_path),
+            ]
+        )
         nemoclaw_workdir = _cfg_get(cfg.swebench_pro, "nemoclaw_workdir")
         if nemoclaw_workdir:
             command.extend(["--nemoclaw-workdir", str(nemoclaw_workdir)])
