@@ -9112,6 +9112,82 @@ def test_verify_release_evidence_bundle_rejects_bundled_review_pre_run_budget_mo
     )
 
 
+def test_verify_release_evidence_bundle_rejects_completed_paid_review_missing_budget_approval_alignment(
+    tmp_path,
+):
+    bundle, _attestation = build_bundle_with_paid_review_scope_attestation(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    record = manifest["current_gate"]["paid_run_review_package"]["gates"][0]["records"][0]
+    record["requires_paid_model_api"] = True
+    record.pop("budget_approval_alignment", None)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "paid review budget approval alignment paid_run_review_package#1 "
+        "budget_approval_alignment is missing or not an object"
+        in error
+        for error in payload["errors"]
+    )
+
+
+def test_verify_release_evidence_bundle_rejects_bundled_review_budget_approval_below_high(
+    tmp_path,
+):
+    bundle, _attestation = build_bundle_with_paid_review_scope_attestation(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    review_record = next(
+        record
+        for record in manifest["files"]
+        if record.get("source_path", "").endswith("canary_agentic_paid_run_review.json")
+    )
+    bundled_review = bundle / review_record["bundle_path"]
+    review_payload = json.loads(bundled_review.read_text(encoding="utf-8"))
+    review_payload["requires_paid_model_api"] = True
+    review_payload["budget_approval_alignment"] = {
+        "required_before_paid_execution": True,
+        "valid": False,
+        "pre_run_budget_estimate_valid": True,
+        "external_action_approval_valid": True,
+        "estimated_total_high_usd": 20.0,
+        "approved_budget_usd": 19.0,
+        "approved_budget_covers_estimate_high": False,
+        "errors": ["approved budget below high estimate"],
+    }
+    bundled_review.write_text(json.dumps(review_payload), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, review_record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "paid review budget approval alignment paid_run_review_package#1 "
+        "bundled paid review JSON budget_approval_alignment approved_budget_usd "
+        "is lower than estimated_total_high_usd"
+        in error
+        for error in payload["errors"]
+    )
+
+
 def test_verify_release_evidence_bundle_rejects_paid_review_raw_missing_scope_attestation(
     tmp_path,
 ):

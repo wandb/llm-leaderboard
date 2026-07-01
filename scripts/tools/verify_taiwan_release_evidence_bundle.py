@@ -12511,6 +12511,128 @@ def validate_paid_review_pre_run_budget_evidence(
     return errors
 
 
+def numeric_usd_value(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def validate_budget_approval_alignment_payload(
+    alignment: Any,
+    *,
+    budget: Any,
+    approval: Any,
+    label: str,
+    required: bool,
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(alignment, dict):
+        if required:
+            errors.append(f"{label} budget_approval_alignment is missing or not an object")
+        return errors
+
+    if alignment.get("required_before_paid_execution") is not True:
+        errors.append(f"{label} budget_approval_alignment.required_before_paid_execution must be true")
+    if alignment.get("valid") is not True:
+        errors.append(f"{label} budget_approval_alignment.valid must be true")
+
+    estimated_high = numeric_usd_value(alignment.get("estimated_total_high_usd"))
+    approved_budget = numeric_usd_value(alignment.get("approved_budget_usd"))
+    if estimated_high is None:
+        errors.append(f"{label} budget_approval_alignment.estimated_total_high_usd is missing or not numeric")
+    if approved_budget is None:
+        errors.append(f"{label} budget_approval_alignment.approved_budget_usd is missing or not numeric")
+    if alignment.get("approved_budget_covers_estimate_high") is not True:
+        errors.append(f"{label} budget_approval_alignment.approved_budget_covers_estimate_high must be true")
+    if estimated_high is not None and approved_budget is not None and approved_budget < estimated_high:
+        errors.append(f"{label} budget_approval_alignment approved_budget_usd is lower than estimated_total_high_usd")
+
+    budget_high = None
+    if isinstance(budget, dict) and isinstance(budget.get("estimated_total_usd"), dict):
+        budget_high = numeric_usd_value(budget["estimated_total_usd"].get("high"))
+    if budget_high is not None and estimated_high is not None and budget_high != estimated_high:
+        errors.append(f"{label} budget_approval_alignment estimated_total_high_usd does not match pre_run_budget_estimate")
+
+    approved_from_report = None
+    if isinstance(approval, dict):
+        approved_from_report = numeric_usd_value(approval.get("paid_api_approved_budget_usd"))
+    if (
+        approved_from_report is not None
+        and approved_budget is not None
+        and approved_from_report != approved_budget
+    ):
+        errors.append(f"{label} budget_approval_alignment approved_budget_usd does not match external_action_approval")
+    return errors
+
+
+def validate_paid_review_budget_approval_alignment_evidence(
+    *,
+    bundle_dir: Path,
+    manifest: dict[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    current_gate = manifest.get("current_gate")
+    if not isinstance(current_gate, dict):
+        return errors
+    paid_review_package = current_gate.get("paid_run_review_package")
+    gates = paid_review_package.get("gates") if isinstance(paid_review_package, dict) else None
+    if not isinstance(gates, list):
+        return errors
+
+    records_by_source = file_records_by_source(manifest)
+    for gate in gates:
+        if not isinstance(gate, dict):
+            continue
+        gate_name = str(gate.get("name") or "unknown_gate")
+        review_records = gate.get("records")
+        if not isinstance(review_records, list):
+            continue
+        for index, record in enumerate(review_records, start=1):
+            if not isinstance(record, dict):
+                continue
+            label = f"paid review budget approval alignment {gate_name}#{index}"
+            required = (
+                record.get("status") == "completed"
+                and record.get("requires_paid_model_api") is True
+            )
+            errors.extend(
+                validate_budget_approval_alignment_payload(
+                    record.get("budget_approval_alignment"),
+                    budget=record.get("pre_run_budget_estimate"),
+                    approval=record.get("external_action_approval"),
+                    label=label,
+                    required=required,
+                )
+            )
+
+            review_key = source_path_key(record.get("path"))
+            review_record = records_by_source.get(review_key) if review_key else None
+            review_bundle_path = review_record.get("bundle_path") if isinstance(review_record, dict) else None
+            if not isinstance(review_bundle_path, str) or not review_bundle_path:
+                continue
+            try:
+                review_payload = read_json_object(bundle_dir / review_bundle_path)
+            except (OSError, json.JSONDecodeError, ValueError) as exc:
+                errors.append(f"{label} bundled paid review JSON is not readable: {exc}")
+                continue
+            review_required = (
+                review_payload.get("status") == "completed"
+                and review_payload.get("requires_paid_model_api") is True
+            )
+            errors.extend(
+                validate_budget_approval_alignment_payload(
+                    review_payload.get("budget_approval_alignment"),
+                    budget=review_payload.get("pre_run_budget_estimate"),
+                    approval=review_payload.get("external_action_approval"),
+                    label=f"{label} bundled paid review JSON",
+                    required=review_required,
+                )
+            )
+    return errors
+
+
 def validate_paid_review_external_action_approval_evidence(
     *,
     bundle_dir: Path,
@@ -15617,6 +15739,7 @@ def verify_bundle(
     errors.extend(validate_paid_review_scope_attestation_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_paid_review_pre_run_budget_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_paid_review_external_action_approval_evidence(bundle_dir=bundle_dir, manifest=manifest))
+    errors.extend(validate_paid_review_budget_approval_alignment_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_weave_agents_completion_proof_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_weave_agents_completion_review_source_evidence(bundle_dir=bundle_dir, manifest=manifest))
     errors.extend(validate_weave_content_canary_gate_evidence(bundle_dir=bundle_dir, manifest=manifest))
