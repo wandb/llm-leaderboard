@@ -90,6 +90,8 @@ assert timestamp is not None
 assert json_path is not None
 assert markdown_path is not None
 output_dir.mkdir(parents=True, exist_ok=True)
+sandbox = "nejumi-taiwan"
+openclaw_config_path = "/sandbox/.openclaw/openclaw.json"
 
 setup_json = output_dir / f"fake_post_install_setup_{timestamp}.json"
 preflight_json = output_dir / f"fake_post_install_preflight_{timestamp}.json"
@@ -145,7 +147,15 @@ policy_detail = {
 }
 
 payloads = {
-    setup_json: {"ok": True, "status": "passed"},
+    setup_json: {
+        "ok": True,
+        "status": "passed",
+        "sandbox_configured": True,
+        "setup_plan": {
+            "sandbox_configured": True,
+            "sandbox_readiness_required": True,
+        },
+    },
     preflight_json: {"ok": True, "status": "passed"},
     readiness_json: {
         "ok": True,
@@ -172,6 +182,17 @@ payloads = {
                 "ok": True,
                 "detail": json.dumps(policy_detail),
             },
+            {
+                "name": "NeMoClaw sandbox OpenClaw config is readable: /sandbox/.openclaw/openclaw.json",
+                "ok": True,
+                "detail": "bytes=7465",
+            },
+            {"name": "NeMoClaw sandbox OpenClaw openai-direct provider exists", "ok": True},
+            {
+                "name": "NeMoClaw sandbox OpenClaw model is registered: openai-direct/gpt-4.1-mini-2025-04-14",
+                "ok": True,
+            },
+            {"name": "NeMoClaw sandbox OpenClaw Weave plugin is enabled", "ok": True},
             {
                 "name": "agentic Math denies remote lookup via deny_tool",
                 "ok": True,
@@ -299,17 +320,44 @@ steps = [
     (
         "setup_check",
         "setup_json",
-        ["scripts/setup/install_nemoclaw.sh", "--check-only", "--json", str(setup_json)],
+        [
+            "scripts/setup/install_nemoclaw.sh",
+            "--check-only",
+            "--sandbox",
+            sandbox,
+            "--json",
+            str(setup_json),
+        ],
     ),
     (
         "protocol_preflight",
         "preflight_json",
-        ["uv", "run", "python", "scripts/tools/run_openclaw_agent_protocol.py", "preflight"],
+        [
+            "uv",
+            "run",
+            "python",
+            "scripts/tools/run_openclaw_agent_protocol.py",
+            "preflight",
+            "--nemoclaw-sandbox",
+            sandbox,
+        ],
     ),
     (
         "canary_readiness",
         "readiness_json",
-        ["uv", "run", "python", "scripts/tools/check_taiwan_canary_readiness.py", "--require-nemoclaw", "--json", str(readiness_json)],
+        [
+            "uv",
+            "run",
+            "python",
+            "scripts/tools/check_taiwan_canary_readiness.py",
+            "--require-nemoclaw",
+            "--nemoclaw-sandbox",
+            sandbox,
+            "--nemoclaw-openclaw-config-path",
+            openclaw_config_path,
+            "--json",
+            str(readiness_json),
+        ],
     ),
     (
         "adoption_check",
@@ -323,6 +371,8 @@ steps = [
             str(setup_json),
             "--readiness-json",
             str(readiness_json),
+            "--sandbox",
+            sandbox,
             "--json",
             str(adoption_json),
             "--markdown",
@@ -334,6 +384,7 @@ post_install = {
     "schema_version": 1,
     "ok": True,
     "status": "passed",
+    "sandbox": sandbox,
     "will_launch_model_inference": False,
     "will_query_wandb": False,
     "will_install_or_onboard": False,
@@ -343,16 +394,43 @@ post_install = {
         "forbidden_prefixes": ["--upload", "--wandb", "ANTHROPIC_API_KEY=", "GEMINI_API_KEY=", "GOOGLE_API_KEY=", "OPENAI_API_KEY=", "OPENROUTER_", "OPENROUTER_API_KEY=", "WANDB_", "WEAVE_", "XAI_API_KEY="],
         "forbidden_markers": ["openrouter", "wandb", "weave"],
         "required_step_tokens": {
-            "setup_check": ["--check-only", "--json"],
-            "protocol_preflight": ["preflight"],
-            "canary_readiness": ["--require-nemoclaw", "--json"],
-            "adoption_check": ["--setup-json", "--readiness-json", "--json", "--markdown"],
+            "setup_check": ["--check-only", "--sandbox", "--json"],
+            "protocol_preflight": ["preflight", "--nemoclaw-sandbox"],
+            "canary_readiness": [
+                "--require-nemoclaw",
+                "--nemoclaw-sandbox",
+                "--nemoclaw-openclaw-config-path",
+                "--json",
+            ],
+            "adoption_check": [
+                "--setup-json",
+                "--readiness-json",
+                "--sandbox",
+                "--json",
+                "--markdown",
+            ],
+        },
+        "required_step_flag_values": {
+            "setup_check": {"--sandbox": sandbox},
+            "protocol_preflight": {"--nemoclaw-sandbox": sandbox},
+            "canary_readiness": {
+                "--nemoclaw-sandbox": sandbox,
+                "--nemoclaw-openclaw-config-path": openclaw_config_path,
+            },
+            "adoption_check": {"--sandbox": sandbox},
         },
         "forbidden_token_count": 0,
         "missing_required_token_count": 0,
+        "value_error_count": 0,
         "missing_command_count": 0,
         "records": [
-            {"name": name, "ok": True, "forbidden_tokens": [], "missing_required_tokens": []}
+            {
+                "name": name,
+                "ok": True,
+                "forbidden_tokens": [],
+                "missing_required_tokens": [],
+                "required_value_errors": [],
+            }
             for name, _, _ in steps
         ],
     },
