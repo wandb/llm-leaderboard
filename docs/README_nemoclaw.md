@@ -14,7 +14,7 @@ References:
 
 ## Current Status
 
-As of 2026-07-01 20:56 JST:
+As of 2026-07-01 21:06 JST:
 
 - Host prerequisites are present: Docker, Node.js, npm, zstd, and OpenClaw.
 - `nemoclaw v0.0.55` and `openshell 0.0.44` are installed on this machine.
@@ -61,7 +61,10 @@ As of 2026-07-01 20:56 JST:
   silently drop this proof enforcement. The bundled
   `verify_taiwan_weave_agents.py` verifier itself is now source-contract checked
   for the same content, tool, usage, no-error, timestamp/order, and
-  request_model obligations.
+  request_model obligations. A626 also source-contract checks the native W&B
+  Agents API base URL, `/agents/query`, `/agents/spans/query`, HTTP POST helper,
+  query calls, and query_source endpoint fields so the verifier cannot regress
+  to local or sidecar-only proof.
 - `configs/nemoclaw/policies/wandb_weave.yaml` is the W&B/Weave egress policy
   template for the sandbox. It was applied with
   `nemoclaw nejumi-taiwan policy-add --from-file ... --yes`; the command

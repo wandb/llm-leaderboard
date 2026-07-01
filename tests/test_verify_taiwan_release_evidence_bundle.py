@@ -14722,6 +14722,43 @@ def test_verify_release_evidence_bundle_rejects_weave_agents_verifier_missing_us
     ) in payload["errors"]
 
 
+def test_verify_release_evidence_bundle_rejects_weave_agents_verifier_missing_native_api_contract(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path") == "scripts/tools/verify_taiwan_weave_agents.py"
+    )
+    script_path = bundle / record["bundle_path"]
+    script_text = script_path.read_text(encoding="utf-8")
+    script_path.write_text(
+        script_text.replace('AGENTS_QUERY_ENDPOINT = "/agents/query"', 'AGENTS_QUERY_ENDPOINT = "/local/query"'),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "agentic runner script missing source contract "
+        "Weave native Agents query endpoint: "
+        "scripts/tools/verify_taiwan_weave_agents.py: "
+        'AGENTS_QUERY_ENDPOINT = "/agents/query"'
+    ) in payload["errors"]
+
+
 def test_verify_release_evidence_bundle_rejects_weave_content_canary_contract_helper_tamper(
     tmp_path,
 ):

@@ -671,6 +671,50 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "Weave observed request-model evidence",
                 "observed_request_models",
             ),
+            (
+                "Weave native Agents API base URL",
+                'AGENTS_API_BASE_URL = "https://trace.wandb.ai"',
+            ),
+            (
+                "Weave native Agents query endpoint",
+                'AGENTS_QUERY_ENDPOINT = "/agents/query"',
+            ),
+            (
+                "Weave native Agents spans endpoint",
+                'AGENTS_SPANS_QUERY_ENDPOINT = "/agents/spans/query"',
+            ),
+            (
+                "Weave native Agents API POST helper",
+                "def agents_api_post(",
+            ),
+            (
+                "Weave native Agents API HTTP request",
+                "urllib.request.urlopen(request, timeout=30)",
+            ),
+            (
+                "Weave native Agents query call",
+                "agents_api_post(env, AGENTS_QUERY_ENDPOINT, agents_payload)",
+            ),
+            (
+                "Weave native Agents spans query call",
+                "agents_api_post(env, AGENTS_SPANS_QUERY_ENDPOINT, spans_payload)",
+            ),
+            (
+                "Weave native Agents query source kind",
+                '"kind": "wandb_agents_api"',
+            ),
+            (
+                "Weave native Agents query source base URL",
+                '"api_base_url": AGENTS_API_BASE_URL',
+            ),
+            (
+                "Weave native Agents query source agents endpoint",
+                '"agents_endpoint": AGENTS_QUERY_ENDPOINT',
+            ),
+            (
+                "Weave native Agents query source spans endpoint",
+                '"spans_endpoint": AGENTS_SPANS_QUERY_ENDPOINT',
+            ),
         ),
     },
     "scripts/tools/verify_taiwan_wandb_completion.py": {
