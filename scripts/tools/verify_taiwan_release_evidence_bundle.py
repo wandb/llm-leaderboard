@@ -1191,6 +1191,28 @@ EXTERNAL_ACTION_APPROVAL_PACKET_VERIFIER_SCRIPT = (
 EXTERNAL_ACTION_APPROVAL_TEMPLATE_RENDERER_SCRIPT = (
     "scripts/tools/render_external_action_approval_template.py"
 )
+EXTERNAL_ACTION_APPROVAL_HANDOFF_PREPARER_SCRIPT = (
+    "scripts/tools/prepare_taiwan_external_action_approval.py"
+)
+EXTERNAL_ACTION_APPROVAL_HANDOFF_PREPARER_REQUIRED_SOURCE_TOKENS = (
+    (
+        "template renderer import",
+        "from render_external_action_approval_template import render_template",
+    ),
+    (
+        "approval verifier import",
+        "from verify_external_action_approval_packet import (",
+    ),
+    ("template renderer call", "render_template("),
+    ("source-bound verifier call", "verify_approval_packet("),
+    ("source binding evidence", "source_binding_bound"),
+    ("pending human approval status", '"pending_human_approval"'),
+    ("external action disabled", '"will_execute_external_actions": False'),
+    ("W&B query disabled", '"queries_wandb": False'),
+    ("W&B write disabled", '"writes_wandb": False'),
+    ("model inference disabled", '"launches_model_inference": False'),
+    ("handoff JSON write", 'write_json(paths["handoff_json"], handoff)'),
+)
 EXTERNAL_ACTION_REQUIREMENTS = (
     ("requires_paid_api", "paid_api"),
     ("requires_wandb_access", "wandb_access"),
@@ -3136,6 +3158,49 @@ def validate_external_action_approval_packet_payload(
         errors.append(
             "external action approval template renderer script missing bundle_path"
         )
+    record = validate_file_role(
+        errors=errors,
+        records=records,
+        path_value=EXTERNAL_ACTION_APPROVAL_HANDOFF_PREPARER_SCRIPT,
+        role="external_action_approval_handoff_preparer:script",
+        label="external action approval handoff preparer script",
+    )
+    if isinstance(record, dict):
+        bundle_path = record.get("bundle_path")
+        if not isinstance(bundle_path, str) or not bundle_path:
+            errors.append(
+                "external action approval handoff preparer script missing bundle_path"
+            )
+        else:
+            errors.extend(
+                validate_external_action_approval_handoff_preparer_source(
+                    bundle_dir=bundle_dir,
+                    bundle_path=bundle_path,
+                )
+            )
+    return errors
+
+
+def validate_external_action_approval_handoff_preparer_source(
+    *,
+    bundle_dir: Path,
+    bundle_path: str,
+) -> list[str]:
+    errors: list[str] = []
+    script_path = bundle_dir / bundle_path
+    try:
+        text = script_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [
+            "external action approval handoff preparer script is not readable: "
+            f"{exc}"
+        ]
+    for label, token in EXTERNAL_ACTION_APPROVAL_HANDOFF_PREPARER_REQUIRED_SOURCE_TOKENS:
+        if token not in text:
+            errors.append(
+                "external action approval handoff preparer script missing source "
+                f"contract {label}: {token}"
+            )
     return errors
 
 

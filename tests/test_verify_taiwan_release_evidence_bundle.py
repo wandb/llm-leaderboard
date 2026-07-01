@@ -5783,6 +5783,71 @@ def test_verify_release_evidence_bundle_rejects_external_action_approval_rendere
     )
 
 
+def test_verify_release_evidence_bundle_rejects_missing_external_action_approval_handoff_preparer(tmp_path):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["files"] = [
+        record
+        for record in manifest["files"]
+        if record.get("source_path")
+        != "scripts/tools/prepare_taiwan_external_action_approval.py"
+    ]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "missing bundled evidence for external action approval handoff preparer script: "
+        "scripts/tools/prepare_taiwan_external_action_approval.py"
+    ) in payload["errors"]
+
+
+def test_verify_release_evidence_bundle_rejects_external_action_approval_handoff_preparer_without_source_binding(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in manifest["files"]
+        if item.get("source_path")
+        == "scripts/tools/prepare_taiwan_external_action_approval.py"
+    )
+    helper_path = bundle / record["bundle_path"]
+    helper_text = helper_path.read_text(encoding="utf-8")
+    helper_path.write_text(
+        helper_text.replace("source_binding_bound", "source_binding_removed"),
+        encoding="utf-8",
+    )
+    refresh_manifest_record_hash(bundle, record["bundle_path"])
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "external action approval handoff preparer script missing source "
+        "contract source binding evidence: source_binding_bound"
+    ) in payload["errors"]
+
+
 def test_verify_release_evidence_bundle_rejects_current_gate_external_action_checklist_mismatch(tmp_path):
     bundle = build_bundle_with_operator_command_script(tmp_path)
     manifest_path = bundle / "manifest.json"
