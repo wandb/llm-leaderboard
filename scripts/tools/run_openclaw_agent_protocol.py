@@ -36,6 +36,7 @@ DEFAULT_ENV_FILE = REPO_ROOT / ".env"
 WEAVE_SIDECAR_SCRIPT = REPO_ROOT / "scripts" / "tools" / "log_openclaw_result_to_weave.mjs"
 DEFAULT_NATIVE_WEAVE_AGENT_NAME = "nejumi-taiwan-openclaw"
 DEFAULT_DIAGNOSTIC_WEAVE_AGENT_NAME = "nejumi-taiwan-sidecar-diagnostic"
+DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH = Path("/sandbox/.openclaw/openclaw.json")
 AGENTS_API_BASE_URL = "https://trace.wandb.ai"
 AGENTS_QUERY_ENDPOINT = "/agents/query"
 AGENTS_SPANS_QUERY_ENDPOINT = "/agents/spans/query"
@@ -551,10 +552,20 @@ def build_openclaw_command(args: argparse.Namespace, message_text: str, openclaw
     if nemoclaw_workdir:
         command.extend(["--workdir", nemoclaw_workdir])
     command.extend(["--no-tty", "--timeout", str(args.timeout + 60), "--"])
-    if getattr(args, "openclaw_config_path", None):
-        command.extend(["env", f"OPENCLAW_CONFIG_PATH={args.openclaw_config_path}"])
+    config_path = effective_openclaw_config_path(args)
+    if config_path:
+        command.extend(["env", f"OPENCLAW_CONFIG_PATH={config_path}"])
     command.extend(openclaw_command)
     return command
+
+
+def effective_openclaw_config_path(args: argparse.Namespace) -> Path | None:
+    configured = getattr(args, "openclaw_config_path", None)
+    if configured:
+        return Path(configured)
+    if getattr(args, "nemoclaw_sandbox", None):
+        return DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH
+    return None
 
 
 def openclaw_state_dir(args: argparse.Namespace) -> Path:
@@ -809,6 +820,7 @@ def run_openclaw_command_with_live_budget(
 
 
 def run_agent(args: argparse.Namespace) -> None:
+    args.openclaw_config_path = effective_openclaw_config_path(args)
     status = preflight(
         args.openclaw_bin,
         args.env_file,

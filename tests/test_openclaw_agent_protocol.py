@@ -1463,7 +1463,7 @@ def test_tool_policy_bare_url_pattern_does_not_block_local_url_literals_in_exec(
     )
 
 
-def test_build_openclaw_command_can_wrap_nemoclaw_sandbox_exec():
+def test_build_openclaw_command_defaults_sandbox_visible_config_path_for_nemoclaw():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     args = Namespace(
         openclaw_bin="openclaw",
@@ -1495,8 +1495,13 @@ def test_build_openclaw_command_can_wrap_nemoclaw_sandbox_exec():
         "--timeout",
         "180",
     ]
-    assert command[9:11] == ["--", "openclaw"]
-    assert command[11:14] == ["agent", "--agent", "main"]
+    assert command[9:12] == [
+        "--",
+        "env",
+        "OPENCLAW_CONFIG_PATH=/sandbox/.openclaw/openclaw.json",
+    ]
+    assert command[12:14] == ["openclaw", "agent"]
+    assert command[14:16] == ["--agent", "main"]
     assert "--message" in command
     assert "hello" in command
 
