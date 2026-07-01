@@ -77,6 +77,8 @@ def write_external_action_approval_report(
     source_packet: Path,
     *,
     approved_model_scope: str = "openai-direct/gpt-4.1-mini-2025-04-14 canary",
+    approved_budget_usd: float = 25.0,
+    minimum_approved_budget_usd: float = 20.0,
 ) -> Path:
     path.write_text(
         json.dumps(
@@ -100,7 +102,11 @@ def write_external_action_approval_report(
                         "requirement": "paid_api",
                         "required": True,
                         "approved": True,
-                        "approved_budget_usd": 25.0,
+                        "approved_budget_usd": approved_budget_usd,
+                        "minimum_approved_budget_usd": minimum_approved_budget_usd,
+                        "minimum_approved_budget_source": (
+                            "max_pre_run_budget_estimate_high"
+                        ),
                         "approved_model_scope": approved_model_scope,
                         "errors": [],
                     }
@@ -372,6 +378,9 @@ def test_render_operator_execution_plan_resolves_placeholders_and_shell(tmp_path
     assert "- Total evidence paths: `1`" in markdown
     assert "## Command Policy" in markdown
     assert "- Valid: `true`" in markdown
+    assert "- Paid API approved budget USD: `25.0`" in markdown
+    assert "- Paid API minimum approved budget USD: `20.0`" in markdown
+    assert "- Approval results valid: `true`" in markdown
     assert "- Commands: `2` total, `1` executable, `1` notes" in markdown
     assert "- Evidence paths: `1`" in markdown
     assert "abc123" in markdown
@@ -456,6 +465,59 @@ def test_render_operator_execution_plan_refuses_shell_without_external_approval(
     assert payload["all_ready_to_execute_without_placeholder"] is True
     assert payload["all_ready_for_external_execution"] is False
     assert payload["external_action_approval"]["valid"] is False
+    assert not output_sh.exists()
+
+
+def test_render_operator_execution_plan_rejects_paid_budget_below_floor(tmp_path):
+    operator_plan = write_operator_plan(tmp_path / "operator_plan.json")
+    source_packet = write_source_packet(tmp_path / "external_action_approval_packet.json")
+    approval_report = write_external_action_approval_report(
+        tmp_path / "approval.verify.json",
+        source_packet,
+        approved_budget_usd=19.0,
+        minimum_approved_budget_usd=20.0,
+    )
+    output_json = tmp_path / "execution_plan.json"
+    output_sh = tmp_path / "execution_plan.sh"
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--operator-plan-json",
+            str(operator_plan),
+            "--gate",
+            "wandb_completion",
+            "--run-id",
+            "abc123",
+            "--external-action-approval-source-packet-json",
+            str(source_packet),
+            "--external-action-approval-report-json",
+            str(approval_report),
+            "--output-json",
+            str(output_json),
+            "--shell-script",
+            str(output_sh),
+            "--require-ready",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(output_json.read_text(encoding="utf-8"))
+    approval = payload["external_action_approval"]
+    assert approval["valid"] is False
+    assert approval["paid_api_approval"]["approved_budget_usd"] == 19.0
+    assert approval["paid_api_approval"]["minimum_approved_budget_usd"] == 20.0
+    validation = approval["approval_results_validation"]
+    assert validation["valid"] is False
+    assert any(
+        "greater than or equal to minimum_approved_budget_usd" in error
+        for error in validation["errors"]
+    )
     assert not output_sh.exists()
 
 

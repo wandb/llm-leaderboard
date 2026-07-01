@@ -264,6 +264,22 @@ def numeric_timestamp(value: Any) -> float | None:
     return None
 
 
+def numeric_usd(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip().replace("$", "").replace(",", "")
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            return None
+    return None
+
+
 def validate_weave_content_canary_gate_option(
     parts: list[str],
     *,
@@ -464,6 +480,8 @@ def extract_paid_api_approval(payload: dict[str, Any]) -> dict[str, Any]:
         "present": False,
         "approved": False,
         "approved_budget_usd": None,
+        "minimum_approved_budget_usd": None,
+        "minimum_approved_budget_source": "",
         "approved_model_scope": "",
     }
     approval_results = payload.get("approval_results")
@@ -475,6 +493,14 @@ def extract_paid_api_approval(payload: dict[str, Any]) -> dict[str, Any]:
         result["present"] = True
         result["approved"] = bool(item.get("approved"))
         result["approved_budget_usd"] = item.get("approved_budget_usd")
+        result["minimum_approved_budget_usd"] = item.get(
+            "minimum_approved_budget_usd"
+        )
+        result["minimum_approved_budget_source"] = (
+            item.get("minimum_approved_budget_source")
+            if isinstance(item.get("minimum_approved_budget_source"), str)
+            else ""
+        )
         result["approved_model_scope"] = (
             item.get("approved_model_scope")
             if isinstance(item.get("approved_model_scope"), str)
@@ -482,6 +508,77 @@ def extract_paid_api_approval(payload: dict[str, Any]) -> dict[str, Any]:
         )
         break
     return result
+
+
+def validate_approval_results(payload: dict[str, Any]) -> dict[str, Any]:
+    results = payload.get("approval_results")
+    errors: list[str] = []
+    records: list[dict[str, Any]] = []
+    if not isinstance(results, list):
+        return {
+            "valid": False,
+            "checked_count": 0,
+            "records": [],
+            "errors": ["approval_results must be a list"],
+        }
+
+    for item in results:
+        if not isinstance(item, dict):
+            errors.append("approval_results contains a non-object item")
+            continue
+        requirement = str(item.get("requirement") or "")
+        item_errors = item.get("errors")
+        if not isinstance(item_errors, list):
+            item_errors = ["approval result errors must be a list"]
+        required = item.get("required") is True
+        approved = item.get("approved") is True
+        record: dict[str, Any] = {
+            "requirement": requirement,
+            "required": required,
+            "approved": approved,
+            "errors": list(item_errors),
+        }
+        if required and not approved:
+            record["errors"].append(
+                f"{requirement or 'approval_result'} is required but not approved"
+            )
+        if requirement == "paid_api":
+            budget = numeric_usd(item.get("approved_budget_usd"))
+            minimum_budget = numeric_usd(item.get("minimum_approved_budget_usd"))
+            record["approved_budget_usd"] = budget
+            record["minimum_approved_budget_usd"] = minimum_budget
+            record["minimum_approved_budget_source"] = (
+                item.get("minimum_approved_budget_source")
+                if isinstance(item.get("minimum_approved_budget_source"), str)
+                else ""
+            )
+            if required:
+                if budget is None or budget <= 0:
+                    record["errors"].append(
+                        "paid_api.approved_budget_usd must be a positive USD number"
+                    )
+                if minimum_budget is None:
+                    record["errors"].append(
+                        "paid_api.minimum_approved_budget_usd must be present"
+                    )
+                elif budget is not None and budget < minimum_budget:
+                    record["errors"].append(
+                        "paid_api.approved_budget_usd must be greater than or "
+                        "equal to minimum_approved_budget_usd"
+                    )
+        if record["errors"]:
+            errors.extend(
+                f"{requirement or 'approval_result'}: {error}"
+                for error in record["errors"]
+            )
+        records.append(record)
+
+    return {
+        "valid": not errors,
+        "checked_count": len(records),
+        "records": records,
+        "errors": errors,
+    }
 
 
 def validate_canary_approval_scope(
@@ -741,6 +838,7 @@ def build_external_action_approval_record(
         "all_required_approvals_granted": False,
         "source_binding": {},
         "paid_api_approval": {},
+        "approval_results_validation": {},
         "expected_source_packet_json": str(expected_source_packet_path)
         if expected_source_packet_path
         else "",
@@ -811,9 +909,17 @@ def build_external_action_approval_record(
             ),
             "source_binding": source_binding,
             "paid_api_approval": extract_paid_api_approval(payload),
+            "approval_results_validation": validate_approval_results(payload),
             "will_execute_external_actions": payload.get("will_execute_external_actions"),
         }
     )
+    approval_results_validation = record["approval_results_validation"]
+    if isinstance(approval_results_validation, dict):
+        record["errors"].extend(
+            str(error)
+            for error in approval_results_validation.get("errors", [])
+            if isinstance(error, str)
+        )
     if payload.get("schema_version") != 1:
         record["errors"].append("schema_version must be 1")
     if payload.get("ok") is not True:
@@ -1172,6 +1278,25 @@ def markdown(plan: dict[str, Any]) -> str:
         if isinstance(source_binding, dict):
             lines.append(
                 f"- Source bound: `{str(source_binding.get('bound')).lower()}`"
+            )
+        paid_api = approval.get("paid_api_approval")
+        if isinstance(paid_api, dict) and paid_api.get("present"):
+            lines.extend(
+                [
+                    f"- Paid API approved: `{str(paid_api.get('approved')).lower()}`",
+                    f"- Paid API approved budget USD: `{paid_api.get('approved_budget_usd')}`",
+                    f"- Paid API minimum approved budget USD: `{paid_api.get('minimum_approved_budget_usd')}`",
+                    f"- Paid API minimum budget source: `{paid_api.get('minimum_approved_budget_source') or ''}`",
+                    f"- Paid API model scope: `{paid_api.get('approved_model_scope') or ''}`",
+                ]
+            )
+        approval_results_validation = approval.get("approval_results_validation")
+        if isinstance(approval_results_validation, dict):
+            lines.extend(
+                [
+                    f"- Approval results valid: `{str(approval_results_validation.get('valid')).lower()}`",
+                    f"- Approval results checked: `{approval_results_validation.get('checked_count')}`",
+                ]
             )
         errors = approval.get("errors")
         if isinstance(errors, list) and errors:

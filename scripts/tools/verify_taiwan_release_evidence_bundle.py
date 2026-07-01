@@ -361,6 +361,14 @@ OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
         "OpenAI-direct canary approval scope validator invocation",
         "approval_scope_policy = validate_canary_approval_scope(",
     ),
+    (
+        "external approval results budget-floor validator",
+        "def validate_approval_results(",
+    ),
+    (
+        "external approval paid budget floor comparison",
+        "elif budget is not None and budget < minimum_budget:",
+    ),
 )
 WEAVE_AGENTS_SYNC_SCRIPT = "scripts/tools/sync_weave_agents_completion_to_paid_review.py"
 WEAVE_AGENTS_SYNC_SCRIPT_SOURCE_TOKENS = (
