@@ -1804,6 +1804,7 @@ def validate_current_gate(manifest: dict[str, Any]) -> list[str]:
         "nemoclaw_adoption",
         "operator_next_steps",
         "external_action_checklist",
+        "external_budget",
         "remediation_plan",
         "runner_evidence",
     ):
@@ -1898,6 +1899,12 @@ def validate_current_gate(manifest: dict[str, Any]) -> list[str]:
         if current_gate.get("external_action_checklist") != expected_checklist:
             errors.append(
                 "manifest current_gate external_action_checklist does not match operator_next_steps"
+            )
+        expected_external_budget = expected_external_budget_summary(expected_checklist)
+        if current_gate.get("external_budget") != expected_external_budget:
+            errors.append(
+                "manifest current_gate external_budget does not match "
+                "external_action_checklist approval constraints"
             )
     remediation_plan = current_gate.get("remediation_plan")
     if not isinstance(remediation_plan, list):
@@ -3893,6 +3900,30 @@ def expected_external_action_checklist(
     if constraints:
         checklist["approval_requirement_constraints"] = constraints
     return checklist
+
+
+def expected_external_budget_summary(external_action_checklist: dict[str, Any]) -> dict[str, Any]:
+    constraints = (
+        external_action_checklist.get("approval_requirement_constraints")
+        if isinstance(external_action_checklist.get("approval_requirement_constraints"), dict)
+        else {}
+    )
+    paid_api = constraints.get("paid_api") if isinstance(constraints, dict) else {}
+    if not isinstance(paid_api, dict):
+        return {}
+    minimum_budget = numeric_usd_value(paid_api.get("minimum_approved_budget_usd"))
+    if minimum_budget is None:
+        return {}
+    return {
+        "minimum_approved_budget_usd": minimum_budget,
+        "minimum_approved_budget_source": (
+            paid_api.get("minimum_approved_budget_source")
+            if isinstance(paid_api.get("minimum_approved_budget_source"), str)
+            else ""
+        ),
+        "source_budget_paths": string_list(paid_api.get("source_budget_paths")),
+        "source_review_paths": string_list(paid_api.get("source_review_paths")),
+    }
 
 
 def external_action_approval_requirement_constraints(

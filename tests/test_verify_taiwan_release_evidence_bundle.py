@@ -6109,6 +6109,35 @@ def test_verify_release_evidence_bundle_rejects_current_gate_external_action_che
     )
 
 
+def test_verify_release_evidence_bundle_rejects_current_gate_external_budget_mismatch(tmp_path):
+    bundle = build_bundle_with_operator_command_script(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["current_gate"]["external_budget"] = {
+        "minimum_approved_budget_usd": 1.0,
+        "minimum_approved_budget_source": "stale",
+        "source_budget_paths": [],
+        "source_review_paths": [],
+    }
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert (
+        "manifest current_gate external_budget does not match "
+        "external_action_checklist approval constraints"
+    ) in payload["errors"]
+
+
 def test_verify_release_evidence_bundle_rejects_operator_wandb_contract_mismatch(tmp_path):
     bundle = build_bundle(tmp_path, readiness_ok=True)
     operator_plan_path = bundle / "operator_plan.json"
