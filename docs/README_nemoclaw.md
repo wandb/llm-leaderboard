@@ -45,8 +45,12 @@ As of 2026-07-01 08:48 JST:
   the same checkout tree later scored by the official evaluator.
 - Native `weave-openclaw` is installed and enabled inside the `nejumi-taiwan`
   sandbox. `scripts/setup/configure_nemoclaw_weave.sh --check-only` reports
-  plugin/config/policy/secret all OK and writes the latest local evidence to
-  `temp/nemoclaw_weave_config_check_after_tests.json`.
+  plugin/config/policy/secret plus OpenAI-direct canary provider/secret all OK
+  and writes the latest local evidence to
+  `temp/nemoclaw_weave_config_check_after_tests.json`. The same script now
+  keeps W&B and OpenAI credentials out of the OpenClaw config by storing them
+  in `/sandbox/.openclaw/nejumi_secrets.json` and referencing them through file
+  SecretRefs.
 - `configs/nemoclaw/policies/wandb_weave.yaml` is the W&B/Weave egress policy
   template for the sandbox. It was applied with
   `nemoclaw nejumi-taiwan policy-add --from-file ... --yes`; the command
@@ -107,6 +111,10 @@ As of 2026-07-01 08:48 JST:
   SWE-Bench Pro NeMoClaw settings into generated evaluation configs.
 - `scripts/tools/check_taiwan_canary_readiness.py --require-nemoclaw` can make
   NeMoClaw/OpenShell/sandbox OpenClaw preflight a hard canary readiness gate.
+  It also checks that the sandbox-local OpenClaw template at
+  `/sandbox/.openclaw/openclaw.json` registers the expected OpenAI-direct
+  canary model and has native Weave enabled, so a host-only OpenClaw config
+  cannot mask a missing sandbox provider.
 - `scripts/tools/check_taiwan_nemoclaw_adoption.py` summarizes the ADR
   adoption criteria into JSON/Markdown: setup-plan safety, installed commands,
   sandbox readiness, W&B/Weave runtime policy evidence, Agentic Math config

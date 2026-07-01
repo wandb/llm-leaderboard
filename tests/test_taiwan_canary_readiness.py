@@ -324,6 +324,171 @@ exit 1
     assert allowlist_check.ok
 
 
+def test_nemoclaw_required_readiness_checks_sandbox_openclaw_config(tmp_path):
+    module = load_module()
+    nemoclaw = tmp_path / "nemoclaw"
+    openshell = tmp_path / "openshell"
+    nemoclaw.write_text(
+        """#!/usr/bin/env sh
+if [ "$1" = "--version" ]; then
+  echo "nemoclaw 0.0.test"
+  exit 0
+fi
+if [ "$1" = "status" ] && [ "$2" = "--json" ]; then
+  cat <<'JSON'
+{"sandboxes":[{"name":"nejumi-taiwan","provider":"compatible-endpoint","model":"test-model","connected":false,"policies":["wandb-weave"]}]}
+JSON
+  exit 0
+fi
+if [ "$1" = "sandbox" ] && [ "$2" = "status" ]; then
+  echo "sandbox ok"
+  exit 0
+fi
+if [ "$1" = "sandbox" ] && [ "$2" = "exec" ] && [ "$8" = "openclaw" ]; then
+  echo "openclaw 2026.6.9"
+  exit 0
+fi
+if [ "$1" = "sandbox" ] && [ "$2" = "exec" ] && [ "$8" = "cat" ]; then
+  cat <<'JSON'
+{
+  "models": {
+    "providers": {
+      "openai-direct": {
+        "models": [
+          {"id": "gpt-4.1-mini-2025-04-14"}
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "entries": {
+      "weave": {"enabled": true}
+    }
+  }
+}
+JSON
+  exit 0
+fi
+echo "unexpected $*" >&2
+exit 1
+""",
+        encoding="utf-8",
+    )
+    openshell.write_text("#!/usr/bin/env sh\necho openshell 0.0.test\n", encoding="utf-8")
+    nemoclaw.chmod(0o755)
+    openshell.chmod(0o755)
+    env = {
+        "PATH": str(tmp_path) + os.pathsep + os.environ.get("PATH", ""),
+        **{key: value for key, value in os.environ.items() if key.startswith("HOME")},
+    }
+
+    checks = module.check_nemoclaw(
+        env,
+        nemoclaw_bin="nemoclaw",
+        sandbox="nejumi-taiwan",
+        require=True,
+        openclaw_model="openai-direct/gpt-4.1-mini-2025-04-14",
+        openclaw_config_path="/sandbox/.openclaw/openclaw.json",
+    )
+
+    assert all(check.ok for check in checks)
+    assert any(
+        check.name
+        == "NeMoClaw sandbox OpenClaw config is readable: /sandbox/.openclaw/openclaw.json"
+        for check in checks
+    )
+    assert any(
+        check.name == "NeMoClaw sandbox OpenClaw openai-direct provider exists"
+        and check.ok
+        for check in checks
+    )
+    assert any(
+        check.name
+        == "NeMoClaw sandbox OpenClaw model is registered: openai-direct/gpt-4.1-mini-2025-04-14"
+        and check.ok
+        for check in checks
+    )
+    assert any(
+        check.name == "NeMoClaw sandbox OpenClaw Weave plugin is enabled"
+        and check.ok
+        for check in checks
+    )
+
+
+def test_nemoclaw_required_readiness_fails_when_sandbox_openclaw_config_disables_weave(
+    tmp_path,
+):
+    module = load_module()
+    nemoclaw = tmp_path / "nemoclaw"
+    openshell = tmp_path / "openshell"
+    nemoclaw.write_text(
+        """#!/usr/bin/env sh
+if [ "$1" = "--version" ]; then
+  echo "nemoclaw 0.0.test"
+  exit 0
+fi
+if [ "$1" = "status" ] && [ "$2" = "--json" ]; then
+  cat <<'JSON'
+{"sandboxes":[{"name":"nejumi-taiwan","provider":"compatible-endpoint","model":"test-model","connected":false,"policies":["wandb-weave"]}]}
+JSON
+  exit 0
+fi
+if [ "$1" = "sandbox" ] && [ "$2" = "status" ]; then
+  echo "sandbox ok"
+  exit 0
+fi
+if [ "$1" = "sandbox" ] && [ "$2" = "exec" ] && [ "$8" = "openclaw" ]; then
+  echo "openclaw 2026.6.9"
+  exit 0
+fi
+if [ "$1" = "sandbox" ] && [ "$2" = "exec" ] && [ "$8" = "cat" ]; then
+  cat <<'JSON'
+{
+  "models": {
+    "providers": {
+      "openai-direct": {
+        "models": [
+          {"id": "gpt-4.1-mini-2025-04-14"}
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "entries": {
+      "weave": {"enabled": false}
+    }
+  }
+}
+JSON
+  exit 0
+fi
+echo "unexpected $*" >&2
+exit 1
+""",
+        encoding="utf-8",
+    )
+    openshell.write_text("#!/usr/bin/env sh\necho openshell 0.0.test\n", encoding="utf-8")
+    nemoclaw.chmod(0o755)
+    openshell.chmod(0o755)
+    env = {
+        "PATH": str(tmp_path) + os.pathsep + os.environ.get("PATH", ""),
+        **{key: value for key, value in os.environ.items() if key.startswith("HOME")},
+    }
+
+    checks = module.check_nemoclaw(
+        env,
+        nemoclaw_bin="nemoclaw",
+        sandbox="nejumi-taiwan",
+        require=True,
+        openclaw_model="openai-direct/gpt-4.1-mini-2025-04-14",
+        openclaw_config_path="/sandbox/.openclaw/openclaw.json",
+    )
+
+    failed = {check.name: check for check in checks if not check.ok}
+    assert "NeMoClaw sandbox OpenClaw Weave plugin is enabled" in failed
+    assert failed["NeMoClaw sandbox OpenClaw Weave plugin is enabled"].detail == "False"
+
+
 def test_weave_content_canary_gate_passes_only_with_passed_json(tmp_path):
     module = load_module()
     gate = tmp_path / "canary.gate.json"

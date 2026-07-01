@@ -18,6 +18,7 @@ Options:
   --agent-name NAME           Weave agent name. Default: nejumi-taiwan-openclaw.
   --agent-version VALUE       Weave agent version. Default: nejumi-agent-protocol-2026.04.
   --service-name NAME         Weave service name. Default: openclaw-agent.
+  --openai-key-env NAME       Env var containing the OpenAI API key. Default: OPENAI_API_KEY.
   --policy-file PATH          NeMoClaw W&B egress policy YAML.
   --secret-file PATH          Sandbox secret JSON path. Default: /sandbox/.openclaw/nejumi_secrets.json.
   --openclaw-config PATH      Sandbox OpenClaw config path. Default: /sandbox/.openclaw/openclaw.json.
@@ -26,6 +27,7 @@ Options:
   --check-only                Do not mutate; inspect current sandbox state only.
   --skip-policy               Do not add the W&B egress policy.
   --skip-plugin-install       Do not install weave-openclaw.
+  --skip-openai-direct        Do not merge the OpenAI-direct canary provider.
   --json PATH                 Write a machine-readable report.
   -h, --help                  Show this help.
 
@@ -39,6 +41,7 @@ SANDBOX="nejumi-taiwan"
 NEMOCLAW_BIN="nemoclaw"
 ENV_FILE="$REPO_ROOT/.env"
 WANDB_KEY_ENV="WANDB_API_KEY"
+OPENAI_KEY_ENV="OPENAI_API_KEY"
 ENTITY="llm-leaderboard"
 PROJECT="tc-leaderboard"
 AGENT_NAME="nejumi-taiwan-openclaw"
@@ -53,6 +56,7 @@ SANDBOX_WEAVE_PROJECT="/sandbox/.openclaw/npm/projects/weave-openclaw"
 CHECK_ONLY=0
 SKIP_POLICY=0
 SKIP_PLUGIN_INSTALL=0
+SKIP_OPENAI_DIRECT=0
 JSON_OUT=""
 
 while [ "$#" -gt 0 ]; do
@@ -66,6 +70,7 @@ while [ "$#" -gt 0 ]; do
     --agent-name) AGENT_NAME="$2"; shift 2 ;;
     --agent-version) AGENT_VERSION="$2"; shift 2 ;;
     --service-name) SERVICE_NAME="$2"; shift 2 ;;
+    --openai-key-env) OPENAI_KEY_ENV="$2"; shift 2 ;;
     --policy-file) POLICY_FILE="$2"; shift 2 ;;
     --secret-file) SECRET_FILE="$2"; shift 2 ;;
     --openclaw-config) OPENCLAW_CONFIG="$2"; shift 2 ;;
@@ -74,6 +79,7 @@ while [ "$#" -gt 0 ]; do
     --check-only) CHECK_ONLY=1; shift ;;
     --skip-policy) SKIP_POLICY=1; shift ;;
     --skip-plugin-install) SKIP_PLUGIN_INSTALL=1; shift ;;
+    --skip-openai-direct) SKIP_OPENAI_DIRECT=1; shift ;;
     --json) JSON_OUT="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -82,6 +88,10 @@ done
 
 if [[ ! "$WANDB_KEY_ENV" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
   echo "Invalid --wandb-key-env: $WANDB_KEY_ENV" >&2
+  exit 2
+fi
+if [[ ! "$OPENAI_KEY_ENV" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+  echo "Invalid --openai-key-env: $OPENAI_KEY_ENV" >&2
   exit 2
 fi
 
@@ -111,6 +121,11 @@ WANDb_KEY_VALUE="${!WANDB_KEY_ENV:-}"
 credential_available=false
 if [ -n "$WANDb_KEY_VALUE" ]; then
   credential_available=true
+fi
+OPENAI_KEY_VALUE="${!OPENAI_KEY_ENV:-}"
+openai_credential_available=false
+if [ -n "$OPENAI_KEY_VALUE" ]; then
+  openai_credential_available=true
 fi
 
 run_nemoclaw() {
@@ -208,10 +223,63 @@ print(str(bool(data.get("wandb", {}).get("apiKey")) and mode & 0o077 == 0).lower
 PY
 }
 
+openai_secret_probe() {
+  if [ "$SKIP_OPENAI_DIRECT" -eq 1 ]; then
+    printf true
+    return 0
+  fi
+  "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 - "$SECRET_FILE" <<'PY' 2>/dev/null || printf false
+import json
+import stat
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists():
+    print("false")
+    raise SystemExit
+mode = stat.S_IMODE(path.stat().st_mode)
+data = json.loads(path.read_text(encoding="utf-8"))
+print(str(bool(data.get("openai", {}).get("apiKey")) and mode & 0o077 == 0).lower())
+PY
+}
+
+openai_direct_config_probe() {
+  if [ "$SKIP_OPENAI_DIRECT" -eq 1 ]; then
+    printf true
+    return 0
+  fi
+  "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 - "$OPENCLAW_CONFIG" <<'PY' 2>/dev/null || printf false
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists():
+    print("false")
+    raise SystemExit
+data = json.loads(path.read_text(encoding="utf-8"))
+provider = data.get("models", {}).get("providers", {}).get("openai-direct")
+api_key = provider.get("apiKey") if isinstance(provider, dict) else None
+models = provider.get("models") if isinstance(provider, dict) else None
+model_ids = {str(model.get("id")) for model in models or [] if isinstance(model, dict)}
+print(str(bool(
+    isinstance(provider, dict)
+    and isinstance(api_key, dict)
+    and api_key.get("source") == "file"
+    and api_key.get("provider") == "nejumi-openai"
+    and api_key.get("id") == "/openai/apiKey"
+    and "gpt-4.1-nano-2025-04-14" in model_ids
+    and "gpt-4.1-mini-2025-04-14" in model_ids
+)).lower())
+PY
+}
+
 policy_added=false
 plugin_install_attempted=false
 plugin_install_method="none"
 secret_written=false
+openai_secret_written=false
 config_written=false
 
 if [ "$CHECK_ONLY" -eq 0 ]; then
@@ -241,16 +309,34 @@ if [ "$CHECK_ONLY" -eq 0 ]; then
     printf '%s' "$WANDb_KEY_VALUE" | "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 -c 'import json, os, sys; from pathlib import Path; path = Path(sys.argv[1]); secret = sys.stdin.read().strip(); path.parent.mkdir(parents=True, exist_ok=True); data = {}; data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}; data.setdefault("wandb", {})["apiKey"] = secret; tmp = path.with_suffix(path.suffix + ".tmp"); tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"); os.chmod(tmp, 0o600); tmp.replace(path); os.chmod(path, 0o600)' "$SECRET_FILE"
     secret_written=true
   fi
+  if [ "$SKIP_OPENAI_DIRECT" -eq 0 ] && [ "$openai_credential_available" = true ]; then
+    printf '%s' "$OPENAI_KEY_VALUE" | "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 -c 'import json, os, sys; from pathlib import Path; path = Path(sys.argv[1]); secret = sys.stdin.read().strip(); path.parent.mkdir(parents=True, exist_ok=True); data = {}; data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}; data.setdefault("openai", {})["apiKey"] = secret; tmp = path.with_suffix(path.suffix + ".tmp"); tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"); os.chmod(tmp, 0o600); tmp.replace(path); os.chmod(path, 0o600)' "$SECRET_FILE"
+    openai_secret_written=true
+  fi
 
   "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 - \
-    "$OPENCLAW_CONFIG" "$SECRET_FILE" "$ENTITY" "$PROJECT" "$SERVICE_NAME" "$AGENT_NAME" "$AGENT_VERSION" <<'PY'
+    "$OPENCLAW_CONFIG" "$SECRET_FILE" "$ENTITY" "$PROJECT" "$SERVICE_NAME" "$AGENT_NAME" "$AGENT_VERSION" "$SKIP_OPENAI_DIRECT" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 config_path = Path(sys.argv[1])
-secret_file, entity, project, service_name, agent_name, agent_version = sys.argv[2:8]
+secret_file, entity, project, service_name, agent_name, agent_version, skip_openai_direct = sys.argv[2:9]
 data = json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
+
+
+def merge_models(existing, additions):
+    by_id = {}
+    for model in existing or []:
+        if isinstance(model, dict) and model.get("id"):
+            by_id[str(model["id"])] = model
+    for model in additions:
+        merged = dict(by_id.get(model["id"], {}))
+        merged.update(model)
+        by_id[model["id"]] = merged
+    return list(by_id.values())
+
+
 plugins = data.setdefault("plugins", {})
 allow = plugins.setdefault("allow", [])
 if "weave" not in allow:
@@ -279,8 +365,57 @@ providers["nejumi-wandb"] = {
     "mode": "json",
     "allowInsecurePath": True,
 }
+if skip_openai_direct != "1":
+    providers["nejumi-openai"] = {
+        "source": "file",
+        "path": secret_file,
+        "mode": "json",
+        "allowInsecurePath": True,
+    }
 defaults = secrets.setdefault("defaults", {})
 defaults.setdefault("file", "nejumi-wandb")
+if skip_openai_direct != "1":
+    model_providers = data.setdefault("models", {}).setdefault("providers", {})
+    runtime = {"id": "openclaw"}
+    openai_direct = model_providers.setdefault("openai-direct", {})
+    openai_direct.update(
+        {
+            "baseUrl": "https://api.openai.com/v1",
+            "apiKey": {
+                "source": "file",
+                "provider": "nejumi-openai",
+                "id": "/openai/apiKey",
+            },
+            "auth": "api-key",
+            "api": "openai-responses",
+            "agentRuntime": runtime,
+        }
+    )
+    openai_direct["models"] = merge_models(
+        openai_direct.get("models"),
+        [
+            {
+                "id": "gpt-4.1-nano-2025-04-14",
+                "name": "gpt-4.1-nano-2025-04-14",
+                "api": "openai-responses",
+                "reasoning": False,
+                "input": ["text"],
+                "contextWindow": 1047576,
+                "maxTokens": 32768,
+                "agentRuntime": runtime,
+            },
+            {
+                "id": "gpt-4.1-mini-2025-04-14",
+                "name": "gpt-4.1-mini-2025-04-14",
+                "api": "openai-responses",
+                "reasoning": False,
+                "input": ["text"],
+                "contextWindow": 1047576,
+                "maxTokens": 32768,
+                "agentRuntime": runtime,
+            },
+        ],
+    )
 tmp = config_path.with_suffix(config_path.suffix + ".tmp")
 tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 tmp.replace(config_path)
@@ -292,50 +427,69 @@ plugin_installed="$(plugin_probe)"
 config_ok="$(config_probe)"
 policy_ok="$(policy_probe)"
 secret_ok="$(secret_probe)"
+openai_direct_config_ok="$(openai_direct_config_probe)"
+openai_secret_ok="$(openai_secret_probe)"
 ok=false
-if [ "$plugin_installed" = true ] && [ "$config_ok" = true ] && [ "$policy_ok" = true ] && { [ "$credential_available" = false ] || [ "$secret_ok" = true ]; }; then
+if [ "$plugin_installed" = true ] \
+  && [ "$config_ok" = true ] \
+  && [ "$policy_ok" = true ] \
+  && [ "$openai_direct_config_ok" = true ] \
+  && [ "$openai_secret_ok" = true ] \
+  && { [ "$credential_available" = false ] || [ "$secret_ok" = true ]; }; then
   ok=true
 fi
 
-report_json="$(python3 - "$SANDBOX" "$WANDB_KEY_ENV" "$credential_available" "$policy_added" "$plugin_install_attempted" "$plugin_install_method" "$secret_written" "$config_written" "$plugin_installed" "$config_ok" "$policy_ok" "$secret_ok" "$ok" "$SECRET_FILE" "$OPENCLAW_CONFIG" "$POLICY_FILE" "$WEAVE_PLUGIN_SOURCE" "$LOCAL_WEAVE_PROJECT" <<'PY'
+report_json="$(python3 - "$SANDBOX" "$WANDB_KEY_ENV" "$OPENAI_KEY_ENV" "$credential_available" "$openai_credential_available" "$policy_added" "$plugin_install_attempted" "$plugin_install_method" "$secret_written" "$openai_secret_written" "$config_written" "$plugin_installed" "$config_ok" "$policy_ok" "$secret_ok" "$openai_direct_config_ok" "$openai_secret_ok" "$ok" "$SECRET_FILE" "$OPENCLAW_CONFIG" "$POLICY_FILE" "$WEAVE_PLUGIN_SOURCE" "$LOCAL_WEAVE_PROJECT" "$SKIP_OPENAI_DIRECT" <<'PY'
 import json
 import sys
 
 keys = [
     "sandbox",
     "wandb_key_env",
+    "openai_key_env",
     "credential_available",
+    "openai_credential_available",
     "policy_added",
     "plugin_install_attempted",
     "plugin_install_method",
     "secret_written",
+    "openai_secret_written",
     "config_written",
     "plugin_installed",
     "config_ok",
     "policy_ok",
     "secret_ok",
+    "openai_direct_config_ok",
+    "openai_secret_ok",
     "ok",
     "secret_file",
     "openclaw_config",
     "policy_file",
     "weave_plugin_source",
     "local_weave_project",
+    "skip_openai_direct",
 ]
 payload = dict(zip(keys, sys.argv[1:]))
 for key in [
     "credential_available",
+    "openai_credential_available",
     "policy_added",
     "plugin_install_attempted",
     "secret_written",
+    "openai_secret_written",
     "config_written",
     "plugin_installed",
     "config_ok",
     "policy_ok",
     "secret_ok",
+    "openai_direct_config_ok",
+    "openai_secret_ok",
     "ok",
+    "skip_openai_direct",
 ]:
     payload[key] = payload[key] == "true"
 payload["secret_value_in_report"] = False
+payload["openai_secret_value_in_report"] = False
 payload["weave_agent_name"] = "nejumi-taiwan-openclaw"
 print(json.dumps(payload, ensure_ascii=False, indent=2))
 PY

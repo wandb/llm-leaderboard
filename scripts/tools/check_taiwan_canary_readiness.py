@@ -22,6 +22,7 @@ from omegaconf import DictConfig, OmegaConf
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ENV_FILE = REPO_ROOT / ".env"
 DEFAULT_OPENCLAW_CONFIG = Path.home() / ".openclaw" / "openclaw.json"
+DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 DEFAULT_BASE_CONFIG = REPO_ROOT / "configs" / "base_config_taiwan.yaml"
 DEFAULT_MANIFEST = REPO_ROOT / "configs" / "taiwan_openai_canary_models.yaml"
 DEFAULT_CANARY_SLUG = "gpt-4_1-mini-openai-direct-canary"
@@ -266,13 +267,13 @@ def check_manifest(manifest_path: Path, *, expected_slug: str | None) -> list[Ch
     return checks
 
 
-def check_openclaw_config(path: Path, *, openclaw_model: str) -> list[Check]:
-    if not path.exists():
-        return [Check("OpenClaw config exists", False, str(path))]
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        return [Check("OpenClaw config parses", False, str(exc))]
+def openclaw_config_data_checks(
+    data: dict[str, Any],
+    *,
+    openclaw_model: str,
+    detail: str,
+    label: str = "OpenClaw",
+) -> list[Check]:
     provider_id, model_id = openclaw_provider_and_model(openclaw_model)
     provider = data.get("models", {}).get("providers", {}).get(provider_id, {})
     models = provider.get("models") if isinstance(provider, dict) else None
@@ -280,10 +281,26 @@ def check_openclaw_config(path: Path, *, openclaw_model: str) -> list[Check]:
     entries = data.get("plugins", {}).get("entries", {})
     weave = entries.get("weave") if isinstance(entries, dict) else {}
     return [
-        Check(f"OpenClaw {provider_id} provider exists", bool(provider), str(path)),
-        Check(f"OpenClaw model is registered: {openclaw_model}", model_id in model_ids, str(model_ids)),
-        Check("OpenClaw Weave plugin is enabled", bool(weave and weave.get("enabled")), str(weave.get("enabled") if isinstance(weave, dict) else None)),
+        Check(f"{label} {provider_id} provider exists", bool(provider), detail),
+        Check(f"{label} model is registered: {openclaw_model}", model_id in model_ids, str(model_ids)),
+        Check(
+            f"{label} Weave plugin is enabled",
+            bool(weave and weave.get("enabled")),
+            str(weave.get("enabled") if isinstance(weave, dict) else None),
+        ),
     ]
+
+
+def check_openclaw_config(path: Path, *, openclaw_model: str) -> list[Check]:
+    if not path.exists():
+        return [Check("OpenClaw config exists", False, str(path))]
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return [Check("OpenClaw config parses", False, str(exc))]
+    if not isinstance(data, dict):
+        return [Check("OpenClaw config parses", False, "JSON output is not an object")]
+    return openclaw_config_data_checks(data, openclaw_model=openclaw_model, detail=str(path))
 
 
 def check_env(env: dict[str, str], *, openclaw_model: str) -> list[Check]:
@@ -358,6 +375,29 @@ def _run_json_status(
     if not isinstance(payload, dict):
         return False, None, "JSON output is not an object"
     return True, payload, ""
+
+
+def _run_text_command(
+    command: list[str],
+    env: dict[str, str],
+    timeout: int = 60,
+    max_detail_chars: int = 500,
+) -> tuple[bool, str, str]:
+    try:
+        result = subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            env=env,
+            timeout=timeout,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        return False, "", str(exc)
+    detail = (result.stdout + result.stderr).strip()
+    if len(detail) > max_detail_chars:
+        detail = detail[:max_detail_chars] + "..."
+    return result.returncode == 0, result.stdout, detail
 
 
 def _sandbox_record_from_status(payload: dict[str, Any], sandbox: str) -> dict[str, Any] | None:
@@ -440,6 +480,8 @@ def check_nemoclaw(
     nemoclaw_bin: str,
     sandbox: str,
     require: bool,
+    openclaw_model: str | None = None,
+    openclaw_config_path: str = DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH,
 ) -> list[Check]:
     checks: list[Check] = []
     path = env.get("PATH")
@@ -561,6 +603,65 @@ def check_nemoclaw(
             openclaw_detail or "no output",
         )
     )
+    if openclaw_model:
+        config_ok, config_stdout, config_detail = _run_text_command(
+            [
+                resolved_nemoclaw,
+                "sandbox",
+                "exec",
+                sandbox,
+                "--no-tty",
+                "--timeout",
+                "30",
+                "--",
+                "cat",
+                openclaw_config_path,
+            ],
+            env,
+            timeout=90,
+            max_detail_chars=1000,
+        )
+        checks.append(
+            Check(
+                f"NeMoClaw sandbox OpenClaw config is readable: {openclaw_config_path}",
+                config_ok or not require,
+                f"bytes={len(config_stdout.encode('utf-8'))}" if config_ok else config_detail or "no output",
+            )
+        )
+        if config_ok:
+            try:
+                config_data = json.loads(config_stdout)
+            except json.JSONDecodeError as exc:
+                checks.append(
+                    Check(
+                        f"NeMoClaw sandbox OpenClaw config parses: {openclaw_config_path}",
+                        not require,
+                        str(exc),
+                    )
+                )
+            else:
+                if not isinstance(config_data, dict):
+                    checks.append(
+                        Check(
+                            f"NeMoClaw sandbox OpenClaw config parses: {openclaw_config_path}",
+                            not require,
+                            "JSON output is not an object",
+                        )
+                    )
+                else:
+                    for config_check in openclaw_config_data_checks(
+                        config_data,
+                        openclaw_model=openclaw_model,
+                        detail=openclaw_config_path,
+                        label="NeMoClaw sandbox OpenClaw",
+                    ):
+                        checks.append(
+                            Check(
+                                config_check.name,
+                                config_check.ok or not require,
+                                config_check.detail,
+                            )
+                        )
     return checks
 
 
@@ -833,6 +934,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--nemoclaw-bin", default="nemoclaw")
     parser.add_argument("--nemoclaw-sandbox", default="nejumi-taiwan")
     parser.add_argument(
+        "--nemoclaw-openclaw-config-path",
+        default=DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH,
+        help=(
+            "Sandbox-local OpenClaw config path that Agentic Math/SWE task-agent "
+            "runners use as their NeMoClaw template."
+        ),
+    )
+    parser.add_argument(
         "--weave-content-canary-gate",
         type=Path,
         help="Gate JSON produced by verify_weave_agents_content_canary_result.py.",
@@ -889,6 +998,8 @@ def main() -> None:
             nemoclaw_bin=args.nemoclaw_bin,
             sandbox=args.nemoclaw_sandbox,
             require=bool(args.require_nemoclaw),
+            openclaw_model=openclaw_model,
+            openclaw_config_path=args.nemoclaw_openclaw_config_path,
         )
     )
     checks.extend(
