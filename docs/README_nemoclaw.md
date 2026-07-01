@@ -14,7 +14,7 @@ References:
 
 ## Current Status
 
-As of 2026-07-01 23:02 JST:
+As of 2026-07-01 23:14 JST:
 
 - Host prerequisites are present: Docker, Node.js, npm, zstd, and OpenClaw.
 - `nemoclaw v0.0.55` and `openshell 0.0.44` are installed on this machine.
@@ -92,8 +92,13 @@ As of 2026-07-01 23:02 JST:
   include `verify_weave_agents_content_canary_result.py` and source-contract
   checks its offline gate behavior, native W&B Agents query_source validation,
   diagnostic validation, required text capture, request_model proof, trace id
-  evidence, and NeMoClaw OpenClaw preflight proof. These contracts cannot be
-  removed while stale-looking evidence still passes.
+  evidence, and NeMoClaw OpenClaw preflight proof. A638 also requires the formal
+  bundle to include `run_weave_agents_content_canary.py` and source-contract
+  checks its prepare-only default behavior, source-bound external-action
+  approval blocking, NeMoClaw OpenClaw config preflight blocking, expected
+  request_model/required-text verifier arguments, Agents diagnostic task scope,
+  and gate summarizer handoff. These contracts cannot be removed while
+  stale-looking evidence still passes.
 - `configs/nemoclaw/policies/wandb_weave.yaml` is the W&B/Weave egress policy
   template for the sandbox. It was applied with
   `nemoclaw nejumi-taiwan policy-add --from-file ... --yes`; the command

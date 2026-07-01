@@ -80,6 +80,9 @@ OPERATOR_EXECUTION_PLAN_RENDERER_SCRIPT = (
 WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT = (
     "scripts/tools/weave_content_canary_gate_contract.py"
 )
+WEAVE_CONTENT_CANARY_RUNNER_SCRIPT = (
+    "scripts/tools/run_weave_agents_content_canary.py"
+)
 WEAVE_CONTENT_CANARY_GATE_VERIFIER_SCRIPT = (
     "scripts/tools/verify_weave_agents_content_canary_result.py"
 )
@@ -897,6 +900,107 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("Content canary expected request-model proof", '"expected_request_models"'),
             ("Content canary observed request-model proof", '"observed_request_models"'),
             ("Content canary request-model proven flag", '"request_model_proven"'),
+        ),
+    },
+    WEAVE_CONTENT_CANARY_RUNNER_SCRIPT: {
+        "role": "agentic_runner:weave_content_canary_runner_script",
+        "tokens": (
+            (
+                "prepare-only default contract",
+                "Default mode is prepare-only and does not call a model.",
+            ),
+            (
+                "external action approval report option",
+                "--external-action-approval-report-json",
+            ),
+            (
+                "external action approval source packet option",
+                "--external-action-approval-source-packet-json",
+            ),
+            (
+                "external action approval validator",
+                "def build_external_action_approval_record(",
+            ),
+            (
+                "external action source packet path match",
+                '"source_packet_path_matches_expected"',
+            ),
+            (
+                "external action source packet SHA match",
+                '"source_packet_sha256_matches_expected"',
+            ),
+            (
+                "external action execution flag",
+                '"will_execute_external_actions"',
+            ),
+            (
+                "external action pre-OpenClaw block",
+                'if not external_action_approval.get("valid"):',
+            ),
+            (
+                "pre-OpenClaw blocked result",
+                '"blocked_before_openclaw"',
+            ),
+            (
+                "NeMoClaw OpenClaw config preflight builder",
+                "def build_nemoclaw_openclaw_config_preflight(",
+            ),
+            (
+                "NeMoClaw sandbox config read command",
+                '"sandbox",\n        "exec",',
+            ),
+            (
+                "NeMoClaw OpenClaw config path option",
+                "--nemoclaw-openclaw-config-path",
+            ),
+            (
+                "NeMoClaw config preflight provider check",
+                "NeMoClaw sandbox OpenClaw {provider_id} provider exists",
+            ),
+            (
+                "NeMoClaw config preflight model check",
+                "NeMoClaw sandbox OpenClaw model is registered",
+            ),
+            (
+                "NeMoClaw config preflight Weave plugin check",
+                "NeMoClaw sandbox OpenClaw Weave plugin is enabled",
+            ),
+            (
+                "NeMoClaw pre-OpenClaw block",
+                'if not nemoclaw_openclaw_config_preflight.get("ok"):',
+            ),
+            (
+                "expected request model aliases",
+                '"expected_request_models": request_model_aliases(args.model),',
+            ),
+            (
+                "required canary final-answer text",
+                "CANARY_RESULT {paths.canary_id} 91",
+            ),
+            (
+                "Weave verifier expected request-model option",
+                "--expected-request-model",
+            ),
+            (
+                "Weave verifier required text option",
+                "--require-text",
+            ),
+            (
+                "Agents diagnostic command",
+                "run_openclaw_agent_protocol.py",
+            ),
+            (
+                "Agents diagnostic check-agents mode",
+                '"check-agents"',
+            ),
+            (
+                "Agents diagnostic task scope fallback",
+                "--conversation-id-contains",
+            ),
+            (
+                "gate summarizer runner path",
+                "verify_weave_agents_content_canary_result.py",
+            ),
         ),
     },
     WEAVE_CONTENT_CANARY_GATE_VERIFIER_SCRIPT: {

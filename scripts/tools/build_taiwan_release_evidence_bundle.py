@@ -38,6 +38,9 @@ EXTERNAL_ACTION_APPROVAL_TEMPLATE_RENDERER_SCRIPT = (
 WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT = (
     "scripts/tools/weave_content_canary_gate_contract.py"
 )
+WEAVE_CONTENT_CANARY_RUNNER_SCRIPT = (
+    "scripts/tools/run_weave_agents_content_canary.py"
+)
 WEAVE_CONTENT_CANARY_GATE_VERIFIER_SCRIPT = (
     "scripts/tools/verify_weave_agents_content_canary_result.py"
 )
@@ -58,6 +61,9 @@ AGENTIC_RUNNER_SCRIPT_ROLES = {
     ),
     WEAVE_CONTENT_CANARY_GATE_CONTRACT_SCRIPT: (
         "agentic_runner:weave_content_canary_gate_contract_script"
+    ),
+    WEAVE_CONTENT_CANARY_RUNNER_SCRIPT: (
+        "agentic_runner:weave_content_canary_runner_script"
     ),
     WEAVE_CONTENT_CANARY_GATE_VERIFIER_SCRIPT: (
         "agentic_runner:weave_content_canary_gate_verifier_script"
