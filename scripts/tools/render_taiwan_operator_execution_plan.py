@@ -53,6 +53,7 @@ CANARY_FORBIDDEN_PROVIDER_MARKERS = (
     "sonnet",
 )
 OPENAI_DIRECT_CANARY_APPROVAL_SCOPE_MARKER = "openai-direct/gpt-4.1-mini"
+OPENAI_DIRECT_CONTENT_CANARY_MODEL = "openai-direct/gpt-4.1-nano-2025-04-14"
 NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 WEAVE_CONTENT_CANARY_BLOCKED_NEXT_ACTIONS = {
     "external_action_approval_missing": (
@@ -454,6 +455,40 @@ def validate_openai_direct_canary_batch_command(
     return errors
 
 
+def validate_openai_direct_weave_content_canary_command(
+    parts: list[str],
+    *,
+    command: str,
+) -> list[str]:
+    """Keep live Weave content canary execution on the approved OpenAI path."""
+
+    if not (
+        command_invokes(parts, "run_weave_agents_content_canary.py")
+        and option_present(parts, "--execute")
+    ):
+        return []
+    errors: list[str] = []
+    lower_command = command.lower()
+    markers = [
+        marker
+        for marker in CANARY_FORBIDDEN_PROVIDER_MARKERS
+        if marker in lower_command
+    ]
+    if markers:
+        errors.append(
+            "OpenAI-direct Weave content canary command uses forbidden "
+            "provider marker(s): "
+            + ", ".join(sorted(set(markers)))
+        )
+    model = option_value(parts, "--model")
+    if model != OPENAI_DIRECT_CONTENT_CANARY_MODEL:
+        errors.append(
+            "OpenAI-direct Weave content canary command must use "
+            f"--model {OPENAI_DIRECT_CONTENT_CANARY_MODEL}"
+        )
+    return errors
+
+
 def command_is_paid_canary_batch(command: str) -> bool:
     parts = split_command(command)
     return (
@@ -566,7 +601,14 @@ def validate_command_policy(
             if command_invokes(parts, "run_weave_agents_content_canary.py") and option_present(
                 parts, "--execute"
             ):
+                command_errors.extend(
+                    validate_openai_direct_weave_content_canary_command(
+                        parts,
+                        command=command,
+                    )
+                )
                 for option in (
+                    "--model",
                     "--external-action-approval-source-packet-json",
                     "--external-action-approval-report-json",
                     "--nemoclaw-sandbox",

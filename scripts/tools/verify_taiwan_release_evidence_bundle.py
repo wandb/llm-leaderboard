@@ -95,6 +95,15 @@ NEMOCLAW_ADOPTION_SCRIPT = "scripts/tools/check_taiwan_nemoclaw_adoption.py"
 NEMOCLAW_POST_INSTALL_SCRIPT = "scripts/setup/verify_nemoclaw_post_install.py"
 NEMOCLAW_LOCAL_VERIFICATION_SCRIPT = "scripts/setup/run_nemoclaw_local_verification.sh"
 NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
+OPENAI_DIRECT_CONTENT_CANARY_MODEL = "openai-direct/gpt-4.1-nano-2025-04-14"
+CANARY_FORBIDDEN_PROVIDER_MARKERS = (
+    "openrouter",
+    "anthropic",
+    "claude",
+    "gemini",
+    "opus",
+    "sonnet",
+)
 NEMOCLAW_OPENCLAW_CONFIG_SOURCE_TRACE_TEXT = (
     f"openclaw_config_source: {NEMOCLAW_OPENCLAW_CONFIG_PATH}"
 )
@@ -379,6 +388,18 @@ OPERATOR_RENDERER_REQUIRED_SOURCE_TOKENS = (
     (
         "OpenAI-direct canary approval scope marker",
         "OPENAI_DIRECT_CANARY_APPROVAL_SCOPE_MARKER",
+    ),
+    (
+        "OpenAI-direct content canary model guard",
+        "OPENAI_DIRECT_CONTENT_CANARY_MODEL",
+    ),
+    (
+        "OpenAI-direct content canary validator",
+        "def validate_openai_direct_weave_content_canary_command(",
+    ),
+    (
+        "OpenAI-direct content canary validator invocation",
+        "command_errors.extend(\n                    validate_openai_direct_weave_content_canary_command(",
     ),
     (
         "OpenAI-direct canary approval scope validator",
@@ -4938,6 +4959,24 @@ def validate_weave_content_canary_external_approval_command(
         errors.append(
             f"{label} runs run_weave_agents_content_canary.py --execute without "
             "--nemoclaw-sandbox"
+        )
+    model = operator_command_flag_value(parts, "--model")
+    if model != OPENAI_DIRECT_CONTENT_CANARY_MODEL:
+        errors.append(
+            f"{label} runs run_weave_agents_content_canary.py --execute without "
+            f"--model {OPENAI_DIRECT_CONTENT_CANARY_MODEL}"
+        )
+    command_text = " ".join(parts).lower()
+    markers = [
+        marker
+        for marker in CANARY_FORBIDDEN_PROVIDER_MARKERS
+        if marker in command_text
+    ]
+    if markers:
+        errors.append(
+            f"{label} runs run_weave_agents_content_canary.py --execute with "
+            "forbidden provider marker(s): "
+            + ", ".join(sorted(set(markers)))
         )
     config_path = operator_command_flag_value(parts, "--nemoclaw-openclaw-config-path")
     if config_path != "/sandbox/.openclaw/openclaw.json":

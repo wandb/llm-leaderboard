@@ -46,7 +46,7 @@ def write_operator_plan(path: Path) -> Path:
                     "requires_nemoclaw_install": False,
                     "requires_scope_confirmation": False,
                     "commands": [
-                        "uv run python scripts/tools/run_weave_agents_content_canary.py --execute --canary-id CONTENT_CANARY_YYYYMMDDTHHMM --nemoclaw-sandbox nejumi-taiwan --nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json --external-action-approval-source-packet-json temp/external_action_approval_packet.json --external-action-approval-report-json temp/external_action_approval.verify.json"
+                        "uv run python scripts/tools/run_weave_agents_content_canary.py --execute --canary-id CONTENT_CANARY_YYYYMMDDTHHMM --model openai-direct/gpt-4.1-nano-2025-04-14 --nemoclaw-sandbox nejumi-taiwan --nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json --external-action-approval-source-packet-json temp/external_action_approval_packet.json --external-action-approval-report-json temp/external_action_approval.verify.json"
                     ],
                     "evidence_to_produce": [
                         "outputs/weave_agents_content_canary/plans/weave_agents_content_canary_CONTENT_CANARY_YYYYMMDDTHHMM.gate.json"
@@ -208,6 +208,12 @@ def native_weave_content_canary_gate_payload() -> dict:
         "weave_verifier_schema_version": 1,
         "weave_verifier_latest_trace_id": "trace-1",
         "weave_verifier_validation_issues": [],
+        "expected_required_texts": [
+            "CONTENT_CANARY_TEST",
+            "CANARY_RESULT CONTENT_CANARY_TEST 91",
+            "openclaw_config_source: /sandbox/.openclaw/openclaw.json",
+        ],
+        "plan_required_text_validation_issues": [],
         "agents_diagnostic_ok": True,
         "agents_diagnostic_schema_version": 1,
         "agents_diagnostic_latest_trace_id": "trace-1",
@@ -689,6 +695,7 @@ def test_render_operator_execution_plan_binds_placeholder_approval_paths_to_revi
     payload["operator_next_steps"]["steps"][1]["commands"][0] = (
         "uv run python scripts/tools/run_weave_agents_content_canary.py "
         "--execute --canary-id CONTENT_CANARY_YYYYMMDDTHHMM "
+        "--model openai-direct/gpt-4.1-nano-2025-04-14 "
         "--nemoclaw-sandbox nejumi-taiwan "
         "--nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json "
         "--external-action-approval-source-packet-json "
@@ -1902,6 +1909,85 @@ def test_render_operator_execution_plan_rejects_weave_canary_wrong_nemoclaw_open
         "run_weave_agents_content_canary.py --execute "
         "--nemoclaw-openclaw-config-path must be "
         "/sandbox/.openclaw/openclaw.json"
+        in error
+        for error in rendered["command_policy"]["errors"]
+    )
+
+
+def test_render_operator_execution_plan_rejects_weave_canary_wrong_model(tmp_path):
+    source_packet = write_source_packet(tmp_path / "external_action_approval_packet.json")
+    approval_report = write_external_action_approval_report(
+        tmp_path / "approval.verify.json",
+        source_packet,
+    )
+    gate_json = write_native_weave_content_canary_gate(
+        tmp_path / "native_content_canary.gate.json",
+    )
+    operator_plan = write_agentic_batch_operator_plan(
+        tmp_path / "operator_plan.json",
+        source_packet=source_packet,
+        approval_report=approval_report,
+        gate_json=gate_json,
+    )
+    payload = json.loads(operator_plan.read_text(encoding="utf-8"))
+    payload["operator_next_steps"]["steps"].append(
+        {
+            "order": 99,
+            "gate": "weave_content_canary",
+            "status": "failed",
+            "commands": [
+                (
+                    "uv run python scripts/tools/run_weave_agents_content_canary.py "
+                    "--execute --canary-id CONTENT_CANARY_TEST "
+                    "--model anthropic/claude-opus-test "
+                    "--thinking off --timeout 180 "
+                    "--nemoclaw-sandbox nejumi-taiwan "
+                    "--nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json "
+                    f"--external-action-approval-source-packet-json {source_packet} "
+                    f"--external-action-approval-report-json {approval_report}"
+                )
+            ],
+            "evidence_to_produce": [str(gate_json)],
+        }
+    )
+    operator_plan.write_text(json.dumps(payload), encoding="utf-8")
+    output_json = tmp_path / "execution_plan.json"
+
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--operator-plan-json",
+            str(operator_plan),
+            "--gate",
+            "weave_content_canary",
+            "--external-action-approval-source-packet-json",
+            str(source_packet),
+            "--external-action-approval-report-json",
+            str(approval_report),
+            "--weave-content-canary-gate",
+            str(gate_json),
+            "--output-json",
+            str(output_json),
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    rendered = json.loads(output_json.read_text(encoding="utf-8"))
+    assert rendered["command_policy"]["valid"] is False
+    assert any(
+        "OpenAI-direct Weave content canary command uses forbidden "
+        "provider marker(s): anthropic, claude, opus"
+        in error
+        for error in rendered["command_policy"]["errors"]
+    )
+    assert any(
+        "OpenAI-direct Weave content canary command must use "
+        "--model openai-direct/gpt-4.1-nano-2025-04-14"
         in error
         for error in rendered["command_policy"]["errors"]
     )

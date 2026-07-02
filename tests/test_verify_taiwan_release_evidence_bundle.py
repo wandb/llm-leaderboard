@@ -6006,6 +6006,7 @@ def test_verify_release_evidence_bundle_rejects_operator_renderer_missing_safety
     assert "def validate_external_action_source_packet_option(" in script_text
     assert "def validate_external_action_approval_report_option(" in script_text
     assert "def validate_openai_direct_canary_batch_command(" in script_text
+    assert "def validate_openai_direct_weave_content_canary_command(" in script_text
     assert "def validate_canary_approval_scope(" in script_text
     replacements = {
         "command_errors.extend(\n                    validate_external_action_source_packet_option(": (
@@ -6019,6 +6020,9 @@ def test_verify_release_evidence_bundle_rejects_operator_renderer_missing_safety
         ),
         "command_errors.extend(\n                    validate_openai_direct_canary_batch_command(": (
             "command_errors.extend(\n                    removed_openai_direct_canary_batch_command("
+        ),
+        "command_errors.extend(\n                    validate_openai_direct_weave_content_canary_command(": (
+            "command_errors.extend(\n                    removed_openai_direct_weave_content_canary_command("
         ),
         "approval_scope_policy = validate_canary_approval_scope(": (
             "approval_scope_policy = removed_canary_approval_scope("
@@ -17485,6 +17489,52 @@ def test_verify_release_evidence_bundle_rejects_weave_canary_without_nemoclaw_op
     assert any(
         "runs run_weave_agents_content_canary.py --execute without "
         "--nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json"
+        in error
+        for error in payload["errors"]
+    )
+
+
+def test_verify_release_evidence_bundle_rejects_weave_canary_wrong_model(
+    tmp_path,
+):
+    bundle = build_bundle_with_operator_weave_content_canary_command(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    operator_plan_path = bundle / "operator_plan.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    operator_plan = json.loads(operator_plan_path.read_text(encoding="utf-8"))
+    expected_flag = "--model openai-direct/gpt-4.1-nano-2025-04-14"
+    wrong_flag = "--model anthropic/claude-opus-test"
+    operator_plan["operator_next_steps"]["steps"][0]["commands"][1] = operator_plan[
+        "operator_next_steps"
+    ]["steps"][0]["commands"][1].replace(expected_flag, wrong_flag)
+    manifest["current_gate"]["operator_next_steps"] = operator_plan["operator_next_steps"]
+    manifest["current_gate"]["remediation_plan"][0]["commands"][1] = manifest[
+        "current_gate"
+    ]["remediation_plan"][0]["commands"][1].replace(expected_flag, wrong_flag)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    operator_plan_path.write_text(json.dumps(operator_plan), encoding="utf-8")
+    refresh_manifest_record_hash(bundle, "operator_plan.json")
+
+    result = subprocess.run(
+        ["python3", str(VERIFY_SCRIPT), "--bundle-dir", str(bundle)],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["integrity_ok"] is False
+    assert any(
+        "runs run_weave_agents_content_canary.py --execute without "
+        "--model openai-direct/gpt-4.1-nano-2025-04-14"
+        in error
+        for error in payload["errors"]
+    )
+    assert any(
+        "runs run_weave_agents_content_canary.py --execute with forbidden "
+        "provider marker(s): anthropic, claude, opus"
         in error
         for error in payload["errors"]
     )
