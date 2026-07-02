@@ -54,6 +54,7 @@ NEMOCLAW_INSTALL_SCRIPT = "scripts/setup/install_nemoclaw.sh"
 NEMOCLAW_CANARY_READINESS_SCRIPT = "scripts/tools/check_taiwan_canary_readiness.py"
 NEMOCLAW_ADOPTION_SCRIPT = "scripts/tools/check_taiwan_nemoclaw_adoption.py"
 NEMOCLAW_POST_INSTALL_SCRIPT = "scripts/setup/verify_nemoclaw_post_install.py"
+NEMOCLAW_LOCAL_VERIFICATION_SCRIPT = "scripts/setup/run_nemoclaw_local_verification.sh"
 AGENTIC_RUNNER_SCRIPT_ROLES = {
     "scripts/evaluator/agentic_math.py": "agentic_runner:math_evaluator_script",
     "scripts/evaluator/swebench_pro.py": "agentic_runner:swe_evaluator_script",
@@ -84,6 +85,9 @@ AGENTIC_RUNNER_SCRIPT_ROLES = {
     "scripts/tools/log_agentic_swe_results_to_wandb.py": "agentic_runner:swe_relog_script",
     "scripts/tools/audit_taiwan_existing_results.py": (
         "agentic_runner:existing_results_audit_script"
+    ),
+    NEMOCLAW_LOCAL_VERIFICATION_SCRIPT: (
+        "agentic_runner:nemoclaw_local_verification_script"
     ),
 }
 BENCHMARK_REVIEW_PHASES = {

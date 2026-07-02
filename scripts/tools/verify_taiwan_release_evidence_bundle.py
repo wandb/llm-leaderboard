@@ -93,6 +93,7 @@ NEMOCLAW_INSTALL_SCRIPT = "scripts/setup/install_nemoclaw.sh"
 NEMOCLAW_CANARY_READINESS_SCRIPT = "scripts/tools/check_taiwan_canary_readiness.py"
 NEMOCLAW_ADOPTION_SCRIPT = "scripts/tools/check_taiwan_nemoclaw_adoption.py"
 NEMOCLAW_POST_INSTALL_SCRIPT = "scripts/setup/verify_nemoclaw_post_install.py"
+NEMOCLAW_LOCAL_VERIFICATION_SCRIPT = "scripts/setup/run_nemoclaw_local_verification.sh"
 NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 NEMOCLAW_OPENCLAW_CONFIG_SOURCE_TRACE_TEXT = (
     f"openclaw_config_source: {NEMOCLAW_OPENCLAW_CONFIG_PATH}"
@@ -1529,6 +1530,43 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             (
                 "SWE existing-results NeMoClaw audit validator",
                 "def agentic_swe_local_nemoclaw_audit_issues(",
+            ),
+        ),
+    },
+    NEMOCLAW_LOCAL_VERIFICATION_SCRIPT: {
+        "role": "agentic_runner:nemoclaw_local_verification_script",
+        "tokens": (
+            (
+                "pytest plugin autoload guard",
+                'PYTEST_DISABLE_PLUGIN_AUTOLOAD="${PYTEST_DISABLE_PLUGIN_AUTOLOAD:-1}"',
+            ),
+            (
+                "self-test included in fixed slice",
+                "tests/test_run_nemoclaw_local_verification.py",
+            ),
+            (
+                "installer script test included",
+                "tests/test_install_nemoclaw_script.py",
+            ),
+            (
+                "post-install verifier test included",
+                "tests/test_verify_nemoclaw_post_install.py",
+            ),
+            (
+                "Agentic Math runner test included",
+                "tests/test_agentic_math.py",
+            ),
+            (
+                "SWE-Bench Pro runner test included",
+                "tests/test_swebench_pro.py",
+            ),
+            (
+                "release gate explicit opt-in flag",
+                "--include-release-gate",
+            ),
+            (
+                "offline release gate command",
+                "python3 scripts/tools/run_taiwan_release_gate.py --quiet",
             ),
         ),
     },

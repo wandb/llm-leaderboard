@@ -1485,16 +1485,18 @@ def test_release_evidence_bundle_copies_report_references(tmp_path):
                     "entry_ok": True,
                     "verified": True,
                     "schema_valid": True,
-                        "checks_valid": True,
-                        "trace_present": True,
-                        "fresh": True,
-                        "latest_trace_id": "trace-1",
-                        "sync_dry_run_report_json": None,
-                        "sync_dry_run_source_review_json": None,
-                        "sync_dry_run_source_review_sha256": None,
-                        "verification_error": None,
-                    }
-                ],
+                    "checks_valid": True,
+                    "trace_present": True,
+                    "fresh": True,
+                    "latest_trace_id": "trace-1",
+                    "required_trace_texts": [],
+                    "missing_required_trace_texts": [],
+                    "sync_dry_run_report_json": None,
+                    "sync_dry_run_source_review_json": None,
+                    "sync_dry_run_source_review_sha256": None,
+                    "verification_error": None,
+                }
+            ],
         }
     ]
     assert current_gate["nemoclaw_adoption"]["status"] == "not_installed"
@@ -1703,6 +1705,9 @@ def test_release_evidence_bundle_copies_report_references(tmp_path):
         ),
         "scripts/tools/log_agentic_math_results_to_wandb.py": "agentic_runner:math_relog_script",
         "scripts/tools/log_agentic_swe_results_to_wandb.py": "agentic_runner:swe_relog_script",
+        "scripts/setup/run_nemoclaw_local_verification.sh": (
+            "agentic_runner:nemoclaw_local_verification_script"
+        ),
     }
     for script_path, role in expected_agentic_runner_roles.items():
         assert script_path in sources
