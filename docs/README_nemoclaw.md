@@ -272,9 +272,10 @@ test slice through the repo helper:
 scripts/setup/run_nemoclaw_local_verification.sh
 ```
 
-This runs the NeMoClaw installer-review, post-install verifier, adoption doctor,
-OpenClaw protocol, Agentic Math, SWE-Bench Pro, batch-runner, and production
-readiness unit/source-contract tests. It sets
+This runs the helper's own command-contract test plus the NeMoClaw
+installer-review, post-install verifier, adoption doctor, OpenClaw protocol,
+Agentic Math, SWE-Bench Pro, batch-runner, and production readiness
+unit/source-contract tests. It sets
 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` by default so unrelated user-site pytest
 plugins cannot break collection. This only affects pytest plugin loading; it
 does not change benchmark behavior.

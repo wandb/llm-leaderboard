@@ -51,6 +51,7 @@ fi
 export PYTEST_DISABLE_PLUGIN_AUTOLOAD="${PYTEST_DISABLE_PLUGIN_AUTOLOAD:-1}"
 
 tests=(
+  tests/test_run_nemoclaw_local_verification.py
   tests/test_install_nemoclaw_script.py
   tests/test_review_nemoclaw_installer.py
   tests/test_verify_nemoclaw_operator_docs.py
