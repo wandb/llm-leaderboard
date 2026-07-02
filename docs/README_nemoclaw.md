@@ -263,6 +263,34 @@ mode the log path is empty because no install/onboard operation is attempted.
 `setup_plan.post_install_verification_command` points to the one-command local
 verifier described below.
 
+## Clone-Time Local Verification
+
+For a fresh clone or before pushing NeMoClaw-related changes, run the offline
+test slice through the repo helper:
+
+```bash
+scripts/setup/run_nemoclaw_local_verification.sh
+```
+
+This runs the NeMoClaw installer-review, post-install verifier, adoption doctor,
+OpenClaw protocol, Agentic Math, SWE-Bench Pro, batch-runner, and production
+readiness unit/source-contract tests. It sets
+`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` by default so unrelated user-site pytest
+plugins cannot break collection. This only affects pytest plugin loading; it
+does not change benchmark behavior.
+
+To also refresh the offline formal release gate after the same local test
+slice:
+
+```bash
+scripts/setup/run_nemoclaw_local_verification.sh --include-release-gate
+```
+
+Both forms are local/offline with respect to model providers and W&B. They do
+not install or onboard NeMoClaw, query W&B, call router providers, or run paid
+model inference. Use the post-install verifier below when you need evidence for
+the actual host sandbox state.
+
 Protocol-level preflight:
 
 ```bash
