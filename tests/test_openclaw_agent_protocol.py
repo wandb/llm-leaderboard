@@ -1549,7 +1549,8 @@ def test_tool_policy_bare_url_pattern_does_not_block_local_url_literals_in_exec(
     )
 
 
-def test_build_openclaw_command_defaults_sandbox_visible_config_path_for_nemoclaw():
+def test_build_openclaw_command_defaults_sandbox_visible_config_path_for_nemoclaw(monkeypatch):
+    monkeypatch.delenv("OPENCLAW_GATEWAY_URL", raising=False)
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     args = Namespace(
         openclaw_bin="openclaw",
@@ -1581,18 +1582,23 @@ def test_build_openclaw_command_defaults_sandbox_visible_config_path_for_nemocla
         "--timeout",
         "180",
     ]
-    assert command[9:12] == [
+    assert command[9:13] == [
         "--",
         "env",
         "OPENCLAW_CONFIG_PATH=/sandbox/.openclaw/openclaw.json",
+        "OPENCLAW_MESSAGE_B64=aGVsbG8=",
     ]
-    assert command[12:14] == ["openclaw", "agent"]
-    assert command[14:16] == ["--agent", "main"]
-    assert "--message" in command
-    assert "hello" in command
+    assert command[13:15] == ["bash", "-lc"]
+    assert "openclaw agent" in command[15]
+    assert '--message "$OPENCLAW_MESSAGE"' in command[15]
+    assert "hello" not in command
+
+    multiline_command = module.build_openclaw_command(args, "hello\nworld", None)
+    assert all("\n" not in part and "\r" not in part for part in multiline_command)
 
 
-def test_build_openclaw_command_passes_sandbox_visible_config_path_for_nemoclaw():
+def test_build_openclaw_command_passes_sandbox_visible_config_path_for_nemoclaw(monkeypatch):
+    monkeypatch.delenv("OPENCLAW_GATEWAY_URL", raising=False)
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     args = Namespace(
         openclaw_bin="openclaw",
@@ -1613,9 +1619,40 @@ def test_build_openclaw_command_passes_sandbox_visible_config_path_for_nemoclaw(
 
     command = module.build_openclaw_command(args, "hello", None)
 
-    assert command[9:12] == [
+    assert command[9:13] == [
         "--",
         "env",
         "OPENCLAW_CONFIG_PATH=/sandbox/repo/.nejumi_openclaw/openclaw_config.json",
+        "OPENCLAW_MESSAGE_B64=aGVsbG8=",
     ]
-    assert command[12:14] == ["openclaw", "agent"]
+    assert command[13:15] == ["bash", "-lc"]
+    assert "openclaw agent" in command[15]
+
+
+def test_build_openclaw_command_passes_gateway_url_into_nemoclaw_sandbox(monkeypatch):
+    monkeypatch.setenv("OPENCLAW_GATEWAY_URL", "ws://127.0.0.1:18791")
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    args = Namespace(
+        openclaw_bin="openclaw",
+        nemoclaw_bin="nemoclaw",
+        nemoclaw_sandbox="nejumi-taiwan",
+        nemoclaw_workdir="/sandbox",
+        profile=None,
+        agent="main",
+        session_key="bench:task",
+        benchmark_id="agentic_math",
+        task_id="task",
+        timeout=120,
+        local=True,
+        model=None,
+        thinking="low",
+        openclaw_config_path=None,
+    )
+
+    command = module.build_openclaw_command(args, "hello", None)
+
+    assert "OPENCLAW_CONFIG_PATH=/sandbox/.openclaw/openclaw.json" in command
+    assert "OPENCLAW_GATEWAY_URL=ws://127.0.0.1:18791" in command
+    assert command.index("OPENCLAW_GATEWAY_URL=ws://127.0.0.1:18791") < command.index(
+        "OPENCLAW_MESSAGE_B64=aGVsbG8="
+    )

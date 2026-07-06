@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -38,6 +39,7 @@ WEAVE_SIDECAR_SCRIPT = REPO_ROOT / "scripts" / "tools" / "log_openclaw_result_to
 DEFAULT_NATIVE_WEAVE_AGENT_NAME = "nejumi-taiwan-openclaw"
 DEFAULT_DIAGNOSTIC_WEAVE_AGENT_NAME = "nejumi-taiwan-sidecar-diagnostic"
 DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH = Path("/sandbox/.openclaw/openclaw.json")
+SANDBOX_OPENCLAW_ENV_PASSTHROUGH = ("OPENCLAW_GATEWAY_URL",)
 AGENTS_API_BASE_URL = "https://trace.wandb.ai"
 AGENTS_QUERY_ENDPOINT = "/agents/query"
 AGENTS_SPANS_QUERY_ENDPOINT = "/agents/spans/query"
@@ -595,10 +597,38 @@ def build_openclaw_command(args: argparse.Namespace, message_text: str, openclaw
     if nemoclaw_workdir:
         command.extend(["--workdir", nemoclaw_workdir])
     command.extend(["--no-tty", "--timeout", str(args.timeout + 60), "--"])
+    message_b64 = base64.b64encode(message_text.encode("utf-8")).decode("ascii")
+    shell_parts: list[str] = []
+    replace_next_message = False
+    for part in openclaw_command:
+        if replace_next_message:
+            shell_parts.append('"$OPENCLAW_MESSAGE"')
+            replace_next_message = False
+            continue
+        shell_parts.append(shlex.quote(str(part)))
+        if part == "--message":
+            replace_next_message = True
+    shell_command = (
+        'OPENCLAW_MESSAGE="$(printf %s "$OPENCLAW_MESSAGE_B64" | base64 -d)"; '
+        "exec "
+        + " ".join(shell_parts)
+    )
     config_path = effective_openclaw_config_path(args)
+    command.append("env")
     if config_path:
-        command.extend(["env", f"OPENCLAW_CONFIG_PATH={config_path}"])
-    command.extend(openclaw_command)
+        command.append(f"OPENCLAW_CONFIG_PATH={config_path}")
+    for key in SANDBOX_OPENCLAW_ENV_PASSTHROUGH:
+        value = os.environ.get(key)
+        if value and "\n" not in value and "\r" not in value:
+            command.append(f"{key}={value}")
+    command.extend(
+        [
+            f"OPENCLAW_MESSAGE_B64={message_b64}",
+            "bash",
+            "-lc",
+            shell_command,
+        ]
+    )
     return command
 
 
@@ -747,6 +777,9 @@ def scan_nemoclaw_live_sessions(
             "session_dirs": sandbox_dirs,
             "sessions": [],
         }
+    scan_script_b64 = base64.b64encode(SANDBOX_LIVE_SESSION_SCAN_SCRIPT.encode("utf-8")).decode(
+        "ascii"
+    )
     command = [
         args.nemoclaw_bin,
         "sandbox",
@@ -758,9 +791,12 @@ def scan_nemoclaw_live_sessions(
         "--timeout",
         str(SANDBOX_LIVE_SESSION_SCAN_TIMEOUT),
         "--",
-        "python3",
-        "-c",
-        SANDBOX_LIVE_SESSION_SCAN_SCRIPT,
+        "env",
+        f"OPENCLAW_SCAN_SCRIPT_B64={scan_script_b64}",
+        "bash",
+        "-lc",
+        'OPENCLAW_SCAN_SCRIPT="$(printf %s "$OPENCLAW_SCAN_SCRIPT_B64" | base64 -d)"; exec python3 -c "$OPENCLAW_SCAN_SCRIPT" "$@"',
+        "openclaw-session-scan",
         str(started_at - 5.0),
         *sandbox_dirs,
     ]
@@ -805,28 +841,7 @@ def live_tool_budget_status(
     max_agent_turns = int(getattr(args, "max_agent_turns", 0) or 0)
     session_dirs = [str(path) for path in configured_live_session_dirs(args)]
     sandbox_session_dirs = configured_live_sandbox_session_dirs(args)
-    if max_tool_calls <= 0 and max_input_tokens <= 0 and max_agent_turns <= 0:
-        return {
-            "enabled": False,
-            "max_input_tokens": None,
-            "max_tool_calls": None,
-            "max_agent_turns": None,
-            "estimated_input_tokens": None,
-            "tool_call_count": None,
-            "agent_turn_count": None,
-            "session_file": None,
-            "session_source": None,
-            "input_session_file": None,
-            "input_session_source": None,
-            "turn_session_file": None,
-            "turn_session_source": None,
-            "session_dirs": session_dirs,
-            "sandbox_session_dirs": sandbox_session_dirs,
-            "sandbox_scan": {"enabled": False, "ok": None, "reason": "budget_disabled"},
-            "exceeded": False,
-            "exceeded_limits": [],
-            "reason": None,
-        }
+    budget_enabled = max_tool_calls > 0 or max_input_tokens > 0 or max_agent_turns > 0
     observations: list[dict[str, Any]] = []
     for path in live_session_candidates(args, started_at):
         observations.append(session_budget_observation(path))
@@ -908,7 +923,7 @@ def live_tool_budget_status(
     elif len(exceeded_limits) > 1:
         reason = "runtime_budget_exceeded"
     return {
-        "enabled": True,
+        "enabled": budget_enabled,
         "max_input_tokens": max_input_tokens or None,
         "max_tool_calls": max_tool_calls or None,
         "max_agent_turns": max_agent_turns or None,
@@ -962,12 +977,12 @@ def run_openclaw_command_with_live_budget(
     while True:
         try:
             stdout, stderr = process.communicate(timeout=poll_seconds)
+            final_status = live_tool_budget_status(args, started_at, env)
             return (
                 subprocess.CompletedProcess(command, process.returncode or 0, stdout=stdout, stderr=stderr),
                 {
-                    **last_status,
+                    **final_status,
                     "interrupted": False,
-                    "reason": None,
                 },
             )
         except subprocess.TimeoutExpired:

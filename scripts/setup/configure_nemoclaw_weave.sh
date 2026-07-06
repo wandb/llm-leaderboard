@@ -168,7 +168,17 @@ PY
 }
 
 policy_probe() {
-  "$NEMOCLAW_BIN" sandbox status "$SANDBOX" 2>/dev/null | grep -q "host: api.wandb.ai" && printf true || printf false
+  local status
+  status="$("$NEMOCLAW_BIN" sandbox status "$SANDBOX" 2>/dev/null || true)"
+  if ! grep -q "host: api.wandb.ai" <<<"$status"; then
+    printf false
+    return
+  fi
+  if [ "$SKIP_OPENAI_DIRECT" -eq 0 ] && ! grep -q "host: api.openai.com" <<<"$status"; then
+    printf false
+    return
+  fi
+  printf true
 }
 
 install_weave_from_local_project() {
@@ -376,8 +386,8 @@ defaults = secrets.setdefault("defaults", {})
 defaults.setdefault("file", "nejumi-wandb")
 if skip_openai_direct != "1":
     model_providers = data.setdefault("models", {}).setdefault("providers", {})
-    runtime = {"id": "openclaw"}
     openai_direct = model_providers.setdefault("openai-direct", {})
+    openai_direct.pop("agentRuntime", None)
     openai_direct.update(
         {
             "baseUrl": "https://api.openai.com/v1",
@@ -388,7 +398,6 @@ if skip_openai_direct != "1":
             },
             "auth": "api-key",
             "api": "openai-responses",
-            "agentRuntime": runtime,
         }
     )
     openai_direct["models"] = merge_models(
@@ -402,7 +411,6 @@ if skip_openai_direct != "1":
                 "input": ["text"],
                 "contextWindow": 1047576,
                 "maxTokens": 32768,
-                "agentRuntime": runtime,
             },
             {
                 "id": "gpt-4.1-mini-2025-04-14",
@@ -412,10 +420,12 @@ if skip_openai_direct != "1":
                 "input": ["text"],
                 "contextWindow": 1047576,
                 "maxTokens": 32768,
-                "agentRuntime": runtime,
             },
         ],
     )
+    for model in openai_direct.get("models") or []:
+        if isinstance(model, dict):
+            model.pop("agentRuntime", None)
 tmp = config_path.with_suffix(config_path.suffix + ".tmp")
 tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 tmp.replace(config_path)

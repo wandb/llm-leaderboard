@@ -73,6 +73,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--cwd", type=Path, default=REPO_ROOT)
     parser.add_argument("--agent", default="main")
     parser.add_argument("--profile")
+    parser.add_argument("--local", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--nemoclaw-bin", default="nemoclaw")
     parser.add_argument("--nemoclaw-sandbox")
     parser.add_argument("--nemoclaw-workdir", default="/sandbox")
@@ -305,8 +306,8 @@ def canary_prompt(canary_id: str) -> str:
 
 Canary ID: {canary_id}
 
-Use the Python execution tool exactly once to compute `7 * 13`.
-After the tool result is available, answer exactly:
+Use one available code or Python tool exactly once to compute `7 * 13`.
+After the tool result is available, your final response must be exactly this single line and nothing else:
 
 CANARY_RESULT {canary_id} 91
 
@@ -390,6 +391,8 @@ def build_run_command(args: argparse.Namespace, paths: CanaryPaths) -> list[str]
         command.extend(["--profile", args.profile])
     if args.openclaw_config_path:
         command.extend(["--openclaw-config-path", str(args.openclaw_config_path)])
+    if not getattr(args, "local", True):
+        command.append("--no-local")
     if args.nemoclaw_sandbox:
         config_source = str(args.nemoclaw_openclaw_config_path or "").strip()
         command.extend(
@@ -404,6 +407,7 @@ def build_run_command(args: argparse.Namespace, paths: CanaryPaths) -> list[str]
         )
         if config_source:
             command.extend(["--openclaw-config-source", config_source])
+        command.extend(["--live-sandbox-session-dir", f"/sandbox/.openclaw/agents/{args.agent}/sessions"])
     if args.allow_failed_preflight:
         command.append("--allow-failed-preflight")
     if args.weave_sidecar:
