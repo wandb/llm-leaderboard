@@ -1,0 +1,19 @@
+models:
+  - slug: qwen3_5-flash-02-23-openrouter-lowcost
+    source_config: config-qwen-qwen3_5-flash-02-23-openrouter.yaml
+    run_name: "taiwan/full/qwen/qwen3.5-flash-02-23: openrouter-lowcost"
+    japanese_runname: "qwen/qwen3.5-flash-02-23: openrouter-lowcost"
+    openclaw_model: "openrouter-direct/qwen/qwen3.5-flash-02-23"
+    reasoning_effort: null
+    agentic_thinking: "off"
+    swe_thinking: "off"
+    openclaw_max_attempts: 1
+    math_max_input_tokens: 200000
+    math_max_tool_calls: 20
+    swe_max_input_tokens: 300000
+    swe_max_tool_calls: 20
+    judge_model: "openrouter/openai/gpt-4.1-nano"
+    judge_parallel: 2
+    judge_params: {}
+    canary: true
+    notes: "Low-cost OpenRouter one-model canary candidate for harness validation before GLM/Claude/Gemini expansion. Caps and judge are intentionally cheaper than release-candidate settings; release config remains pinned to gpt-5.5-2026-04-23."

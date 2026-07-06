@@ -24,6 +24,7 @@ OBSERVED_MODEL_PRICE_PER_MILLION: dict[str, dict[str, float]] = {
     "deepseek-v4-pro-thinking-max": {"input": 1.74, "output": 3.48, "cacheRead": 0.145},
     "gemini-3_1-pro-preview-openrouter": {"input": 2.00, "output": 12.00, "cacheRead": 0.30},
     "qwen3_6-max-preview-openrouter": {"input": 1.10, "output": 3.00, "cacheRead": 0.00},
+    "qwen3_5-flash-02-23-openrouter-lowcost": {"input": 0.065, "output": 0.260, "cacheRead": 0.00},
 }
 
 NUMERIC_SIZE_FIELDS = (

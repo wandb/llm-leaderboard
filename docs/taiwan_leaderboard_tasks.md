@@ -1,6 +1,6 @@
 # Taiwan Leaderboard Task Status
 
-Last updated: 2026-07-06 23:06 JST
+Last updated: 2026-07-06 23:48 JST
 
 This file is the persistent progress ledger for the Taiwan leaderboard work.
 Update it at every meaningful milestone so progress is visible even when chat
@@ -19,7 +19,7 @@ docs/taiwan_leaderboard_overview_ja.md
 ```text
 branch: dev-zh-TW
 remote: origin/dev-zh-TW
-latest pushed implementation/docs commit before this ledger update: 819b750 Add Taiwan leaderboard harness assets
+latest pushed implementation/docs commit before this ledger update: 00ab4a3 Wire Taiwan evaluators into full canary
 
 pushed implementation/docs commits this cycle before this ledger update:
   ebe5dcd Ignore local evaluation scratch dirs
@@ -1041,7 +1041,7 @@ cost/API state for these commits:
 ## Latest Machine State
 
 ```text
-as of: 2026-07-02 09:53 JST
+as of: 2026-07-06 23:48 JST
 release gate: temp/taiwan_release_gate_20260702T005232Z.json
 latest pointer: temp/latest_taiwan_release_gate.json
 latest pointer verification: temp/latest_taiwan_release_gate_verify_20260702T005232Z.json
@@ -1054,6 +1054,8 @@ latest production readiness: temp/taiwan_production_readiness_report_20260702T00
 bundle integrity: OK
 checked files: 728
 verification errors: 0
+current low-cost OpenRouter smoke: qwen/qwen3.5-flash-02-23 was added as a low-cost OpenRouter candidate with provider fallback disabled. Full/agentic/pilot run_eval preflights passed without W&B/Weave/model execution. The completed short W&B smoke run is https://wandb.ai/llm-leaderboard/tc-leaderboard/runs/g4sso8v2, state=finished, run_name=taiwan-pilot/qwen3.5-flash-02-23-openrouter-short-lowcost, with IFEval zh-TW 3/3 and TS-Bench 3/3 executed through OpenRouter, ifeval_zh_tw_score=1, ts_bench_score=1, Weave traces present for IFEval/TS-Bench and child chat completions, and aggregate_taiwan logging partial tables with Overall=NaN because 11 required units are missing. Two earlier smoke attempts were intentionally stopped and are not release evidence: gdz4b5vj stopped at HalluLens judge because OpenAI direct judge returned insufficient_quota; uu4f708i completed IFEval but was killed after TS-Bench stalled at 9/10. The current short smoke avoids OpenAI direct and reduces request count/timeouts.
+current low-cost full canary candidate: configs/config-qwen-qwen3_5-flash-02-23-openrouter.yaml and configs/taiwan_lowcost_canary_models.yaml prepare qwen/qwen3.5-flash-02-23 as a cheap canary candidate. The full preflight temp/preflight_lowcost_qwen_full_after_judge_change.json scheduled bfcl, agentic_math, swebench_pro, mtbench, script_adherence, hle, hallulens_zh_tw, arc_agi, ifeval_zh_tw, ts_bench, tceval_v2, jaster, and aggregate_taiwan with no unsupported truthy run flags. The low-cost manifest uses tighter Math/SWE caps and an OpenRouter judge for harness validation only; release-candidate base_config_taiwan.yaml remains pinned to gpt-5.5-2026-04-23 for official judge tasks.
 external budget floor: latest gate top-level external_budget is present with minimum_approved_budget_usd=166.46495879999998, minimum_approved_budget_source=max_pre_run_budget_estimate_high, source_budget_paths=[outputs/taiwan_full_eval/openai_canary_budget_estimate.json], and source_review_paths=[outputs/taiwan_full_eval/canary_agentic_paid_run_review.json, outputs/taiwan_full_eval/canary_full_paid_run_review.json, outputs/taiwan_full_eval/canary_nonagentic_paid_run_review.json]. The latest pointer and bundle manifest current_gate carry the same summary and pointer verification checks that they match the release gate payload.
 current-host NeMoClaw verification: latest release gate reran the post-install chain on sandbox=nejumi-taiwan with --nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json and passed with ok=true/status=passed, will_launch_model_inference=false, will_query_wandb=false, will_install_or_onboard=false; step outputs include setup=temp/nemoclaw_setup_check_20260702T005232Z.json, preflight=temp/nemoclaw_protocol_preflight_20260702T005232Z.json, readiness=temp/nemoclaw_canary_readiness_20260702T005232Z.json, adoption=temp/taiwan_nemoclaw_adoption_check_20260702T005232Z.json, and all four step payload_contract_ok values true
 current clone-time NeMoClaw local verification: scripts/setup/run_nemoclaw_local_verification.sh now provides the no-external-action local test entrypoint for fresh clones and pre-push checks. A686 adds tests/test_run_nemoclaw_local_verification.py and includes that self-contract test in the helper's fixed test slice. Latest run passed 247 tests in 149.66s with PYTEST_DISABLE_PLUGIN_AUTOLOAD=1. The helper does not install/onboard NeMoClaw, query W&B, call router providers, launch benchmark model inference, or perform paid provider completion. The optional --include-release-gate flag runs the same local test slice and then python3 scripts/tools/run_taiwan_release_gate.py --quiet.
@@ -1171,6 +1173,13 @@ cost/API state addendum 23: A688 used only local/offline operator renderer harde
   さらにW&B completion contractが追加され、既存結果のW&B正規ログ化とrelease用paid-review紐付け完了を分けて確認できます。
   既存W&B結果をadopted_existing_result=trueで採用する場合も、validated dry-run report、source review JSON/SHA、scope attestation source JSON/SHA、source audit JSON/SHA、source audit formalized_records内の同一W&B completion recordが揃わなければpaid-run review doctorとproduction readinessを通過できません。
 
+直近の更新
+  OpenRouter APIキー更新後、安価な qwen/qwen3.5-flash-02-23 を試験候補に追加しました。
+  短縮smoke run g4sso8v2 は W&B finished で、IFEval zh-TW と TS-Bench の短縮実行、W&B table logging、Weave trace、aggregate_taiwan の部分集計まで通っています。
+  ただしこれは部分smokeであり、Overall/Total Score は欠測必須ユニットがあるため NaN のままです。
+  OpenAI direct judge を含む最初のHalluLens smokeは insufficient_quota で止まったため、OpenAI API KEY は正式judge段階では更新が必要です。
+  現在のOpenRouter no-judge smoke と低コストpreflightには OpenAI API KEY 更新は不要です。
+
 目下の最大課題
   Agentic Math / Agentic SWEで、モデル回答とツール実行がW&B WeaveのAgentsタブに正しい順序・正しい中身で残ることを
   まだ成功確認できていません。手動JSON変換ではなく、native integrationで監査可能な会話・tool traceを残す必要があります。
@@ -1181,12 +1190,12 @@ cost/API state addendum 23: A688 used only local/offline operator renderer harde
 現在の仮説
   1. native OpenClaw/Weave integrationを使えば、問題提示、tool execution、最終回答の順序と内容が自然に記録される。
   2. NeMoClawを使うと、ネットワーク制御・sandbox実行・NVIDIA連携の観点でAgentic評価を本番向けにしやすい。
-  3. まず安いOpenAI-direct 1モデルで全ベンチを完走し、W&B trace、artifact、Total Score、cost reviewを確認してから複数モデルへ広げるべき。
+  3. まず安いOpenAI-directまたは低コストOpenRouter 1モデルで全ベンチを完走し、W&B trace、artifact、Total Score、cost reviewを確認してから複数モデルへ広げるべき。
   4. SWE-Bench Proの費用は一部の長大実行が支配的なので、サンプル削減だけでなく、入力トークン上限とtool call上限をrunnerに入れてロングテールを切るべき。
 
 解決アプローチ
   1. まずローカルでrelease gateが嘘を通さないようにする。placeholder、手編集ok=true、別run混入、古いbundle参照を拒否する。
-  2. 次に低コストのOpenAI-direct 1モデルで、Weave content canaryとAgentic Math/SWEを含むfull canaryを通す。
+  2. 次に低コストのOpenAI-directまたはOpenRouter 1モデルで、Weave content canaryとAgentic Math/SWEを含むfull canaryを通す。
   3. 完走後にW&B completion verifier、Weave Agents verifier、paid-run review、Total Score、費用・請求参照を揃える。
   4. その1モデル結果をレビューしてから、5-10モデルの本番候補評価へ広げる。
   5. NeMoClawはビジネス優先度が高いため、Agentic Mathから先に採用し、SWE-Bench Proも移行必須として扱う。SWEはvisible checkoutとcopy-mode checkout transferの両方でruntime capを実装したが、実ベンチ問題でのW&B/Weave証跡、official evaluator結果、paid-run reviewが揃うまでは完了扱いにしない。
@@ -1199,7 +1208,7 @@ cost/API state addendum 23: A688 used only local/offline operator renderer harde
   one_model_full_canary: 1モデルで全ベンチを最後まで通した証跡がまだない。
 
 直近の実行順
-  1. 低コストOpenAI-directモデルでWeave content canaryを通し、Agentsタブに問題提示、tool実行、最終回答が正しい順序で残ることを確認する。
+  1. 低コストモデルでWeave content canaryを通し、Agentsタブに問題提示、tool実行、最終回答が正しい順序で残ることを確認する。
   2. NeMoClaw経由のAgentic Math/SWEで、実ベンチ問題を走らせたW&B completionとWeave Agents verifierを作る。
   3. one-model full canaryを実行し、agentic_math、agentic_swe、taiwan_fullのW&B completion verifierとWeave Agents verifierを揃える。
   4. paid-run reviewに実コスト、provider bill reference、W&B completion、Weave Agents completionを同期する。
@@ -1209,6 +1218,7 @@ cost/API state addendum 23: A688 used only local/offline operator renderer harde
   release gate: temp/taiwan_release_gate_20260702T005232Z.json
   bundle verification: temp/taiwan_release_evidence_bundle_verify_20260702T005232Z.json
   status: not_ready; blockers=[weave_content_canary, wandb_completion, paid_run_review_package, one_model_full_canary]; checked_file_count=728; verification_error_count=0
+  low-cost smoke: W&B run g4sso8v2 finished with qwen/qwen3.5-flash-02-23 through OpenRouter; IFEval zh-TW and TS-Bench both logged score 1 on a 3-sample testmode subset; aggregate_taiwan logged partial tables and kept Overall as NaN because required units are missing.
   latest release gate pointer: temp/latest_taiwan_release_gate.json
   latest pointer verification: temp/latest_taiwan_release_gate_verify_20260702T005232Z.json
   standalone operator plan: temp/taiwan_release_operator_plan_20260702T005232Z.md
@@ -1498,7 +1508,7 @@ G3   In progress Verify all required benchmark data, artifacts, local dependenci
 G4   Stopped     Full evaluation execution stopped after cost overrun; paid API actions require explicit restart scope and budget expectations
 G5   Stopped     Triage/rerun paused until user explicitly chooses a paid or self-hosted execution route
 G6   Blocked     Aggregate provisional Total Score cannot be produced because no complete full-eval run exists
-G7   Not started Run one-model full canary and produce a complete per-benchmark + Total Score package for user review; current test target is prepared as OpenAI-direct gpt-4.1-mini, not OpenRouter
+G7   In progress Run one-model full canary and produce a complete per-benchmark + Total Score package for user review; OpenAI-direct gpt-4.1-mini remains prepared, and qwen/qwen3.5-flash-02-23 OpenRouter low-cost canary config/preflight plus short W&B smoke are now available for cheaper harness validation before a full paid run
 G8   Not started Expand to multi-model leaderboard only after one-model review passes
 G9   Not started Compare provisional ranking with market expectations and Japanese leaderboard export
 G10  In progress Document reproducible run procedure and remaining production gaps; added a plain Japanese overview at docs/taiwan_leaderboard_overview_ja.md; paid-run review template now includes readiness, release evidence bundle, release gate commands, the current OpenAI-direct one-model canary command sequence, generated completion_requirements, mandatory provider_bill_reference, and explicit adopted-existing-result scope attestation options; release evidence bundle summary now shows current gate status, blocking next actions, operator next steps, per-benchmark W&B completion, W&B completion contract with concrete next commands, Existing W&B Adoption Draft, Weave Agents completion, paid-run review requirements, paid review W&B completion entry visibility, existing-results formalization, NeMoClaw adoption, and NeMoClaw post-install verification status/command_safety/step payload agreement before the long file list; summary.md is now a manifest-listed release_summary_markdown artifact with sha256 verification and required-section checks; release bundle now also follows Existing W&B Adoption Draft references to the source audit JSON and candidate W&B completion verifier JSONs so reviewer/on-prem bundles contain the supporting evidence, while placeholder target-review paths are not added as missing evidence; release bundle verifier now enforces those W&B adoption draft support files and roles, so a bundle missing the source audit or candidate completion verifier fails integrity verification; release bundle verifier also enforces W&B completion proof JSON schema-current observed_evidence/run_state evidence whenever current_gate references completion proof paths; release bundles also copy existing Weave content canary gate-referenced plan/command_result/verifier_json/sidecar/prompt files and reject passed canary gates whose bundled verifier_json is missing or invalid; NeMoClaw setup JSON and ADR/README now record third-party software metadata and acceptance ledger fields so install/onboard acceptance is auditable before release adoption; release bundle verifier also enforces that metadata whenever NeMoClaw adoption summary claims setup_plan_safety passed; release gate stderr summary now also prints operator next steps, requirement counts, and blocking gate names; standalone and bundled operator plan JSON/Markdown now record commands, warnings, scope-attested W&B adoption commands, W&B adoption draft status, and explicit plus run_taiwan_full_eval_batch.py implicit evidence output paths for paid API, W&B, NeMoClaw, and one-model canary steps, with bundled copies sha256-verified and payload-matched against manifest/current_gate including W&B completion contract, W&B adoption draft, paid-run review, and NeMoClaw adoption summaries by the release evidence verifier; release verifier also recomputes operator step external-operation flags/counts/evidence outputs from command text to catch underreported paid API, W&B write, third-party acceptance, scope-confirmation, or batch-runner completion evidence requirements; Weave proof documentation and content-canary/readiness gates now require visible user/problem input, trace_user_message_order, trace_final_answer_order, required_text_capture when required_texts is non-empty, required_evidence.input_message_required=true, and required_evidence.trace_final_answer_order_required=true so reviewer-visible tool execution cannot appear before problem input, omit required canary text, or appear after an ANSWER:/\\boxed/CANARY_RESULT final-answer marker; final end-to-end full-run procedure still awaits one-model completion
@@ -1577,10 +1587,10 @@ B8    BFCL-v3 zh-TW                    Ready: bfcl-zh-tw:production   Ready: BFC
 B9    OlymMATH-HARD zh-TW              Ready: production + local data  Ready: OpenClaw agentic harness; NeMoClaw config-generation/evaluator/protocol path added for task-agent mode; W&B completion verifier added; default runtime cap max_input_tokens=500000/max_tool_calls=60 now propagates through config/evaluator/runner/W&B metrics; NeMoClaw sandbox-local task session is live-polled for max_tool_calls; OpenAI-style message.tool_calls / role=tool session JSONL shapes are parsed for tool count and timeline order; interrupted NeMoClaw sessions can be copied from live_runtime_budget.session_file for audit; W&B output tables must expose valid session-copy source and copied bytes for every NeMoClaw-audited row  Historical DeepSeek result exists: W&B run f1veetyb at 100 rows / 0.86 under the pre-audit contract; current release proof is not complete because required NeMoClaw session-audit counters are missing; Qwen/Sonnet/Gemini/Opus partial only; rerun or reconstruct auditable session evidence before release
 B10   AIME2025                         Ready: local/verify artifact    Ready: OpenClaw agentic harness  Done: retained as helper/smoke     Not in main math score
 B11   SWE-Bench Pro                    Ready: production v2 artifact   Ready: OpenClaw + official eval; W&B scalar/artifact logging added; completion verifier supports agentic_swe; relog recovery script added for completed official evals whose W&B run missed tables/artifact; Taiwan default remains Compact80 with max_input_tokens=1000000/max_tool_calls=60; visible NeMoClaw mode forwards host-visible task-agent session dir and copy mode forwards sandbox-local session dir for live tool-call cap enforcement; OpenAI-style message.tool_calls / role=tool session JSONL shapes are parsed for tool count and timeline order; interrupted NeMoClaw sessions can be copied from live_runtime_budget.session_file for audit; W&B output tables must expose valid session-copy source and copied bytes for every NeMoClaw-audited patch   Stopped: DeepSeek 53/80 patches, Qwen 11/80, Sonnet 23/80, Gemini 18/80, Opus 29/80; only DeepSeek first instance officially evaluated at 0/1 Stopped; no completed SWE W&B run yet
-B12   IFEval zh-TW                     Ready: ifeval-zh-tw:production  Ready: IFEval evaluator          Ready: artifact uploaded           Pending
-B13   TS-Bench                         Ready: ts-bench:production      Ready: TS-Bench evaluator        Ready: artifact uploaded           Pending
+B12   IFEval zh-TW                     Ready: ifeval-zh-tw:production  Ready: IFEval evaluator          Short low-cost smoke passed in W&B run g4sso8v2 with 3/3 testmode rows and score 1.0 Pending full run
+B13   TS-Bench                         Ready: ts-bench:production      Ready: TS-Bench evaluator        Short low-cost smoke passed in W&B run g4sso8v2 with 3/3 testmode rows and score 1.0; earlier 10-sample smoke stalled at 9/10 and was killed Pending full run
 B14   HalluLens zh-TW                  Ready: hallulens-zh-tw          Ready: judge effort medium       Ready: zh-TW text audit done       Pending
-B15   Taiwan aggregate / Total Score   Ready: taxonomy YAML            Ready: aggregate_taiwan; taxonomy-level W&B completion verifier added Ready: waits for benchmark outputs; verifier checks required taxonomy tables plus aggregate tables and production readiness can pin verifier JSONs plus canary review records to exact run ids and required schema-v1 W&B completion entries with observed_evidence Pending
+B15   Taiwan aggregate / Total Score   Ready: taxonomy YAML            Ready: aggregate_taiwan; taxonomy-level W&B completion verifier added Short low-cost smoke run g4sso8v2 logged aggregate tables and correctly kept Overall as NaN with missing_required_count=11; verifier checks required taxonomy tables plus aggregate tables and production readiness can pin verifier JSONs plus canary review records to exact run ids and required schema-v1 W&B completion entries with observed_evidence Pending full run
 B16   SWE-rebench / DeepSWE analysis   Ready: analysis outputs         Ready: plotting scripts           Partial: overlap limits found      In progress
 B17   TWBias                           Local only: license unclear     Ready: evaluator implemented     Blocked by license gate            Disabled
 B18   OpenClaw / Weave Agents tracing  Configured                     Native integration path + live Agents API verifier W&B scalar/table/artifact completion gates added; Weave Agents verifier checks trace presence, message/tool content, required task text, and tool-after-message ordering; verifier JSON now emits schema v1, generated_at, and required_evidence; paid-run review gate verifies the actual Weave Agents completion JSON path, ok status, agent_name, schema, checks, latest_trace_id, and freshness; release gate and evidence bundle now expose Weave Agents completion summary rows with required flag, entry_count, verified_count, and completion_proven; local Weave exporter, plugin replay, OpenClaw runtime hook/content static gate, fresh content canary runner, offline content-canary gate summarizer with 24h default freshness enforcement and canary_text_missing classification, readiness hard gate, and batch pre-run hard gate with the same freshness enforcement added; live current agent check fails because message/tool content is empty, while trace presence/order passes; older OpenAI-direct canary attempts failed before scoreable trace due provider_quota, and latest A681 --execute proof intentionally blocks before OpenClaw/provider execution because external-action approval is missing while preserving paid_api_attempted=false plus required OpenClaw config-source text; production readiness now exposes the latest failed canary candidate and approval-specific next action; prepare-only and blocked content canary plans now record verification_requirements.required_texts Needs successful approved live content canary before production
@@ -1604,6 +1614,7 @@ B20   Existing result formalization     Ready                           audit_ta
 ```text
 Model slug                                 API route / model                              Full W&B run   OlymMATH-HARD zh-TW            SWE-Bench Pro                         Other benchmarks
 gpt-4_1-mini-openai-direct-canary          openai-direct/gpt-4.1-mini-2025-04-14           Canary ready   Readiness OK; not run yet          Readiness OK; not run yet              Readiness OK; not run yet
+qwen3_5-flash-02-23-openrouter-lowcost     openrouter-direct/qwen/qwen3.5-flash-02-23     Smoke passed   Not run yet; low-cost canary preflight ready Not run yet; low-cost canary preflight ready IFEval/TS short smoke finished in run g4sso8v2; full preflight schedules all Taiwan evaluators
 glm-5_2-openrouter-reasoning               openrouter-direct/z-ai/glm-5.2                 Canary ready   Readiness OK; not run yet          Readiness OK; not run yet              Readiness OK; not run yet
 deepseek-v4-pro-thinking-max               deepseek/deepseek-v4-pro                       Partial only   W&B logged run f1veetyb; 100/100 rows, 86 correct, accuracy 0.86 Stopped at 53/80 patches; official eval checked 1 instance, 0/1 resolved Other benchmarks not run to completion
 qwen3_6-max-preview-openrouter             openrouter-direct/qwen/qwen3.6-max-preview     Not complete   Stopped partial: 27/100 rows     Stopped partial: 11/80 patches       Not run to completion
@@ -1688,6 +1699,7 @@ Benchmark: SWE-Bench Pro
   Claude Opus 4.7: stopped partial; 29/80 patch_records
 
 Benchmark: IFEval zh-TW
+  Qwen3.5 Flash 02-23 OpenRouter low-cost: short smoke done; W&B run g4sso8v2; 3 rows; score 1.0; not a full score
   DeepSeek v4 Pro: pending full run
   Qwen3.6 Max Preview: pending full run
   Claude Sonnet 4.6: pending full run
@@ -1695,6 +1707,7 @@ Benchmark: IFEval zh-TW
   Claude Opus 4.7: pending full run
 
 Benchmark: TS-Bench
+  Qwen3.5 Flash 02-23 OpenRouter low-cost: short smoke done; W&B run g4sso8v2; 3 rows; score 1.0; not a full score; earlier 10-sample attempt uu4f708i stalled at 9/10 and was killed
   DeepSeek v4 Pro: pending full run
   Qwen3.6 Max Preview: pending full run
   Claude Sonnet 4.6: pending full run
@@ -1702,6 +1715,7 @@ Benchmark: TS-Bench
   Claude Opus 4.7: pending full run
 
 Benchmark: HalluLens zh-TW
+  Qwen3.5 Flash 02-23 OpenRouter low-cost: first smoke attempt gdz4b5vj was killed because OpenAI direct judge returned insufficient_quota; no release evidence
   DeepSeek v4 Pro: pending full run
   Qwen3.6 Max Preview: pending full run
   Claude Sonnet 4.6: pending full run
@@ -1709,6 +1723,7 @@ Benchmark: HalluLens zh-TW
   Claude Opus 4.7: pending full run
 
 Benchmark: Taiwan aggregate / Total Score
+  Qwen3.5 Flash 02-23 OpenRouter low-cost: partial aggregate smoke done in W&B run g4sso8v2; IFEval/TS rows present, Overall remains NaN because required units are missing
   DeepSeek v4 Pro: pending completed benchmark outputs
   Qwen3.6 Max Preview: pending completed benchmark outputs
   Claude Sonnet 4.6: pending completed benchmark outputs

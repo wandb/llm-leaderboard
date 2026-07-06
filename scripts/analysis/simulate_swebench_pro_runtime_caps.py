@@ -27,6 +27,7 @@ PRICE_PER_MILLION: dict[str, dict[str, float]] = {
     "very-high-opus-gpt5.5-like": {"input": 5.00, "output": 25.00, "cacheRead": 0.50},
     "gemini-pro-like": {"input": 2.00, "output": 12.00, "cacheRead": 0.30},
     "qwen-max-like": {"input": 1.10, "output": 3.00, "cacheRead": 0.00},
+    "qwen-flash-lowcost-like": {"input": 0.065, "output": 0.260, "cacheRead": 0.00},
 }
 
 DEFAULT_GROUPS: dict[str, tuple[str, str]] = {
@@ -46,6 +47,10 @@ DEFAULT_GROUPS: dict[str, tuple[str, str]] = {
     ),
     "gemini-pro-like": ("gemini-3_1-pro-preview-openrouter", "gemini-pro-like"),
     "qwen-max-like": ("qwen3_6-max-preview-openrouter", "qwen-max-like"),
+    "qwen-flash-lowcost-like_on_deepseek_behavior": (
+        "deepseek-v4-pro-thinking-max",
+        "qwen-flash-lowcost-like",
+    ),
 }
 
 TOKEN_KEYS = ("input", "output", "cacheRead")

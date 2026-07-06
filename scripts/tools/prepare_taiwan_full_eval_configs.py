@@ -56,7 +56,9 @@ AGENTIC_DENIED_ARGUMENT_PATTERNS = [
 
 
 def _plain(value: Any) -> Any:
-    return OmegaConf.to_container(value, resolve=True)
+    if OmegaConf.is_config(value):
+        return OmegaConf.to_container(value, resolve=True)
+    return value
 
 
 def _run_flags_for_phase(phase: str) -> dict[str, bool]:
@@ -237,6 +239,8 @@ def build_override(model: dict[str, Any], output_root: Path, phase: str = "full"
                 judge_model
             )
             override[task_name]["judge"]["parallel"] = int(model.get("judge_parallel", 8))
+            if "judge_params" in model:
+                override[task_name]["judge"]["params"] = _plain(model["judge_params"])
     if reasoning_effort:
         override.setdefault("generator", {}).setdefault("extra_body", {}).setdefault(
             "reasoning", {}

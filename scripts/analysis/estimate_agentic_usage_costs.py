@@ -46,6 +46,12 @@ PRICE_PER_MILLION: dict[str, dict[str, float]] = {
         "cacheRead": 0.0,
         "cacheWrite": 0.0,
     },
+    "openrouter-direct/qwen/qwen3.5-flash-02-23": {
+        "input": 0.065,
+        "output": 0.260,
+        "cacheRead": 0.0,
+        "cacheWrite": 0.0,
+    },
     "openrouter-direct/anthropic/claude-sonnet-4.6": {
         "input": 3.00,
         "output": 15.00,

@@ -194,6 +194,26 @@ def test_swebench_pro_nemoclaw_manifest_override_does_not_touch_agentic_math(tmp
     assert "nemoclaw_sandbox" not in override["agentic_math"]
 
 
+def test_manifest_can_override_judge_params_for_low_cost_canary(tmp_path):
+    override = build_override(
+        {
+            "slug": "model-a",
+            "run_name": "model-a",
+            "openclaw_model": "provider/model-a",
+            "judge_model": "openrouter/openai/gpt-4.1-nano",
+            "judge_parallel": 2,
+            "judge_params": {},
+        },
+        tmp_path / "outputs",
+        phase="full",
+    )
+
+    for task_name in ("mtbench", "hle", "hallulens_zh_tw"):
+        assert override[task_name]["judge"]["model"] == "openrouter/openai/gpt-4.1-nano"
+        assert override[task_name]["judge"]["parallel"] == 2
+        assert override[task_name]["judge"]["params"] == {}
+
+
 def test_canary_generates_openai_direct_only(tmp_path):
     args = _args(tmp_path, "full")
     args.model = None
