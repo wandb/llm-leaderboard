@@ -1,6 +1,6 @@
 # Taiwan Leaderboard Task Status
 
-Last updated: 2026-07-06 23:56 JST
+Last updated: 2026-07-07 00:02 JST
 
 This file is the persistent progress ledger for the Taiwan leaderboard work.
 Update it at every meaningful milestone so progress is visible even when chat
@@ -19,7 +19,7 @@ docs/taiwan_leaderboard_overview_ja.md
 ```text
 branch: dev-zh-TW
 remote: origin/dev-zh-TW
-latest pushed implementation/docs commit before this ledger update: dcbb55f Add low-cost OpenRouter Taiwan smoke config
+latest pushed implementation/docs commit before this ledger update: c75e38d Record OpenAI judge quota check
 
 pushed implementation/docs commits this cycle before this ledger update:
   ebe5dcd Ignore local evaluation scratch dirs
@@ -1041,7 +1041,7 @@ cost/API state for these commits:
 ## Latest Machine State
 
 ```text
-as of: 2026-07-06 23:56 JST
+as of: 2026-07-07 00:02 JST
 release gate: temp/taiwan_release_gate_20260702T005232Z.json
 latest pointer: temp/latest_taiwan_release_gate.json
 latest pointer verification: temp/latest_taiwan_release_gate_verify_20260702T005232Z.json
@@ -1056,7 +1056,7 @@ checked files: 728
 verification errors: 0
 current low-cost OpenRouter smoke: qwen/qwen3.5-flash-02-23 was added as a low-cost OpenRouter candidate with provider fallback disabled. Full/agentic/pilot run_eval preflights passed without W&B/Weave/model execution. The completed short W&B smoke run is https://wandb.ai/llm-leaderboard/tc-leaderboard/runs/g4sso8v2, state=finished, run_name=taiwan-pilot/qwen3.5-flash-02-23-openrouter-short-lowcost, with IFEval zh-TW 3/3 and TS-Bench 3/3 executed through OpenRouter, ifeval_zh_tw_score=1, ts_bench_score=1, Weave traces present for IFEval/TS-Bench and child chat completions, and aggregate_taiwan logging partial tables with Overall=NaN because 11 required units are missing. Two earlier smoke attempts were intentionally stopped and are not release evidence: gdz4b5vj stopped at HalluLens judge because OpenAI direct judge returned insufficient_quota; uu4f708i completed IFEval but was killed after TS-Bench stalled at 9/10. The current short smoke avoids OpenAI direct and reduces request count/timeouts.
 current low-cost full canary candidate: configs/config-qwen-qwen3_5-flash-02-23-openrouter.yaml and configs/taiwan_lowcost_canary_models.yaml prepare qwen/qwen3.5-flash-02-23 as a cheap canary candidate. The full preflight temp/preflight_lowcost_qwen_full_after_judge_change.json scheduled bfcl, agentic_math, swebench_pro, mtbench, script_adherence, hle, hallulens_zh_tw, arc_agi, ifeval_zh_tw, ts_bench, tceval_v2, jaster, and aggregate_taiwan with no unsupported truthy run flags. The low-cost manifest uses tighter Math/SWE caps and an OpenRouter judge for harness validation only; release-candidate base_config_taiwan.yaml remains pinned to gpt-5.5-2026-04-23 for official judge tasks.
-current OpenAI key/quota status: after OPENAI_API_KEY was updated, /v1/models succeeded and listed gpt-5.5-2026-04-23, gpt-4.1-mini-2025-04-14, and gpt-4.1-nano-2025-04-14 as available. A minimal HalluLens zh-TW smoke with OpenRouter generation and OpenAI gpt-5.5-2026-04-23 judge still failed at completion time with RateLimitError insufficient_quota, then was manually interrupted to avoid repeated retries. W&B run 02r1cbtt is killed and is not release evidence. The issue is no longer key validity/model visibility; it is OpenAI project/organization billing quota or usage-limit availability for completions.
+current OpenAI key/quota status: after the OpenAI balance charge, a minimal gpt-5.5-2026-04-23 Responses API completion succeeded. HalluLens zh-TW smoke with OpenRouter generation and OpenAI judge run 2n2gcg1m proved the updated OpenAI judge no longer fails with insufficient_quota on the test item, but was killed when the dev-side OpenRouter generation stalled. A follow-up OpenAI-direct-only HalluLens zh-TW smoke finished successfully in W&B run https://wandb.ai/llm-leaderboard/tc-leaderboard/runs/7o95kldl with generator=gpt-4.1-mini-2025-04-14, judge=gpt-5.5-2026-04-23, testmode test/dev 1+1, and hallulens_zh_tw_score=0. This is a quota/connectivity/W&B logging smoke, not release evidence.
 external budget floor: latest gate top-level external_budget is present with minimum_approved_budget_usd=166.46495879999998, minimum_approved_budget_source=max_pre_run_budget_estimate_high, source_budget_paths=[outputs/taiwan_full_eval/openai_canary_budget_estimate.json], and source_review_paths=[outputs/taiwan_full_eval/canary_agentic_paid_run_review.json, outputs/taiwan_full_eval/canary_full_paid_run_review.json, outputs/taiwan_full_eval/canary_nonagentic_paid_run_review.json]. The latest pointer and bundle manifest current_gate carry the same summary and pointer verification checks that they match the release gate payload.
 current-host NeMoClaw verification: latest release gate reran the post-install chain on sandbox=nejumi-taiwan with --nemoclaw-openclaw-config-path /sandbox/.openclaw/openclaw.json and passed with ok=true/status=passed, will_launch_model_inference=false, will_query_wandb=false, will_install_or_onboard=false; step outputs include setup=temp/nemoclaw_setup_check_20260702T005232Z.json, preflight=temp/nemoclaw_protocol_preflight_20260702T005232Z.json, readiness=temp/nemoclaw_canary_readiness_20260702T005232Z.json, adoption=temp/taiwan_nemoclaw_adoption_check_20260702T005232Z.json, and all four step payload_contract_ok values true
 current clone-time NeMoClaw local verification: scripts/setup/run_nemoclaw_local_verification.sh now provides the no-external-action local test entrypoint for fresh clones and pre-push checks. A686 adds tests/test_run_nemoclaw_local_verification.py and includes that self-contract test in the helper's fixed test slice. Latest run passed 247 tests in 149.66s with PYTEST_DISABLE_PLUGIN_AUTOLOAD=1. The helper does not install/onboard NeMoClaw, query W&B, call router providers, launch benchmark model inference, or perform paid provider completion. The optional --include-release-gate flag runs the same local test slice and then python3 scripts/tools/run_taiwan_release_gate.py --quiet.
@@ -1178,10 +1178,10 @@ cost/API state addendum 23: A688 used only local/offline operator renderer harde
   OpenRouter APIキー更新後、安価な qwen/qwen3.5-flash-02-23 を試験候補に追加しました。
   短縮smoke run g4sso8v2 は W&B finished で、IFEval zh-TW と TS-Bench の短縮実行、W&B table logging、Weave trace、aggregate_taiwan の部分集計まで通っています。
   ただしこれは部分smokeであり、Overall/Total Score は欠測必須ユニットがあるため NaN のままです。
-  OPENAI_API_KEY更新後、モデル一覧取得では gpt-5.5-2026-04-23 が見えることを確認しました。
-  ただし最小HalluLens smoke run 02r1cbtt では、OpenAI gpt-5.5 judge completion が再び insufficient_quota で止まりました。
-  したがって現状の問題はキーの文字列やモデル可視性ではなく、OpenAIプロジェクト/組織のbilling quotaまたはusage limitです。
-  現在のOpenRouter no-judge smoke と低コストpreflightには OpenAI API KEY は不要ですが、正式judge付きfull canaryにはOpenAI completion quotaの解消が必要です。
+  チャージ反映後、gpt-5.5-2026-04-23 の最小 Responses API completion は成功しました。
+  HalluLens zh-TW のOpenAI judge smokeも、OpenAI directのみの構成で W&B run 7o95kldl がfinishedになりました。
+  これで、OpenAI judge quota は正式full canaryに進める前提を満たしました。
+  ただし run 7o95kldl は testmode 1+1 の接続確認であり、リリース証跡やモデル品質評価ではありません。
 
 目下の最大課題
   Agentic Math / Agentic SWEで、モデル回答とツール実行がW&B WeaveのAgentsタブに正しい順序・正しい中身で残ることを
@@ -1221,7 +1221,7 @@ cost/API state addendum 23: A688 used only local/offline operator renderer harde
   release gate: temp/taiwan_release_gate_20260702T005232Z.json
   bundle verification: temp/taiwan_release_evidence_bundle_verify_20260702T005232Z.json
   status: not_ready; blockers=[weave_content_canary, wandb_completion, paid_run_review_package, one_model_full_canary]; checked_file_count=728; verification_error_count=0
-  low-cost smoke: W&B run g4sso8v2 finished with qwen/qwen3.5-flash-02-23 through OpenRouter; IFEval zh-TW and TS-Bench both logged score 1 on a 3-sample testmode subset; aggregate_taiwan logged partial tables and kept Overall as NaN because required units are missing. OpenAI judge smoke run 02r1cbtt was killed after gpt-5.5 judge completion returned insufficient_quota despite successful model-list access.
+  low-cost smoke: W&B run g4sso8v2 finished with qwen/qwen3.5-flash-02-23 through OpenRouter; IFEval zh-TW and TS-Bench both logged score 1 on a 3-sample testmode subset; aggregate_taiwan logged partial tables and kept Overall as NaN because required units are missing. OpenAI judge smoke run 7o95kldl finished with HalluLens zh-TW test/dev 1+1 using gpt-4.1-mini generation plus gpt-5.5 judge, proving post-charge OpenAI completion quota and W&B logging are working.
   latest release gate pointer: temp/latest_taiwan_release_gate.json
   latest pointer verification: temp/latest_taiwan_release_gate_verify_20260702T005232Z.json
   standalone operator plan: temp/taiwan_release_operator_plan_20260702T005232Z.md
@@ -1720,6 +1720,7 @@ Benchmark: TS-Bench
 Benchmark: HalluLens zh-TW
   Qwen3.5 Flash 02-23 OpenRouter low-cost: first smoke attempt gdz4b5vj was killed because OpenAI direct judge returned insufficient_quota; no release evidence
   Qwen3.5 Flash 02-23 OpenRouter low-cost + updated OpenAI key: second minimal smoke 02r1cbtt confirmed model-list access but OpenAI gpt-5.5 judge completion still returned insufficient_quota; killed; no release evidence
+  OpenAI direct post-charge smoke: run 7o95kldl finished; generator gpt-4.1-mini-2025-04-14, judge gpt-5.5-2026-04-23, testmode test/dev 1+1, hallulens_zh_tw_score=0; quota/connectivity proof only, not a full score
   DeepSeek v4 Pro: pending full run
   Qwen3.6 Max Preview: pending full run
   Claude Sonnet 4.6: pending full run
