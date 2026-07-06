@@ -191,6 +191,7 @@ def build_override(model: dict[str, Any], output_root: Path, phase: str = "full"
             "openclaw_retry_base_seconds": int(model.get("openclaw_retry_base_seconds", 15)),
             "max_input_tokens": int(model.get("math_max_input_tokens", 500_000)),
             "max_tool_calls": int(model.get("math_max_tool_calls", 60)),
+            "max_agent_turns": int(model.get("math_max_agent_turns", 60)),
             "dry_run": False,
             "run_openclaw": phase != "agentic_aggregate",
             "results_dir": str(output_root / "agentic_math" / slug / "openclaw")
@@ -223,6 +224,7 @@ def build_override(model: dict[str, Any], output_root: Path, phase: str = "full"
             "openclaw_tool_profile": "coding",
             "max_input_tokens": int(model.get("swe_max_input_tokens", 1_000_000)),
             "max_tool_calls": int(model.get("swe_max_tool_calls", 60)),
+            "max_agent_turns": int(model.get("swe_max_agent_turns", 60)),
             "deny_tool": AGENTIC_DENIED_TOOLS,
             "deny_argument_pattern": AGENTIC_DENIED_ARGUMENT_PATTERNS,
         },

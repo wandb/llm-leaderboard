@@ -16,6 +16,7 @@ OPENCLAW_RUNNER = REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.p
 DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 DEFAULT_MAX_INPUT_TOKENS = 500_000
 DEFAULT_MAX_TOOL_CALLS = 60
+DEFAULT_MAX_AGENT_TURNS = 60
 AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "nemoclaw_session_audit_ok",
     "nemoclaw_session_audit",
@@ -125,6 +126,8 @@ def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
         str(_cfg_get(cfg.agentic_math, "max_input_tokens", DEFAULT_MAX_INPUT_TOKENS)),
         "--max-tool-calls",
         str(_cfg_get(cfg.agentic_math, "max_tool_calls", DEFAULT_MAX_TOOL_CALLS)),
+        "--max-agent-turns",
+        str(_cfg_get(cfg.agentic_math, "max_agent_turns", DEFAULT_MAX_AGENT_TURNS)),
     ]
     profile = _cfg_get(cfg.agentic_math, "profile")
     if profile:
@@ -255,6 +258,9 @@ def _log_summary(run, cfg, summary: dict[str, Any], output_df: pd.DataFrame) -> 
             ),
             "agentic_math/max_tool_calls": int(
                 _cfg_get(cfg.agentic_math, "max_tool_calls", DEFAULT_MAX_TOOL_CALLS) or 0
+            ),
+            "agentic_math/max_agent_turns": int(
+                _cfg_get(cfg.agentic_math, "max_agent_turns", DEFAULT_MAX_AGENT_TURNS) or 0
             ),
             "agentic_math/runtime_budget_exceeded_instances": int(
                 summary.get("runtime_budget_exceeded_instances") or 0

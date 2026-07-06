@@ -54,6 +54,7 @@ DEFAULT_COMPACT_MAX_COST_PERCENTILE = 0.70
 TAIWAN_RECOMMENDED_SUBSET = "leaderboard_compact_80"
 TAIWAN_RECOMMENDED_MAX_INPUT_TOKENS = 1_000_000
 TAIWAN_RECOMMENDED_MAX_TOOL_CALLS = 60
+TAIWAN_RECOMMENDED_MAX_AGENT_TURNS = 60
 
 CSV_FIELDS = [
     "repo",
@@ -815,6 +816,7 @@ def write_readme(
                 f"- subset: `{TAIWAN_RECOMMENDED_SUBSET}`",
                 f"- runtime cap: {TAIWAN_RECOMMENDED_MAX_INPUT_TOKENS:,} input tokens per task",
                 f"- runtime cap: {TAIWAN_RECOMMENDED_MAX_TOOL_CALLS} tool calls per task",
+                f"- runtime cap: {TAIWAN_RECOMMENDED_MAX_AGENT_TURNS} agent turns per task",
                 "- large-repo filtering is a static risk reducer; runtime caps are the primary cost guard",
                 "",
                 f"Rows: {len(rows)}",
@@ -924,8 +926,9 @@ def materialize(args: argparse.Namespace) -> Path:
             "subset": TAIWAN_RECOMMENDED_SUBSET,
             "max_input_tokens": TAIWAN_RECOMMENDED_MAX_INPUT_TOKENS,
             "max_tool_calls": TAIWAN_RECOMMENDED_MAX_TOOL_CALLS,
+            "max_agent_turns": TAIWAN_RECOMMENDED_MAX_AGENT_TURNS,
             "static_risk_control": "cost-capped compact subset with per-repo cap",
-            "primary_cost_control": "runtime input-token and tool-call budgets",
+            "primary_cost_control": "runtime input-token, tool-call, and agent-turn budgets",
         },
         "repo_static_cost_metadata": {
             "included": bool(repo_metadata_records),

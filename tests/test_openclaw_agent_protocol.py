@@ -739,6 +739,66 @@ def test_live_tool_budget_status_checks_explicit_session_dir(tmp_path, monkeypat
     assert str(session_dir) in status["session_dirs"]
 
 
+def test_live_tool_budget_status_detects_estimated_input_token_overage(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path / "empty-openclaw-state"))
+    session_dir = tmp_path / "task-agent" / "sessions"
+    session_dir.mkdir(parents=True)
+    session = session_dir / "session-1.jsonl"
+    session.write_text(
+        json.dumps({"message": {"role": "user", "timestamp": 1, "content": "x" * 80}}) + "\n",
+        encoding="utf-8",
+    )
+    args = Namespace(
+        agent="agent-a",
+        profile=None,
+        max_input_tokens=10,
+        max_tool_calls=0,
+        max_agent_turns=0,
+        live_session_dir=[session_dir],
+    )
+
+    status = module.live_tool_budget_status(args, time.time() - 1)
+
+    assert status["enabled"] is True
+    assert status["exceeded"] is True
+    assert status["reason"] == "max_input_tokens_exceeded"
+    assert status["estimated_input_tokens"] > 10
+    assert status["input_session_file"] == str(session)
+
+
+def test_live_tool_budget_status_detects_agent_turn_overage(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path / "empty-openclaw-state"))
+    session_dir = tmp_path / "task-agent" / "sessions"
+    session_dir.mkdir(parents=True)
+    session = session_dir / "session-1.jsonl"
+    session.write_text(
+        "\n".join(
+            json.dumps({"message": {"role": "assistant", "timestamp": index, "content": "ok"}})
+            for index in range(3)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    args = Namespace(
+        agent="agent-a",
+        profile=None,
+        max_input_tokens=0,
+        max_tool_calls=0,
+        max_agent_turns=2,
+        live_session_dir=[session_dir],
+    )
+
+    status = module.live_tool_budget_status(args, time.time() - 1)
+
+    assert status["enabled"] is True
+    assert status["exceeded"] is True
+    assert status["reason"] == "max_agent_turns_exceeded"
+    assert status["agent_turn_count"] == 3
+    assert status["turn_session_file"] == str(session)
+
+
 def test_live_tool_budget_status_checks_nemoclaw_sandbox_session_dir(monkeypatch, tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path / "empty-openclaw-state"))
@@ -817,6 +877,32 @@ def test_runtime_budget_status_uses_live_nemoclaw_tool_overage():
             "source": "live_runtime_budget",
         }
     ]
+
+
+def test_runtime_budget_status_uses_live_input_and_turn_overages():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    sidecar = {
+        "agent_turn_count": 0,
+        "live_runtime_budget": {
+            "enabled": True,
+            "exceeded": True,
+            "exceeded_limits": ["max_input_tokens_exceeded", "max_agent_turns_exceeded"],
+            "reason": "runtime_budget_exceeded",
+            "estimated_input_tokens": 101,
+            "agent_turn_count": 4,
+        },
+    }
+    args = Namespace(max_input_tokens=100, max_tool_calls=0, max_agent_turns=3)
+
+    status = module.runtime_budget_status(sidecar, args)
+
+    assert status["ok"] is False
+    assert status["observed"]["estimated_input_tokens"] == 101
+    assert status["observed"]["agent_turn_count"] == 4
+    assert {violation["type"] for violation in status["violations"]} == {
+        "max_input_tokens_exceeded",
+        "max_agent_turns_exceeded",
+    }
 
 
 def test_extract_timeline_events_preserves_openclaw_session_order(tmp_path):

@@ -384,7 +384,11 @@ def test_openclaw_protocol_runtime_budget_detects_overages():
     status = module.runtime_budget_status(sidecar, args)
 
     assert status["ok"] is False
-    assert status["limits"] == {"max_input_tokens": 1_000_000, "max_tool_calls": 60}
+    assert status["limits"] == {
+        "max_input_tokens": 1_000_000,
+        "max_tool_calls": 60,
+        "max_agent_turns": None,
+    }
     assert {violation["type"] for violation in status["violations"]} == {
         "max_input_tokens_exceeded",
         "max_tool_calls_exceeded",
@@ -872,7 +876,11 @@ def test_swebench_runtime_budget_summary_uses_configured_caps_for_dry_run():
 
     summary = module.runtime_budget_summary([], args)
 
-    assert summary == {"max_input_tokens": 1_000_000, "max_tool_calls": 60}
+    assert summary == {
+        "max_input_tokens": 1_000_000,
+        "max_tool_calls": 60,
+        "max_agent_turns": None,
+    }
 
 
 def test_swebench_transient_openclaw_failure_detects_provider_timeout():
@@ -1547,6 +1555,7 @@ def test_evaluator_passes_session_prefix_to_swebench_runner(tmp_path, monkeypatc
                 "openclaw_retry_base_seconds": 1,
                 "max_input_tokens": 1_000_000,
                 "max_tool_calls": 60,
+                "max_agent_turns": 55,
                 "session_prefix": "{wandb_run_id}:swebench-pro",
                 "weave_sidecar": False,
             },
@@ -1557,6 +1566,7 @@ def test_evaluator_passes_session_prefix_to_swebench_runner(tmp_path, monkeypatc
 
     [command] = commands
     assert command[command.index("--session-prefix") + 1] == "{wandb_run_id}:swebench-pro"
+    assert command[command.index("--max-agent-turns") + 1] == "55"
 
 
 def test_evaluator_defaults_nemoclaw_openclaw_config_path_to_swebench_runner(

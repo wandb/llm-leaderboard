@@ -203,6 +203,7 @@ swebench_pro:
   openclaw_timeout: 3600
   max_input_tokens: 1000000
   max_tool_calls: 60
+  max_agent_turns: 60
   allow_failed_preflight: false
   no_local: false
   skip_agent: false
@@ -237,6 +238,7 @@ agentic_math:
   openclaw_timeout: 2400
   max_input_tokens: 500000
   max_tool_calls: 60
+  max_agent_turns: 60
   allow_failed_preflight: false
   no_local: false
   testmode_max_samples: 1
@@ -291,6 +293,10 @@ hallulens_zh_tw:
         effort: medium
 
 arc_agi:
+  arc_agi_1_artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-1_public-eval_50:production"
+  arc_agi_2_artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval_50:production"
+  max_output_tokens: 4096
+  num_attempts: 2
   prompt_template: |
     你正在參加解謎競賽。你是一位擅長解這類格狀圖形謎題的專家。
     以下是一組輸入與輸出的訓練範例。你的目標是找出訓練範例中從輸入到輸出的轉換規則，並將同一規則套用到測試輸入，產生最終輸出。

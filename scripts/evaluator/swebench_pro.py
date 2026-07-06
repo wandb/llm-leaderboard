@@ -18,6 +18,7 @@ DEFAULT_TAIWAN_SUBSET = "leaderboard_compact_80"
 DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 DEFAULT_MAX_INPUT_TOKENS = 1_000_000
 DEFAULT_MAX_TOOL_CALLS = 60
+DEFAULT_MAX_AGENT_TURNS = 60
 AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "nemoclaw_session_audit_ok",
     "nemoclaw_session_audit_required",
@@ -144,6 +145,8 @@ def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
         str(_cfg_get(cfg.swebench_pro, "max_input_tokens", DEFAULT_MAX_INPUT_TOKENS)),
         "--max-tool-calls",
         str(_cfg_get(cfg.swebench_pro, "max_tool_calls", DEFAULT_MAX_TOOL_CALLS)),
+        "--max-agent-turns",
+        str(_cfg_get(cfg.swebench_pro, "max_agent_turns", DEFAULT_MAX_AGENT_TURNS)),
     ]
     profile = _cfg_get(cfg.swebench_pro, "profile")
     if profile:
@@ -346,6 +349,7 @@ def _make_result_artifact(
     subset: str,
     max_input_tokens: int,
     max_tool_calls: int,
+    max_agent_turns: int,
     nemoclaw_sandbox: str,
 ) -> wandb.Artifact:
     artifact = wandb.Artifact(
@@ -362,6 +366,7 @@ def _make_result_artifact(
             "subset": subset,
             "max_input_tokens": max_input_tokens,
             "max_tool_calls": max_tool_calls,
+            "max_agent_turns": max_agent_turns,
             "nemoclaw_sandbox": nemoclaw_sandbox,
         },
     )
@@ -450,6 +455,9 @@ def _log_summary(run, cfg, summary: dict[str, Any], output_dir: Path, patch_path
             "agentic_swe/max_tool_calls": int(
                 _cfg_get(cfg.swebench_pro, "max_tool_calls", DEFAULT_MAX_TOOL_CALLS) or 0
             ),
+            "agentic_swe/max_agent_turns": int(
+                _cfg_get(cfg.swebench_pro, "max_agent_turns", DEFAULT_MAX_AGENT_TURNS) or 0
+            ),
             "agentic_swe/nemoclaw_sandbox": str(
                 _cfg_get(cfg.swebench_pro, "nemoclaw_sandbox", "") or ""
             ),
@@ -479,6 +487,9 @@ def _log_summary(run, cfg, summary: dict[str, Any], output_dir: Path, patch_path
             ),
             max_tool_calls=int(
                 _cfg_get(cfg.swebench_pro, "max_tool_calls", DEFAULT_MAX_TOOL_CALLS) or 0
+            ),
+            max_agent_turns=int(
+                _cfg_get(cfg.swebench_pro, "max_agent_turns", DEFAULT_MAX_AGENT_TURNS) or 0
             ),
             nemoclaw_sandbox=str(_cfg_get(cfg.swebench_pro, "nemoclaw_sandbox", "") or ""),
         ),

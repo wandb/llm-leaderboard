@@ -45,6 +45,7 @@ agentic_math:
   openclaw_retry_base_seconds: 15
   max_input_tokens: 500000
   max_tool_calls: 60
+  max_agent_turns: 60
   dry_run: false
   run_openclaw: false
   results_dir: outputs/taiwan_full_eval/agentic_math/gpt-4_1-mini-openai-direct-canary/openclaw
@@ -81,6 +82,7 @@ swebench_pro:
   openclaw_tool_profile: coding
   max_input_tokens: 1000000
   max_tool_calls: 60
+  max_agent_turns: 60
   deny_tool:
   - code_execution
   - web_search

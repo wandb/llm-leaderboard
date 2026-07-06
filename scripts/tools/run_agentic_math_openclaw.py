@@ -25,6 +25,7 @@ RUNNER_VERSION = "agentic-math-openclaw-2026-07-02-sandbox-live-budget-v1"
 NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 DEFAULT_MAX_INPUT_TOKENS = 500_000
 DEFAULT_MAX_TOOL_CALLS = 60
+DEFAULT_MAX_AGENT_TURNS = 60
 DEFAULT_DENIED_TOOLS = [
     "code_execution",
     "web_search",
@@ -160,6 +161,7 @@ def build_cache_key(row: dict[str, Any], prompt_text: str, args: argparse.Namesp
         "openclaw_config_source": openclaw_config_cache_source(args),
         "max_input_tokens": int(getattr(args, "max_input_tokens", 0) or 0),
         "max_tool_calls": int(getattr(args, "max_tool_calls", 0) or 0),
+        "max_agent_turns": int(getattr(args, "max_agent_turns", 0) or 0),
         "agent_runtime": "nemoclaw" if getattr(args, "nemoclaw_sandbox", None) else "host",
         "nemoclaw_sandbox": str(getattr(args, "nemoclaw_sandbox", "") or ""),
         "use_task_agent": bool(getattr(args, "use_task_agent", True)),
@@ -1442,6 +1444,8 @@ def run_openclaw_for_task(
             str(int(getattr(args, "max_input_tokens", 0) or 0)),
             "--max-tool-calls",
             str(int(getattr(args, "max_tool_calls", 0) or 0)),
+            "--max-agent-turns",
+            str(int(getattr(args, "max_agent_turns", 0) or 0)),
         ]
         if args.profile:
             command.extend(["--profile", args.profile])
@@ -1702,6 +1706,7 @@ def write_summary(output_dir: Path, results: list[dict[str, Any]], args: argpars
         "runtime_budget": {
             "max_input_tokens": int(getattr(args, "max_input_tokens", 0) or 0) or None,
             "max_tool_calls": int(getattr(args, "max_tool_calls", 0) or 0) or None,
+            "max_agent_turns": int(getattr(args, "max_agent_turns", 0) or 0) or None,
         },
         "runtime_budget_exceeded_instances": len(runtime_budget_exceeded),
         "disqualified_instances": sum(1 for row in results if row.get("openclaw_disqualified_reason")),
@@ -1759,6 +1764,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=DEFAULT_MAX_TOOL_CALLS,
         help="Agentic Math per-task tool-call budget. 0 disables the budget.",
+    )
+    parser.add_argument(
+        "--max-agent-turns",
+        type=int,
+        default=DEFAULT_MAX_AGENT_TURNS,
+        help="Agentic Math per-task assistant-turn budget. 0 disables the budget.",
     )
     parser.add_argument(
         "--openclaw-max-attempts",

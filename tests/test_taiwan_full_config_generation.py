@@ -91,9 +91,11 @@ def test_agentic_phase_runs_only_agentic_generation(tmp_path):
     assert cfg.swebench_pro.patch_path is None
     assert cfg.agentic_math.max_input_tokens == 500_000
     assert cfg.agentic_math.max_tool_calls == 60
+    assert cfg.agentic_math.max_agent_turns == 60
     assert cfg.swebench_pro.subset == "leaderboard_compact_80"
     assert cfg.swebench_pro.max_input_tokens == 1_000_000
     assert cfg.swebench_pro.max_tool_calls == 60
+    assert cfg.swebench_pro.max_agent_turns == 60
 
 
 def test_agentic_math_nemoclaw_cli_override_is_agentic_math_only(tmp_path):

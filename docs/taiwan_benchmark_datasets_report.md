@@ -23,13 +23,7 @@ This report describes the datasets currently wired or intended for the Nejumi
    locally under `data/taiwan/swebench_pro_public`, but the W&B production
    artifact must be updated or `swebench_pro.local_dataset_dir` must be set
    before a W&B-artifact-based full canary.
-2. ARC-AGI artifact path is not present in `base_config_taiwan.yaml`.
-   The evaluator requires `arc_agi.arc_agi_1_artifacts_path` and
-   `arc_agi.arc_agi_2_artifacts_path`. These paths exist in `configs/base_config.yaml`
-   and in the Taiwan GLP smoke config, but not in the Taiwan base config.
-   Current inherited artifacts are in `llm-leaderboard/nejumi-leaderboard4`, not
-   `tc-leaderboard`.
-3. TWBias is intentionally pending and disabled. Local materialized data exists,
+2. TWBias is intentionally pending and disabled. Local materialized data exists,
    but the source license is recorded as unknown and W&B
    `llm-leaderboard/tc-leaderboard/twbias:internal` is not present.
 
@@ -38,7 +32,7 @@ This report describes the datasets currently wired or intended for the Nejumi
 | Unit | Current Data Used | Source | Translation / Localization | Storage Status |
 | --- | --- | --- | --- | --- |
 | MT-Bench-TW | 80 questions; 41 reference-answer rows | `MediaTek-Research/TCEval-v2`, configs `mt_bench_tw-*` | Native Traditional Chinese from TCEval-v2. No Japanese translation. Judge prompt artifact is reused from `mtbench_ja_prompt`, but its prompt file is English and has no Japanese kana in the checked file. | W&B `mtbench_tw_question:production` v0 and `mtbench_tw_referenceanswer:production` v0. |
-| ARC-AGI-2 | 50 public-eval tasks for ARC-AGI-2; ARC-AGI-1 is also evaluated by the current evaluator, but taxonomy uses ARC-AGI-2. | Existing ARC-AGI public-eval artifacts. | No natural-language translation of puzzle data. Taiwan config localizes the prompt template to Traditional Chinese. | W&B inherited artifacts: `nejumi-leaderboard4/arc-agi-1_public-eval_50:production` v2 and `nejumi-leaderboard4/arc-agi-2_public-eval_50:production` v6. Taiwan base config currently lacks their paths. |
+| ARC-AGI-2 | 50 public-eval tasks for ARC-AGI-2; ARC-AGI-1 is also evaluated by the current evaluator, but taxonomy uses ARC-AGI-2. | Existing ARC-AGI public-eval artifacts. | No natural-language translation of puzzle data. Taiwan config localizes the prompt template to Traditional Chinese. | W&B inherited artifacts: `nejumi-leaderboard4/arc-agi-1_public-eval_50:production` v2 and `nejumi-leaderboard4/arc-agi-2_public-eval_50:production` v6. Taiwan base config now explicitly points to both artifacts. |
 | Agentic Math | OlymMATH-HARD zh-TW, 100 tasks; default subset `leaderboard`; optional `leaderboard_40`; smoke 4. | `RUC-AIBOX/OlymMATH`, config `zh-hard`, split `test`, MIT. | Source is Simplified Chinese hard split; builder converts to zh-TW with OpenCC `s2twp` with fallback to `s2tw/s2t`. English hard prompt is retained as audit metadata when available. | W&B `agentic-math-olymmath-hard-zh-tw:production` v0. Local copy under `data/taiwan/agentic_math_olymmath_hard_zh_tw`. |
 | Agentic Math smoke only | AIME2025 I/II, 30 tasks. Not the main math leaderboard target. | `opencompass/AIME2025`, MIT. | English/math original; no zh-TW translation. Kept for OpenClaw/Weave smoke. | W&B `agentic-math-aime2025:production` v0. Local copy under `data/taiwan/agentic_math_aime2025`. |
 | TMMLU+ | Test 20,118; dev 2,242; train 330. Current Jaster evaluator samples 100 test and 10 dev per run unless changed. | `ikala/tmmluplus`, materialized as `tmmluplus`. | Native Traditional Chinese benchmark. No translation step. | W&B `tmmluplus:production` v0. |

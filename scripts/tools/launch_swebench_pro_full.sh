@@ -35,6 +35,7 @@ output_root="outputs/taiwan_full_eval/swebench_pro"
 checkout_root=""
 max_input_tokens="1000000"
 max_tool_calls="60"
+max_agent_turns="60"
 nemoclaw_sandbox=""
 nemoclaw_bin="nemoclaw"
 nemoclaw_workdir=""
@@ -57,6 +58,7 @@ while [[ $# -gt 0 ]]; do
     --checkout-root) checkout_root="$2"; shift 2 ;;
     --max-input-tokens) max_input_tokens="$2"; shift 2 ;;
     --max-tool-calls) max_tool_calls="$2"; shift 2 ;;
+    --max-agent-turns) max_agent_turns="$2"; shift 2 ;;
     --nemoclaw-sandbox) nemoclaw_sandbox="$2"; shift 2 ;;
     --nemoclaw-bin) nemoclaw_bin="$2"; shift 2 ;;
     --nemoclaw-workdir) nemoclaw_workdir="$2"; shift 2 ;;
@@ -127,6 +129,7 @@ cmd=(
   "--openclaw-retry-base-seconds" "$retry_base_seconds"
   "--max-input-tokens" "$max_input_tokens"
   "--max-tool-calls" "$max_tool_calls"
+  "--max-agent-turns" "$max_agent_turns"
   "--openclaw-tool-profile" "coding"
   "--task-agent-prefix" "tw-swe-$slug"
   "--model" "$model"

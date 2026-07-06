@@ -24,6 +24,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from math import ceil
 from pathlib import Path
 from typing import Any
 
@@ -81,6 +82,33 @@ def tool_call_count(message):
     return count
 
 
+def text_from_value(value):
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "\n".join(text_from_value(item) for item in value)
+    if isinstance(value, dict):
+        texts = []
+        for key in ("text", "content", "thinking", "arguments", "input", "partialArgs"):
+            if key in value:
+                texts.append(text_from_value(value.get(key)))
+        if texts:
+            return "\n".join(text for text in texts if text)
+        try:
+            return json.dumps(value, ensure_ascii=False)
+        except TypeError:
+            return str(value)
+    return str(value)
+
+
+def estimated_tokens(text):
+    cjk = sum(1 for char in text if "\u3400" <= char <= "\u9fff" or "\uf900" <= char <= "\ufaff")
+    non_cjk = max(0, len(text) - cjk)
+    return cjk + int((non_cjk + 3) // 4)
+
+
 for raw_dir in sys.argv[2:]:
     sessions_dir = Path(raw_dir)
     if not sessions_dir.exists() or not sessions_dir.is_dir():
@@ -99,23 +127,38 @@ for raw_dir in sys.argv[2:]:
             lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError:
             continue
+        estimated_input_tokens = 0
+        agent_turn_count = 0
         for raw in lines:
             try:
                 event = json.loads(raw)
             except json.JSONDecodeError:
                 continue
             message = event.get("message") if isinstance(event, dict) else None
-            if not isinstance(message, dict) or message.get("role") != "assistant":
+            if not isinstance(message, dict):
                 continue
-            tool_calls += tool_call_count(message)
+            estimated_input_tokens += estimated_tokens(text_from_value(message.get("content")))
+            if message.get("role") == "assistant":
+                agent_turn_count += 1
+                tool_calls += tool_call_count(message)
         rows.append(
             {
                 "path": str(path),
                 "mtime": stat.st_mtime,
                 "tool_call_count": tool_calls,
+                "estimated_input_tokens": estimated_input_tokens,
+                "agent_turn_count": agent_turn_count,
             }
         )
-rows.sort(key=lambda row: (row["tool_call_count"], row["mtime"]), reverse=True)
+rows.sort(
+    key=lambda row: (
+        row["tool_call_count"],
+        row["estimated_input_tokens"],
+        row["agent_turn_count"],
+        row["mtime"],
+    ),
+    reverse=True,
+)
 print(json.dumps({"ok": True, "sessions": rows}, ensure_ascii=False))
 """.strip()
 FINAL_ANSWER_MARKERS = (
@@ -632,6 +675,63 @@ def live_session_candidates(args: argparse.Namespace, started_at: float) -> list
     )
 
 
+def estimate_text_tokens(text: str) -> int:
+    cjk_chars = sum(
+        1
+        for char in text
+        if ("\u3400" <= char <= "\u9fff") or ("\uf900" <= char <= "\ufaff")
+    )
+    non_cjk_chars = max(0, len(text) - cjk_chars)
+    return cjk_chars + ceil(non_cjk_chars / 4)
+
+
+def estimate_session_input_tokens_from_timeline(timeline_events: list[dict[str, Any]]) -> int:
+    total = 0
+    for event in timeline_events:
+        event_type = event.get("type")
+        if event_type in {"user_message", "assistant_message", "assistant_reasoning", "tool_result"}:
+            total += estimate_text_tokens(_jsonish_text(event.get("content")))
+        elif event_type == "tool_call":
+            total += estimate_text_tokens(_jsonish_text(event.get("arguments")))
+    return total
+
+
+def session_message_role_counts(path: Path) -> dict[str, int]:
+    counts = {"assistant": 0, "user": 0, "tool": 0}
+    if not path.exists():
+        return counts
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            event = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        message = event.get("message") if isinstance(event, dict) else None
+        if not isinstance(message, dict):
+            continue
+        role = message.get("role")
+        if role == "assistant":
+            counts["assistant"] += 1
+        elif role == "user":
+            counts["user"] += 1
+        elif role in {"tool", "toolResult"}:
+            counts["tool"] += 1
+    return counts
+
+
+def session_budget_observation(path: Path) -> dict[str, Any]:
+    sidecar = {"live_session_file": str(path)}
+    tool_events = extract_tool_events(sidecar)
+    timeline_events = extract_timeline_events(sidecar)
+    role_counts = session_message_role_counts(path)
+    return {
+        "source": "host",
+        "tool_call_count": sum(1 for event in tool_events if event.get("type") == "tool_call"),
+        "estimated_input_tokens": estimate_session_input_tokens_from_timeline(timeline_events),
+        "agent_turn_count": role_counts["assistant"],
+        "session_file": str(path),
+    }
+
+
 def scan_nemoclaw_live_sessions(
     args: argparse.Namespace,
     started_at: float,
@@ -700,61 +800,133 @@ def live_tool_budget_status(
     started_at: float,
     env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    max_input_tokens = int(getattr(args, "max_input_tokens", 0) or 0)
     max_tool_calls = int(getattr(args, "max_tool_calls", 0) or 0)
+    max_agent_turns = int(getattr(args, "max_agent_turns", 0) or 0)
     session_dirs = [str(path) for path in configured_live_session_dirs(args)]
     sandbox_session_dirs = configured_live_sandbox_session_dirs(args)
-    if max_tool_calls <= 0:
+    if max_tool_calls <= 0 and max_input_tokens <= 0 and max_agent_turns <= 0:
         return {
             "enabled": False,
+            "max_input_tokens": None,
             "max_tool_calls": None,
+            "max_agent_turns": None,
+            "estimated_input_tokens": None,
             "tool_call_count": None,
+            "agent_turn_count": None,
             "session_file": None,
             "session_source": None,
+            "input_session_file": None,
+            "input_session_source": None,
+            "turn_session_file": None,
+            "turn_session_source": None,
             "session_dirs": session_dirs,
             "sandbox_session_dirs": sandbox_session_dirs,
             "sandbox_scan": {"enabled": False, "ok": None, "reason": "budget_disabled"},
             "exceeded": False,
+            "exceeded_limits": [],
+            "reason": None,
         }
     observations: list[dict[str, Any]] = []
     for path in live_session_candidates(args, started_at):
-        events = extract_tool_events({"live_session_file": str(path)})
-        count = sum(1 for event in events if event.get("type") == "tool_call")
-        observations.append(
-            {
-                "source": "host",
-                "tool_call_count": count,
-                "session_file": str(path),
-            }
-        )
+        observations.append(session_budget_observation(path))
     sandbox_scan = scan_nemoclaw_live_sessions(args, started_at, env)
     if sandbox_scan.get("ok") is True:
         for session in sandbox_scan.get("sessions", []):
             count = session.get("tool_call_count")
+            estimated_input_tokens = session.get("estimated_input_tokens")
+            agent_turn_count = session.get("agent_turn_count")
             path = session.get("path")
             if isinstance(count, (int, float)) and isinstance(path, str) and path:
                 observations.append(
                     {
                         "source": "nemoclaw_sandbox",
                         "tool_call_count": int(count),
+                        "estimated_input_tokens": (
+                            int(estimated_input_tokens)
+                            if isinstance(estimated_input_tokens, (int, float))
+                            else None
+                        ),
+                        "agent_turn_count": (
+                            int(agent_turn_count)
+                            if isinstance(agent_turn_count, (int, float))
+                            else None
+                        ),
                         "session_file": path,
                     }
                 )
-    observations.sort(
+    tool_observations = sorted(
+        observations,
         key=lambda item: int(item.get("tool_call_count") or 0),
         reverse=True,
     )
-    best = observations[0] if observations else {}
-    best_count = int(best.get("tool_call_count") or 0) if best else None
+    input_observations = sorted(
+        observations,
+        key=lambda item: int(item.get("estimated_input_tokens") or 0),
+        reverse=True,
+    )
+    turn_observations = sorted(
+        observations,
+        key=lambda item: int(item.get("agent_turn_count") or 0),
+        reverse=True,
+    )
+    best_tool = tool_observations[0] if tool_observations else {}
+    best_input = input_observations[0] if input_observations else {}
+    best_turn = turn_observations[0] if turn_observations else {}
+    best_count = int(best_tool.get("tool_call_count") or 0) if best_tool else None
+    best_input_tokens = (
+        int(best_input.get("estimated_input_tokens") or 0) if best_input else None
+    )
+    best_turn_count = (
+        int(best_turn.get("agent_turn_count") or 0) if best_turn else None
+    )
+    tool_exceeded = bool(
+        max_tool_calls > 0 and best_tool and best_count is not None and best_count > max_tool_calls
+    )
+    input_exceeded = bool(
+        max_input_tokens > 0
+        and best_input
+        and best_input_tokens is not None
+        and best_input_tokens > max_input_tokens
+    )
+    turn_exceeded = bool(
+        max_agent_turns > 0
+        and best_turn
+        and best_turn_count is not None
+        and best_turn_count > max_agent_turns
+    )
+    exceeded_limits = []
+    if input_exceeded:
+        exceeded_limits.append("max_input_tokens_exceeded")
+    if tool_exceeded:
+        exceeded_limits.append("max_tool_calls_exceeded")
+    if turn_exceeded:
+        exceeded_limits.append("max_agent_turns_exceeded")
+    reason = None
+    if len(exceeded_limits) == 1:
+        reason = exceeded_limits[0]
+    elif len(exceeded_limits) > 1:
+        reason = "runtime_budget_exceeded"
     return {
         "enabled": True,
-        "max_tool_calls": max_tool_calls,
+        "max_input_tokens": max_input_tokens or None,
+        "max_tool_calls": max_tool_calls or None,
+        "max_agent_turns": max_agent_turns or None,
+        "estimated_input_tokens": best_input_tokens,
         "tool_call_count": best_count,
-        "session_file": best.get("session_file") if best else None,
-        "session_source": best.get("source") if best else None,
+        "agent_turn_count": best_turn_count,
+        "session_file": best_tool.get("session_file") if best_tool else None,
+        "session_source": best_tool.get("source") if best_tool else None,
+        "input_session_file": best_input.get("session_file") if best_input else None,
+        "input_session_source": best_input.get("source") if best_input else None,
+        "turn_session_file": best_turn.get("session_file") if best_turn else None,
+        "turn_session_source": best_turn.get("source") if best_turn else None,
         "session_dirs": session_dirs,
         "sandbox_session_dirs": sandbox_session_dirs,
         "sandbox_scan": sandbox_scan,
-        "exceeded": bool(best and best_count is not None and best_count > max_tool_calls),
+        "exceeded": bool(exceeded_limits),
+        "exceeded_limits": exceeded_limits,
+        "reason": reason,
     }
 
 
@@ -803,10 +975,15 @@ def run_openclaw_command_with_live_budget(
             if not last_status.get("exceeded"):
                 continue
             stdout, stderr = terminate_process(process)
+            reason_name = last_status.get("reason") or "runtime_budget_exceeded"
             reason = (
                 "Live runtime budget exceeded: "
+                f"estimated_input_tokens={last_status.get('estimated_input_tokens')} "
+                f"max_input_tokens={last_status.get('max_input_tokens')} "
                 f"tool_call_count={last_status.get('tool_call_count')} "
-                f"max_tool_calls={last_status.get('max_tool_calls')}"
+                f"max_tool_calls={last_status.get('max_tool_calls')} "
+                f"agent_turn_count={last_status.get('agent_turn_count')} "
+                f"max_agent_turns={last_status.get('max_agent_turns')}"
             )
             stderr = (stderr or "") + "\n" + reason
             return (
@@ -814,7 +991,7 @@ def run_openclaw_command_with_live_budget(
                 {
                     **last_status,
                     "interrupted": True,
-                    "reason": "max_tool_calls_exceeded",
+                    "reason": reason_name,
                 },
             )
 
@@ -1196,9 +1373,17 @@ def enrich_sidecar_with_tool_events(sidecar: dict[str, Any]) -> dict[str, Any]:
         if isinstance(sidecar.get("timeline_events"), list)
         else extract_timeline_events(sidecar)
     )
+    agent_meta = extract_agent_meta(sidecar)
+    session_file = agent_meta.get("sessionFile")
+    role_counts = (
+        session_message_role_counts(Path(session_file).expanduser())
+        if isinstance(session_file, str) and session_file
+        else {"assistant": 0, "user": 0, "tool": 0}
+    )
     sidecar["tool_events"] = tool_events
     sidecar["timeline_events"] = timeline_events
     sidecar["tool_call_count"] = sum(1 for event in tool_events if event.get("type") == "tool_call")
+    sidecar["agent_turn_count"] = role_counts["assistant"]
     sidecar["tool_error_count"] = sum(
         1 for event in tool_events if event.get("type") == "tool_result" and event.get("isError")
     )
@@ -1339,43 +1524,81 @@ def conversation_order_status(timeline_events: list[dict[str, Any]]) -> dict[str
 def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
     """Validate post-run usage against benchmark runtime budgets.
 
-    OpenClaw 2026.6.9 does not expose a CLI flag for native live usage
-    interruption. This function records the harness contract after sidecar
-    enrichment; the subprocess wrapper can additionally terminate live when a
-    session JSONL shows too many tool calls.
+    OpenClaw 2026.6.9 does not expose a CLI flag for exact native live usage
+    interruption. This function records exact post-run usage when available and
+    merges conservative live estimates from session JSONL monitoring. The
+    subprocess wrapper can terminate live when the session estimate or observed
+    tool-call count crosses a configured cap.
     """
     max_input_tokens = int(getattr(args, "max_input_tokens", 0) or 0)
     max_tool_calls = int(getattr(args, "max_tool_calls", 0) or 0)
+    max_agent_turns = int(getattr(args, "max_agent_turns", 0) or 0)
     agent_meta = extract_agent_meta(sidecar)
     usage = agent_meta.get("usage") if isinstance(agent_meta.get("usage"), dict) else {}
     input_tokens = usage.get("input")
     input_tokens = int(input_tokens) if isinstance(input_tokens, (int, float)) else None
     tool_call_count = sidecar.get("tool_call_count")
     tool_call_count = int(tool_call_count) if isinstance(tool_call_count, (int, float)) else None
+    agent_turn_count = sidecar.get("agent_turn_count")
+    agent_turn_count = int(agent_turn_count) if isinstance(agent_turn_count, (int, float)) else None
     live_budget = sidecar.get("live_runtime_budget")
     live_tool_call_count = None
+    live_agent_turn_count = None
     live_tool_exceeded = False
+    live_estimated_input_tokens = None
+    live_input_exceeded = False
+    live_turn_exceeded = False
     if isinstance(live_budget, dict):
         live_count = live_budget.get("tool_call_count")
         if isinstance(live_count, (int, float)):
             live_tool_call_count = int(live_count)
+        live_turns = live_budget.get("agent_turn_count")
+        if isinstance(live_turns, (int, float)):
+            live_agent_turn_count = int(live_turns)
+        live_input = live_budget.get("estimated_input_tokens")
+        if isinstance(live_input, (int, float)):
+            live_estimated_input_tokens = int(live_input)
+        exceeded_limits = live_budget.get("exceeded_limits")
+        exceeded_limit_set = set(exceeded_limits) if isinstance(exceeded_limits, list) else set()
+        reason = live_budget.get("reason")
         live_tool_exceeded = (
-            live_budget.get("exceeded") is True
-            or live_budget.get("reason") == "max_tool_calls_exceeded"
+            "max_tool_calls_exceeded" in exceeded_limit_set
+            or reason in {"max_tool_calls_exceeded", "max_input_tokens_and_tool_calls_exceeded"}
+        )
+        live_input_exceeded = (
+            "max_input_tokens_exceeded" in exceeded_limit_set
+            or reason in {"max_input_tokens_exceeded", "max_input_tokens_and_tool_calls_exceeded"}
+        )
+        live_turn_exceeded = (
+            "max_agent_turns_exceeded" in exceeded_limit_set
+            or reason == "max_agent_turns_exceeded"
         )
     if live_tool_call_count is not None:
         if tool_call_count is None:
             tool_call_count = live_tool_call_count
         else:
             tool_call_count = max(tool_call_count, live_tool_call_count)
+    if live_agent_turn_count is not None:
+        if agent_turn_count is None:
+            agent_turn_count = live_agent_turn_count
+        else:
+            agent_turn_count = max(agent_turn_count, live_agent_turn_count)
 
     violations: list[dict[str, Any]] = []
-    if max_input_tokens > 0 and input_tokens is not None and input_tokens > max_input_tokens:
+    if max_input_tokens > 0 and (
+        (input_tokens is not None and input_tokens > max_input_tokens)
+        or live_input_exceeded
+    ):
         violations.append(
             {
                 "type": "max_input_tokens_exceeded",
-                "observed": input_tokens,
+                "observed": input_tokens if input_tokens is not None else live_estimated_input_tokens,
                 "limit": max_input_tokens,
+                "source": (
+                    "provider_usage"
+                    if input_tokens is not None and input_tokens > max_input_tokens
+                    else "live_session_estimate"
+                ),
             }
         )
     if max_tool_calls > 0 and (
@@ -1389,16 +1612,30 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
                 "source": "live_runtime_budget" if live_tool_exceeded else "openclaw_session_jsonl",
             }
         )
+    if max_agent_turns > 0 and (
+        (agent_turn_count is not None and agent_turn_count > max_agent_turns) or live_turn_exceeded
+    ):
+        violations.append(
+            {
+                "type": "max_agent_turns_exceeded",
+                "observed": agent_turn_count,
+                "limit": max_agent_turns,
+                "source": "live_runtime_budget" if live_turn_exceeded else "openclaw_session_jsonl",
+            }
+        )
     return {
         "ok": not violations,
-        "enforced": bool(max_input_tokens > 0 or max_tool_calls > 0),
+        "enforced": bool(max_input_tokens > 0 or max_tool_calls > 0 or max_agent_turns > 0),
         "limits": {
             "max_input_tokens": max_input_tokens or None,
             "max_tool_calls": max_tool_calls or None,
+            "max_agent_turns": max_agent_turns or None,
         },
         "observed": {
             "input_tokens": input_tokens,
+            "estimated_input_tokens": live_estimated_input_tokens,
             "tool_call_count": tool_call_count,
+            "agent_turn_count": agent_turn_count,
         },
         "live": live_budget if isinstance(live_budget, dict) else {},
         "violations": violations,
@@ -2339,6 +2576,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="Harness-side live session JSONL tool-call budget. 0 disables the budget.",
+    )
+    run_parser.add_argument(
+        "--max-agent-turns",
+        type=int,
+        default=0,
+        help="Harness-side live session JSONL assistant-turn budget. 0 disables the budget.",
     )
     run_parser.add_argument(
         "--live-session-dir",

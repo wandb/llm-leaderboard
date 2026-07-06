@@ -30,6 +30,7 @@ RUNNER_VERSION = "swebench-pro-openclaw-2026-07-02-sandbox-live-budget-v1"
 PATCH_CAPTURE_VERSION = "git-diff-with-untracked-excluding-selected-tests-v2"
 DEFAULT_MAX_INPUT_TOKENS = 1_000_000
 DEFAULT_MAX_TOOL_CALLS = 60
+DEFAULT_MAX_AGENT_TURNS = 60
 OPENCLAW_RUNTIME_DIR = ".nejumi_openclaw"
 RUNTIME_EXCLUDED_PATHS = [OPENCLAW_RUNTIME_DIR]
 NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
@@ -138,6 +139,7 @@ def build_cache_key(row: dict[str, Any], prompt_text: str, args: argparse.Namesp
         "openclaw_config_source": openclaw_config_cache_source(args),
         "max_input_tokens": int(getattr(args, "max_input_tokens", 0) or 0),
         "max_tool_calls": int(getattr(args, "max_tool_calls", 0) or 0),
+        "max_agent_turns": int(getattr(args, "max_agent_turns", 0) or 0),
         "nemoclaw_sandbox": str(getattr(args, "nemoclaw_sandbox", "") or ""),
         "nemoclaw_checkout_sandbox_root": str(
             getattr(args, "nemoclaw_checkout_sandbox_root", "") or ""
@@ -1127,6 +1129,8 @@ def run_openclaw_for_task(
             str(int(getattr(args, "max_input_tokens", 0) or 0)),
             "--max-tool-calls",
             str(int(getattr(args, "max_tool_calls", 0) or 0)),
+            "--max-agent-turns",
+            str(int(getattr(args, "max_agent_turns", 0) or 0)),
         ]
         if openclaw_config_path:
             command.extend(["--openclaw-config-path", str(openclaw_config_path)])
@@ -1416,11 +1420,14 @@ def runtime_budget_summary(
 
     configured_input = int(getattr(args, "max_input_tokens", 0) or 0)
     configured_tools = int(getattr(args, "max_tool_calls", 0) or 0)
+    configured_turns = int(getattr(args, "max_agent_turns", 0) or 0)
     max_input_tokens = configured_input or observed_limit("max_input_tokens")
     max_tool_calls = configured_tools or observed_limit("max_tool_calls")
+    max_agent_turns = configured_turns or observed_limit("max_agent_turns")
     return {
         "max_input_tokens": max_input_tokens or None,
         "max_tool_calls": max_tool_calls or None,
+        "max_agent_turns": max_agent_turns or None,
     }
 
 
@@ -1496,6 +1503,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=DEFAULT_MAX_TOOL_CALLS,
         help="SWE-Bench Pro per-task tool-call budget. 0 disables the budget.",
+    )
+    parser.add_argument(
+        "--max-agent-turns",
+        type=int,
+        default=DEFAULT_MAX_AGENT_TURNS,
+        help="SWE-Bench Pro per-task assistant-turn budget. 0 disables the budget.",
     )
     parser.add_argument(
         "--openclaw-max-attempts",

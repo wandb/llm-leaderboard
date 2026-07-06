@@ -10,8 +10,10 @@ models:
     openclaw_max_attempts: 1
     math_max_input_tokens: 200000
     math_max_tool_calls: 20
+    math_max_agent_turns: 20
     swe_max_input_tokens: 300000
     swe_max_tool_calls: 20
+    swe_max_agent_turns: 20
     judge_model: "openrouter/openai/gpt-4.1-nano"
     judge_parallel: 2
     judge_params: {}

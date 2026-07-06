@@ -475,6 +475,7 @@ def test_agentic_math_run_passes_wandb_scoped_session_key(tmp_path, monkeypatch)
             "openclaw_timeout": 30,
             "max_input_tokens": 12345,
             "max_tool_calls": 7,
+            "max_agent_turns": 8,
             "profile": None,
             "redo": False,
             "session_prefix": None,
@@ -493,10 +494,12 @@ def test_agentic_math_run_passes_wandb_scoped_session_key(tmp_path, monkeypatch)
     assert config_source == record["cache_key"]["openclaw_config_source"]
     assert captured_command[captured_command.index("--max-input-tokens") + 1] == "12345"
     assert captured_command[captured_command.index("--max-tool-calls") + 1] == "7"
+    assert captured_command[captured_command.index("--max-agent-turns") + 1] == "8"
     assert record["correct"] is True
     assert record["cache_key"]["session_prefix"] == "twcanary-run-3:agentic-math"
     assert record["cache_key"]["max_input_tokens"] == 12345
     assert record["cache_key"]["max_tool_calls"] == 7
+    assert record["cache_key"]["max_agent_turns"] == 8
 
 
 def test_agentic_math_fresh_success_rejects_sidecar_config_source_mismatch(tmp_path, monkeypatch):
@@ -1266,6 +1269,7 @@ def test_evaluator_passes_nemoclaw_args_to_agentic_math_runner(tmp_path, monkeyp
                 "openclaw_retry_base_seconds": 1,
                 "max_input_tokens": 222222,
                 "max_tool_calls": 9,
+                "max_agent_turns": 10,
                 "use_task_agent": True,
                 "nemoclaw_sandbox": "nejumi-taiwan",
                 "nemoclaw_bin": "/usr/local/bin/nemoclaw",
@@ -1288,6 +1292,7 @@ def test_evaluator_passes_nemoclaw_args_to_agentic_math_runner(tmp_path, monkeyp
     assert command[command.index("--session-prefix") + 1] == "{wandb_run_id}:agentic-math"
     assert command[command.index("--max-input-tokens") + 1] == "222222"
     assert command[command.index("--max-tool-calls") + 1] == "9"
+    assert command[command.index("--max-agent-turns") + 1] == "10"
 
 
 def test_evaluator_passes_no_use_task_agent_when_explicitly_disabled(tmp_path, monkeypatch):
