@@ -17,7 +17,13 @@ logger = logging.getLogger(__name__)
 
 #import bert_score
 import shutil
-from comet import download_model, load_from_checkpoint
+try:
+    from comet import download_model, load_from_checkpoint
+    _COMET_IMPORT_ERROR = None
+except Exception as exc:
+    download_model = None
+    load_from_checkpoint = None
+    _COMET_IMPORT_ERROR = exc
 from abc import ABC, abstractmethod
 
 # ---------------------
@@ -131,6 +137,12 @@ def comet_wmt22(): #this is fake func
     pass
 
 def commet_score(commet_srcs, commet_mt, commet_ref):
+    if download_model is None or load_from_checkpoint is None:
+        raise ImportError(
+            "COMET translation metric dependencies are unavailable. "
+            "Install compatible comet/transformers/huggingface-hub versions before "
+            "running jaster_translation or comet_wmt22 metrics."
+        ) from _COMET_IMPORT_ERROR
     print("--------downloading comet model to evaluate translation task--------")
     comet_model_path = download_model("Unbabel/wmt22-comet-da")
     comet_model = load_from_checkpoint(comet_model_path)

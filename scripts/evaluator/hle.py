@@ -56,7 +56,11 @@ def load_questions(file_path: Path) -> List[Dict[str, Any]]:
     
     return questions
 
-def format_message_for_llm_processor(question: Dict[str, Any], model_name: str) -> List[Dict[str, str]]:
+def format_message_for_llm_processor(
+    question: Dict[str, Any],
+    model_name: str,
+    system_prompt: str = SYSTEM_PROMPT,
+) -> List[Dict[str, str]]:
     """Format message for LLMAsyncProcessor (simplified format)"""
     question_text = question['question']
     
@@ -70,10 +74,10 @@ def format_message_for_llm_processor(question: Dict[str, Any], model_name: str) 
         has_image = False
     
     if has_image:
-        combined_content = f"{SYSTEM_PROMPT}\n\n{question_text}"
+        combined_content = f"{system_prompt}\n\n{question_text}"
         print(f"Warning: Question {question.get('id', 'unknown')} contains image but LLMAsyncProcessor may not support it")
     else:
-        combined_content = f"{SYSTEM_PROMPT}\n\n{question_text}"
+        combined_content = f"{system_prompt}\n\n{question_text}"
     
     return [{"role": "user", "content": combined_content}]
 
@@ -171,10 +175,13 @@ async def evaluate_async():
     
     # Configuration parameters
     generator_config = cfg.hle.get("generator_config", {})
-    judge_model = cfg.hle.judge.get("model", "o3-mini-2025-01-31")
+    judge_model = cfg.hle.judge.get("model", "gpt-5.5")
     judge_parallel = cfg.hle.judge.get("parallel", 32)
     judge_params = cfg.hle.judge.get("params", {})
     max_samples = cfg.hle.get("max_samples", None)
+    dataset_dir_name = cfg.hle.get("dataset_dir", "hle-ja")
+    system_prompt = cfg.hle.get("system_prompt", SYSTEM_PROMPT)
+    judge_prompt_template = cfg.hle.judge.get("prompt_template", JUDGE_PROMPT)
 
     try:
         artifact_path = cfg.hle.artifact_path
@@ -189,7 +196,7 @@ async def evaluate_async():
             print("Skipping test set in test mode.")
             continue
 
-        data_file = Path(artifact_dir) / "hle-ja" / f"{subset}.jsonl"
+        data_file = Path(artifact_dir) / dataset_dir_name / f"{subset}.jsonl"
         if not data_file.exists():
             print(f"Dataset file not found for subset '{subset}': {data_file}")
             continue
@@ -231,7 +238,11 @@ async def evaluate_async():
         # Inference and judge in parallel
         # Generate model responses
         async def generate_answer(q):
-            messages = format_message_for_llm_processor(q, cfg.model.pretrained_model_name_or_path)
+            messages = format_message_for_llm_processor(
+                q,
+                cfg.model.pretrained_model_name_or_path,
+                system_prompt=system_prompt,
+            )
             try:
                 result = await llm_ap.process_single_async(messages, **generator_config)
                 predictions[q["id"]] = {
@@ -266,7 +277,7 @@ async def evaluate_async():
                 judged_predictions[q["id"]] = predictions[q["id"]]
                 return
 
-            prompt = JUDGE_PROMPT.format(
+            prompt = judge_prompt_template.format(
                 question=q["question"],
                 correct_answer=q["answer"],
                 response=predictions[q["id"]]["response"],

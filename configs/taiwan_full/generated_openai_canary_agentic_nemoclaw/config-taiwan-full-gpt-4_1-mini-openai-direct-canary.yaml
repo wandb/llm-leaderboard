@@ -43,6 +43,8 @@ agentic_math:
   thinking: 'off'
   openclaw_max_attempts: 3
   openclaw_retry_base_seconds: 15
+  max_input_tokens: 500000
+  max_tool_calls: 60
   dry_run: false
   run_openclaw: true
   results_dir: null
@@ -64,6 +66,7 @@ agentic_math:
   nemoclaw_bin: nemoclaw
   nemoclaw_workdir: /sandbox
   use_task_agent: true
+  nemoclaw_openclaw_config_path: /sandbox/.openclaw/openclaw.json
 swebench_pro:
   subset: leaderboard_compact_80
   output_dir: outputs/taiwan_full_eval/swebench_pro/gpt-4_1-mini-openai-direct-canary
@@ -97,6 +100,7 @@ swebench_pro:
   nemoclaw_sandbox: nejumi-taiwan
   nemoclaw_bin: nemoclaw
   nemoclaw_checkout_transfer_mode: copy
+  nemoclaw_openclaw_config_path: /sandbox/.openclaw/openclaw.json
 bfcl:
   allow_overwrite: false
 mtbench:

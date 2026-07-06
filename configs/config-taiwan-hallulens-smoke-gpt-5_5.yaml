@@ -1,0 +1,70 @@
+wandb:
+  entity: 'llm-leaderboard'
+  project: 'tc-leaderboard'
+  run_name: 'taiwan-smoke/hallulens-zh-tw-gpt-5.5'
+
+testmode: true
+api: openai_responses
+batch_size: 2
+inference_interval: 0
+
+model:
+  pretrained_model_name_or_path: gpt-5.5
+  base_model: "unknown"
+  size_category: api
+  size: null
+  release_date: 06/01/2026
+
+generator:
+  max_tokens: 512
+  temperature: 0.0
+  top_p: 1.0
+  extra_body:
+    reasoning:
+      effort: low
+
+run:
+  agentic_math: false
+  bfcl: false
+  swebench: false
+  swebench_pro: false
+  mtbench: false
+  jbbq: false
+  toxicity: false
+  jtruthfulqa: false
+  hle: false
+  hallulens: false
+  hallulens_zh_tw: true
+  arc_agi: false
+  m_ifeval: false
+  ifeval_zh_tw: false
+  ts_bench: false
+  twbias: false
+  tceval_v2: false
+  script_adherence: false
+  jaster: false
+  jmmlu_robustness: false
+  tmmluplus_robustness: false
+  aggregate: false
+  aggregate_taiwan: false
+
+hallulens_zh_tw:
+  artifacts_path: 'llm-leaderboard/tc-leaderboard/hallulens-zh-tw:production'
+  dataset_dir: 'hallulens_zh_tw'
+  testmode_test_samples: 1
+  testmode_dev_samples: 1
+  generator_config:
+    max_tokens: 512
+    temperature: 0.0
+    top_p: 1.0
+    extra_body:
+      reasoning:
+        effort: low
+  default_place: '未指定'
+  place_phrase_template: '位於{place}'
+  judge:
+    model: 'gpt-5.5'
+    parallel: 2
+    params:
+      reasoning:
+        effort: medium

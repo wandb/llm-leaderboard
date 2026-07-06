@@ -1,0 +1,65 @@
+models:
+  - slug: glm-5_2-openrouter-reasoning
+    source_config: config-zai-glm-5_2-openrouter.yaml
+    run_name: "taiwan/full/z-ai/glm-5.2: openrouter-reasoning"
+    japanese_runname: "z-ai/glm-5.2: openrouter-reasoning-xhigh"
+    openclaw_model: "openrouter-direct/z-ai/glm-5.2"
+    reasoning_effort: null
+    agentic_thinking: high
+    swe_thinking: high
+    judge_model: "openrouter/openai/gpt-5.5"
+    judge_parallel: 2
+    canary: true
+    notes: "Preferred one-model full canary before multi-model expansion."
+
+  - slug: claude-opus-4_7-openrouter-xhigh
+    source_config: config-anthropic-claude-opus-4-7-openrouter.yaml
+    run_name: "taiwan/full/anthropic/claude-opus-4.7: adaptive-thinking-xhigh"
+    japanese_runname: "anthropic/claude-opus-4.7: adaptive-thinking-xhigh"
+    openclaw_model: "openrouter-direct/anthropic/claude-opus-4.7"
+    reasoning_effort: null
+    agentic_thinking: high
+    swe_thinking: high
+    judge_model: "openrouter/openai/gpt-5.5"
+    final_only: true
+    notes: "Extreme cost tier. Do not use for harness tests, smoke runs, or one-model canary; reserve for final release-candidate leaderboard runs only."
+
+  - slug: gemini-3_1-pro-preview-openrouter
+    source_config: config-gemini-3_1-pro-preview-openrouter.yaml
+    run_name: "taiwan/full/google/gemini-3.1-pro-preview"
+    japanese_runname: "google/gemini-3.1-pro-preview"
+    openclaw_model: "openrouter-direct/google/gemini-3.1-pro-preview"
+    reasoning_effort: null
+    agentic_thinking: high
+    swe_thinking: high
+    judge_model: "openrouter/openai/gpt-5.5"
+
+  - slug: qwen3_6-max-preview-openrouter
+    source_config: config-qwen-qwen3_6-max-preview-openrouter.yaml
+    run_name: "taiwan/full/qwen/qwen3.6-max-preview: openrouter-reasoning"
+    japanese_runname: "qwen/qwen3.6-max-preview: openrouter-reasoning"
+    openclaw_model: "openrouter-direct/qwen/qwen3.6-max-preview"
+    reasoning_effort: null
+    agentic_thinking: high
+    swe_thinking: high
+    judge_model: "openrouter/openai/gpt-5.5"
+
+  - slug: claude-sonnet-4_6-openrouter-high
+    source_config: config-anthropic-claude-sonnet-4-6-openrouter.yaml
+    run_name: "taiwan/full/anthropic/claude-sonnet-4.6: extended-thinking"
+    japanese_runname: "anthropic/claude-sonnet-4.6: extended-thinking"
+    openclaw_model: "openrouter-direct/anthropic/claude-sonnet-4.6"
+    reasoning_effort: null
+    agentic_thinking: high
+    swe_thinking: high
+    judge_model: "openrouter/openai/gpt-5.5"
+
+  - slug: deepseek-v4-pro-thinking-max
+    source_config: config-deepseek-v4-pro.yaml
+    run_name: "taiwan/full/deepseek/deepseek-v4-pro: thinking-max"
+    japanese_runname: "deepseek/deepseek-v4-pro: thinking-max"
+    openclaw_model: "deepseek/deepseek-v4-pro"
+    reasoning_effort: null
+    agentic_thinking: max
+    swe_thinking: max
+    judge_model: "openrouter/openai/gpt-5.5"

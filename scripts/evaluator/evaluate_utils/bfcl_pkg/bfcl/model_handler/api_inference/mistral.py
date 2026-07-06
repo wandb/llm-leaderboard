@@ -18,7 +18,10 @@ from ..utils import (
     system_prompt_pre_processing_chat_model,
 )
 from config_singleton import WandbConfigSingleton
-from mistralai import Mistral
+try:
+    from mistralai import Mistral
+except ImportError:
+    Mistral = None
 #from mistralai.models.chat_completion import ChatMessage
 #from mistralai import Mistral
 
@@ -29,8 +32,11 @@ class MistralHandler(BaseHandler):
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config
         
-        # 直接Mistral APIクライアントを初期化
-        from mistralai import Mistral
+        if Mistral is None:
+            raise ImportError(
+                "The installed mistralai package does not expose Mistral. "
+                "Install a BFCL-compatible mistralai release before running Mistral models."
+            )
         self.client = Mistral(api_key=os.environ["MISTRAL_API_KEY"])
         
         # 正しいモデル名を取得（pretrained_model_name_or_pathを使用）

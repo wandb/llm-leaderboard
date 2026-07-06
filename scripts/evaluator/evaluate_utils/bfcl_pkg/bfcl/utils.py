@@ -25,7 +25,11 @@ def extract_test_category_from_id(test_entry_id: str) -> str:
 
 def find_file_with_suffix(folder_path: Path, suffix: str) -> Path:
     for json_file in folder_path.glob("*.json"):
-        if extract_test_category(json_file) == suffix:
+        try:
+            test_category = extract_test_category(json_file)
+        except ValueError:
+            continue
+        if test_category == suffix:
             return json_file
     raise FileNotFoundError(f"No JSON file found with suffix: {suffix}")
 

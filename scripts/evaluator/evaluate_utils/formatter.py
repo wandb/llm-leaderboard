@@ -21,16 +21,16 @@ def text_formatter(input_str: str, dataset: str) -> str:
             output_str = output_str.replace(r, "")
         output_str = output_str.strip().lower()
 
-    elif dataset.startswith("jmmlu_IncorrectChoice"):
+    elif dataset.startswith("jmmlu_IncorrectChoice") or dataset.startswith("tmmluplus_IncorrectChoice"):
         output_str = copy.copy(input_str)
-        replacements = ["応答:", "回答:", "答え:"]
+        replacements = ["応答:", "回答:", "答え:", "回應:", "答案:", "答:"]
         for r in replacements:
             output_str = output_str.replace(r, "")
         output_str = output_str.strip().upper()
 
-    elif dataset.startswith("jmmlu_"):
+    elif dataset.startswith("jmmlu_") or dataset.startswith("tmmluplus"):
         output_str = copy.copy(input_str)
-        replacements = ["応答:", "回答:", "答え:"]
+        replacements = ["応答:", "回答:", "答え:", "回應:", "答案:", "答:"]
         for r in replacements:
             output_str = output_str.replace(r, "")
         output_str = output_str.strip().upper()

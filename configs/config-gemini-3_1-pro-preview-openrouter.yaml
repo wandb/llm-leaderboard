@@ -1,0 +1,83 @@
+wandb:
+  run_name: google/gemini-3.1-pro-preview
+api: openai-compatible
+base_url: https://openrouter.ai/api/v1
+batch_size: 4
+inference_interval: 1
+
+model:
+  pretrained_model_name_or_path: google/gemini-3.1-pro-preview
+  bfcl_model_id: OpenRouter-FC
+  base_model: "unknown"
+  size_category: api
+  size: null
+  release_date: 2/1/2026
+
+generator:
+  temperature: null
+  top_p: null
+  parallel_tool_calls: true
+  max_tokens: 65000
+  extra_body:
+    reasoning:
+      enabled: true
+    provider:
+      allow_fallbacks: true
+
+jaster:
+  override_max_tokens: 65000
+
+jbbq:
+  generator_config:
+    max_tokens: 65000
+
+toxicity:
+  generator_config:
+    max_tokens: 65000
+    temperature: null
+    top_p: null
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 65000
+
+swebench:
+  max_tokens: 65000
+
+mtbench:
+  generator_config:
+    max_tokens: 65000
+    temperature: null
+    top_p: null
+  temperature_override:
+    writing: null
+    roleplay: null
+    extraction: null
+    math: null
+    coding: null
+    reasoning: null
+    stem: null
+    humanities: null
+
+bfcl:
+  generator_config:
+    max_tokens: 65000
+    temperature: null
+    top_p: null
+
+hallulens:
+  generator_config:
+    max_tokens: 65000
+    temperature: null
+    top_p: null
+
+hle:
+  generator_config:
+    max_tokens: 65000
+
+arc_agi:
+  max_output_tokens: 65000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 65000

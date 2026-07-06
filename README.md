@@ -79,6 +79,7 @@ Our evaluation framework incorporates a diverse set of metrics to provide a holi
     - Categories with 30 or more questions are randomly sampled to 30, totaling 348 questions
     - Built handlers to simplify OSS model evaluation
     - Detailed explanations: ([EN](docs/README_bfcl.md) / [JP](docs/README_bfcl_ja.md) )
+    - Upgrade status: [BFCL upgrade status](docs/bfcl_upgrade_status.md)
 8. HalluLens (HalluLens_ja_nejumi_v1)
     - source: [HalluLens](https://github.com/idea-research/HalluLens) (MIT license)
     - W&B artifact dataset path: [llm-leaderboard/nejumi-leaderboard4/hallulens:production](https://wandb.ai/llm-leaderboard/nejumi-leaderboard4/artifacts/dataset/hallulens)
@@ -416,6 +417,27 @@ For SWE‑Bench evaluation details and the remote evaluation API server, see:
 
 For BFCL evaluation details, see:
 - [BFCL doc EN](docs/README_bfcl.md) / [BFCL doc JP](docs/README_bfcl_ja.md)
+- [BFCL upgrade status](docs/bfcl_upgrade_status.md)
+- [TS-Bench Taiwan safety evaluation](docs/README_ts_bench.md)
+- [TWBias Taiwan bias evaluation](docs/README_twbias.md)
+- [HalluLens zh-TW hallucination evaluation](docs/README_hallulens_zh_tw.md)
+
+#### Agentic Evaluation with OpenClaw and Weave
+
+For agentic SWE/Math evaluation traces in W&B Weave Agents:
+
+```bash
+scripts/setup/install_openclaw_weave.sh --check-only
+scripts/setup/install_openclaw_weave.sh --all
+python3 scripts/tools/run_openclaw_agent_protocol.py check-agents --limit 5
+```
+
+The setup check verifies local OTLP export and the W&B Agents API. View traces
+at `https://wandb.ai/llm-leaderboard/tc-leaderboard/weave/agents`.
+If the UI appears empty, run `check-agents`; it queries the same W&B Agents API
+and prints the latest `trace_id`, `conversation_id`, model, and agent span.
+
+See [Nejumi Agent Protocol](docs/nejumi_agent_protocol_2026_04.md) for the OpenClaw runner and trace requirements.
 
 ### Troubleshooting
 

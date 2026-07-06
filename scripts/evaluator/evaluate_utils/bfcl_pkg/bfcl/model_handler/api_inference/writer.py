@@ -3,12 +3,19 @@ import time
 
 from ..model_style import ModelStyle
 from .openai_completion import OpenAICompletionsHandler
-from writerai import Writer
+try:
+    from writerai import Writer
+except ImportError:
+    Writer = None
 
 
 class WriterHandler(OpenAICompletionsHandler):
     def __init__(self, model_name, temperature) -> None:
         super().__init__(model_name, temperature)
+        if Writer is None:
+            raise ImportError(
+                "writerai is required for Writer models. Install writer-sdk before running Writer BFCL models."
+            )
         self.model_style = ModelStyle.WRITER
         self.client = Writer(api_key=os.getenv("WRITER_API_KEY"))
         self.is_fc_model = True

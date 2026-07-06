@@ -195,6 +195,8 @@ class OpenAIResponsesHandler(BaseHandler):
 
     def decode_ast(self, result, language="Python"):
         if "FC" in self.model_name or self.is_fc_model:
+            if isinstance(result, str):
+                return []
             decoded_output = []
             for invoked_function in result:
                 name = list(invoked_function.keys())[0]
@@ -206,6 +208,8 @@ class OpenAIResponsesHandler(BaseHandler):
 
     def decode_execute(self, result):
         if "FC" in self.model_name or self.is_fc_model:
+            if isinstance(result, str):
+                return []
             return convert_to_function_call(result)
         else:
             return default_decode_execute_prompting(result)

@@ -91,16 +91,24 @@ ABSTAIN_PROMPT_PLACE_NONSENSE = """あなたはAIによって生成された文�
 """
 
 
-async def evaluate_async():
+async def evaluate_async(
+    task_name: str = "hallulens",
+    output_table_name: str | None = None,
+    leaderboard_table_name: str | None = None,
+    default_judge_prompt_template: str | None = None,
+):
     # === Set configuration === #
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
     cfg = instance.config
     llm = instance.llm
-    task_name = "hallulens"
+    output_table_name = output_table_name or f"{task_name}_output_table"
+    leaderboard_table_name = leaderboard_table_name or f"{task_name}_leaderboard_table"
 
     artifact = run.use_artifact(cfg[task_name].artifacts_path, type="dataset")
     artifact_dir = artifact.download()
+    dataset_dir = cfg[task_name].get("dataset_dir", "")
+    dataset_root = Path(artifact_dir) / dataset_dir if dataset_dir else Path(artifact_dir)
 
     generator_config = cfg[task_name].generator_config
 
@@ -112,19 +120,19 @@ async def evaluate_async():
         _samples = []
 
         for key, dataset_path in dataset_paths.items():
-            full_path = Path(artifact_dir) / dataset_path
+            full_path = dataset_root / dataset_path
             if not full_path.exists():
                 raise FileNotFoundError(f"Dataset file not found: {full_path}")
 
             match (subset, cfg.testmode):
                 case ("test", False):
-                    num_sample = 100
+                    num_sample = int(cfg[task_name].get("test_samples", 100))
                 case ("test", True):
-                    num_sample = 10
+                    num_sample = int(cfg[task_name].get("testmode_test_samples", 10))
                 case ("dev", False):
-                    num_sample = 10
+                    num_sample = int(cfg[task_name].get("dev_samples", 10))
                 case ("dev", True):
-                    num_sample = 1
+                    num_sample = int(cfg[task_name].get("testmode_dev_samples", 1))
                 case _:
                     raise ValueError(
                         f"Invalid subset or testmode: subset={subset}, testmode={cfg.testmode}"
@@ -166,7 +174,7 @@ async def evaluate_async():
                 await generate_answer_results
 
             # === judge === #
-            judge_model = cfg[task_name].judge.get("model", "gpt-4.1-2025-04-14")
+            judge_model = cfg[task_name].judge.get("model", "gpt-5.5")
             judge_params = cfg[task_name].judge.get("params", {})
             judge_parallel = cfg[task_name].judge.get("parallel", 32)
             judge_system_prompt = cfg[task_name].judge.get("system_prompt", None)
@@ -174,7 +182,9 @@ async def evaluate_async():
                 judge_system_prompt = DEFAULT_JUDGE_SYSTEM_PROMPT
             judge_prompt_template = cfg[task_name].judge.get("prompt_template", None)
             if not judge_prompt_template:
-                judge_prompt_template = ABSTAIN_PROMPT_PLACE_NONSENSE
+                judge_prompt_template = default_judge_prompt_template or ABSTAIN_PROMPT_PLACE_NONSENSE
+            default_place = cfg[task_name].get("default_place", "指定なし")
+            place_phrase_template = cfg[task_name].get("place_phrase_template", " in {place}")
             judge_llm = get_openai_judge_client(judge_model, text_format=JudgeOutput)
             judge_llm_ap = LLMAsyncProcessor(llm=judge_llm, batch_size=judge_parallel, inference_interval=0.)
 
@@ -186,8 +196,8 @@ async def evaluate_async():
                     name=sample["name"],
                     type=sample["type_"],
                     TYPE=sample["type_"],
-                    place=sample["place"] if sample["place"] else "指定なし",
-                    PLACE=" in " + sample["place"] if sample["place"] else "",
+                    place=sample["place"] if sample["place"] else default_place,
+                    PLACE=place_phrase_template.format(place=sample["place"]) if sample["place"] else "",
                     generation=sample["answer"],
                     answer=sample["answer"],
                     prompt=sample["prompt"],
@@ -235,7 +245,7 @@ async def evaluate_async():
             "judge_prompt",
             "does_believe",
         ]
-        table_name = f"{task_name}_output_table"
+        table_name = output_table_name
         if subset == "test":
             run.log(
                 {
@@ -252,7 +262,13 @@ async def evaluate_async():
                 columns="task",
                 aggfunc="mean",
             ).reset_index()
-            run.log({"hallulens_leaderboard_table": leaderboard_table})
+            score = float(leaderboard_table["hallucination_resistance"].iloc[0])
+            run.log(
+                {
+                    leaderboard_table_name: leaderboard_table,
+                    f"{task_name}_score": score,
+                }
+            )
 
         elif subset == "dev":
             run.log(

@@ -173,9 +173,10 @@ async def generate_model_answer(
     turn1_task: Optional[Awaitable] = None,
 ) -> Answer:
     """モデルの回答を生成する（非同期）"""
+    default_temperature = default_generator_config.get("temperature", 0.0)
     generator_config = {
         **default_generator_config,
-        'temperature': temperature_overrides[question.category]
+        "temperature": temperature_overrides.get(question.category, default_temperature),
     }
 
     messages = [{"role": "user", "content": question.turns[0]}]
@@ -565,4 +566,4 @@ async def async_evaluate():
 @weave.op(call_display_name=lambda _: "[MT-Bench] " + WandbConfigSingleton.get_instance().config.wandb.run_name)
 def evaluate():
     """非同期評価関数を実行するエントリーポイント"""
-    asyncio.run(async_evaluate()) 
+    asyncio.run(async_evaluate())

@@ -74,6 +74,7 @@ wandb/
 artifacts/
 outputs/
 results/
+temp/
 
 # Large model files (if any)
 *.bin

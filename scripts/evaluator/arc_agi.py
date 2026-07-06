@@ -59,7 +59,11 @@ def pretty_print_tile( tile: List[List[int]]) -> str:
     return "\n".join((" ".join(str(e) for e in line) for line in tile))
 
 
-def convert_task_pairs_to_prompt(training_pairs: List[dict], test_input: dict) -> List[dict]:
+def convert_task_pairs_to_prompt(
+    training_pairs: List[dict],
+    test_input: dict,
+    prompt_template: str = PROMPT_TEMPLATE,
+) -> List[dict]:
     """
     Convert the training pairs to a prompt
     Citation: https://github.com/arcprize/arc-agi-benchmarking/blob/main/src/arc_agi_benchmarking/prompts/prompt_manager.py#L18-L34
@@ -84,7 +88,7 @@ def convert_task_pairs_to_prompt(training_pairs: List[dict], test_input: dict) -
     return [
         {
             "role": "user",
-            "content": PROMPT_TEMPLATE.format(training_examples=training_examples, test_input=test_input_str)
+            "content": prompt_template.format(training_examples=training_examples, test_input=test_input_str)
         }
     ]
 
@@ -239,6 +243,7 @@ def evaluate():
     run = instance.run
     cfg = instance.config
     llm = instance.llm
+    prompt_template = cfg.arc_agi.get("prompt_template", PROMPT_TEMPLATE)
 
     # download dataset
     dataset_name = "arc_agi"
@@ -269,7 +274,11 @@ def evaluate():
             with open(task_file, 'r') as f:
                 task = {'id': task_id, **json.load(f)}
                 for test_example_id, test_example in enumerate(task['test']):
-                    prompt = convert_task_pairs_to_prompt(task['train'], test_example)
+                    prompt = convert_task_pairs_to_prompt(
+                        task['train'],
+                        test_example,
+                        prompt_template=prompt_template,
+                    )
                     for num_attempts in range(cfg[dataset_name].num_attempts):
                         all_inputs.append((prompt, dict(generator_config)))
                         tasks.append({

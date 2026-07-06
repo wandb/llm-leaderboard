@@ -184,7 +184,7 @@ bfcl:
 swebench_pro:
   artifacts_path: 'llm-leaderboard/tc-leaderboard/swebench-pro-public:production'
   dataset_dir: 'swebench_pro_public'
-  subset: 'leaderboard_80'
+  subset: 'leaderboard_compact_80'
   local_dataset_dir: null
   output_dir: 'outputs/swebench_pro'
   checkout_root: 'outputs/swebench_pro_checkouts'
@@ -202,6 +202,8 @@ swebench_pro:
   openclaw_model: null
   thinking: 'medium'
   openclaw_timeout: 3600
+  max_input_tokens: 1000000
+  max_tool_calls: 60
   allow_failed_preflight: false
   no_local: false
   skip_agent: false

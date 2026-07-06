@@ -153,7 +153,7 @@ async def evaluate_async():
     run = instance.run
     cfg = instance.config
     llm = instance.llm
-    judge_model = cfg.toxicity.judge.get("model", "gpt-4o")
+    judge_model = cfg.toxicity.judge.get("model", "gpt-5.5")
     judge_parallel = cfg.toxicity.judge.get("parallel", 32)
     judge_params = cfg.toxicity.judge.get("params", {})
 

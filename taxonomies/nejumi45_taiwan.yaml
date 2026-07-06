@@ -1,0 +1,111 @@
+version: "nejumi45_taiwan_v0"
+score_scale: 0_to_100
+categories:
+  GLP:
+    weight: 8
+  ALT:
+    weight: 6
+units:
+  - id: mtbench_tw
+    category: GLP
+    display_name: MT-Bench-TW
+    table_name: mtbench_leaderboard_table
+    column: AVG_mtbench
+    scale: fraction
+    required: true
+  - id: arc_agi_2
+    category: GLP
+    display_name: ARC-AGI-2
+    table_name: arc_agi_leaderboard_table
+    column: arc-agi-2
+    scale: fraction
+    required: true
+  - id: agentic_math
+    category: GLP
+    display_name: Agentic Math
+    table_name: agentic_math_leaderboard_table
+    column: correctness
+    scale: fraction
+    required: true
+  - id: tmmluplus
+    category: GLP
+    display_name: TMMLU+
+    sources:
+      - table_name: jaster_0shot_leaderboard_table
+        column: tmmluplus
+      - table_name: jaster_{num_few_shots}shot_leaderboard_table
+        column: tmmluplus
+    aggregation: mean
+    scale: fraction
+    required: true
+  - id: hle
+    category: GLP
+    display_name: HLE
+    table_name: hle_test_leaderboard_table
+    column: accuracy
+    scale: fraction
+    required: true
+  - id: tceval_v2_selected
+    category: GLP
+    display_name: TCEval-v2 selected
+    table_name: tceval_v2_selected_leaderboard_table
+    column: AVG
+    scale: fraction
+    required: true
+  - id: agentic_swe
+    category: GLP
+    display_name: Agentic SWE
+    table_name: agentic_swe_leaderboard_table
+    column: pass_at_1
+    scale: fraction
+    required: true
+  - id: bfcl_v3
+    category: GLP
+    display_name: BFCL v3
+    table_name: bfcl_leaderboard_table
+    column: Overall Acc
+    scale: auto
+    required: true
+  - id: ifeval_zh_tw
+    category: ALT
+    display_name: IFEval zh-TW
+    table_name: ifeval_zh_tw_leaderboard_table
+    column: pass_rate
+    scale: fraction
+    required: true
+  - id: ts_bench
+    category: ALT
+    display_name: TS-Bench
+    table_name: ts_bench_leaderboard_table
+    column: score
+    scale: auto
+    required: true
+  - id: twbias
+    category: ALT
+    display_name: TWBias
+    table_name: twbias_leaderboard_table
+    column: unbiased_response_rate
+    scale: fraction
+    required: true
+    pending: true
+  - id: hallulens_zh_tw
+    category: ALT
+    display_name: HalluLens zh-TW
+    table_name: hallulens_zh_tw_leaderboard_table
+    column: hallucination_resistance
+    scale: fraction
+    required: true
+  - id: tmmluplus_robust
+    category: ALT
+    display_name: TMMLU+ Robust
+    table_name: tmmluplus_robust_{num_few_shots}shot_leaderboard_table
+    column: robust_score
+    scale: fraction
+    required: true
+  - id: traditional_chinese_script_adherence
+    category: ALT
+    display_name: Traditional Chinese Script Adherence
+    table_name: traditional_chinese_script_adherence_leaderboard_table
+    column: script_adherence_score
+    scale: fraction
+    required: true

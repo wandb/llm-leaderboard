@@ -1,6 +1,86 @@
 import pandas as pd
-from config_singleton import WandbConfigSingleton
-from . import symbol_to_ABCD, ABCD_to_symbol, incorrect_to_ABCD, ABCD_to_incorrect
+import re
+import string
+
+
+CHOICE_SYMBOLS = ("$", "&", "#", "@", "%", "!", "?", "~", "^", "*", "+", "=")
+
+
+def _option_label_markers(text: str) -> list[str]:
+    option_start = text.find("選項：")
+    if option_start >= 0:
+        block = text[option_start + len("選項：") :]
+    else:
+        block = text
+    return [match.group(1) for match in re.finditer(r"(?:^|,)([A-Z])\.", block)]
+
+
+def infer_choice_labels(input_text: str, expected_outputs: list[str] | None = None) -> list[str]:
+    """Infer contiguous option labels while ignoring initials inside choices."""
+    markers = _option_label_markers(input_text or "")
+    labels: list[str] = []
+    search_from = 0
+    for expected in string.ascii_uppercase:
+        found_at = None
+        for idx in range(search_from, len(markers)):
+            if markers[idx] == expected:
+                found_at = idx
+                break
+        if found_at is None:
+            break
+        labels.append(expected)
+        search_from = found_at + 1
+
+    for output in expected_outputs or []:
+        for token in split_choice_tokens(output):
+            if token in string.ascii_uppercase and token not in labels:
+                output_index = string.ascii_uppercase.index(token) + 1
+                labels = list(string.ascii_uppercase[: max(output_index, len(labels))])
+
+    return labels or list("ABCD")
+
+
+def split_choice_tokens(value: object) -> list[str]:
+    text = str(value or "").strip().upper()
+    if not text:
+        return []
+    return [
+        token.strip()
+        for token in re.split(r"[,，、\s]+", text)
+        if token.strip()
+    ]
+
+
+def convert_symbol_choice(output: object, labels: list[str]) -> str:
+    tokens = split_choice_tokens(output)
+    if len(tokens) != 1:
+        return str(output or "").strip().upper()
+    token = tokens[0]
+    if token in labels:
+        return token
+    symbol_mapping = {
+        CHOICE_SYMBOLS[idx]: label
+        for idx, label in enumerate(labels)
+        if idx < len(CHOICE_SYMBOLS)
+    }
+    return symbol_mapping.get(token, token)
+
+
+def convert_incorrect_choice(output: object, labels: list[str]) -> str:
+    tokens = split_choice_tokens(output)
+    if not tokens:
+        return str(output or "").strip().upper()
+    if len(tokens) == 1 and tokens[0] in labels:
+        return tokens[0]
+
+    token_set = set(tokens)
+    label_set = set(labels)
+    if token_set.issubset(label_set):
+        missing = [label for label in labels if label not in token_set]
+        if len(missing) == 1:
+            return missing[0]
+
+    return ",".join(tokens)
 
 def eval_robustness(row):
     matches = sum([
@@ -36,15 +116,14 @@ def evaluate_robustness(subset: str, df: pd.DataFrame):
     symbol_suffix = "_SymbolChoice"
     symbol_df = df[df["task"].str.endswith(symbol_suffix)]
     symbol_df = symbol_df[use_cols + ["output"]].rename(columns={"output": f"output{symbol_suffix}"})
-    symbol_df[f"converted_output{symbol_suffix}"] = symbol_df[f"output{symbol_suffix}"].apply(symbol_to_ABCD)
 
     # incorrect
     incorrect_suffix = "_IncorrectChoice"
     incorrect_df = df[df["task"].str.endswith(incorrect_suffix)]
     incorrect_df = incorrect_df[use_cols + ["output"]].rename(columns={"output": f"output{incorrect_suffix}"})
-    incorrect_df[f"converted_output{incorrect_suffix}"] = incorrect_df[f"output{incorrect_suffix}"].apply(incorrect_to_ABCD)
 
     # normal_dfにsymbolとincorrectの列を追加
+    normal_df["choice_labels"] = None
     normal_df[f"input{symbol_suffix}"] = None
     normal_df[f"output{symbol_suffix}"] = None
     normal_df[f"converted_output{symbol_suffix}"] = None
@@ -65,14 +144,29 @@ def evaluate_robustness(subset: str, df: pd.DataFrame):
             normal_row = normal_task_df.iloc[i]
             symbol_row = symbol_task_df.iloc[i]
             incorrect_row = incorrect_task_df.iloc[i]
+            labels = infer_choice_labels(
+                normal_row["input"],
+                [
+                    normal_row["expected_output"],
+                    symbol_row["expected_output"],
+                    incorrect_row["expected_output"],
+                ],
+            )
 
+            normal_df.loc[normal_row.name, "choice_labels"] = ",".join(labels)
             normal_df.loc[normal_row.name, f"input{symbol_suffix}"] = symbol_row["input"]
             normal_df.loc[normal_row.name, f"output{symbol_suffix}"] = symbol_row[f"output{symbol_suffix}"]
-            normal_df.loc[normal_row.name, f"converted_output{symbol_suffix}"] = symbol_row[f"converted_output{symbol_suffix}"]
+            normal_df.loc[normal_row.name, f"converted_output{symbol_suffix}"] = convert_symbol_choice(
+                symbol_row[f"output{symbol_suffix}"],
+                labels,
+            )
             normal_df.loc[normal_row.name, f"expected_output{symbol_suffix}"] = symbol_row["expected_output"]
             normal_df.loc[normal_row.name, f"input{incorrect_suffix}"] = incorrect_row["input"]
             normal_df.loc[normal_row.name, f"output{incorrect_suffix}"] = incorrect_row[f"output{incorrect_suffix}"]
-            normal_df.loc[normal_row.name, f"converted_output{incorrect_suffix}"] = incorrect_row[f"converted_output{incorrect_suffix}"]
+            normal_df.loc[normal_row.name, f"converted_output{incorrect_suffix}"] = convert_incorrect_choice(
+                incorrect_row[f"output{incorrect_suffix}"],
+                labels,
+            )
             normal_df.loc[normal_row.name, f"expected_output{incorrect_suffix}"] = incorrect_row["expected_output"]
 
     # スコアの計算
@@ -80,7 +174,7 @@ def evaluate_robustness(subset: str, df: pd.DataFrame):
 
     # 列のrename & 列の順番を並び替える
     normal_df = normal_df.rename(columns={"input": "input_normal","expected_output":"expected_output_normal"})
-    new_order=["model_name","index","score",
+    new_order=["model_name","index","score","choice_labels",
                "input_normal","output_normal","expected_output_normal",
                "input_SymbolChoice","output_SymbolChoice","converted_output_SymbolChoice","expected_output_SymbolChoice",
                "input_IncorrectChoice","output_IncorrectChoice","converted_output_IncorrectChoice","expected_output_IncorrectChoice","dataset","task","num_few_shots","subset"
@@ -97,7 +191,12 @@ def evaluate_robustness(subset: str, df: pd.DataFrame):
             aggfunc="mean",
         ).reset_index()
 
-        leaderboard_table = leaderboard_table.rename(columns={"jaster": "robust_score"})
+        rename_map = {
+            col: "robust_score"
+            for col in leaderboard_table.columns
+            if col != "model_name"
+        }
+        leaderboard_table = leaderboard_table.rename(columns=rename_map)
     else:
         leaderboard_table = []
     

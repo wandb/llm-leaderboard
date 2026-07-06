@@ -1,0 +1,179 @@
+wandb:
+  run_name: 'taiwan/full/qwen/qwen3.6-max-preview: openrouter-reasoning'
+api: openai-compatible
+base_url: https://openrouter.ai/api/v1
+batch_size: 4
+model:
+  pretrained_model_name_or_path: qwen/qwen3.6-max-preview
+  bfcl_model_id: qwen/qwen3.6-max-preview-FC
+  base_model: unknown
+  size_category: api
+  size: null
+  release_date: 4/27/2026
+generator:
+  temperature: null
+  top_p: null
+  parallel_tool_calls: true
+  max_tokens: 65536
+  extra_body:
+    reasoning:
+      enabled: true
+    provider:
+      allow_fallbacks: true
+jaster:
+  override_max_tokens: 65536
+jbbq:
+  generator_config:
+    max_tokens: 65536
+toxicity:
+  generator_config:
+    max_tokens: 65536
+    temperature: null
+    top_p: null
+jtruthfulqa:
+  generator_config:
+    max_tokens: 65536
+swebench:
+  max_tokens: 65536
+  fc_enabled: true
+  fc_tool_choice: auto
+  generator_config:
+    extra_body:
+      reasoning:
+        enabled: true
+      provider:
+        allow_fallbacks: true
+mtbench:
+  max_new_token: 65536
+  generator_config:
+    max_tokens: 65536
+    temperature: null
+    top_p: null
+  temperature_override:
+    writing: null
+    roleplay: null
+    extraction: null
+    math: null
+    coding: null
+    reasoning: null
+    stem: null
+    humanities: null
+  judge:
+    model: openrouter/openai/gpt-5.5
+    parallel: 8
+bfcl:
+  generator_config:
+    max_tokens: 65536
+    temperature: null
+    top_p: null
+  allow_overwrite: false
+hallulens:
+  generator_config:
+    max_tokens: 65536
+    temperature: null
+    top_p: null
+hle:
+  max_completion_tokens: 65536
+  generator_config:
+    max_tokens: 65536
+  judge:
+    model: openrouter/openai/gpt-5.5
+    parallel: 8
+arc_agi:
+  max_output_tokens: 65536
+m_ifeval:
+  generator_config:
+    max_tokens: 65536
+openai:
+  http_timeout:
+    connect: 10.0
+    read: 1800.0
+    write: 300.0
+    pool: 30.0
+testmode: false
+run:
+  agentic_math: true
+  bfcl: true
+  swebench: false
+  swebench_pro: true
+  mtbench: true
+  jbbq: false
+  toxicity: false
+  jtruthfulqa: false
+  hle: true
+  hallulens: false
+  hallulens_zh_tw: true
+  arc_agi: true
+  m_ifeval: false
+  ifeval_zh_tw: true
+  ts_bench: true
+  twbias: false
+  tceval_v2: true
+  script_adherence: true
+  jaster: true
+  jmmlu_robustness: false
+  tmmluplus_robustness: true
+  aggregate: false
+  aggregate_taiwan: true
+agentic_math:
+  subset: leaderboard
+  output_dir: outputs/taiwan_full_eval/agentic_math/qwen3_6-max-preview-openrouter
+  prefix: taiwan-math-qwen3_6-max-preview-openrouter
+  task_agent_prefix: tw-math-qwen3_6-max-preview-openrouter
+  openclaw_model: openrouter-direct/qwen/qwen3.6-max-preview
+  thinking: high
+  openclaw_max_attempts: 3
+  openclaw_retry_base_seconds: 15
+  max_input_tokens: 500000
+  max_tool_calls: 60
+  dry_run: false
+  run_openclaw: true
+  results_dir: null
+  weave_sidecar: false
+  weave_sidecar_strict: false
+  openclaw_tool_profile: coding
+  deny_tool:
+  - code_execution
+  - web_search
+  - web_fetch
+  - browser
+  - browser_*
+  - '*search*'
+  deny_argument_pattern:
+  - https?://
+  - \b(curl|wget)\b
+  - \b(requests|urllib|httpx)\.
+swebench_pro:
+  subset: leaderboard_compact_80
+  output_dir: outputs/taiwan_full_eval/swebench_pro/qwen3_6-max-preview-openrouter
+  checkout_root: outputs/taiwan_full_eval/swebench_pro_checkouts/qwen3_6-max-preview-openrouter
+  prefix: taiwan-swe-qwen3_6-max-preview-openrouter
+  task_agent_prefix: tw-swe-qwen3_6-max-preview-openrouter
+  openclaw_model: openrouter-direct/qwen/qwen3.6-max-preview
+  thinking: high
+  openclaw_max_attempts: 3
+  openclaw_retry_base_seconds: 15
+  dry_run: false
+  run_openclaw: true
+  patch_path: null
+  evaluate: true
+  weave_sidecar: false
+  weave_sidecar_strict: false
+  openclaw_tool_profile: coding
+  max_input_tokens: 1000000
+  max_tool_calls: 60
+  deny_tool:
+  - code_execution
+  - web_search
+  - web_fetch
+  - browser
+  - browser_*
+  - '*search*'
+  deny_argument_pattern:
+  - https?://
+  - \b(curl|wget)\b
+  - \b(requests|urllib|httpx)\.
+hallulens_zh_tw:
+  judge:
+    model: openrouter/openai/gpt-5.5
+    parallel: 8

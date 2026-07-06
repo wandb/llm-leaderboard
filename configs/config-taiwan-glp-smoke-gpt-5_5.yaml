@@ -1,0 +1,140 @@
+wandb:
+  entity: 'llm-leaderboard'
+  project: 'tc-leaderboard'
+  run_name: 'taiwan-smoke/glp-gpt-5.5-low'
+
+testmode: true
+api: openai_responses
+batch_size: 4
+inference_interval: 0
+
+model:
+  pretrained_model_name_or_path: gpt-5.5
+  bfcl_model_id: "OpenAIResponsesHandler-FC"
+  base_model: "unknown"
+  size_category: api
+  size: null
+  release_date: 06/01/2026
+
+generator:
+  max_tokens: 1024
+  temperature: 0.0
+  top_p: 1.0
+  extra_body:
+    reasoning:
+      effort: low
+
+run:
+  agentic_math: false
+  bfcl: false
+  swebench: false
+  swebench_pro: false
+  mtbench: true
+  jbbq: false
+  toxicity: false
+  jtruthfulqa: false
+  hle: true
+  hallulens: false
+  hallulens_zh_tw: false
+  arc_agi: true
+  m_ifeval: false
+  ifeval_zh_tw: false
+  ts_bench: false
+  twbias: false
+  tceval_v2: true
+  script_adherence: true
+  jaster: false
+  jmmlu_robustness: false
+  tmmluplus_robustness: false
+  aggregate: false
+  aggregate_taiwan: false
+
+mtbench:
+  question_artifacts_path: 'llm-leaderboard/tc-leaderboard/mtbench_tw_question:production'
+  question_artifacts_path_test: 'llm-leaderboard/tc-leaderboard/mtbench_tw_question:production'
+  referenceanswer_artifacts_path: 'llm-leaderboard/tc-leaderboard/mtbench_tw_referenceanswer:production'
+  referenceanswer_artifacts_path_test: 'llm-leaderboard/tc-leaderboard/mtbench_tw_referenceanswer:production'
+  judge_prompt_artifacts_path: 'llm-leaderboard/nejumi-leaderboard4/mtbench_ja_prompt:production'
+  bench_name: 'mt_bench_tw'
+  model_id: null
+  first_n: 1
+  judge_count: 1
+  generator_config:
+    max_tokens: 1024
+    temperature: 0.0
+    top_p: 1.0
+    extra_body:
+      reasoning:
+        effort: low
+  judge:
+    model: 'gpt-5.5'
+    parallel: 2
+    params:
+      max_tokens: 2048
+      temperature: 0.0
+      reasoning:
+        effort: medium
+
+script_adherence:
+  source_table: mtbench_output_table
+  answer_column: answer
+  min_han_chars: 1
+
+hle:
+  artifact_path: 'llm-leaderboard/tc-leaderboard/hle-zh-tw:production'
+  dataset_dir: 'hle-zh-tw'
+  max_samples: 1
+  generator_config:
+    max_tokens: 1024
+    temperature: 0.0
+    top_p: 1.0
+    extra_body:
+      reasoning:
+        effort: low
+  system_prompt: |
+    請用以下格式回答：
+    說明: {你對所選答案的說明}
+    答案: {你選擇的答案}
+    信心: {你對答案的 0% 到 100% 信心分數}
+  judge:
+    model: 'gpt-5.5'
+    parallel: 2
+    params:
+      reasoning:
+        effort: high
+
+arc_agi:
+  arc_agi_1_artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-1_public-eval_50:production"
+  arc_agi_2_artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval_50:production"
+  max_output_tokens: 1024
+  num_attempts: 1
+  soft_fail_on_error: true
+  prompt_template: |
+    你正在參加解謎競賽。你是一位擅長解這類格狀圖形謎題的專家。
+    以下是一組輸入與輸出的訓練範例。你的目標是找出訓練範例中從輸入到輸出的轉換規則，並將同一規則套用到測試輸入，產生最終輸出。
+
+    請完全依照訓練輸出範例的 JSON 格式作答，只輸出最終的二維數字陣列。
+
+    --訓練範例--
+    {training_examples}
+    --訓練範例結束--
+
+    --測試輸入--
+    {test_input}
+    --測試輸入結束--
+
+tceval_v2:
+  artifacts_path: 'llm-leaderboard/tc-leaderboard/tceval_v2_selected:production'
+  dataset_dir: 'tceval_v2_selected/jaster'
+  tasks:
+    - drcd
+    - penguin_table
+  generator_config:
+    temperature: 0.0
+    top_p: 1.0
+    extra_body:
+      reasoning:
+        effort: low
+  override_max_tokens: 256
+  max_samples: null
+  testmode_max_samples: 1

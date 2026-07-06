@@ -287,10 +287,10 @@ async def async_generate_results(args, handler, test_cases_total):
             result, result_dir=args.result_dir, update_mode=True
         )  # Always use update_mode=True to prevent duplicate entries for the same test case
 
-def generate_results(args, model_name, test_cases_total):
+def generate_results(args, model_name, test_cases_total, handler=None):
     # Always use update_mode=True to prevent duplicate entries for the same test case
     update_mode = True
-    handler = build_handler(model_name, args.temperature)
+    handler = handler or build_handler(model_name, args.temperature)
 
     if handler.model_style == ModelStyle.OSSMODEL or isinstance(handler, OpenRouterHandler):
         if hasattr(handler, "setup_tokenizer"):
@@ -357,12 +357,13 @@ def main(args):
         all_test_file_paths,
         all_test_entries_involved,
     )
+    handler = build_handler(args.model_name, args.temperature)
 
     if len(test_cases_total) == 0:
         print(
-            f"All selected test cases have been previously generated for {args.model}. No new test cases to generate."
+            f"All selected test cases have been previously generated for {args.model_name}. No new test cases to generate."
         )
     else:
-        handler = generate_results(args, args.model_name, test_cases_total)
+        handler = generate_results(args, args.model_name, test_cases_total, handler=handler)
     
     return handler

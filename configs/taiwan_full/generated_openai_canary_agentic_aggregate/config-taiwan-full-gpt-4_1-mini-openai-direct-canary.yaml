@@ -43,6 +43,8 @@ agentic_math:
   thinking: 'off'
   openclaw_max_attempts: 3
   openclaw_retry_base_seconds: 15
+  max_input_tokens: 500000
+  max_tool_calls: 60
   dry_run: false
   run_openclaw: false
   results_dir: outputs/taiwan_full_eval/agentic_math/gpt-4_1-mini-openai-direct-canary/openclaw
@@ -61,7 +63,7 @@ agentic_math:
   - \b(curl|wget)\b
   - \b(requests|urllib|httpx)\.
 swebench_pro:
-  subset: leaderboard_80
+  subset: leaderboard_compact_80
   output_dir: outputs/taiwan_full_eval/swebench_pro/gpt-4_1-mini-openai-direct-canary
   checkout_root: outputs/taiwan_full_eval/swebench_pro_checkouts/gpt-4_1-mini-openai-direct-canary
   prefix: taiwan-swe-gpt-4_1-mini-openai-direct-canary
@@ -77,6 +79,8 @@ swebench_pro:
   weave_sidecar: false
   weave_sidecar_strict: false
   openclaw_tool_profile: coding
+  max_input_tokens: 1000000
+  max_tool_calls: 60
   deny_tool:
   - code_execution
   - web_search

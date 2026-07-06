@@ -1,6 +1,6 @@
 # Taiwan Leaderboard Task Status
 
-Last updated: 2026-07-02 09:53 JST
+Last updated: 2026-07-06 18:55 JST
 
 This file is the persistent progress ledger for the Taiwan leaderboard work.
 Update it at every meaningful milestone so progress is visible even when chat
@@ -19,7 +19,7 @@ docs/taiwan_leaderboard_overview_ja.md
 ```text
 branch: dev-zh-TW
 remote: origin/dev-zh-TW
-latest pushed implementation/docs commit before this ledger update: a13ebf7 Bundle NeMoClaw local verification helper
+latest pushed implementation/docs commit before this ledger update: a308dce Guard Weave canary model handoff
 
 pushed implementation/docs commits this cycle before this ledger update:
   ebe5dcd Ignore local evaluation scratch dirs
@@ -3185,4 +3185,6 @@ P6a   Native NeMoClaw Weave runtime              Active       Native weave-openc
 P6b   SWE sandbox checkout transfer              Active       SWE-Bench Pro supports explicit copy mode for hosts without sandbox checkout mounts; the generated NeMoClaw canary config uses copy mode by default, readiness fails if SWE-Bench Pro lacks copy mode or an explicit sandbox checkout root when NeMoClaw is required, rendered execution commands and batch execution preflight must keep SWE NeMoClaw sandbox/checkout transfer access plus required deny_tool / deny_argument_pattern guards, rendered execution also requires a passed/fresh/native-contract-valid Weave content-canary gate checked through the shared gate-contract helper, SWE patch metadata records conversation_order_ok before relog, and the SWE runner source plus run_eval evaluator wrapper are now bundled and source-contract-verified including task-agent deny policy plus toolSearch=false/web-fetch-disabled/browser-disabled guards; canary readiness and release-bundle evidence checks reject generated SWE NeMoClaw configs that drop deny_tool or deny_argument_pattern remote-lookup guards, and release-bundle YAML semantic validation rejects NeMoClaw SWE configs without matching sandbox plus copy/sandbox-root checkout transfer; production completion still requires a real SWE-Bench Pro task run plus official evaluator and W&B/Weave completion evidence
 P7    Dataset licensing                          Active       TWBias remains blocked until license is production-acceptable
 P8    SWE-Bench Pro artifact correctness          Done         Regenerated artifact uploaded as swebench-pro-public:v2; Taiwan default is now leaderboard_compact_80 with manifest taiwan_recommended_runtime=max_input_tokens 1000000 and max_tool_calls 60, and local data/taiwan/swebench_pro_public has matching compact subsets and repo metadata
+A689  Taiwan launch config cap sync               Done         configs/base_config_taiwan.yaml now defaults SWE-Bench Pro to leaderboard_compact_80 with max_input_tokens=1000000 and max_tool_calls=60; OpenAI-direct canary generated configs and GLM5.2/default manifest generated configs were regenerated so stale leaderboard_80 configs do not bypass runtime caps; GLM5.2 and Gemini OpenRouter source configs plus configs/taiwan_full_eval_models.yaml are included as launch manifest assets; validation passed without W&B writes, OpenRouter use, model API calls, or full benchmark execution: py_compile for Taiwan data/evaluator scripts, pytest Taiwan non-Agentic/Judge/BFCL tests 26 passed, and pytest Taiwan config/canary/NeMoClaw/SWE/OpenClaw tests 139 passed
+P6aa  Current local launch stabilization          Active       Local implementation/config validation is green after A689; formal release gate 20260706T095429Z remains not_ready with bundle_integrity_ok=true, checked_file_count=729, verification_error_count=0, and blockers=[weave_content_canary, wandb_completion, paid_run_review_package, one_model_full_canary]. The remaining launch blockers are external/live completion gates rather than offline code failures. data/ remains local generated/acquired benchmark material and is intentionally not part of this code commit; Japanese Nejumi shared configs/base_config.yaml has an uncommitted judge-model change and is intentionally excluded from this Taiwan sync to avoid changing the existing Japanese leaderboard path.
 ```

@@ -337,10 +337,27 @@ def evaluate_n_shot(few_shots: bool):
         output_df = other_df
 
         # log table
-        if cfg.run.jmmlu_robustness and few_shots:
-            output_robust_df = output_df[output_df["task"].str.contains("jmmlu")].copy()
+        robust_task_prefix = None
+        robust_table_prefix = None
+        if cfg.run.get("tmmluplus_robustness", False) and few_shots:
+            robust_task_prefix = "tmmluplus"
+            robust_table_prefix = "tmmluplus_robust"
+        elif cfg.run.get("jmmlu_robustness", False) and few_shots:
+            robust_task_prefix = "jmmlu"
+            robust_table_prefix = "jmmlu_robust"
+
+        if robust_task_prefix:
+            output_robust_df = output_df[
+                output_df["task"].str.contains(robust_task_prefix)
+            ].copy()
             output_robust_df.loc[:,"sub_category"] = "robust"
-        output_df = output_df[~output_df['task'].isin(['jmmlu_SymbolChoice', 'jmmlu_IncorrectChoice'])].copy()
+        excluded_variant_tasks = [
+            "jmmlu_SymbolChoice",
+            "jmmlu_IncorrectChoice",
+            "tmmluplus_SymbolChoice",
+            "tmmluplus_IncorrectChoice",
+        ]
+        output_df = output_df[~output_df['task'].isin(excluded_variant_tasks)].copy()
 
         # group task to sub_category
         output_df = output_df.copy()  # Create a copy to avoid SettingWithCopyWarning
@@ -380,7 +397,7 @@ def evaluate_n_shot(few_shots: bool):
         )
         
 
-        if cfg.run.jmmlu_robustness and few_shots:
+        if robust_task_prefix:
             # need to be updated
             dev_robust_table = output_robust_df.query("subset == 'dev'")
             test_robust_table= output_robust_df.query("subset == 'test'")
@@ -388,9 +405,9 @@ def evaluate_n_shot(few_shots: bool):
             test_robust_table_for_log, leaderboard_robust_table= evaluate_robustness(subset="test", df=test_robust_table)
             run.log(
             {
-                f"jmmlu_robust_{num_few_shots}shot_output_table_dev": dev_robust_table_for_log,
-                f"jmmlu_robust_{num_few_shots}shot_output_table": test_robust_table_for_log,
-                f"jmmlu_robust_{num_few_shots}shot_leaderboard_table": leaderboard_robust_table
+                f"{robust_table_prefix}_{num_few_shots}shot_output_table_dev": dev_robust_table_for_log,
+                f"{robust_table_prefix}_{num_few_shots}shot_output_table": test_robust_table_for_log,
+                f"{robust_table_prefix}_{num_few_shots}shot_leaderboard_table": leaderboard_robust_table
             }
         )
 

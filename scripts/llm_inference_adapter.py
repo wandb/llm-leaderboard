@@ -14,7 +14,10 @@ from omegaconf import OmegaConf, DictConfig
 import openai
 from openai.types.responses import Response as OpenAIResponse, ParsedResponse as OpenAIParsedResponse
 from openai.types.chat import ChatCompletion as OpenAIChatCompletion
-from mistralai import Mistral
+try:
+    from mistralai import Mistral
+except Exception:
+    Mistral = None
 # import google.generativeai as genai  # Old import - no longer needed
 from anthropic import Anthropic
 import cohere
@@ -399,6 +402,44 @@ def map_common_params(params, param_mapping):
     return mapped_params
 
 
+def _to_plain_container(value: Any) -> Any:
+    try:
+        import omegaconf
+
+        if isinstance(value, (omegaconf.DictConfig, omegaconf.ListConfig)):
+            return omegaconf.OmegaConf.to_container(value)
+    except Exception:
+        pass
+    return value
+
+
+def _resolve_openai_compatible_api_key(base_url: str, cfg: Any | None = None) -> str:
+    api_key_env = None
+    try:
+        api_key_env = cfg.get("api_key_env", None) if cfg is not None else None
+    except Exception:
+        api_key_env = None
+
+    if api_key_env:
+        return os.environ[api_key_env]
+
+    normalized = (base_url or "").lower()
+    if "openrouter.ai" in normalized:
+        openrouter_api_key_env = os.environ.get("NEJUMI_OPENROUTER_API_KEY_ENV")
+        if openrouter_api_key_env:
+            return os.environ[openrouter_api_key_env]
+        return os.environ.get(
+            "OPENROUTER_API_KEY",
+            os.environ.get("OPENAI_COMPATIBLE_API_KEY", "EMPTY"),
+        )
+    if "api.x.ai" in normalized:
+        return os.environ.get(
+            "XAI_API_KEY",
+            os.environ.get("OPENAI_COMPATIBLE_API_KEY", "EMPTY"),
+        )
+    return os.environ.get("OPENAI_COMPATIBLE_API_KEY", os.environ.get("VLLM_API_KEY", "EMPTY"))
+
+
 def _resolve_http_timeout_from_cfg(cfg, primary_key: str = "openai") -> httpx.Timeout:
     """cfg から HTTP タイムアウト設定を読み出して httpx.Timeout を返す。
 
@@ -681,6 +722,7 @@ class OpenAIClient:
             max_retries=3
         )
         self.model = model
+        self.base_url = base_url
         self.kwargs = kwargs
         
         self.allowed_params = {
@@ -720,6 +762,8 @@ class OpenAIClient:
             except (ImportError, AttributeError):
                 # omegaconfが利用できない場合やDictConfigでない場合はそのまま使用
                 params["extra_body"] = all_kwargs["extra_body"]
+        elif "reasoning" in all_kwargs:
+            params["extra_body"] = {"reasoning": _to_plain_container(all_kwargs["reasoning"])}
         
         # 後方互換性のためのレガシーパラメータサポート
         if "include_reasoning" in all_kwargs:
@@ -822,6 +866,8 @@ class OpenAIClient:
             except (ImportError, AttributeError):
                 # omegaconfが利用できない場合やDictConfigでない場合はそのまま使用
                 params["extra_body"] = all_kwargs["extra_body"]
+        elif "reasoning" in all_kwargs:
+            params["extra_body"] = {"reasoning": _to_plain_container(all_kwargs["reasoning"])}
         
         # 後方互換性のためのレガシーパラメータサポート
         if "include_reasoning" in all_kwargs:
@@ -1069,6 +1115,11 @@ class AzureOpenAIResponsesClient(OpenAIResponsesClient):
 
 class MistralClient(BaseLLMClient):
     def __init__(self, api_key, model, **kwargs):
+        if Mistral is None:
+            raise ImportError(
+                "mistralai.Mistral is unavailable. Install a compatible mistralai package "
+                "or use a non-mistral api configuration."
+            )
         self.client = Mistral(api_key=api_key)
         self.model = model
         self.kwargs = kwargs
@@ -1788,8 +1839,7 @@ def get_llm_inference_engine() -> BaseLLMClient:
         model_name = cfg.model.pretrained_model_name_or_path
 
         llm = OpenAIClient(
-            api_key=os.environ.get("OPENAI_COMPATIBLE_API_KEY", 
-                                  os.environ.get("VLLM_API_KEY", "EMPTY")),
+            api_key=_resolve_openai_compatible_api_key(base_url, cfg),
             base_url=base_url,
             model=model_name,  # model_name -> model に修正
             **cfg.generator,
