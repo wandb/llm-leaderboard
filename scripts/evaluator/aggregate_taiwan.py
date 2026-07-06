@@ -27,8 +27,6 @@ def _normalize_score(value: Any, scale: str) -> float:
         return score * 10.0
     if scale == "percent":
         return score
-    if scale == "auto":
-        return score * 100.0 if score <= 1.0 else score
     raise ValueError(f"Unsupported score scale: {scale}")
 
 
@@ -83,6 +81,58 @@ def _mean_for_included_units(unit_df: pd.DataFrame, category: str | None = None)
     return _mean_if_complete(included["score_0_to_100"].tolist())
 
 
+def _validate_taxonomy(taxonomy: dict[str, Any]) -> None:
+    categories = taxonomy.get("categories")
+    if not isinstance(categories, dict) or not categories:
+        raise ValueError("taxonomy.categories must be a non-empty mapping")
+
+    units = taxonomy.get("units")
+    if not isinstance(units, list) or not units:
+        raise ValueError("taxonomy.units must be a non-empty list")
+
+    valid_scales = {"fraction", "judge_0_10", "percent"}
+    errors = []
+    for category, category_cfg in categories.items():
+        weight = (category_cfg or {}).get("weight")
+        try:
+            if float(weight) <= 0:
+                errors.append(f"categories.{category}.weight must be positive")
+        except (TypeError, ValueError):
+            errors.append(f"categories.{category}.weight must be numeric")
+
+    for unit in units:
+        unit_id = unit.get("id", "<missing>")
+        if unit.get("category") not in categories:
+            errors.append(f"{unit_id}: category {unit.get('category')!r} is not declared")
+        scale = unit.get("scale")
+        if scale not in valid_scales:
+            errors.append(f"{unit_id}: scale must be one of {sorted(valid_scales)}, got {scale!r}")
+        if bool(unit.get("required", True)) and bool(unit.get("pending", False)):
+            errors.append(f"{unit_id}: required=true and pending=true are mutually exclusive")
+
+    if errors:
+        raise ValueError("Invalid Taiwan taxonomy: " + "; ".join(errors))
+
+
+def _category_weights(taxonomy: dict[str, Any]) -> dict[str, float]:
+    return {
+        str(category): float(category_cfg["weight"])
+        for category, category_cfg in taxonomy["categories"].items()
+    }
+
+
+def _weighted_overall(category_scores: dict[str, float], weights: dict[str, float]) -> float:
+    if not category_scores or any(np.isnan(value) for value in category_scores.values()):
+        return float("nan")
+    total_weight = sum(weights.get(category, 1.0) for category in category_scores)
+    if total_weight <= 0:
+        return float("nan")
+    return float(
+        sum(category_scores[category] * weights.get(category, 1.0) for category in category_scores)
+        / total_weight
+    )
+
+
 def evaluate():
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
@@ -94,7 +144,9 @@ def evaluate():
         )
     )
     taxonomy = OmegaConf.to_container(OmegaConf.load(taxonomy_path), resolve=True)
+    _validate_taxonomy(taxonomy)
     units = taxonomy["units"]
+    category_weights = _category_weights(taxonomy)
 
     unit_rows = []
     leaderboard_dict = {
@@ -112,7 +164,7 @@ def evaluate():
         error = ""
         try:
             raw_score, source_tables = _unit_raw_score(run, cfg, unit)
-            normalized_score = _normalize_score(raw_score, unit.get("scale", "auto"))
+            normalized_score = _normalize_score(raw_score, unit["scale"])
         except Exception as exc:
             status = "missing_required" if unit.get("required", True) else "missing"
             if unit.get("pending", False):
@@ -127,7 +179,7 @@ def evaluate():
                 "display_name": unit["display_name"],
                 "score_0_to_100": normalized_score,
                 "raw_score": raw_score,
-                "scale": unit.get("scale", "auto"),
+                "scale": unit["scale"],
                 "required": bool(unit.get("required", True)),
                 "pending": bool(unit.get("pending", False)),
                 "score_included": not bool(unit.get("pending", False)),
@@ -139,9 +191,13 @@ def evaluate():
 
     unit_df = pd.DataFrame(unit_rows)
 
-    leaderboard_dict["GLP"] = _mean_for_included_units(unit_df, "GLP")
-    leaderboard_dict["ALT"] = _mean_for_included_units(unit_df, "ALT")
-    leaderboard_dict["Overall"] = _mean_for_included_units(unit_df)
+    category_scores = {
+        category: _mean_for_included_units(unit_df, category)
+        for category in category_weights
+    }
+    leaderboard_dict.update(category_scores)
+    leaderboard_dict["Overall"] = _weighted_overall(category_scores, category_weights)
+    leaderboard_dict["overall_weighting"] = "taxonomy_category_weighted_mean"
     leaderboard_dict["missing_required_count"] = int(
         (
             unit_df["required"]

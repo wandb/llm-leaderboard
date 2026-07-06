@@ -9,7 +9,7 @@ batch_size: 2
 inference_interval: 0
 
 model:
-  pretrained_model_name_or_path: gpt-5.5
+  pretrained_model_name_or_path: gpt-5.5-2026-04-23
   base_model: "unknown"
   size_category: api
   size: null
@@ -63,7 +63,7 @@ hallulens_zh_tw:
   default_place: '未指定'
   place_phrase_template: '位於{place}'
   judge:
-    model: 'gpt-5.5'
+    model: 'gpt-5.5-2026-04-23'
     parallel: 2
     params:
       reasoning:

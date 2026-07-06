@@ -36,12 +36,19 @@ bfcl = LazyEvaluatorModule("bfcl")
 jtruthfulqa = LazyEvaluatorModule("jtruthfulqa")
 hle = LazyEvaluatorModule("hle")
 hallulens = LazyEvaluatorModule("hallulens")
+hallulens_zh_tw = LazyEvaluatorModule("hallulens_zh_tw")
 m_ifeval = LazyEvaluatorModule("m_ifeval")
 aggregate = LazyEvaluatorModule("aggregate")
+aggregate_taiwan = LazyEvaluatorModule("aggregate_taiwan")
 swe_bench = LazyEvaluatorModule("swe_bench")
 swebench_pro = LazyEvaluatorModule("swebench_pro")
 agentic_math = LazyEvaluatorModule("agentic_math")
 arc_agi = LazyEvaluatorModule("arc_agi")
+ifeval_zh_tw = LazyEvaluatorModule("ifeval_zh_tw")
+ts_bench = LazyEvaluatorModule("ts_bench")
+twbias = LazyEvaluatorModule("twbias")
+tceval_v2 = LazyEvaluatorModule("tceval_v2")
+script_adherence = LazyEvaluatorModule("script_adherence")
 
 BENCHMARK_MAP = {
     'bfcl': 'bfcl',
@@ -49,15 +56,31 @@ BENCHMARK_MAP = {
     'swebench': 'swebench',
     'swebench_pro': 'swebench_pro',
     'mtbench': 'mtbench',
+    'script_adherence': 'script_adherence',
     'jbbq': 'jbbq',
     'toxicity': 'toxicity',
     'jtruthfulqa': 'jtruthfulqa',
     'hle': 'hle',
     'hallulens': 'hallulens',
+    'hallulens_zh_tw': 'hallulens_zh_tw',
     'arc_agi': 'arc_agi',
     'm_ifeval': 'm_ifeval',
+    'ifeval_zh_tw': 'ifeval_zh_tw',
+    'ts_bench': 'ts_bench',
+    'twbias': 'twbias',
+    'tceval_v2': 'tceval_v2',
     'jaster': 'jaster',
+    'aggregate': 'aggregate',
+    'aggregate_taiwan': 'aggregate_taiwan',
 }
+
+AUXILIARY_RUN_FLAGS = {
+    # Consumed inside jaster.evaluate() rather than dispatched as a standalone evaluator.
+    "jmmlu_robustness",
+    "tmmluplus_robustness",
+}
+
+KNOWN_RUN_FLAGS = set(BENCHMARK_MAP) | AUXILIARY_RUN_FLAGS
 
 
 def load_validate_all_benchmarks():
@@ -81,12 +104,55 @@ def load_validate_all_benchmarks():
 validate_all_benchmarks = load_validate_all_benchmarks()
 
 
+def _run_flags_dict(cfg) -> dict:
+    run_cfg = OmegaConf.select(cfg, "run", default={})
+    if run_cfg is None:
+        return {}
+    return OmegaConf.to_container(run_cfg, resolve=True) or {}
+
+
+def is_run_flag_enabled(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
 def enabled_benchmarks_from_config(cfg):
     enabled = []
     for bench_key, bench_name in BENCHMARK_MAP.items():
-        if OmegaConf.select(cfg, f"run.{bench_key}", default=False):
+        if is_run_flag_enabled(OmegaConf.select(cfg, f"run.{bench_key}", default=False)):
             enabled.append(bench_name)
     return enabled
+
+
+def dispatch_validation_from_config(cfg):
+    run_flags = _run_flags_dict(cfg)
+    unsupported_truthy = sorted(
+        key
+        for key, value in run_flags.items()
+        if is_run_flag_enabled(value) and key not in KNOWN_RUN_FLAGS
+    )
+    return {
+        "ok": not unsupported_truthy,
+        "known_run_flags": sorted(KNOWN_RUN_FLAGS),
+        "dispatched_run_flags": [
+            key
+            for key in BENCHMARK_MAP
+            if is_run_flag_enabled(run_flags.get(key, False))
+        ],
+        "auxiliary_run_flags": [
+            key
+            for key in sorted(AUXILIARY_RUN_FLAGS)
+            if is_run_flag_enabled(run_flags.get(key, False))
+        ],
+        "unsupported_truthy_run_flags": unsupported_truthy,
+    }
 
 
 def summarize_token_validation(cfg, enabled_benchmarks):
@@ -142,11 +208,13 @@ def print_token_validation_summary(validation_summary):
 
 def build_preflight_payload(custom_cfg_path, base_cfg_path, cfg, enabled_benchmarks):
     validation_summary = summarize_token_validation(cfg, enabled_benchmarks)
+    dispatch_validation = dispatch_validation_from_config(cfg)
+    ok = bool(validation_summary["ok"]) and bool(dispatch_validation["ok"])
     return {
         "schema_version": 1,
         "generated_at": time.time(),
-        "status": "passed" if validation_summary["ok"] else "failed",
-        "ok": bool(validation_summary["ok"]),
+        "status": "passed" if ok else "failed",
+        "ok": ok,
         "config": str(custom_cfg_path),
         "base_config": str(base_cfg_path),
         "wandb": {
@@ -157,6 +225,8 @@ def build_preflight_payload(custom_cfg_path, base_cfg_path, cfg, enabled_benchma
         "api": OmegaConf.select(cfg, "api"),
         "model": OmegaConf.select(cfg, "model.pretrained_model_name_or_path"),
         "enabled_benchmarks": enabled_benchmarks,
+        "scheduled_evaluators": enabled_benchmarks,
+        "dispatch_validation": dispatch_validation,
         "will_initialize_wandb": False,
         "will_log_wandb_artifacts": False,
         "will_initialize_weave": False,
@@ -222,6 +292,7 @@ custom_cfg = OmegaConf.merge(base_cfg, custom_cfg)
 cfg_dict = OmegaConf.to_container(custom_cfg, resolve=True)
 assert isinstance(cfg_dict, dict), "instance.config must be a DictConfig"
 enabled_benchmarks = enabled_benchmarks_from_config(custom_cfg)
+dispatch_validation = dispatch_validation_from_config(custom_cfg)
 
 if args.preflight:
     payload = build_preflight_payload(
@@ -248,6 +319,13 @@ if args.preflight:
         print(f"  preflight_json: {preflight_json_path}")
 
     raise SystemExit(0 if payload["ok"] else 2)
+
+if not dispatch_validation["ok"]:
+    raise SystemExit(
+        "Unsupported truthy run flag(s): "
+        + ", ".join(dispatch_validation["unsupported_truthy_run_flags"])
+        + ". Add an evaluator dispatch or mark the flag as auxiliary before running."
+    )
 
 import wandb
 import weave
@@ -404,10 +482,16 @@ if cfg.run.get('swebench_pro', False):
     complete_benchmark_tracking('swebench_pro')
 
 # mt-bench evaluation
-if cfg.run.mtbench:
+if is_run_flag_enabled(cfg.run.get("mtbench", False)):
     start_benchmark_tracking('mtbench')
     mtbench.evaluate()
     complete_benchmark_tracking('mtbench')
+
+# Traditional Chinese script adherence, derived from mtbench_output_table.
+if is_run_flag_enabled(cfg.run.get("script_adherence", False)):
+    start_benchmark_tracking('script_adherence')
+    script_adherence.evaluate()
+    complete_benchmark_tracking('script_adherence')
 
 # jbbq
 if cfg.run.jbbq:
@@ -439,6 +523,12 @@ if cfg.run.hallulens:
     hallulens.evaluate()
     complete_benchmark_tracking('hallulens')
 
+# HalluLens zh-TW
+if is_run_flag_enabled(cfg.run.get("hallulens_zh_tw", False)):
+    start_benchmark_tracking('hallulens_zh_tw')
+    hallulens_zh_tw.evaluate()
+    complete_benchmark_tracking('hallulens_zh_tw')
+
 # ARC-AGI
 if cfg.run.arc_agi:
     start_benchmark_tracking('arc_agi')
@@ -450,6 +540,30 @@ if cfg.run.m_ifeval:
     start_benchmark_tracking('m_ifeval')
     m_ifeval.evaluate()
     complete_benchmark_tracking('m_ifeval')
+
+# IFEval zh-TW
+if is_run_flag_enabled(cfg.run.get("ifeval_zh_tw", False)):
+    start_benchmark_tracking('ifeval_zh_tw')
+    ifeval_zh_tw.evaluate()
+    complete_benchmark_tracking('ifeval_zh_tw')
+
+# TS-Bench
+if is_run_flag_enabled(cfg.run.get("ts_bench", False)):
+    start_benchmark_tracking('ts_bench')
+    ts_bench.evaluate()
+    complete_benchmark_tracking('ts_bench')
+
+# TWBias
+if is_run_flag_enabled(cfg.run.get("twbias", False)):
+    start_benchmark_tracking('twbias')
+    twbias.evaluate()
+    complete_benchmark_tracking('twbias')
+
+# TCEval-v2 selected
+if is_run_flag_enabled(cfg.run.get("tceval_v2", False)):
+    start_benchmark_tracking('tceval_v2')
+    tceval_v2.evaluate()
+    complete_benchmark_tracking('tceval_v2')
 
 # Evaluation phase
 if cfg.run.jaster:
@@ -495,7 +609,15 @@ if cfg.run.swebench and cfg.swebench.background_eval:
 
 # Aggregation
 if cfg.run.aggregate:
+    start_benchmark_tracking('aggregate')
     aggregate.evaluate()
+    complete_benchmark_tracking('aggregate')
+
+# Taiwan leaderboard aggregation
+if is_run_flag_enabled(cfg.run.get("aggregate_taiwan", False)):
+    start_benchmark_tracking('aggregate_taiwan')
+    aggregate_taiwan.evaluate()
+    complete_benchmark_tracking('aggregate_taiwan')
 
 # プログレストラッキング終了
 finish_progress_tracking()

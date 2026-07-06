@@ -64,7 +64,7 @@ units:
     display_name: BFCL v3
     table_name: bfcl_leaderboard_table
     column: Overall Acc
-    scale: auto
+    scale: fraction
     required: true
   - id: ifeval_zh_tw
     category: ALT
@@ -78,7 +78,7 @@ units:
     display_name: TS-Bench
     table_name: ts_bench_leaderboard_table
     column: score
-    scale: auto
+    scale: fraction
     required: true
   - id: twbias
     category: ALT
@@ -86,7 +86,7 @@ units:
     table_name: twbias_leaderboard_table
     column: unbiased_response_rate
     scale: fraction
-    required: true
+    required: false
     pending: true
   - id: hallulens_zh_tw
     category: ALT

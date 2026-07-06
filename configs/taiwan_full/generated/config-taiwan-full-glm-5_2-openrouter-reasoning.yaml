@@ -52,7 +52,7 @@ mtbench:
     stem: null
     humanities: null
   judge:
-    model: openrouter/openai/gpt-5.5
+    model: gpt-5.5-2026-04-23
     parallel: 2
 bfcl:
   generator_config:
@@ -70,7 +70,7 @@ hle:
   generator_config:
     max_tokens: 32768
   judge:
-    model: openrouter/openai/gpt-5.5
+    model: gpt-5.5-2026-04-23
     parallel: 2
 arc_agi:
   max_output_tokens: 32768
@@ -168,5 +168,5 @@ swebench_pro:
   - \b(requests|urllib|httpx)\.
 hallulens_zh_tw:
   judge:
-    model: openrouter/openai/gpt-5.5
+    model: gpt-5.5-2026-04-23
     parallel: 2

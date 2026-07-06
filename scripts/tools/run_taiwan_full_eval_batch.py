@@ -103,6 +103,45 @@ AGENTIC_PRODUCTION_EVIDENCE_REQUIREMENTS = {
     "--weave-agents-require-usage": "Weave Agents verification must require usage metadata for cost/accountability review.",
 }
 
+PHASE_EXPECTED_SCHEDULED_EVALUATORS = {
+    "full": [
+        "bfcl",
+        "agentic_math",
+        "swebench_pro",
+        "mtbench",
+        "script_adherence",
+        "hle",
+        "hallulens_zh_tw",
+        "arc_agi",
+        "ifeval_zh_tw",
+        "ts_bench",
+        "tceval_v2",
+        "jaster",
+        "aggregate_taiwan",
+    ],
+    "nonagentic": [
+        "bfcl",
+        "mtbench",
+        "script_adherence",
+        "hle",
+        "hallulens_zh_tw",
+        "arc_agi",
+        "ifeval_zh_tw",
+        "ts_bench",
+        "tceval_v2",
+        "jaster",
+    ],
+    "agentic": [
+        "agentic_math",
+        "swebench_pro",
+    ],
+    "agentic_aggregate": [
+        "agentic_math",
+        "swebench_pro",
+        "aggregate_taiwan",
+    ],
+}
+
 
 def nonempty_string(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip())
@@ -131,6 +170,31 @@ def config_arg(path: Path) -> str:
         return str(path.relative_to(CONFIG_DIR))
     except ValueError:
         return str(path.resolve())
+
+
+def expected_scheduled_evaluators_for_phase(phase: str) -> list[str]:
+    return list(PHASE_EXPECTED_SCHEDULED_EVALUATORS.get(phase, []))
+
+
+def validate_run_eval_preflight_phase(payload: dict, phase: str) -> dict[str, object]:
+    expected = expected_scheduled_evaluators_for_phase(phase)
+    observed = payload.get("scheduled_evaluators", payload.get("enabled_benchmarks", []))
+    if not isinstance(observed, list):
+        observed = []
+    observed = [str(item) for item in observed]
+    missing = [item for item in expected if item not in observed]
+    unexpected = [item for item in observed if item not in expected]
+    order_matches = observed == expected
+    ok = not missing and not unexpected and order_matches
+    return {
+        "ok": ok,
+        "phase": phase,
+        "expected_scheduled_evaluators": expected,
+        "observed_scheduled_evaluators": observed,
+        "missing_scheduled_evaluators": missing,
+        "unexpected_scheduled_evaluators": unexpected,
+        "order_matches": order_matches,
+    }
 
 
 def resolve_weave_conversation_id_contains(
@@ -1276,6 +1340,7 @@ def build_run_eval_preflight_records(
                 "config": rel_config,
                 "output_json": str(output_json),
                 "required_before_run_eval": True,
+                "expected_scheduled_evaluators": expected_scheduled_evaluators_for_phase(phase),
                 "command": build_run_eval_preflight_command(
                     python=python,
                     base_config=base_config,
@@ -1941,17 +2006,39 @@ def main() -> None:
         preflight_returncode = stream_run(preflight_command, preflight_log_path, run_env)
         preflight_ok = preflight_returncode == 0
         preflight_status = ""
+        preflight_phase_validation = None
         if preflight_json.exists():
             preflight_payload, preflight_error = load_json_object(preflight_json)
             if preflight_payload is not None:
                 preflight_ok = preflight_ok and preflight_payload.get("ok") is True
                 preflight_status = str(preflight_payload.get("status") or "")
+                if preflight_payload.get("ok") is True:
+                    preflight_phase_validation = validate_run_eval_preflight_phase(
+                        preflight_payload,
+                        args.phase,
+                    )
+                    preflight_ok = preflight_ok and bool(preflight_phase_validation["ok"])
+                    if not preflight_phase_validation["ok"]:
+                        preflight_status = (
+                            "preflight scheduled evaluator mismatch: "
+                            + json.dumps(preflight_phase_validation, ensure_ascii=False, sort_keys=True)
+                        )
             else:
                 preflight_status = preflight_error or "preflight JSON could not be read"
                 preflight_ok = False
         else:
             preflight_status = "preflight JSON was not written"
             preflight_ok = False
+        if preflight_phase_validation is None:
+            preflight_phase_validation = {
+                "ok": False,
+                "phase": args.phase,
+                "expected_scheduled_evaluators": expected_scheduled_evaluators_for_phase(args.phase),
+                "observed_scheduled_evaluators": [],
+                "missing_scheduled_evaluators": expected_scheduled_evaluators_for_phase(args.phase),
+                "unexpected_scheduled_evaluators": [],
+                "order_matches": False,
+            }
         if not preflight_ok:
             row = {
                 "config": rel_config,
@@ -1961,6 +2048,7 @@ def main() -> None:
                 "preflight_returncode": preflight_returncode,
                 "preflight_ok": False,
                 "preflight_status": preflight_status,
+                "preflight_phase_validation": preflight_phase_validation,
                 "phase": args.phase,
                 "wandb_run_id": run_env.get("WANDB_RUN_ID", ""),
                 "wandb_entity": run_env.get("WANDB_ENTITY", ""),
@@ -1987,6 +2075,7 @@ def main() -> None:
             "preflight_returncode": preflight_returncode,
             "preflight_ok": preflight_ok,
             "preflight_status": preflight_status,
+            "preflight_phase_validation": preflight_phase_validation,
             "log_path": str(log_path),
             "phase": args.phase,
             "wandb_run_id": run_env.get("WANDB_RUN_ID", ""),

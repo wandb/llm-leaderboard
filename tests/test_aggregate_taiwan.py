@@ -31,6 +31,9 @@ def test_pending_units_are_excluded_from_taiwan_means():
     assert module._mean_for_included_units(unit_df, "GLP") == 80.0
     assert module._mean_for_included_units(unit_df, "ALT") == 60.0
     assert module._mean_for_included_units(unit_df) == 70.0
+    assert module._weighted_overall({"GLP": 80.0, "ALT": 60.0}, {"GLP": 8.0, "ALT": 6.0}) == (
+        (80.0 * 8.0 + 60.0 * 6.0) / 14.0
+    )
 
 
 def test_missing_included_units_keep_taiwan_mean_incomplete():
@@ -43,3 +46,42 @@ def test_missing_included_units_keep_taiwan_mean_incomplete():
     )
 
     assert np.isnan(module._mean_for_included_units(unit_df, "GLP"))
+
+
+def test_taiwan_taxonomy_rejects_auto_scale_and_required_pending():
+    module = load_module(REPO_ROOT / "scripts" / "evaluator" / "aggregate_taiwan.py")
+    taxonomy = {
+        "categories": {"GLP": {"weight": 8}},
+        "units": [
+            {
+                "id": "bad",
+                "category": "GLP",
+                "scale": "auto",
+                "required": True,
+                "pending": True,
+            }
+        ],
+    }
+
+    try:
+        module._validate_taxonomy(taxonomy)
+    except ValueError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("taxonomy validation should fail")
+
+    assert "scale must be" in message
+    assert "required=true and pending=true" in message
+
+
+def test_taiwan_taxonomy_file_is_valid():
+    from omegaconf import OmegaConf
+
+    module = load_module(REPO_ROOT / "scripts" / "evaluator" / "aggregate_taiwan.py")
+    taxonomy = OmegaConf.to_container(
+        OmegaConf.load(REPO_ROOT / "taxonomies" / "nejumi45_taiwan.yaml"),
+        resolve=True,
+    )
+
+    module._validate_taxonomy(taxonomy)
+    assert module._category_weights(taxonomy) == {"ALT": 6.0, "GLP": 8.0}

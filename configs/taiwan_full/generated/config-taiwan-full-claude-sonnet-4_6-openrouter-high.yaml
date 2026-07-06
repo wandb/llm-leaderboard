@@ -30,7 +30,7 @@ jtruthfulqa:
 mtbench:
   max_new_token: 64000
   judge:
-    model: openrouter/openai/gpt-5.5
+    model: gpt-5.5-2026-04-23
     parallel: 8
 bfcl:
   generator_config:
@@ -42,7 +42,7 @@ hallulens:
 hle:
   max_completion_tokens: 64000
   judge:
-    model: openrouter/openai/gpt-5.5
+    model: gpt-5.5-2026-04-23
     parallel: 8
 arc_agi:
   max_output_tokens: 64000
@@ -136,5 +136,5 @@ swebench_pro:
   - \b(requests|urllib|httpx)\.
 hallulens_zh_tw:
   judge:
-    model: openrouter/openai/gpt-5.5
+    model: gpt-5.5-2026-04-23
     parallel: 8

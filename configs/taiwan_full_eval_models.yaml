@@ -7,7 +7,7 @@ models:
     reasoning_effort: null
     agentic_thinking: high
     swe_thinking: high
-    judge_model: "openrouter/openai/gpt-5.5"
+    judge_model: "gpt-5.5-2026-04-23"
     judge_parallel: 2
     canary: true
     notes: "Preferred one-model full canary before multi-model expansion."
@@ -20,7 +20,7 @@ models:
     reasoning_effort: null
     agentic_thinking: high
     swe_thinking: high
-    judge_model: "openrouter/openai/gpt-5.5"
+    judge_model: "gpt-5.5-2026-04-23"
     final_only: true
     notes: "Extreme cost tier. Do not use for harness tests, smoke runs, or one-model canary; reserve for final release-candidate leaderboard runs only."
 
@@ -32,7 +32,7 @@ models:
     reasoning_effort: null
     agentic_thinking: high
     swe_thinking: high
-    judge_model: "openrouter/openai/gpt-5.5"
+    judge_model: "gpt-5.5-2026-04-23"
 
   - slug: qwen3_6-max-preview-openrouter
     source_config: config-qwen-qwen3_6-max-preview-openrouter.yaml
@@ -42,7 +42,7 @@ models:
     reasoning_effort: null
     agentic_thinking: high
     swe_thinking: high
-    judge_model: "openrouter/openai/gpt-5.5"
+    judge_model: "gpt-5.5-2026-04-23"
 
   - slug: claude-sonnet-4_6-openrouter-high
     source_config: config-anthropic-claude-sonnet-4-6-openrouter.yaml
@@ -52,7 +52,7 @@ models:
     reasoning_effort: null
     agentic_thinking: high
     swe_thinking: high
-    judge_model: "openrouter/openai/gpt-5.5"
+    judge_model: "gpt-5.5-2026-04-23"
 
   - slug: deepseek-v4-pro-thinking-max
     source_config: config-deepseek-v4-pro.yaml
@@ -62,4 +62,4 @@ models:
     reasoning_effort: null
     agentic_thinking: max
     swe_thinking: max
-    judge_model: "openrouter/openai/gpt-5.5"
+    judge_model: "gpt-5.5-2026-04-23"

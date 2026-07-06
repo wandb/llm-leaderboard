@@ -315,6 +315,10 @@ def test_build_run_eval_preflight_records_include_nonexecuting_command(tmp_path)
     record = records[0]
     assert record["config"] == str(config.resolve())
     assert record["required_before_run_eval"] is True
+    assert record["expected_scheduled_evaluators"] == [
+        "agentic_math",
+        "swebench_pro",
+    ]
     assert record["output_json"].endswith(
         "run_eval_preflight/agentic-gpt-4_1-mini.json"
     )
@@ -323,6 +327,25 @@ def test_build_run_eval_preflight_records_include_nonexecuting_command(tmp_path)
     assert "--preflight" in command
     assert "--preflight-json" in command
     assert "base_config_taiwan.yaml" in command
+
+
+def test_run_eval_preflight_phase_validation_rejects_missing_taiwan_evaluators():
+    module = load_module()
+    validation = module.validate_run_eval_preflight_phase(
+        {
+            "ok": True,
+            "scheduled_evaluators": ["agentic_math", "swebench_pro"],
+        },
+        "full",
+    )
+
+    assert validation["ok"] is False
+    assert "hallulens_zh_tw" in validation["missing_scheduled_evaluators"]
+    assert "ifeval_zh_tw" in validation["missing_scheduled_evaluators"]
+    assert "ts_bench" in validation["missing_scheduled_evaluators"]
+    assert "tceval_v2" in validation["missing_scheduled_evaluators"]
+    assert "script_adherence" in validation["missing_scheduled_evaluators"]
+    assert "aggregate_taiwan" in validation["missing_scheduled_evaluators"]
 
 
 def test_build_wandb_verify_command_adds_expected_run_metadata():
@@ -1704,6 +1727,7 @@ def test_paid_run_executes_run_eval_preflight_before_run_eval(tmp_path, monkeypa
                         "ok": True,
                         "status": "passed",
                         "enabled_benchmarks": ["agentic_math", "swebench_pro"],
+                        "scheduled_evaluators": ["agentic_math", "swebench_pro"],
                         "will_initialize_wandb": False,
                         "will_log_wandb_artifacts": False,
                         "will_initialize_weave": False,
@@ -1786,6 +1810,7 @@ def test_paid_run_executes_run_eval_preflight_before_run_eval(tmp_path, monkeypa
     assert run["preflight_ok"] is True
     assert run["preflight_returncode"] == 0
     assert run["preflight_status"] == "passed"
+    assert run["preflight_phase_validation"]["ok"] is True
     assert run["returncode"] == 7
 
 
