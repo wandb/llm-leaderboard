@@ -1,6 +1,6 @@
 # Taiwan Leaderboard Task Status
 
-Last updated: 2026-07-07 16:08 JST
+Last updated: 2026-07-07 16:12 JST
 
 This file is the persistent progress ledger for the Taiwan leaderboard work.
 Update it at every meaningful milestone so progress is visible even when chat
@@ -19,9 +19,10 @@ docs/taiwan_leaderboard_overview_ja.md
 ```text
 branch: dev-zh-TW
 remote: origin/dev-zh-TW
-latest pushed implementation/docs commit before this ledger update: c75e38d Record OpenAI judge quota check
+latest pushed implementation/docs commit before this ledger update: 90000eb Add OpenClaw budget guard plugin
 
 pushed implementation/docs commits this cycle before this ledger update:
+  90000eb Add OpenClaw budget guard plugin
   ebe5dcd Ignore local evaluation scratch dirs
   118cd71 Document Taiwan leaderboard readiness state
   f0477b4 Add NeMoClaw setup and verification tooling
