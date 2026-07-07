@@ -878,7 +878,6 @@ def test_paid_agentic_run_rejects_hand_edited_weave_gate_before_run_eval(
                 "    openclaw_model: 'openai-direct/gpt-4.1-mini-2025-04-14'",
                 "    agentic_thinking: 'off'",
                 "    swe_thinking: 'off'",
-                "    judge_model: 'gpt-4.1-mini-2025-04-14'",
                 "    canary: true",
             ]
         )
@@ -1251,7 +1250,6 @@ def test_prepare_only_review_records_completion_requirements(tmp_path, monkeypat
                 "    openclaw_model: 'openai-direct/gpt-4.1-mini-2025-04-14'",
                 "    agentic_thinking: 'off'",
                 "    swe_thinking: 'off'",
-                "    judge_model: 'gpt-4.1-mini-2025-04-14'",
                 "    canary: true",
             ]
         )
@@ -1390,6 +1388,7 @@ def test_prepare_only_review_records_completion_requirements(tmp_path, monkeypat
         == "/sandbox/.openclaw/openclaw.json"
     )
     assert guard["records"][0]["agentic_math_use_task_agent"] is True
+    assert guard["records"][0]["agentic_math_no_local"] is True
     assert "web_search" in guard["records"][0]["agentic_math_deny_tool"]
     assert "https?://" in guard["records"][0]["agentic_math_deny_argument_pattern"]
     assert guard["records"][0]["agentic_math_local_exec_allowed"] is True
@@ -1400,6 +1399,7 @@ def test_prepare_only_review_records_completion_requirements(tmp_path, monkeypat
         == "/sandbox/.openclaw/openclaw.json"
     )
     assert guard["records"][0]["swebench_pro_nemoclaw_checkout_transfer_mode"] == "copy"
+    assert guard["records"][0]["swebench_pro_no_local"] is True
     assert "web_search" in guard["records"][0]["swebench_pro_deny_tool"]
     assert "https?://" in guard["records"][0]["swebench_pro_deny_argument_pattern"]
     assert guard["records"][0]["swebench_pro_local_exec_allowed"] is True
@@ -1427,7 +1427,6 @@ def test_prepare_only_can_require_nemoclaw_agentic_config(tmp_path, monkeypatch)
                 "    openclaw_model: 'openai-direct/gpt-4.1-mini-2025-04-14'",
                 "    agentic_thinking: 'off'",
                 "    swe_thinking: 'off'",
-                "    judge_model: 'gpt-4.1-mini-2025-04-14'",
                 "    canary: true",
             ]
         )
@@ -1503,7 +1502,6 @@ def test_nemoclaw_agentic_config_guard_requires_remote_lookup_deny_policy(tmp_pa
                 "    - web_fetch",
                 "    - browser",
                 "    - browser_*",
-                "    - '*search*'",
                 "  deny_argument_pattern:",
                 "    - https?://",
                 r"    - \b(curl|wget)\b",
@@ -1550,7 +1548,6 @@ def test_nemoclaw_agentic_config_guard_rejects_local_exec_denied(tmp_path):
                 "    - web_fetch",
                 "    - browser",
                 "    - browser_*",
-                "    - '*search*'",
                 "  deny_argument_pattern:",
                 "    - https?://",
                 r"    - \b(curl|wget)\b",
@@ -1565,7 +1562,6 @@ def test_nemoclaw_agentic_config_guard_rejects_local_exec_denied(tmp_path):
                 "    - web_fetch",
                 "    - browser",
                 "    - browser_*",
-                "    - '*search*'",
                 "  deny_argument_pattern:",
                 "    - https?://",
                 r"    - \b(curl|wget)\b",
@@ -1595,6 +1591,73 @@ def test_nemoclaw_agentic_config_guard_rejects_local_exec_denied(tmp_path):
     assert guard["records"][0]["agentic_math_local_exec_blocking_patterns"] == ["exec"]
     assert guard["records"][0]["swebench_pro_local_exec_allowed"] is False
     assert guard["records"][0]["swebench_pro_local_exec_blocking_patterns"] == ["*exec*"]
+
+
+def test_nemoclaw_agentic_config_guard_rejects_weave_sidecar_for_production(tmp_path):
+    module = load_module()
+    config = tmp_path / "sidecar.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "run:",
+                "  agentic_math: true",
+                "  swebench_pro: true",
+                "agentic_math:",
+                "  nemoclaw_sandbox: nejumi-taiwan",
+                "  nemoclaw_openclaw_config_path: /sandbox/.openclaw/openclaw.json",
+                "  use_task_agent: true",
+                "  no_local: true",
+                "  weave_sidecar: true",
+                "  deny_tool:",
+                "    - code_execution",
+                "    - web_search",
+                "    - web_fetch",
+                "    - browser",
+                "    - browser_*",
+                "  deny_argument_pattern:",
+                "    - https?://",
+                r"    - \b(curl|wget)\b",
+                r"    - \b(requests|urllib|httpx)\.",
+                "swebench_pro:",
+                "  nemoclaw_sandbox: nejumi-taiwan",
+                "  nemoclaw_openclaw_config_path: /sandbox/.openclaw/openclaw.json",
+                "  nemoclaw_checkout_transfer_mode: copy",
+                "  no_local: true",
+                "  weave_sidecar_strict: true",
+                "  deny_tool:",
+                "    - code_execution",
+                "    - web_search",
+                "    - web_fetch",
+                "    - browser",
+                "    - browser_*",
+                "  deny_argument_pattern:",
+                "    - https?://",
+                r"    - \b(curl|wget)\b",
+                r"    - \b(requests|urllib|httpx)\.",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    guard = module.build_nemoclaw_agentic_config_guard(
+        [config],
+        phase="agentic",
+        required=True,
+    )
+
+    assert guard["ok"] is False
+    assert any(
+        "agentic_math must use native weave-openclaw tracing only" in error
+        for error in guard["errors"]
+    )
+    assert any(
+        "swebench_pro must use native weave-openclaw tracing only" in error
+        for error in guard["errors"]
+    )
+    record = guard["records"][0]
+    assert record["agentic_math_weave_sidecar"] is True
+    assert record["swebench_pro_weave_sidecar_strict"] is True
 
 
 def test_agentic_production_evidence_guard_requires_wandb_weave_and_nemoclaw(tmp_path):
@@ -1695,7 +1758,6 @@ def test_paid_run_executes_run_eval_preflight_before_run_eval(tmp_path, monkeypa
                 "    openclaw_model: 'openai-direct/gpt-4.1-mini-2025-04-14'",
                 "    agentic_thinking: 'off'",
                 "    swe_thinking: 'off'",
-                "    judge_model: 'gpt-4.1-mini-2025-04-14'",
                 "    canary: true",
             ]
         )
@@ -1827,7 +1889,6 @@ def test_paid_run_stops_before_run_eval_when_preflight_fails(tmp_path, monkeypat
                 "    openclaw_model: 'openai-direct/gpt-4.1-mini-2025-04-14'",
                 "    agentic_thinking: 'off'",
                 "    swe_thinking: 'off'",
-                "    judge_model: 'gpt-4.1-mini-2025-04-14'",
                 "    canary: true",
             ]
         )
@@ -1955,7 +2016,6 @@ def test_paid_run_requires_pre_run_budget_estimate(tmp_path, monkeypatch):
                 "    openclaw_model: 'openai-direct/gpt-4.1-mini-2025-04-14'",
                 "    agentic_thinking: 'off'",
                 "    swe_thinking: 'off'",
-                "    judge_model: 'gpt-4.1-mini-2025-04-14'",
                 "    canary: true",
             ]
         )
@@ -2013,7 +2073,6 @@ def test_paid_run_rejects_budget_for_different_model(tmp_path, monkeypatch):
                 "    openclaw_model: 'openai-direct/gpt-4.1-mini-2025-04-14'",
                 "    agentic_thinking: 'off'",
                 "    swe_thinking: 'off'",
-                "    judge_model: 'gpt-4.1-mini-2025-04-14'",
                 "    canary: true",
             ]
         )
@@ -2086,7 +2145,6 @@ def test_paid_run_rejects_approval_budget_below_pre_run_high(tmp_path, monkeypat
                 "    openclaw_model: 'openai-direct/gpt-4.1-mini-2025-04-14'",
                 "    agentic_thinking: 'off'",
                 "    swe_thinking: 'off'",
-                "    judge_model: 'gpt-4.1-mini-2025-04-14'",
                 "    canary: true",
             ]
         )
@@ -2166,7 +2224,6 @@ def test_paid_run_requires_external_action_approval_report(tmp_path, monkeypatch
                 "    openclaw_model: 'openai-direct/gpt-4.1-mini-2025-04-14'",
                 "    agentic_thinking: 'off'",
                 "    swe_thinking: 'off'",
-                "    judge_model: 'gpt-4.1-mini-2025-04-14'",
                 "    canary: true",
             ]
         )

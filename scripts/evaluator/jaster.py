@@ -38,6 +38,14 @@ def _to_plain_dict(value) -> dict:
     return dict(value)
 
 
+def _get_override_max_tokens(cfg, dataset_name: str):
+    try:
+        dataset_cfg = getattr(cfg, dataset_name, {})
+    except Exception:
+        return None
+    return _to_plain_dict(dataset_cfg).get("override_max_tokens")
+
+
 def evaluate_n_shot(few_shots: bool):
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()
@@ -154,7 +162,8 @@ def evaluate_n_shot(few_shots: bool):
                 
                 # Add inputs only once per sample (for LLM processing)
                 generator_config = _to_plain_dict(getattr(cfg, "generator", {}))
-                generator_config["max_tokens"] = cfg.jaster.override_max_tokens or task_data["output_length"]
+                override_max_tokens = _get_override_max_tokens(cfg, dataset_name)
+                generator_config["max_tokens"] = override_max_tokens or task_data["output_length"]
                 inputs.extend([messages, generator_config])
                 
                 for metrics in metrics_list:

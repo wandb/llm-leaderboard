@@ -47,18 +47,44 @@ RUN_FLAGS: dict[str, bool] = {
 
 PHASE_CHOICES = ("full", "nonagentic", "agentic", "agentic_aggregate")
 
-AGENTIC_DENIED_TOOLS = ["code_execution", "web_search", "web_fetch", "browser", "browser_*", "*search*"]
+AGENTIC_DENIED_TOOLS = [
+    "code_execution",
+    "process",
+    "process_*",
+    "web_search",
+    "web_fetch",
+    "browser",
+    "browser_*",
+]
 AGENTIC_DENIED_ARGUMENT_PATTERNS = [
     r"https?://",
     r"\b(curl|wget)\b",
     r"\b(requests|urllib|httpx)\.",
 ]
+MANIFEST_JUDGE_OVERRIDE_KEYS = (
+    "judge_model",
+    "judge_parallel",
+    "judge_params",
+)
 
 
 def _plain(value: Any) -> Any:
     if OmegaConf.is_config(value):
         return OmegaConf.to_container(value, resolve=True)
     return value
+
+
+def _reject_manifest_judge_overrides(model: dict[str, Any]) -> None:
+    present = [key for key in MANIFEST_JUDGE_OVERRIDE_KEYS if key in model]
+    if not present:
+        return
+    slug = str(model.get("slug") or "<unknown>")
+    raise ValueError(
+        "Manifest-level judge overrides are forbidden for Taiwan production-spec "
+        "full evaluation configs. Change judge settings only in "
+        "configs/base_config_taiwan.yaml after explicit user approval. "
+        f"model={slug}, keys={', '.join(present)}"
+    )
 
 
 def _run_flags_for_phase(phase: str) -> dict[str, bool]:
@@ -172,6 +198,7 @@ def _apply_swebench_pro_nemoclaw_config(
 
 
 def build_override(model: dict[str, Any], output_root: Path, phase: str = "full") -> dict[str, Any]:
+    _reject_manifest_judge_overrides(model)
     slug = str(model["slug"])
     openclaw_model = str(model["openclaw_model"])
     reasoning_effort = model.get("reasoning_effort")
@@ -190,13 +217,25 @@ def build_override(model: dict[str, Any], output_root: Path, phase: str = "full"
             "openclaw_max_attempts": int(model.get("openclaw_max_attempts", 3)),
             "openclaw_retry_base_seconds": int(model.get("openclaw_retry_base_seconds", 15)),
             "max_input_tokens": int(model.get("math_max_input_tokens", 500_000)),
-            "max_tool_calls": int(model.get("math_max_tool_calls", 60)),
-            "max_agent_turns": int(model.get("math_max_agent_turns", 60)),
+            "max_tool_calls": int(model.get("math_max_tool_calls", 40)),
+            "max_agent_turns": int(model.get("math_max_agent_turns", 40)),
+            "verify_weave_agents": bool(model.get("verify_weave_agents", True)),
+            "weave_agents_entity": str(model.get("weave_agents_entity", "llm-leaderboard")),
+            "weave_agents_project": str(model.get("weave_agents_project", "tc-leaderboard")),
+            "weave_agents_agent_name": str(
+                model.get("weave_agents_agent_name", "nejumi-taiwan-openclaw")
+            ),
+            "weave_agents_limit": int(model.get("weave_agents_limit", 50)),
+            "weave_agents_verification_timeout": int(
+                model.get("weave_agents_verification_timeout", 120)
+            ),
+            "weave_agents_poll_seconds": int(model.get("weave_agents_poll_seconds", 5)),
             "dry_run": False,
             "run_openclaw": phase != "agentic_aggregate",
             "results_dir": str(output_root / "agentic_math" / slug / "openclaw")
             if phase == "agentic_aggregate"
             else None,
+            "no_local": True,
             "weave_sidecar": False,
             "weave_sidecar_strict": False,
             "openclaw_tool_profile": "coding",
@@ -204,7 +243,7 @@ def build_override(model: dict[str, Any], output_root: Path, phase: str = "full"
             "deny_argument_pattern": AGENTIC_DENIED_ARGUMENT_PATTERNS,
         },
         "swebench_pro": {
-            "subset": "leaderboard_compact_80",
+            "subset": str(model.get("swe_subset", "leaderboard_compact_80")),
             "output_dir": str(output_root / "swebench_pro" / slug),
             "checkout_root": str(output_root / "swebench_pro_checkouts" / slug),
             "prefix": f"taiwan-swe-{slug}",
@@ -219,12 +258,24 @@ def build_override(model: dict[str, Any], output_root: Path, phase: str = "full"
             if phase == "agentic_aggregate"
             else None,
             "evaluate": True,
+            "no_local": True,
             "weave_sidecar": False,
             "weave_sidecar_strict": False,
             "openclaw_tool_profile": "coding",
             "max_input_tokens": int(model.get("swe_max_input_tokens", 1_000_000)),
-            "max_tool_calls": int(model.get("swe_max_tool_calls", 60)),
-            "max_agent_turns": int(model.get("swe_max_agent_turns", 60)),
+            "max_tool_calls": int(model.get("swe_max_tool_calls", 40)),
+            "max_agent_turns": int(model.get("swe_max_agent_turns", 40)),
+            "verify_weave_agents": bool(model.get("verify_weave_agents", True)),
+            "weave_agents_entity": str(model.get("weave_agents_entity", "llm-leaderboard")),
+            "weave_agents_project": str(model.get("weave_agents_project", "tc-leaderboard")),
+            "weave_agents_agent_name": str(
+                model.get("weave_agents_agent_name", "nejumi-taiwan-openclaw")
+            ),
+            "weave_agents_limit": int(model.get("weave_agents_limit", 50)),
+            "weave_agents_verification_timeout": int(
+                model.get("weave_agents_verification_timeout", 120)
+            ),
+            "weave_agents_poll_seconds": int(model.get("weave_agents_poll_seconds", 5)),
             "deny_tool": AGENTIC_DENIED_TOOLS,
             "deny_argument_pattern": AGENTIC_DENIED_ARGUMENT_PATTERNS,
         },
@@ -234,15 +285,6 @@ def build_override(model: dict[str, Any], output_root: Path, phase: str = "full"
     }
     _apply_agentic_math_nemoclaw_config(override["agentic_math"], model)
     _apply_swebench_pro_nemoclaw_config(override["swebench_pro"], model)
-    judge_model = model.get("judge_model")
-    if judge_model:
-        for task_name in ("mtbench", "hle", "hallulens_zh_tw"):
-            override.setdefault(task_name, {}).setdefault("judge", {})["model"] = str(
-                judge_model
-            )
-            override[task_name]["judge"]["parallel"] = int(model.get("judge_parallel", 8))
-            if "judge_params" in model:
-                override[task_name]["judge"]["params"] = _plain(model["judge_params"])
     if reasoning_effort:
         override.setdefault("generator", {}).setdefault("extra_body", {}).setdefault(
             "reasoning", {}

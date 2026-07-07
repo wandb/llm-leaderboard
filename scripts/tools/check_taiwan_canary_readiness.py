@@ -41,10 +41,11 @@ OPENCLAW_PROVIDER_ENV_KEYS = {
     "xai": "XAI_API_KEY",
 }
 AGENTIC_REQUIRED_DENIED_TOOLS = {
-    "*search*",
     "browser",
     "browser_*",
     "code_execution",
+    "process",
+    "process_*",
     "web_fetch",
     "web_search",
 }
@@ -58,6 +59,7 @@ NEMOCLAW_ALLOWED_RUNTIME_NETWORK_POLICIES = {
     "clawhub",
     "managed_inference",
     "npm_registry",
+    "npm_yarn",
     "nvidia",
     "openclaw_api",
     "openclaw_docs",

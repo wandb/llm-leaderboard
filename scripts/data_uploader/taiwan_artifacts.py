@@ -45,6 +45,113 @@ MTBENCH_TW_CONFIGS = [
     "mt_bench_tw-stem",
     "mt_bench_tw-writing",
 ]
+MTBENCH_REF_REQUIRED_CATEGORIES = {"math", "reasoning", "coding", "arena-hard-200"}
+MTBENCH_TW_SUPPLEMENTAL_REFERENCES: dict[int, dict[str, Any]] = {
+    123: {
+        "category": "coding",
+        "source_dataset": "FastChat MT-Bench",
+        "source_url": (
+            "https://raw.githubusercontent.com/lm-sys/FastChat/main/"
+            "fastchat/llm_judge/data/mt_bench/reference_answer/gpt-4.jsonl"
+        ),
+        "source_model_id": "gpt-4",
+        "source_question_id": 123,
+        "translation_note": (
+            "Traditional Chinese adaptation of the official FastChat GPT-4 "
+            "reference answer. TCEval-v2 mt_bench_tw-coding/test row id=123 "
+            "has reference=null."
+        ),
+        "turns": [
+            """<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>隨機笑話產生器</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f0f0f0;
+        }
+        button {
+            font-size: 20px;
+            padding: 10px 20px;
+            cursor: pointer;
+        }
+    </style>
+    <script>
+        function showRandomJoke() {
+            const jokes = [
+                "為什麼科學家不相信原子？因為它們構成了一切！",
+                "為什麼雞去參加降靈會？為了到另一邊。",
+                "為什麼有些情侶不去健身房？因為有些關係無法運作。",
+                "你聽過那位害怕負數的數學家嗎？他會不惜一切避免它們！"
+            ];
+
+            const randomIndex = Math.floor(Math.random() * jokes.length);
+            const randomJoke = jokes[randomIndex];
+            document.getElementById("jokeDisplay").textContent = randomJoke;
+        }
+    </script>
+</head>
+<body>
+    <h1>隨機笑話產生器</h1>
+    <button onclick="showRandomJoke()">顯示一則笑話！</button>
+    <p id="jokeDisplay"></p>
+</body>
+</html>""",
+            """可以在顯示笑話的段落元素上加一條 CSS 規則，將文字顏色設為紅色。也就是在 HTML 的 `<style>` 區塊中，針對 `#jokeDisplay` 加上 `color: red;`：
+
+```html
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>隨機笑話產生器</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f0f0f0;
+        }
+        button {
+            font-size: 20px;
+            padding: 10px 20px;
+            cursor: pointer;
+        }
+        #jokeDisplay {
+            color: red;
+        }
+    </style>
+    <script>
+        function showRandomJoke() {
+            const jokes = [
+                "為什麼科學家不相信原子？因為它們構成了一切！",
+                "為什麼雞去參加降靈會？為了到另一邊。",
+                "為什麼有些情侶不去健身房？因為有些關係無法運作。",
+                "你聽過那位害怕負數的數學家嗎？他會不惜一切避免它們！"
+            ];
+
+            const randomIndex = Math.floor(Math.random() * jokes.length);
+            const randomJoke = jokes[randomIndex];
+            document.getElementById("jokeDisplay").textContent = randomJoke;
+        }
+    </script>
+</head>
+<body>
+    <h1>隨機笑話產生器</h1>
+    <button onclick="showRandomJoke()">顯示一則笑話！</button>
+    <p id="jokeDisplay"></p>
+</body>
+</html>
+```
+
+這樣笑話顯示出來時，文字就會是紅色。""",
+        ],
+    }
+}
 JP_CHAR_RE = re.compile(r"[\u3040-\u30ff]")
 CHOICE_SYMBOLS = ("$", "&", "#", "@", "%", "!", "?", "~", "^", "*", "+", "=")
 ZH_TW_COMPAT_TRANSLATION = str.maketrans({"・": "·", "ー": "-"})
@@ -217,8 +324,39 @@ def build_mtbench_tw(output_dir: Path, request_interval: float) -> dict[str, Pat
                     }
                 )
 
+    existing_reference_ids = {int(row["question_id"]) for row in reference_rows}
+    for question_row in question_rows:
+        question_id = int(question_row["question_id"])
+        if question_id in existing_reference_ids:
+            continue
+        if question_row.get("category") not in MTBENCH_REF_REQUIRED_CATEGORIES:
+            continue
+        supplemental = MTBENCH_TW_SUPPLEMENTAL_REFERENCES.get(question_id)
+        if supplemental is None:
+            continue
+        if supplemental.get("category") != question_row.get("category"):
+            raise ValueError(
+                f"Supplemental MT-Bench-TW reference category mismatch for "
+                f"question_id={question_id}: expected {question_row.get('category')!r}, "
+                f"got {supplemental.get('category')!r}"
+            )
+        reference_rows.append(
+            {
+                "question_id": question_id,
+                "answer_id": f"tceval-v2-ref-{question_id}-supplemental",
+                "model_id": "tceval-v2-reference",
+                "choices": [{"index": 0, "turns": supplemental["turns"]}],
+                "supplemental_reference": {
+                    key: value
+                    for key, value in supplemental.items()
+                    if key not in {"turns"}
+                },
+            }
+        )
+
     question_rows.sort(key=lambda row: row["question_id"])
     reference_rows.sort(key=lambda row: row["question_id"])
+    validate_mtbench_tw_reference_contract(question_rows, reference_rows)
 
     question_path = output_dir / "mtbench_tw_question" / "question.jsonl"
     reference_path = (
@@ -229,6 +367,27 @@ def build_mtbench_tw(output_dir: Path, request_interval: float) -> dict[str, Pat
     write_jsonl(question_path, question_rows)
     write_jsonl(reference_path, reference_rows)
     return {"question": question_path, "referenceanswer": reference_path}
+
+
+def validate_mtbench_tw_reference_contract(
+    question_rows: list[dict[str, Any]],
+    reference_rows: list[dict[str, Any]],
+) -> None:
+    reference_ids = {int(row["question_id"]) for row in reference_rows}
+    missing = [
+        {
+            "question_id": int(row["question_id"]),
+            "category": row.get("category"),
+        }
+        for row in question_rows
+        if row.get("category") in MTBENCH_REF_REQUIRED_CATEGORIES
+        and int(row["question_id"]) not in reference_ids
+    ]
+    if missing:
+        raise ValueError(
+            "Missing MT-Bench-TW referenceanswer rows for ref-required questions: "
+            + json.dumps(missing, ensure_ascii=False, sort_keys=True)
+        )
 
 
 def build_tceval_v2_selected(
@@ -378,7 +537,19 @@ def build_tceval_v2(args: argparse.Namespace) -> None:
             args.project,
             "mtbench_tw_referenceanswer",
             mtbench_paths["referenceanswer"],
-            {**common_metadata, "configs": MTBENCH_TW_CONFIGS},
+            {
+                **common_metadata,
+                "configs": MTBENCH_TW_CONFIGS,
+                "supplemental_reference_count": len(MTBENCH_TW_SUPPLEMENTAL_REFERENCES),
+                "supplemental_references": [
+                    {
+                        key: value
+                        for key, value in supplemental.items()
+                        if key not in {"turns"}
+                    }
+                    for supplemental in MTBENCH_TW_SUPPLEMENTAL_REFERENCES.values()
+                ],
+            },
         )
         upload_dir_artifact(
             args.entity,

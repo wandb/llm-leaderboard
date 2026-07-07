@@ -6,6 +6,8 @@ import time
 from argparse import Namespace
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -22,6 +24,35 @@ def test_parse_last_json_line_skips_weave_banner():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     stdout = 'Initializing project: llm-leaderboard/tc-leaderboard\n{"ok":true,"trace":"abc"}\n'
     assert module.parse_last_json_line(stdout) == {"ok": True, "trace": "abc"}
+
+
+def test_run_agent_rejects_weave_sidecar_before_preflight():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    args = Namespace(weave_sidecar=True, weave_sidecar_strict=False)
+
+    with pytest.raises(SystemExit, match="Weave sidecar logging is disabled"):
+        module.run_agent(args)
+
+
+def test_relog_sidecar_is_disabled():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+
+    with pytest.raises(SystemExit, match="relog-sidecar is disabled"):
+        module.relog_sidecar(Namespace())
+
+
+def test_parse_last_json_line_accepts_pretty_json_after_proxy_banner():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    stdout = (
+        "[proxy] routing process HTTP traffic through external proxy http://10.200.0.1:3128\n"
+        '{\n  "payloads": [{"text": "ok"}],\n  "meta": {\n'
+        '    "agentMeta": {"sessionFile": "/sandbox/.openclaw/agents/main/sessions/s1.jsonl"}\n'
+        "  }\n}\n"
+    )
+    assert module.parse_last_json_line(stdout) == {
+        "payloads": [{"text": "ok"}],
+        "meta": {"agentMeta": {"sessionFile": "/sandbox/.openclaw/agents/main/sessions/s1.jsonl"}},
+    }
 
 
 def test_concurrent_export_limit_is_transient_weave_sidecar_error():
@@ -502,6 +533,7 @@ def test_copy_nemoclaw_session_file_writes_host_audit_copy(tmp_path, monkeypatch
     assert status["sandbox_session_file"] == "/sandbox/.openclaw/agents/main/sessions/s1.jsonl"
     assert Path(status["copied_session_file"]).read_text(encoding="utf-8").startswith('{"message"')
     assert captured["command"][:4] == ["nemoclaw", "sandbox", "exec", "nejumi-taiwan"]
+    assert "bash" not in captured["command"]
     assert "/sandbox/.openclaw/agents/main/sessions/s1.jsonl" in captured["command"]
 
 
@@ -844,11 +876,68 @@ def test_live_tool_budget_status_checks_nemoclaw_sandbox_session_dir(monkeypatch
     assert status["tool_call_count"] == 4
     assert status["session_source"] == "nemoclaw_sandbox"
     assert status["session_file"] == "/sandbox/tasks/math/openclaw_agent_state/sessions/session-1.jsonl"
-    assert status["sandbox_session_dirs"] == ["/sandbox/tasks/math/openclaw_agent_state/sessions"]
+    assert status["sandbox_session_dirs"] == [
+        "/sandbox/tasks/math/openclaw_agent_state/sessions",
+        "/sandbox/.openclaw/agents/agent-a/sessions",
+    ]
     assert status["sandbox_scan"]["ok"] is True
     assert captured["command"][:4] == ["nemoclaw", "sandbox", "exec", "nejumi-taiwan"]
     assert "/sandbox/tasks/math/openclaw_agent_state/sessions" in captured["command"]
+    assert "/sandbox/.openclaw/agents/agent-a/sessions" in captured["command"]
     assert captured["env"] == {"PATH": "/bin"}
+
+
+def test_live_tool_budget_status_interrupts_for_interactive_exec_policy(monkeypatch, tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path / "empty-openclaw-state"))
+
+    def fake_run(command, text, capture_output, check, env):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                {
+                    "ok": True,
+                    "sessions": [
+                        {
+                            "path": "/sandbox/tasks/math/sessions/session-1.jsonl",
+                            "mtime": 123.0,
+                            "tool_call_count": 1,
+                            "live_tool_policy_violation_count": 1,
+                            "live_tool_policy_violations": [
+                                {
+                                    "type": "forbidden_interactive_exec_pty",
+                                    "toolName": "exec",
+                                    "source": "content:0",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+            + "\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    args = Namespace(
+        agent="agent-a",
+        profile=None,
+        max_tool_calls=60,
+        max_input_tokens=500000,
+        max_agent_turns=60,
+        live_session_dir=[],
+        live_sandbox_session_dir=["/sandbox/tasks/math/sessions"],
+        nemoclaw_bin="nemoclaw",
+        nemoclaw_sandbox="nejumi-taiwan",
+    )
+
+    status = module.live_tool_budget_status(args, time.time() - 1, env={"PATH": "/bin"})
+
+    assert status["exceeded"] is True
+    assert status["reason"] == "live_tool_policy_violation"
+    assert status["live_tool_policy_violation_count"] == 1
+    assert status["live_tool_policy_violations"][0]["type"] == "forbidden_interactive_exec_pty"
 
 
 def test_runtime_budget_status_uses_live_nemoclaw_tool_overage():
@@ -1076,6 +1165,22 @@ def test_conversation_order_status_accepts_user_tool_answer_sequence():
     assert status["first_final_answer_index"] == 3
 
 
+def test_conversation_order_status_does_not_treat_zh_answer_word_as_final():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    events = [
+        {"type": "user_message", "timelineIndex": 0, "content": "problem"},
+        {"type": "assistant_message", "timelineIndex": 1, "content": "故答案可能為 9，先驗證。"},
+        {"type": "tool_call", "timelineIndex": 2, "toolCallId": "call_1", "toolName": "exec"},
+        {"type": "tool_result", "timelineIndex": 3, "toolCallId": "call_1", "toolName": "exec"},
+        {"type": "assistant_message", "timelineIndex": 4, "content": "ANSWER: \\boxed{9}"},
+    ]
+
+    status = module.conversation_order_status(events)
+
+    assert status["ok"] is True
+    assert status["first_final_answer_index"] == 4
+
+
 def test_conversation_order_status_rejects_tool_before_problem():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     events = [
@@ -1182,6 +1287,103 @@ def test_build_agents_check_summary_reports_timestamp_and_order_health():
     assert summary["latest_trace_spans_chronological"][2]["has_final_answer_marker"] is True
 
 
+def test_build_agents_check_summary_uses_trace_chat_content_when_span_rows_are_scalar_only():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    agents = {"agents": [{"agent_name": "nejumi-taiwan-openclaw"}], "total_count": 1}
+    spans = {
+        "spans": [
+            {
+                "started_at": "2026-06-29T00:00:00Z",
+                "ended_at": "2026-06-29T00:00:03Z",
+                "operation_name": "chat",
+                "agent_name": "nejumi-taiwan-openclaw",
+                "trace_id": "trace-chat",
+                "span_id": "span-chat-1",
+                "conversation_id": "agent:main:task-chat",
+                "request_model": "gpt-4.1-mini-2025-04-14",
+            },
+            {
+                "started_at": "2026-06-29T00:00:00Z",
+                "ended_at": "2026-06-29T00:00:03Z",
+                "operation_name": "invoke_agent",
+                "agent_name": "nejumi-taiwan-openclaw",
+                "trace_id": "trace-chat",
+                "span_id": "span-root",
+                "conversation_id": "agent:main:task-chat",
+                "request_model": "gpt-4.1-mini-2025-04-14",
+            },
+            {
+                "started_at": "2026-06-29T00:00:01Z",
+                "ended_at": "2026-06-29T00:00:01.200000Z",
+                "operation_name": "execute_tool",
+                "agent_name": "nejumi-taiwan-openclaw",
+                "trace_id": "trace-chat",
+                "span_id": "span-tool",
+                "conversation_id": "agent:main:task-chat",
+                "tool_name": "tool_search_code",
+            },
+            {
+                "started_at": "2026-06-29T00:00:02Z",
+                "ended_at": "2026-06-29T00:00:03Z",
+                "operation_name": "chat",
+                "agent_name": "nejumi-taiwan-openclaw",
+                "trace_id": "trace-chat",
+                "span_id": "span-chat-2",
+                "conversation_id": "agent:main:task-chat",
+                "request_model": "gpt-4.1-mini-2025-04-14",
+            },
+        ]
+    }
+    trace_chat = {
+        "trace_id": "trace-chat",
+        "messages": [
+            {
+                "type": "user_message",
+                "started_at": "2026-06-29T00:00:00Z",
+                "user_message": {"text": "problem"},
+            },
+            {
+                "type": "tool_call",
+                "started_at": "2026-06-29T00:00:01Z",
+                "tool_call": {
+                    "tool_name": "tool_search_code",
+                    "tool_arguments": "{\"code\":\"return 7*13\"}",
+                    "tool_result": "{\"value\":91}",
+                },
+            },
+            {
+                "type": "assistant_message",
+                "started_at": "2026-06-29T00:00:02Z",
+                "assistant_message": {
+                    "text": "CANARY_RESULT TEST 91",
+                    "model": "gpt-4.1-mini-2025-04-14",
+                },
+            },
+        ],
+    }
+
+    summary = module.build_agents_check_summary(
+        agents,
+        spans,
+        trace_chat_payload=trace_chat,
+        entity="llm-leaderboard",
+        project="tc-leaderboard",
+        agent_name="nejumi-taiwan-openclaw",
+        limit=10,
+        span_limit=40,
+    )
+
+    health = summary["content_capture_health"]
+    assert summary["query_source"]["trace_chat_endpoint"] == module.AGENTS_TRACES_CHAT_ENDPOINT
+    assert health["message_spans_with_content"] == 2
+    assert health["message_spans_with_input"] == 1
+    assert health["tool_spans_with_content"] == 1
+    assert health["final_answer_span_count"] == 1
+    assert health["trace_user_message_order_ok"] is True
+    assert health["trace_final_answer_order_ok"] is True
+    assert summary["trace_order_health"]["order_issues"] == []
+
+
 def test_check_agents_writes_json_diagnostic(tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     output = tmp_path / "agents_diagnostic.json"
@@ -1205,6 +1407,8 @@ def test_check_agents_writes_json_diagnostic(tmp_path):
             return agents
         if path == "/agents/spans/query":
             return spans
+        if path == "/agents/traces/chat":
+            return {"trace_id": "trace-json", "messages": []}
         raise AssertionError(path)
 
     original = module.agents_api_post
@@ -1588,7 +1792,7 @@ def test_build_openclaw_command_defaults_sandbox_visible_config_path_for_nemocla
         "OPENCLAW_CONFIG_PATH=/sandbox/.openclaw/openclaw.json",
         "OPENCLAW_MESSAGE_B64=aGVsbG8=",
     ]
-    assert command[13:15] == ["bash", "-lc"]
+    assert command[13:15] == ["bash", "-c"]
     assert "openclaw agent" in command[15]
     assert '--message "$OPENCLAW_MESSAGE"' in command[15]
     assert "hello" not in command
@@ -1625,7 +1829,7 @@ def test_build_openclaw_command_passes_sandbox_visible_config_path_for_nemoclaw(
         "OPENCLAW_CONFIG_PATH=/sandbox/repo/.nejumi_openclaw/openclaw_config.json",
         "OPENCLAW_MESSAGE_B64=aGVsbG8=",
     ]
-    assert command[13:15] == ["bash", "-lc"]
+    assert command[13:15] == ["bash", "-c"]
     assert "openclaw agent" in command[15]
 
 

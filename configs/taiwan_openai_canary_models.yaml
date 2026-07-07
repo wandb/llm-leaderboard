@@ -1,13 +1,19 @@
 models:
   - slug: gpt-4_1-mini-openai-direct-canary
     source_config: config-gpt-4.1-mini-2025-04-14.yaml
-    run_name: "taiwan/full/openai/gpt-4.1-mini: openai-direct-canary"
+    run_name: "taiwan/full/openai/gpt-4.1-mini: production-spec-one-model"
     japanese_runname: "openai/gpt-4-1-mini-2025-04-14"
     openclaw_model: "openai-direct/gpt-4.1-mini-2025-04-14"
+    nemoclaw_sandbox: "nejumi-taiwan"
+    nemoclaw_openclaw_config_path: "/sandbox/.openclaw/openclaw.json"
+    swebench_pro_nemoclaw_sandbox: "nejumi-taiwan"
+    swebench_pro_nemoclaw_openclaw_config_path: "/sandbox/.openclaw/openclaw.json"
+    swebench_pro_nemoclaw_checkout_transfer_mode: "copy"
     reasoning_effort: null
     agentic_thinking: "off"
     swe_thinking: "off"
-    judge_model: "gpt-4.1-mini-2025-04-14"
-    judge_parallel: 2
+    swe_subset: "leaderboard_compact_80"
+    swe_max_tool_calls: 40
+    swe_max_agent_turns: 40
     canary: true
-    notes: "Low-cost OpenAI-direct one-model canary for harness validation before broader model expansion."
+    notes: "OpenAI-direct one-model production-spec full run. Evaluation settings, including judges, must inherit the release configuration unchanged."

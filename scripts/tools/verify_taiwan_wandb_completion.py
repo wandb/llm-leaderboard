@@ -38,8 +38,17 @@ AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "conversation_order",
     "tool_policy_ok",
     "tool_policy_violations",
-    "weave_sidecar_ok",
-    "weave_sidecar",
+    "weave_agents_ok",
+    "weave_agents_required",
+    "weave_agents_agent_name",
+    "weave_agents_conversation_id",
+    "weave_agents_conversation_id_contains",
+    "weave_agents_conversation_url",
+    "weave_agents_trace_id",
+    "weave_agents_url",
+    "weave_agents_trace_url",
+    "weave_agents_verifier_json",
+    "weave_agents_error",
     "openclaw_result_path",
     "openclaw_invocation_path",
     "openclaw_invocation_sha256",
@@ -55,8 +64,17 @@ AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "conversation_order",
     "tool_policy_ok",
     "tool_policy_violations",
-    "weave_sidecar_ok",
-    "weave_sidecar",
+    "weave_agents_ok",
+    "weave_agents_required",
+    "weave_agents_agent_name",
+    "weave_agents_conversation_id",
+    "weave_agents_conversation_id_contains",
+    "weave_agents_conversation_url",
+    "weave_agents_trace_id",
+    "weave_agents_url",
+    "weave_agents_trace_url",
+    "weave_agents_verifier_json",
+    "weave_agents_error",
     "openclaw_result_path",
     "openclaw_invocation_path",
     "openclaw_invocation_sha256",
@@ -80,7 +98,8 @@ AGENTIC_ROW_TRUE_COLUMNS = (
     "nemoclaw_session_audit_ok",
     "conversation_order_ok",
     "tool_policy_ok",
-    "weave_sidecar_ok",
+    "weave_agents_ok",
+    "weave_agents_required",
 )
 AGENTIC_ROW_EMPTY_LIST_COLUMNS = (
     "tool_policy_violations",
@@ -88,7 +107,15 @@ AGENTIC_ROW_EMPTY_LIST_COLUMNS = (
 AGENTIC_ROW_DICT_OK_COLUMNS = (
     "nemoclaw_session_audit",
     "conversation_order",
-    "weave_sidecar",
+)
+AGENTIC_ROW_NONEMPTY_STRING_COLUMNS = (
+    "weave_agents_agent_name",
+    "weave_agents_conversation_id",
+    "weave_agents_conversation_id_contains",
+    "weave_agents_conversation_url",
+    "weave_agents_trace_id",
+    "weave_agents_url",
+    "weave_agents_verifier_json",
 )
 AGENTIC_ROW_COPY_SOURCE_COLUMNS = (
     "nemoclaw_session_copy_source",
@@ -278,6 +305,18 @@ def _positive_int_like(value: Any) -> bool:
         return int(value) > 0
     except (TypeError, ValueError):
         return False
+
+
+def _json_decoded_table_value(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    stripped = value.strip()
+    if not stripped or stripped[0] not in "[{":
+        return value
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        return value
 
 
 def _download_wandb_table_json(run: Any, table_path: str) -> Any:
@@ -579,6 +618,11 @@ def _output_table_row_observability_check(
         for column in AGENTIC_ROW_DICT_OK_COLUMNS
         if column in spec.output_table_required_columns
     ]
+    required_nonempty_strings = [
+        column
+        for column in AGENTIC_ROW_NONEMPTY_STRING_COLUMNS
+        if column in spec.output_table_required_columns
+    ]
     required_copy_source = [
         column
         for column in AGENTIC_ROW_COPY_SOURCE_COLUMNS
@@ -593,6 +637,7 @@ def _output_table_row_observability_check(
         not required_true
         and not required_empty
         and not required_dict_ok
+        and not required_nonempty_strings
         and not required_copy_source
         and not required_positive_int
     ):
@@ -602,6 +647,7 @@ def _output_table_row_observability_check(
         required_true
         + required_empty
         + required_dict_ok
+        + required_nonempty_strings
         + required_copy_source
         + required_positive_int
     )
@@ -613,6 +659,7 @@ def _output_table_row_observability_check(
             required_true_columns=required_true,
             required_empty_list_columns=required_empty,
             required_dict_ok_columns=required_dict_ok,
+            required_nonempty_string_columns=required_nonempty_strings,
             required_copy_source_columns=required_copy_source,
             required_positive_int_columns=required_positive_int,
             allowed_copy_sources=list(NEMOCLAW_SESSION_COPY_SOURCES),
@@ -631,6 +678,7 @@ def _output_table_row_observability_check(
             required_true_columns=required_true,
             required_empty_list_columns=required_empty,
             required_dict_ok_columns=required_dict_ok,
+            required_nonempty_string_columns=required_nonempty_strings,
             required_copy_source_columns=required_copy_source,
             required_positive_int_columns=required_positive_int,
             allowed_copy_sources=list(NEMOCLAW_SESSION_COPY_SOURCES),
@@ -647,12 +695,19 @@ def _output_table_row_observability_check(
         non_empty_lists = [
             column
             for column in required_empty
-            if not isinstance(row.get(column), list) or row.get(column)
+            if not isinstance(_json_decoded_table_value(row.get(column)), list)
+            or _json_decoded_table_value(row.get(column))
         ]
         dict_not_ok = [
             column
             for column in required_dict_ok
-            if not isinstance(row.get(column), dict) or row.get(column, {}).get("ok") is not True
+            if not isinstance(_json_decoded_table_value(row.get(column)), dict)
+            or _json_decoded_table_value(row.get(column)).get("ok") is not True
+        ]
+        empty_strings = [
+            column
+            for column in required_nonempty_strings
+            if not isinstance(row.get(column), str) or not row.get(column).strip()
         ]
         invalid_copy_sources = [
             column
@@ -664,7 +719,23 @@ def _output_table_row_observability_check(
             for column in required_positive_int
             if not _positive_int_like(row.get(column))
         ]
-        if not_true or non_empty_lists or dict_not_ok or invalid_copy_sources or invalid_positive_ints:
+        invalid_conversation_urls = []
+        if "weave_agents_conversation_url" in required_nonempty_strings:
+            conversation_url = row.get("weave_agents_conversation_url")
+            if (
+                not isinstance(conversation_url, str)
+                or "/weave/agents/conversations/" not in conversation_url
+            ):
+                invalid_conversation_urls.append("weave_agents_conversation_url")
+        if (
+            not_true
+            or non_empty_lists
+            or dict_not_ok
+            or empty_strings
+            or invalid_copy_sources
+            or invalid_positive_ints
+            or invalid_conversation_urls
+        ):
             invalid_count += 1
             if len(invalid_examples) < 5:
                 invalid_examples.append(
@@ -673,8 +744,10 @@ def _output_table_row_observability_check(
                         "not_true": not_true,
                         "non_empty_lists": non_empty_lists,
                         "dict_not_ok": dict_not_ok,
+                        "empty_strings": empty_strings,
                         "invalid_copy_sources": invalid_copy_sources,
                         "invalid_positive_ints": invalid_positive_ints,
+                        "invalid_conversation_urls": invalid_conversation_urls,
                     }
                 )
     if expected_rows is not None and len(rows) != expected_rows:
@@ -685,6 +758,7 @@ def _output_table_row_observability_check(
             required_true_columns=required_true,
             required_empty_list_columns=required_empty,
             required_dict_ok_columns=required_dict_ok,
+            required_nonempty_string_columns=required_nonempty_strings,
             required_copy_source_columns=required_copy_source,
             required_positive_int_columns=required_positive_int,
             allowed_copy_sources=list(NEMOCLAW_SESSION_COPY_SOURCES),
@@ -703,6 +777,7 @@ def _output_table_row_observability_check(
             required_true_columns=required_true,
             required_empty_list_columns=required_empty,
             required_dict_ok_columns=required_dict_ok,
+            required_nonempty_string_columns=required_nonempty_strings,
             required_copy_source_columns=required_copy_source,
             required_positive_int_columns=required_positive_int,
             allowed_copy_sources=list(NEMOCLAW_SESSION_COPY_SOURCES),
@@ -720,6 +795,7 @@ def _output_table_row_observability_check(
         required_true_columns=required_true,
         required_empty_list_columns=required_empty,
         required_dict_ok_columns=required_dict_ok,
+        required_nonempty_string_columns=required_nonempty_strings,
         required_copy_source_columns=required_copy_source,
         required_positive_int_columns=required_positive_int,
         allowed_copy_sources=list(NEMOCLAW_SESSION_COPY_SOURCES),
@@ -981,7 +1057,9 @@ def _benchmark_required_evidence(
                 "name": spec.output_table,
                 "row_count": "must equal total metric",
                 "required_columns": list(spec.output_table_required_columns),
-                "row_observability": "all required audit/tool/order/sidecar row checks must pass",
+                "row_observability": (
+                    "all required audit/tool/order/native Weave Agents row checks must pass"
+                ),
             },
         ],
         "artifacts": artifacts,
@@ -1207,6 +1285,9 @@ def _observed_benchmark_evidence(
                     ),
                     "row_observability_required_dict_ok_columns": check.get(
                         "required_dict_ok_columns"
+                    ),
+                    "row_observability_required_nonempty_string_columns": check.get(
+                        "required_nonempty_string_columns"
                     ),
                     "row_observability_required_copy_source_columns": check.get(
                         "required_copy_source_columns"
@@ -1685,8 +1766,6 @@ def verify_full_taiwan_run(
         checks.append(_fail_check("run_state", "run state is not finished", state=state))
 
     for unit in taxonomy["units"]:
-        if not unit.get("required", True):
-            continue
         if unit.get("pending", False) and not include_pending:
             checks.append(
                 _ok_check(
@@ -1696,6 +1775,8 @@ def verify_full_taiwan_run(
                     display_name=unit.get("display_name", unit["id"]),
                 )
             )
+            continue
+        if not unit.get("required", True):
             continue
         for table_name in _taxonomy_unit_sources(unit, num_few_shots=num_few_shots):
             check = _table_check(

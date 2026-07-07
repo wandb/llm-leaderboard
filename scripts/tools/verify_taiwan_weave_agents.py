@@ -28,6 +28,7 @@ VERIFICATION_SCHEMA_VERSION = 1
 AGENTS_API_BASE_URL = "https://trace.wandb.ai"
 AGENTS_QUERY_ENDPOINT = "/agents/query"
 AGENTS_SPANS_QUERY_ENDPOINT = "/agents/spans/query"
+AGENTS_TRACES_CHAT_ENDPOINT = "/agents/traces/chat"
 FINAL_ANSWER_MARKERS = (
     "ANSWER:",
     "FINAL ANSWER",
@@ -129,6 +130,92 @@ def _span_visible_text(span: dict[str, Any]) -> str:
         span.get("tool_call_result"),
     ]
     return "\n".join(_jsonish_text(part) for part in parts if part)
+
+
+def _chat_messages(trace_chat_payload: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(trace_chat_payload, dict):
+        return []
+    messages = trace_chat_payload.get("messages", [])
+    if not isinstance(messages, list):
+        return []
+    return [message for message in messages if isinstance(message, dict)]
+
+
+def _chat_component_text(message: dict[str, Any], component: str, fields: tuple[str, ...]) -> str:
+    payload = message.get(component)
+    if not isinstance(payload, dict):
+        return ""
+    parts = [_jsonish_text(payload.get(field)) for field in fields if payload.get(field)]
+    return "\n".join(part for part in parts if part)
+
+
+def _chat_user_text(message: dict[str, Any]) -> str:
+    return _chat_component_text(message, "user_message", ("text", "content", "message", "prompt"))
+
+
+def _chat_assistant_text(message: dict[str, Any]) -> str:
+    return _chat_component_text(
+        message,
+        "assistant_message",
+        ("text", "content", "message", "response"),
+    )
+
+
+def _chat_tool_content(message: dict[str, Any]) -> str:
+    return _chat_component_text(
+        message,
+        "tool_call",
+        ("tool_arguments", "tool_result", "arguments", "result", "input", "output"),
+    )
+
+
+def _chat_agent_start_text(message: dict[str, Any]) -> str:
+    return _chat_component_text(
+        message,
+        "agent_start",
+        ("system_instructions", "tool_definitions", "tools"),
+    )
+
+
+def _chat_visible_text(message: dict[str, Any]) -> str:
+    parts = [
+        _chat_user_text(message),
+        _chat_assistant_text(message),
+        _chat_tool_content(message),
+        _chat_agent_start_text(message),
+    ]
+    return "\n".join(part for part in parts if part)
+
+
+def _chat_timestamp(message: dict[str, Any]) -> float | None:
+    return _parse_span_timestamp(message.get("started_at"))
+
+
+def _chat_is_tool_call(message: dict[str, Any]) -> bool:
+    return isinstance(message.get("tool_call"), dict)
+
+
+def _chat_is_final_answer(message: dict[str, Any]) -> bool:
+    assistant_text = _chat_assistant_text(message)
+    return any(marker in assistant_text for marker in FINAL_ANSWER_MARKERS)
+
+
+def summarize_chat_message(message: dict[str, Any]) -> dict[str, Any]:
+    user_text = _chat_user_text(message)
+    assistant_text = _chat_assistant_text(message)
+    tool_content = _chat_tool_content(message)
+    return {
+        "type": message.get("type"),
+        "started_at": message.get("started_at"),
+        "has_user_message": bool(user_text),
+        "has_assistant_message": bool(assistant_text),
+        "has_tool_call": _chat_is_tool_call(message),
+        "has_tool_content": bool(tool_content),
+        "is_final_answer": _chat_is_final_answer(message),
+        "user_text_preview": user_text[:500],
+        "assistant_text_preview": assistant_text[:500],
+        "tool_content_preview": tool_content[:500],
+    }
 
 
 def _span_output_text(span: dict[str, Any]) -> str:
@@ -291,6 +378,7 @@ def verify_agents_payload(
     agents_payload: dict[str, Any],
     spans_payload: dict[str, Any],
     *,
+    trace_chat_payload: dict[str, Any] | None = None,
     entity: str,
     project: str,
     agent_name: str,
@@ -456,7 +544,36 @@ def verify_agents_payload(
     ]
     tool_spans_with_content = [span for span in tool_spans if _has_tool_content(span)]
     final_answer_spans = [span for span in message_spans if _is_final_answer_span(span)]
-    visible_trace_text = "\n".join(_span_visible_text(span) for span in latest_trace_spans_chronological)
+    trace_chat_messages = _chat_messages(trace_chat_payload)
+    chat_messages_with_content = [
+        message
+        for message in trace_chat_messages
+        if _chat_user_text(message) or _chat_assistant_text(message)
+    ]
+    chat_messages_with_input = [
+        message for message in trace_chat_messages if _chat_user_text(message)
+    ]
+    chat_tool_calls = [
+        message for message in trace_chat_messages if _chat_is_tool_call(message)
+    ]
+    chat_tool_calls_with_content = [
+        message for message in chat_tool_calls if _chat_tool_content(message)
+    ]
+    chat_final_answer_messages = [
+        message for message in trace_chat_messages if _chat_is_final_answer(message)
+    ]
+    message_content_count = len(message_spans_with_content) + len(chat_messages_with_content)
+    message_input_count = len(message_spans_with_input) + len(chat_messages_with_input)
+    tool_content_count = len(tool_spans_with_content) + len(chat_tool_calls_with_content)
+    final_answer_count = len(final_answer_spans) + len(chat_final_answer_messages)
+    visible_trace_text = "\n".join(
+        text
+        for text in [
+            "\n".join(_span_visible_text(span) for span in latest_trace_spans_chronological),
+            "\n".join(_chat_visible_text(message) for message in trace_chat_messages),
+        ]
+        if text
+    )
     expected_request_models = [
         model.strip() for model in (expected_request_models or []) if model.strip()
     ]
@@ -465,6 +582,15 @@ def verify_agents_payload(
             str(span.get("request_model")).strip()
             for span in latest_trace_spans_chronological
             if str(span.get("request_model") or "").strip()
+        }
+        | {
+            str(payload.get("model")).strip()
+            for message in trace_chat_messages
+            for payload in (
+                message.get("agent_start"),
+                message.get("assistant_message"),
+            )
+            if isinstance(payload, dict) and str(payload.get("model") or "").strip()
         }
     )
     project_id = f"{entity}/{project}"
@@ -507,13 +633,14 @@ def verify_agents_payload(
         )
 
     if require_content:
-        if not message_spans_with_content:
+        if message_content_count <= 0:
             checks.append(
                 _fail_check(
                     "message_content_capture",
-                    "message spans do not expose input/output content",
+                    "Agents API does not expose input/output message content",
                     message_span_count=len(message_spans),
-                    message_spans_with_content=0,
+                    message_spans_with_content=message_content_count,
+                    chat_messages_with_content=len(chat_messages_with_content),
                 )
             )
         else:
@@ -522,18 +649,20 @@ def verify_agents_payload(
                     "message_content_capture",
                     "message content is visible in Agents API",
                     message_span_count=len(message_spans),
-                    message_spans_with_content=len(message_spans_with_content),
+                    message_spans_with_content=message_content_count,
+                    chat_messages_with_content=len(chat_messages_with_content),
                 )
             )
 
     if require_input_message:
-        if not message_spans_with_input:
+        if message_input_count <= 0:
             checks.append(
                 _fail_check(
                     "input_message_capture",
-                    "message spans do not expose the user/problem input",
+                    "Agents API does not expose the user/problem input",
                     message_span_count=len(message_spans),
-                    message_spans_with_input=0,
+                    message_spans_with_input=message_input_count,
+                    chat_messages_with_input=len(chat_messages_with_input),
                 )
             )
         else:
@@ -542,7 +671,8 @@ def verify_agents_payload(
                     "input_message_capture",
                     "user/problem input is visible in Agents API",
                     message_span_count=len(message_spans),
-                    message_spans_with_input=len(message_spans_with_input),
+                    message_spans_with_input=message_input_count,
+                    chat_messages_with_input=len(chat_messages_with_input),
                 )
             )
 
@@ -609,20 +739,21 @@ def verify_agents_payload(
             )
 
     if require_tool_content:
-        if not tool_spans:
+        if not tool_spans and not chat_tool_calls:
             checks.append(
                 _fail_check(
                     "tool_content_capture",
-                    "tool content was required but no tool spans are present",
+                    "tool content was required but no tool spans or chat tool calls are present",
                 )
             )
-        elif len(tool_spans_with_content) != len(tool_spans):
+        elif tool_content_count < len(tool_spans):
             checks.append(
                 _fail_check(
                     "tool_content_capture",
-                    "one or more tool spans lack arguments/results",
+                    "one or more tool spans lack arguments/results in Agents API",
                     tool_span_count=len(tool_spans),
-                    tool_spans_with_content=len(tool_spans_with_content),
+                    tool_spans_with_content=tool_content_count,
+                    chat_tool_calls_with_content=len(chat_tool_calls_with_content),
                 )
             )
         else:
@@ -631,8 +762,45 @@ def verify_agents_payload(
                     "tool_content_capture",
                     "tool arguments/results are visible in Agents API",
                     tool_span_count=len(tool_spans),
+                    tool_spans_with_content=tool_content_count,
+                    chat_tool_calls_with_content=len(chat_tool_calls_with_content),
                 )
             )
+
+    input_start_records = [
+        (_span_start(span), str(span.get("started_at") or ""))
+        for span in message_spans_with_input
+    ] + [
+        (_chat_timestamp(message), str(message.get("started_at") or ""))
+        for message in chat_messages_with_input
+    ]
+    input_start_records = [
+        record for record in input_start_records if record[0] is not None
+    ]
+    tool_start_records = [
+        (_span_start(span), str(span.get("started_at") or ""))
+        for span in tool_spans
+    ] + [
+        (_chat_timestamp(message), str(message.get("started_at") or ""))
+        for message in chat_tool_calls
+    ]
+    tool_start_records = [
+        record for record in tool_start_records if record[0] is not None
+    ]
+    final_answer_end_records = [
+        (_span_end(span), str(span.get("ended_at") or ""))
+        for span in final_answer_spans
+    ]
+    final_answer_start_records = [
+        (_chat_timestamp(message), str(message.get("started_at") or ""))
+        for message in chat_final_answer_messages
+    ]
+    final_answer_end_records = [
+        record for record in final_answer_end_records if record[0] is not None
+    ]
+    final_answer_start_records = [
+        record for record in final_answer_start_records if record[0] is not None
+    ]
 
     if message_spans and tool_spans:
         if timestamp_issues:
@@ -682,9 +850,9 @@ def verify_agents_payload(
                     first_tool_started_at=min(str(span.get("started_at") or "") for span in tool_spans),
                 )
             )
-        elif message_spans_with_input:
-            first_tool = min(_span_start(span) for span in tool_spans)
-            first_input_message = min(_span_start(span) for span in message_spans_with_input)
+        elif input_start_records:
+            first_tool, first_tool_started_at = min(tool_start_records)
+            first_input_message, first_input_message_started_at = min(input_start_records)
             if first_input_message is None or first_tool is None:
                 checks.append(
                     _fail_check(
@@ -697,10 +865,8 @@ def verify_agents_payload(
                     _fail_check(
                         "trace_user_message_order",
                         "a tool span starts before or at the same time as the first visible user/problem input span",
-                        first_input_message_started_at=min(
-                            str(span.get("started_at") or "") for span in message_spans_with_input
-                        ),
-                        first_tool_started_at=min(str(span.get("started_at") or "") for span in tool_spans),
+                        first_input_message_started_at=first_input_message_started_at,
+                        first_tool_started_at=first_tool_started_at,
                     )
                 )
             else:
@@ -708,10 +874,8 @@ def verify_agents_payload(
                     _ok_check(
                         "trace_user_message_order",
                         "tool spans do not start before visible user/problem input",
-                        first_input_message_started_at=min(
-                            str(span.get("started_at") or "") for span in message_spans_with_input
-                        ),
-                        first_tool_started_at=min(str(span.get("started_at") or "") for span in tool_spans),
+                        first_input_message_started_at=first_input_message_started_at,
+                        first_tool_started_at=first_tool_started_at,
                     )
                 )
         elif require_input_message:
@@ -735,12 +899,12 @@ def verify_agents_payload(
             _ok_check(
                 "trace_user_message_order",
                 "no tool span and input-message order conflict was detected",
-                message_spans_with_input=len(message_spans_with_input),
+                message_spans_with_input=message_input_count,
                 tool_span_count=0,
             )
         )
 
-    if final_answer_spans and tool_spans:
+    if final_answer_count > 0 and tool_spans:
         if timestamp_issues:
             checks.append(
                 _fail_check(
@@ -750,43 +914,45 @@ def verify_agents_payload(
                 )
             )
         else:
-            first_final_answer_end = min(_span_end(span) for span in final_answer_spans)
-            last_tool_start = max(_span_start(span) for span in tool_spans)
-            if first_final_answer_end is None or last_tool_start is None:
+            final_answer_boundary_records = final_answer_end_records + final_answer_start_records
+            if not final_answer_boundary_records or not tool_start_records:
                 checks.append(
                     _fail_check(
                         "trace_final_answer_order",
                         "final-answer/tool ordering could not be compared because timestamps are invalid",
                     )
                 )
-            elif last_tool_start >= first_final_answer_end:
-                checks.append(
-                    _fail_check(
-                        "trace_final_answer_order",
-                        "a tool span starts after or at the same time as a final-answer message span ended",
-                        first_final_answer_ended_at=min(str(span.get("ended_at") or "") for span in final_answer_spans),
-                        last_tool_started_at=max(str(span.get("started_at") or "") for span in tool_spans),
-                        final_answer_span_count=len(final_answer_spans),
-                        tool_span_count=len(tool_spans),
-                    )
-                )
             else:
-                checks.append(
-                    _ok_check(
-                        "trace_final_answer_order",
-                        "tool spans do not start after final-answer message spans",
-                        first_final_answer_ended_at=min(str(span.get("ended_at") or "") for span in final_answer_spans),
-                        last_tool_started_at=max(str(span.get("started_at") or "") for span in tool_spans),
-                        final_answer_span_count=len(final_answer_spans),
-                        tool_span_count=len(tool_spans),
+                first_final_answer_boundary, first_final_answer_at = min(final_answer_boundary_records)
+                last_tool_start, last_tool_started_at = max(tool_start_records)
+                if last_tool_start >= first_final_answer_boundary:
+                    checks.append(
+                        _fail_check(
+                            "trace_final_answer_order",
+                            "a tool span starts after or at the same time as a final-answer message",
+                            first_final_answer_at=first_final_answer_at,
+                            last_tool_started_at=last_tool_started_at,
+                            final_answer_span_count=final_answer_count,
+                            tool_span_count=len(tool_spans),
+                        )
                     )
-                )
+                else:
+                    checks.append(
+                        _ok_check(
+                            "trace_final_answer_order",
+                            "tool spans do not start after final-answer messages",
+                            first_final_answer_at=first_final_answer_at,
+                            last_tool_started_at=last_tool_started_at,
+                            final_answer_span_count=final_answer_count,
+                            tool_span_count=len(tool_spans),
+                        )
+                    )
     else:
         checks.append(
             _ok_check(
                 "trace_final_answer_order",
                 "no final-answer marker and tool-order conflict was detected",
-                final_answer_span_count=len(final_answer_spans),
+                final_answer_span_count=final_answer_count,
                 tool_span_count=len(tool_spans),
             )
         )
@@ -811,11 +977,11 @@ def verify_agents_payload(
     content_capture_health = {
         "span_count_checked": len(latest_trace_spans_chronological),
         "message_span_count": len(message_spans),
-        "message_spans_with_content": len(message_spans_with_content),
-        "message_spans_with_input": len(message_spans_with_input),
+        "message_spans_with_content": message_content_count,
+        "message_spans_with_input": message_input_count,
         "tool_span_count": len(tool_spans),
-        "tool_spans_with_content": len(tool_spans_with_content),
-        "final_answer_span_count": len(final_answer_spans),
+        "tool_spans_with_content": tool_content_count,
+        "final_answer_span_count": final_answer_count,
         "spans_with_valid_timestamps": len(latest_trace_spans_chronological) - len(timestamp_issues),
         "spans_with_invalid_timestamps": len(timestamp_issues),
         "trace_input_tokens": trace_input_tokens,
@@ -823,31 +989,50 @@ def verify_agents_payload(
         "required_text_count": len(required_texts),
         "request_model_count": len(observed_request_models),
     }
+    if trace_chat_payload is not None:
+        content_capture_health.update(
+            {
+                "chat_message_count": len(trace_chat_messages),
+                "chat_messages_with_content": len(chat_messages_with_content),
+                "chat_messages_with_input": len(chat_messages_with_input),
+                "chat_tool_call_count": len(chat_tool_calls),
+                "chat_tool_calls_with_content": len(chat_tool_calls_with_content),
+                "chat_final_answer_message_count": len(chat_final_answer_messages),
+            }
+        )
     ok = all(check["ok"] for check in checks)
+    query_source = {
+        "kind": "wandb_agents_api",
+        "api_base_url": AGENTS_API_BASE_URL,
+        "agents_endpoint": AGENTS_QUERY_ENDPOINT,
+        "spans_endpoint": AGENTS_SPANS_QUERY_ENDPOINT,
+        "project_id": project_id,
+        "agent_name": agent_name,
+        "conversation_id": conversation_id or "",
+        "conversation_id_contains": conversation_id_contains or "",
+        "agents_count": len(agents_payload.get("agents", []))
+        if isinstance(agents_payload.get("agents"), list)
+        else 0,
+        "spans_count": len(spans_payload.get("spans", []))
+        if isinstance(spans_payload.get("spans"), list)
+        else 0,
+        "matching_span_count": len(raw_spans),
+        "latest_trace_span_count": len(latest_trace_spans_chronological),
+    }
+    if trace_chat_payload is not None:
+        query_source.update(
+            {
+                "trace_chat_endpoint": AGENTS_TRACES_CHAT_ENDPOINT,
+                "trace_chat_message_count": len(trace_chat_messages),
+            }
+        )
     result = {
         **_verification_header(ok),
         "ok": ok,
         "project_id": project_id,
         "agent_name": agent_name,
         "agents_url": f"https://wandb.ai/{entity}/{project}/weave/agents",
-        "query_source": {
-            "kind": "wandb_agents_api",
-            "api_base_url": AGENTS_API_BASE_URL,
-            "agents_endpoint": AGENTS_QUERY_ENDPOINT,
-            "spans_endpoint": AGENTS_SPANS_QUERY_ENDPOINT,
-            "project_id": project_id,
-            "agent_name": agent_name,
-            "conversation_id": conversation_id or "",
-            "conversation_id_contains": conversation_id_contains or "",
-            "agents_count": len(agents_payload.get("agents", []))
-            if isinstance(agents_payload.get("agents"), list)
-            else 0,
-            "spans_count": len(spans_payload.get("spans", []))
-            if isinstance(spans_payload.get("spans"), list)
-            else 0,
-            "matching_span_count": len(raw_spans),
-            "latest_trace_span_count": len(latest_trace_spans_chronological),
-        },
+        "query_source": query_source,
         "latest_trace_id": latest_trace_id,
         "content_capture_health": content_capture_health,
         "latest_trace_spans_chronological": [
@@ -855,6 +1040,10 @@ def verify_agents_payload(
         ],
         "checks": checks,
     }
+    if trace_chat_payload is not None:
+        result["latest_trace_chat_messages_chronological"] = [
+            summarize_chat_message(message) for message in trace_chat_messages
+        ]
     return result
 
 
@@ -879,6 +1068,24 @@ def query_agents(
     return (
         agents_api_post(env, AGENTS_QUERY_ENDPOINT, agents_payload),
         agents_api_post(env, AGENTS_SPANS_QUERY_ENDPOINT, spans_payload),
+    )
+
+
+def query_trace_chat(
+    *,
+    env: dict[str, str],
+    entity: str,
+    project: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    return agents_api_post(
+        env,
+        AGENTS_TRACES_CHAT_ENDPOINT,
+        {
+            "project_id": f"{entity}/{project}",
+            "trace_id": trace_id,
+            "include_feedback": False,
+        },
     )
 
 
@@ -934,9 +1141,27 @@ def main() -> None:
         agent_name=args.agent_name,
         limit=args.limit,
     )
+    matching_spans = _matching_spans(
+        spans_payload,
+        agent_name=args.agent_name,
+        conversation_id=args.conversation_id,
+        conversation_id_contains=args.conversation_id_contains,
+    )
+    latest_trace_id = _latest_trace_id(matching_spans)
+    trace_chat_payload = (
+        query_trace_chat(
+            env=env,
+            entity=args.entity,
+            project=args.project,
+            trace_id=latest_trace_id,
+        )
+        if latest_trace_id
+        else None
+    )
     result = verify_agents_payload(
         agents_payload,
         spans_payload,
+        trace_chat_payload=trace_chat_payload,
         entity=args.entity,
         project=args.project,
         agent_name=args.agent_name,

@@ -634,6 +634,9 @@ Notes:
 NeMoClaw can be used for Agentic Math after the sandbox is configured:
 
 ```bash
+scripts/setup/install_agentic_math_sandbox_deps.sh --sandbox nejumi-taiwan --check-only
+scripts/setup/install_agentic_math_sandbox_deps.sh --sandbox nejumi-taiwan
+
 uv run python scripts/tools/run_agentic_math_openclaw.py \
   --dataset-jsonl data/taiwan/agentic_math_olymmath_hard_zh_tw/subsets/smoke.jsonl \
   --output-dir outputs/nemoclaw_agentic_math_smoke \
@@ -641,6 +644,12 @@ uv run python scripts/tools/run_agentic_math_openclaw.py \
   --thinking high \
   --nemoclaw-sandbox nejumi-taiwan
 ```
+
+The Agentic Math sandbox must provide `numpy`, `scipy`, and `sympy`. The math
+benchmark allows Python as a local non-interactive tool, and missing scientific
+packages cause extra tool retries, lower answer quality, and unnecessary cost.
+The setup script verifies the imports and installs them inside the selected
+NeMoClaw sandbox when needed.
 
 The runner now keeps task-agent mode enabled for NeMoClaw by default. It reads
 the sandbox OpenClaw config template from `/sandbox/.openclaw/openclaw.json`,

@@ -3085,11 +3085,12 @@ def build_bundle_with_nemoclaw_adoption(tmp_path):
                 "  use_task_agent: true",
                 "  deny_tool:",
                 "    - code_execution",
+                "    - process",
+                "    - process_*",
                 "    - web_search",
                 "    - web_fetch",
                 "    - browser",
                 "    - browser_*",
-                "    - '*search*'",
                 "  deny_argument_pattern:",
                 "    - https?://",
                 r"    - \b(curl|wget)\b",
@@ -3349,7 +3350,6 @@ def build_bundle_with_nemoclaw_post_install(tmp_path):
                             "section": "agentic_math",
                             "missing": [],
                             "observed": [
-                                "*search*",
                                 "browser",
                                 "browser_*",
                                 "code_execution",
@@ -3367,7 +3367,6 @@ def build_bundle_with_nemoclaw_post_install(tmp_path):
                             "section": "swebench_pro",
                             "missing": [],
                             "observed": [
-                                "*search*",
                                 "browser",
                                 "browser_*",
                                 "code_execution",
@@ -11487,11 +11486,12 @@ def test_verify_release_evidence_bundle_rejects_swebench_nemoclaw_config_without
             "  nemoclaw_sandbox: nejumi-taiwan",
             "  deny_tool:",
             "    - code_execution",
+            "    - process",
+            "    - process_*",
             "    - web_search",
             "    - web_fetch",
             "    - browser",
             "    - browser_*",
-            "    - '*search*'",
             "  deny_argument_pattern:",
             "    - https?://",
             r"    - \b(curl|wget)\b",
@@ -15991,8 +15991,8 @@ def test_verify_release_evidence_bundle_rejects_swe_missing_remote_lookup_disabl
     script_text = script_path.read_text(encoding="utf-8")
     script_path.write_text(
         script_text.replace(
-            'browser["enabled"] = False',
-            'browser["enabled"] = True',
+            'fetch["enabled"] = False',
+            'fetch["enabled"] = True',
         ),
         encoding="utf-8",
     )
@@ -16010,8 +16010,8 @@ def test_verify_release_evidence_bundle_rejects_swe_missing_remote_lookup_disabl
     payload = json.loads(result.stdout)
     assert payload["integrity_ok"] is False
     assert (
-        "agentic runner script missing source contract OpenClaw browser disabled: "
-        'scripts/tools/run_swebench_pro_openclaw.py: browser["enabled"] = False'
+        "agentic runner script missing source contract OpenClaw web fetch disabled: "
+        'scripts/tools/run_swebench_pro_openclaw.py: fetch["enabled"] = False'
     ) in payload["errors"]
 
 

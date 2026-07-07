@@ -14,8 +14,5 @@ models:
     swe_max_input_tokens: 300000
     swe_max_tool_calls: 20
     swe_max_agent_turns: 20
-    judge_model: "openrouter/openai/gpt-4.1-nano"
-    judge_parallel: 2
-    judge_params: {}
     canary: true
-    notes: "Low-cost OpenRouter one-model canary candidate for harness validation before GLM/Claude/Gemini expansion. Caps and judge are intentionally cheaper than release-candidate settings; release config remains pinned to gpt-5.5-2026-04-23."
+    notes: "Low-cost answer-model-only diagnostic manifest. Not valid for production-spec full evaluation because runtime caps are intentionally reduced; judge settings must inherit release configuration."

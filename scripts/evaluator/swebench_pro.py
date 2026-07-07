@@ -17,8 +17,8 @@ EVAL_RUNNER = REPO_ROOT / "scripts" / "tools" / "evaluate_swebench_pro_patches.p
 DEFAULT_TAIWAN_SUBSET = "leaderboard_compact_80"
 DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 DEFAULT_MAX_INPUT_TOKENS = 1_000_000
-DEFAULT_MAX_TOOL_CALLS = 60
-DEFAULT_MAX_AGENT_TURNS = 60
+DEFAULT_MAX_TOOL_CALLS = 40
+DEFAULT_MAX_AGENT_TURNS = 40
 AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "nemoclaw_session_audit_ok",
     "nemoclaw_session_audit_required",
@@ -28,8 +28,17 @@ AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "conversation_order",
     "tool_policy_ok",
     "tool_policy_violations",
-    "weave_sidecar_ok",
-    "weave_sidecar",
+    "weave_agents_ok",
+    "weave_agents_required",
+    "weave_agents_agent_name",
+    "weave_agents_conversation_id",
+    "weave_agents_conversation_id_contains",
+    "weave_agents_conversation_url",
+    "weave_agents_trace_id",
+    "weave_agents_url",
+    "weave_agents_trace_url",
+    "weave_agents_verifier_json",
+    "weave_agents_error",
     "openclaw_result_path",
     "openclaw_invocation_path",
     "openclaw_invocation_sha256",
@@ -225,14 +234,28 @@ def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
         command.append("--allow-failed-preflight")
     if _cfg_get(cfg.swebench_pro, "no_local", False):
         command.append("--no-local")
-    if _cfg_get(cfg.swebench_pro, "weave_sidecar", False):
-        command.append("--weave-sidecar")
-        if _cfg_get(cfg.swebench_pro, "weave_sidecar_strict", False):
-            command.append("--weave-sidecar-strict")
-        else:
-            command.append("--no-weave-sidecar-strict")
-    else:
-        command.append("--no-weave-sidecar")
+    if _cfg_get(cfg.swebench_pro, "weave_sidecar", False) or _cfg_get(
+        cfg.swebench_pro, "weave_sidecar_strict", False
+    ):
+        raise ValueError(
+            "swebench_pro.weave_sidecar is disabled. Use native weave-openclaw "
+            "Agents traces only; manual sidecar traces are not valid evidence."
+        )
+    command.append("--no-weave-sidecar")
+    if _cfg_get(cfg.swebench_pro, "verify_weave_agents", False):
+        command.append("--verify-weave-agents")
+    for cfg_key, cli_key in (
+        ("weave_agents_entity", "--weave-agents-entity"),
+        ("weave_agents_project", "--weave-agents-project"),
+        ("weave_agents_agent_name", "--weave-agents-agent-name"),
+        ("weave_agents_env_file", "--weave-agents-env-file"),
+        ("weave_agents_limit", "--weave-agents-limit"),
+        ("weave_agents_verification_timeout", "--weave-agents-verification-timeout"),
+        ("weave_agents_poll_seconds", "--weave-agents-poll-seconds"),
+    ):
+        value = _cfg_get(cfg.swebench_pro, cfg_key)
+        if value is not None:
+            command.extend([cli_key, str(value)])
     for denied_tool in _as_list(_cfg_get(cfg.swebench_pro, "deny_tool")):
         command.extend(["--deny-tool", str(denied_tool)])
     for pattern in _as_list(_cfg_get(cfg.swebench_pro, "deny_argument_pattern")):
@@ -329,6 +352,20 @@ def _validate_output_table_columns(output_df: pd.DataFrame) -> None:
         )
 
 
+def _json_cell_for_wandb_table(value: Any) -> Any:
+    if isinstance(value, (dict, list, tuple)):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+    return value
+
+
+def _prepare_output_table_for_wandb(output_df: pd.DataFrame) -> pd.DataFrame:
+    table_df = output_df.copy()
+    for column in table_df.columns:
+        if table_df[column].map(lambda value: isinstance(value, (dict, list, tuple))).any():
+            table_df[column] = table_df[column].map(_json_cell_for_wandb_table)
+    return table_df
+
+
 def _sanitize_artifact_component(value: str) -> str:
     return (
         value.replace("/", "-")
@@ -420,8 +457,22 @@ def _log_summary(run, cfg, summary: dict[str, Any], output_dir: Path, patch_path
                 "tool_policy_violations": patch.get("tool_policy_violations"),
                 "conversation_order_ok": patch.get("conversation_order_ok"),
                 "conversation_order": patch.get("conversation_order"),
-                "weave_sidecar_ok": patch.get("weave_sidecar_ok"),
-                "weave_sidecar": patch.get("weave_sidecar"),
+                "weave_agents_ok": patch.get("weave_agents_ok"),
+                "weave_agents_required": patch.get("weave_agents_required"),
+                "weave_agents_agent_name": patch.get("weave_agents_agent_name"),
+                "weave_agents_conversation_id": patch.get("weave_agents_conversation_id"),
+                "weave_agents_conversation_id_contains": patch.get(
+                    "weave_agents_conversation_id_contains"
+                ),
+                "weave_agents_conversation_url": patch.get("weave_agents_conversation_url"),
+                "weave_agents_conversation_link_html": patch.get(
+                    "weave_agents_conversation_link_html"
+                ),
+                "weave_agents_trace_id": patch.get("weave_agents_trace_id"),
+                "weave_agents_url": patch.get("weave_agents_url"),
+                "weave_agents_trace_url": patch.get("weave_agents_trace_url"),
+                "weave_agents_verifier_json": patch.get("weave_agents_verifier_json"),
+                "weave_agents_error": patch.get("weave_agents_error"),
                 "nemoclaw_session_audit_ok": patch.get("nemoclaw_session_audit_ok"),
                 "nemoclaw_session_audit_required": (
                     audit.get("required") if isinstance(audit, dict) else None
@@ -442,11 +493,15 @@ def _log_summary(run, cfg, summary: dict[str, Any], output_dir: Path, patch_path
         )
     per_instance = pd.DataFrame(per_instance_rows)
     _validate_output_table_columns(per_instance)
+    per_instance_table = _prepare_output_table_for_wandb(per_instance)
     audit_counts = _nemoclaw_audit_counts(patch_rows)
+    weave_agents_required = [row for row in patch_rows if row.get("weave_agents_required") is True]
+    weave_agents_passed = [row for row in weave_agents_required if row.get("weave_agents_ok") is True]
+    weave_agents_failed = [row for row in weave_agents_required if row.get("weave_agents_ok") is not True]
     run.log(
         {
             "agentic_swe_leaderboard_table": wandb.Table(dataframe=leaderboard),
-            "agentic_swe_output_table": wandb.Table(dataframe=per_instance),
+            "agentic_swe_output_table": wandb.Table(dataframe=per_instance_table),
             "agentic_swe_results": summary,
             "agentic_swe/subset": _cfg_get(cfg.swebench_pro, "subset", DEFAULT_TAIWAN_SUBSET),
             "agentic_swe/max_input_tokens": int(
@@ -465,6 +520,9 @@ def _log_summary(run, cfg, summary: dict[str, Any], output_dir: Path, patch_path
             "agentic_swe/resolved_instances": int(summary["resolved_instances"]),
             "agentic_swe/total_instances": int(summary["total_instances"]),
             "agentic_swe/unresolved_instances": int(summary["unresolved_instances"]),
+            "agentic_swe/weave_agents_required_patches": len(weave_agents_required),
+            "agentic_swe/weave_agents_passed_patches": len(weave_agents_passed),
+            "agentic_swe/weave_agents_failed_patches": len(weave_agents_failed),
             "agentic_swe/nemoclaw_session_audit_required_patches": audit_counts["required"],
             "agentic_swe/nemoclaw_session_audit_passed_patches": audit_counts["passed"],
             "agentic_swe/nemoclaw_session_audit_failed_patches": audit_counts["failed"],

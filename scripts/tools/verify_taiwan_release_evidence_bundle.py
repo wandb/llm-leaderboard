@@ -114,10 +114,11 @@ REQUIRED_NEMOCLAW_CANARY_REMOTE_LOOKUP_CHECK_NAMES = {
     "agentic SWE denies remote lookup via deny_tool",
 }
 NEMOCLAW_AGENTIC_CONFIG_REQUIRED_DENIED_TOOLS = {
-    "*search*",
     "browser",
     "browser_*",
     "code_execution",
+    "process",
+    "process_*",
     "web_fetch",
     "web_search",
 }
@@ -713,7 +714,6 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("remote lookup config call", "disable_remote_lookup_tools(config)"),
             ("OpenClaw tool search disabled", 'tools["toolSearch"] = False'),
             ("OpenClaw web fetch disabled", 'fetch["enabled"] = False'),
-            ("OpenClaw browser disabled", 'browser["enabled"] = False'),
             ("task-agent deny policy", '"deny": effective_deny_tools(args)'),
             ("conversation-order non-scoreable reason", "conversation_order_violation"),
             ("NeMoClaw session-audit non-scoreable reason", "nemoclaw_session_audit_failed"),
@@ -785,7 +785,6 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("remote lookup config call", "disable_remote_lookup_tools(config)"),
             ("OpenClaw tool search disabled", 'tools["toolSearch"] = False'),
             ("OpenClaw web fetch disabled", 'fetch["enabled"] = False'),
-            ("OpenClaw browser disabled", 'browser["enabled"] = False'),
             ("task-agent deny policy", '"deny": effective_deny_tools(args)'),
             ("conversation-order non-scoreable reason", "conversation_order_violation"),
             ("NeMoClaw session-audit non-scoreable reason", "nemoclaw_session_audit_failed"),

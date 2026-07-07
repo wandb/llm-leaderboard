@@ -11,6 +11,8 @@ The output JSON is compatible with Scale's `swe_bench_pro_eval.py`.
 from __future__ import annotations
 
 import argparse
+import atexit
+import base64
 import hashlib
 import json
 import os
@@ -23,14 +25,27 @@ import time
 from pathlib import Path
 from typing import Any
 
+TOOLS_DIR = Path(__file__).resolve().parent
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
+
+from weave_agents_native_trace import (
+    DEFAULT_AGENT_NAME as DEFAULT_WEAVE_AGENTS_AGENT_NAME,
+    DEFAULT_ENV_FILE as DEFAULT_WEAVE_AGENTS_ENV_FILE,
+    empty_weave_agents_evidence,
+    env_default_entity,
+    env_default_project,
+    verify_native_weave_agents_trace,
+)
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROTOCOL_RUNNER = REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py"
-RUNNER_VERSION = "swebench-pro-openclaw-2026-07-02-sandbox-live-budget-v1"
+RUNNER_VERSION = "swebench-pro-openclaw-2026-07-07-dynamic-task-agent-v2"
 PATCH_CAPTURE_VERSION = "git-diff-with-untracked-excluding-selected-tests-v2"
 DEFAULT_MAX_INPUT_TOKENS = 1_000_000
-DEFAULT_MAX_TOOL_CALLS = 60
-DEFAULT_MAX_AGENT_TURNS = 60
+DEFAULT_MAX_TOOL_CALLS = 40
+DEFAULT_MAX_AGENT_TURNS = 40
 OPENCLAW_RUNTIME_DIR = ".nejumi_openclaw"
 RUNTIME_EXCLUDED_PATHS = [OPENCLAW_RUNTIME_DIR]
 NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
@@ -41,13 +56,13 @@ DEFAULT_DENIED_TOOLS = [
     "web_fetch",
     "browser",
     "browser_*",
-    "*search*",
 ]
 DEFAULT_DENIED_ARGUMENT_PATTERNS = [
     r"https?://",
     r"\b(curl|wget)\b",
     r"\b(requests|urllib|httpx)\.",
 ]
+_REGISTERED_NEMOCLAW_GATEWAY_AGENTS: list[tuple[argparse.Namespace, str]] = []
 
 
 def run_command(
@@ -148,6 +163,10 @@ def build_cache_key(row: dict[str, Any], prompt_text: str, args: argparse.Namesp
             getattr(args, "nemoclaw_checkout_transfer_mode", "visible") or "visible"
         ),
         "session_prefix": resolve_session_prefix(args),
+        "verify_weave_agents": bool(getattr(args, "verify_weave_agents", False)),
+        "weave_agents_entity": str(getattr(args, "weave_agents_entity", "") or ""),
+        "weave_agents_project": str(getattr(args, "weave_agents_project", "") or ""),
+        "weave_agents_agent_name": str(getattr(args, "weave_agents_agent_name", "") or ""),
     }
 
 
@@ -241,6 +260,19 @@ def patch_record_weave_sidecar_allows_reuse(record: dict[str, Any]) -> bool:
     return True
 
 
+def patch_record_weave_agents_allows_reuse(record: dict[str, Any], cache_key: dict[str, Any]) -> bool:
+    if not cache_key.get("verify_weave_agents"):
+        return True
+    return (
+        record.get("weave_agents_required") is True
+        and record.get("weave_agents_ok") is True
+        and bool(str(record.get("weave_agents_conversation_id") or "").strip())
+        and bool(str(record.get("weave_agents_conversation_url") or "").strip())
+        and bool(str(record.get("weave_agents_trace_id") or "").strip())
+        and bool(str(record.get("weave_agents_url") or "").strip())
+    )
+
+
 def patch_record_invocation_matches_cache(record: dict[str, Any], cache_key: dict[str, Any]) -> bool:
     if not cache_requires_nemoclaw_session_audit(cache_key):
         return True
@@ -308,6 +340,8 @@ def load_cached_patch_record(
     if not patch_record_tool_policy_allows_reuse(record):
         return None
     if not patch_record_weave_sidecar_allows_reuse(record):
+        return None
+    if not patch_record_weave_agents_allows_reuse(record, cache_key):
         return None
     if not patch_record_invocation_matches_cache(record, cache_key):
         return None
@@ -416,6 +450,170 @@ def run_nemoclaw_binary_command(
     return result
 
 
+def uses_nemoclaw_gateway_task_agent(args: argparse.Namespace) -> bool:
+    return (
+        bool(getattr(args, "use_task_agent", True))
+        and bool(getattr(args, "no_local", False))
+        and bool(getattr(args, "nemoclaw_sandbox", None))
+    )
+
+
+def register_nemoclaw_gateway_task_agent(
+    args: argparse.Namespace,
+    *,
+    agent_id: str,
+    workspace: str,
+    agent_dir: str,
+) -> dict[str, Any]:
+    config_path = str(getattr(args, "nemoclaw_openclaw_config_path", NEMOCLAW_OPENCLAW_CONFIG_PATH))
+    model = str(getattr(args, "model", "") or "")
+    tool_profile = str(getattr(args, "openclaw_tool_profile", "") or "")
+    deny_json = json.dumps(effective_deny_tools(args), ensure_ascii=False, separators=(",", ":"))
+    if bool(getattr(args, "dry_run", False)):
+        return {
+            "ok": None,
+            "skipped": True,
+            "reason": "dry_run",
+            "agent_id": agent_id,
+            "workspace": workspace,
+            "agent_dir": agent_dir,
+            "config_path": config_path,
+        }
+
+    patch_script = r"""
+import json
+import sys
+from pathlib import Path
+
+config_path = Path(sys.argv[1])
+agent_id = sys.argv[2]
+workspace = sys.argv[3]
+agent_dir = sys.argv[4]
+model = sys.argv[5]
+tool_profile = sys.argv[6]
+deny_tools = json.loads(sys.argv[7])
+
+config = json.loads(config_path.read_text(encoding="utf-8"))
+tools = config.setdefault("tools", {})
+if isinstance(tools, dict):
+    tools["toolSearch"] = False
+    web = tools.setdefault("web", {})
+    if isinstance(web, dict):
+        fetch = web.setdefault("fetch", {})
+        if isinstance(fetch, dict):
+            fetch["enabled"] = False
+
+agents = config.setdefault("agents", {})
+entries = agents.setdefault("list", [])
+if not isinstance(entries, list):
+    raise SystemExit("OpenClaw config field agents.list must be a list")
+
+entry = {
+    "id": agent_id,
+    "workspace": workspace,
+    "agentDir": agent_dir,
+    "tools": {
+        "profile": tool_profile,
+        "deny": deny_tools,
+    },
+}
+if model:
+    entry["model"] = model
+entries[:] = [item for item in entries if not (isinstance(item, dict) and item.get("id") == agent_id)]
+entries.append(entry)
+
+tmp_path = config_path.with_suffix(config_path.suffix + ".tmp")
+tmp_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+tmp_path.replace(config_path)
+print(json.dumps({"ok": True, "agent_id": agent_id, "config_path": str(config_path)}))
+"""
+    shell_script = r"""
+set -euo pipefail
+agent_id="$1"
+workspace="$2"
+agent_dir="$3"
+model="$4"
+tool_profile="$5"
+deny_json="$6"
+config_path="$7"
+openclaw agents delete "$agent_id" --force --json >/dev/null 2>&1 || true
+cmd=(openclaw agents add "$agent_id" --workspace "$workspace" --agent-dir "$agent_dir" --non-interactive --json)
+if [ -n "$model" ]; then
+  cmd+=(--model "$model")
+fi
+"${cmd[@]}"
+python3 - "$config_path" "$agent_id" "$workspace" "$agent_dir" "$model" "$tool_profile" "$deny_json" <<'PY'
+""" + patch_script + r"""
+PY
+"""
+    shell_script_b64 = base64.b64encode(shell_script.encode("utf-8")).decode("ascii")
+    result = run_nemoclaw_text_command(
+        args,
+        [
+            "env",
+            f"OPENCLAW_REGISTER_SCRIPT_B64={shell_script_b64}",
+            "bash",
+            "-lc",
+            'printf %s "$OPENCLAW_REGISTER_SCRIPT_B64" | base64 -d | bash -s -- "$@"',
+            "register-task-agent",
+            agent_id,
+            workspace,
+            agent_dir,
+            model,
+            tool_profile,
+            deny_json,
+            config_path,
+        ],
+        timeout=60,
+    )
+    _REGISTERED_NEMOCLAW_GATEWAY_AGENTS.append((args, agent_id))
+    return {
+        "ok": True,
+        "agent_id": agent_id,
+        "workspace": workspace,
+        "agent_dir": agent_dir,
+        "config_path": config_path,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+    }
+
+
+def unregister_nemoclaw_gateway_task_agent(args: argparse.Namespace, agent_id: str) -> dict[str, Any]:
+    if not getattr(args, "nemoclaw_sandbox", None):
+        return {"ok": None, "skipped": True, "reason": "no_nemoclaw_sandbox"}
+    result = run_nemoclaw_text_command(
+        args,
+        [
+            "bash",
+            "-lc",
+            'openclaw agents delete "$1" --force --json',
+            "delete-task-agent",
+            agent_id,
+        ],
+        timeout=60,
+        check=False,
+    )
+    return {
+        "ok": result.returncode == 0,
+        "agent_id": agent_id,
+        "returncode": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+    }
+
+
+def cleanup_registered_nemoclaw_gateway_agents() -> None:
+    while _REGISTERED_NEMOCLAW_GATEWAY_AGENTS:
+        args, agent_id = _REGISTERED_NEMOCLAW_GATEWAY_AGENTS.pop()
+        try:
+            unregister_nemoclaw_gateway_task_agent(args, agent_id)
+        except Exception:
+            pass
+
+
+atexit.register(cleanup_registered_nemoclaw_gateway_agents)
+
+
 def read_openclaw_config_template(args: argparse.Namespace) -> tuple[dict[str, Any], str]:
     if args.openclaw_config_template:
         template_path = args.openclaw_config_template.expanduser()
@@ -445,6 +643,61 @@ def is_weave_sidecar_failure(sidecar: dict[str, Any] | None) -> bool:
         isinstance(weave_sidecar, dict)
         and weave_sidecar.get("ok") is False
         and sidecar.get("returncode") == 0
+    )
+
+
+def should_verify_weave_agents(args: argparse.Namespace) -> bool:
+    return bool(getattr(args, "verify_weave_agents", False)) and not bool(
+        getattr(args, "dry_run", False)
+    )
+
+
+def default_weave_agents_evidence(
+    args: argparse.Namespace,
+    *,
+    required: bool,
+    session_key: str = "",
+) -> dict[str, Any]:
+    return empty_weave_agents_evidence(
+        required=required,
+        entity=str(getattr(args, "weave_agents_entity", "") or env_default_entity()),
+        project=str(getattr(args, "weave_agents_project", "") or env_default_project()),
+        agent_name=str(
+            getattr(args, "weave_agents_agent_name", "") or DEFAULT_WEAVE_AGENTS_AGENT_NAME
+        ),
+        conversation_id=session_key,
+        conversation_id_contains=session_key,
+    )
+
+
+def verify_weave_agents_for_attempt(
+    row: dict[str, Any],
+    task_dir: Path,
+    args: argparse.Namespace,
+    *,
+    session_key: str,
+    sidecar: dict[str, Any],
+) -> dict[str, Any]:
+    if not should_verify_weave_agents(args):
+        return default_weave_agents_evidence(args, required=False, session_key=session_key)
+    tool_count = int(sidecar.get("tool_call_count") or 0)
+    verifier_json = task_dir / "weave_agents_verifications" / f"{safe_id(session_key)}.json"
+    return verify_native_weave_agents_trace(
+        entity=str(getattr(args, "weave_agents_entity", "") or env_default_entity()),
+        project=str(getattr(args, "weave_agents_project", "") or env_default_project()),
+        agent_name=str(
+            getattr(args, "weave_agents_agent_name", "") or DEFAULT_WEAVE_AGENTS_AGENT_NAME
+        ),
+        conversation_id_contains=session_key,
+        verifier_json=verifier_json,
+        env_file=Path(getattr(args, "weave_agents_env_file", DEFAULT_WEAVE_AGENTS_ENV_FILE)),
+        expected_model=str(getattr(args, "model", "") or ""),
+        required_texts=[f"instance_id: {row['instance_id']}"],
+        require_tool_trace=tool_count > 0,
+        require_usage=True,
+        limit=int(getattr(args, "weave_agents_limit", 50) or 50),
+        timeout_seconds=float(getattr(args, "weave_agents_verification_timeout", 120.0) or 0),
+        poll_seconds=float(getattr(args, "weave_agents_poll_seconds", 5.0) or 5.0),
     )
 
 
@@ -788,6 +1041,9 @@ def sandbox_checkout_dir(checkout_dir: Path, args: argparse.Namespace) -> Path:
     sandbox_root = getattr(args, "nemoclaw_checkout_sandbox_root", None)
     if sandbox_root:
         return Path(str(sandbox_root)) / checkout_dir.name
+    transfer_mode = str(getattr(args, "nemoclaw_checkout_transfer_mode", "visible") or "visible")
+    if getattr(args, "nemoclaw_sandbox", None) and transfer_mode == "copy":
+        return Path("/sandbox/checkouts") / checkout_dir.name
     return checkout_dir.resolve()
 
 
@@ -953,6 +1209,8 @@ def task_live_session_dir(
     if not getattr(args, "use_task_agent", True):
         return None
     if getattr(args, "nemoclaw_sandbox", None):
+        if uses_nemoclaw_gateway_task_agent(args):
+            return None
         transfer_mode = str(
             getattr(args, "nemoclaw_checkout_transfer_mode", "visible") or "visible"
         )
@@ -963,11 +1221,19 @@ def task_live_session_dir(
     return task_dir / "openclaw_agent_state" / "sessions"
 
 
-def task_live_sandbox_session_dir(checkout_dir: Path, args: argparse.Namespace) -> str | None:
+def task_live_sandbox_session_dir(
+    checkout_dir: Path,
+    args: argparse.Namespace,
+    agent_id: str | None = None,
+) -> str | None:
     if not getattr(args, "use_task_agent", True):
         return None
     if not getattr(args, "nemoclaw_sandbox", None):
         return None
+    if uses_nemoclaw_gateway_task_agent(args):
+        if not agent_id:
+            agent_id = safe_agent_id(checkout_dir.name, args.task_agent_prefix)
+        return f"/sandbox/.openclaw/agents/{agent_id}/sessions"
     transfer_mode = str(getattr(args, "nemoclaw_checkout_transfer_mode", "visible") or "visible")
     if transfer_mode == "visible":
         return None
@@ -986,8 +1252,6 @@ def write_task_openclaw_config(
     if args.no_local and not getattr(args, "nemoclaw_sandbox", None):
         raise RuntimeError("--use-task-agent requires local OpenClaw execution; remove --no-local")
 
-    config, template_path = read_openclaw_config_template(args)
-    disable_remote_lookup_tools(config)
     agent_id = safe_agent_id(str(row["instance_id"]), args.task_agent_prefix)
     if getattr(args, "nemoclaw_sandbox", None):
         host_config_path, host_agent_dir, sandbox_config_path, sandbox_agent_dir = task_openclaw_config_paths(
@@ -1002,6 +1266,42 @@ def write_task_openclaw_config(
         sandbox_agent_dir = host_agent_dir
         workspace = str(checkout_dir.resolve())
     host_config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if uses_nemoclaw_gateway_task_agent(args):
+        registration = register_nemoclaw_gateway_task_agent(
+            args,
+            agent_id=agent_id,
+            workspace=workspace,
+            agent_dir=str(sandbox_agent_dir),
+        )
+        canonical_config_path = str(
+            getattr(args, "nemoclaw_openclaw_config_path", NEMOCLAW_OPENCLAW_CONFIG_PATH)
+        )
+        (task_dir / "openclaw_task_agent.json").write_text(
+            json.dumps(
+                {
+                    "agent_id": agent_id,
+                    "workspace": workspace,
+                    "agent_dir": str(sandbox_agent_dir),
+                    "host_config_path": str(host_config_path),
+                    "host_agent_dir": str(host_agent_dir),
+                    "sandbox_config_path": canonical_config_path,
+                    "sandbox_agent_dir": str(sandbox_agent_dir),
+                    "config_template": canonical_config_path,
+                    "config_path": canonical_config_path,
+                    "nemoclaw_sandbox": getattr(args, "nemoclaw_sandbox", None),
+                    "gateway_registered": registration,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return agent_id, None
+
+    config, template_path = read_openclaw_config_template(args)
+    disable_remote_lookup_tools(config)
     agent_entry = {
         "id": agent_id,
         "workspace": workspace,
@@ -1072,9 +1372,6 @@ def disable_remote_lookup_tools(config: dict[str, Any]) -> None:
         fetch = web.setdefault("fetch", {})
         if isinstance(fetch, dict):
             fetch["enabled"] = False
-    browser = tools.setdefault("browser", {})
-    if isinstance(browser, dict):
-        browser["enabled"] = False
 
 
 def run_openclaw_for_task(
@@ -1138,7 +1435,7 @@ def run_openclaw_for_task(
         live_session_dir = task_live_session_dir(checkout_dir, task_dir, args)
         if live_session_dir is not None:
             command.extend(["--live-session-dir", str(live_session_dir)])
-        live_sandbox_session_dir = task_live_sandbox_session_dir(checkout_dir, args)
+        live_sandbox_session_dir = task_live_sandbox_session_dir(checkout_dir, args, agent_id)
         if live_sandbox_session_dir is not None:
             command.extend(["--live-sandbox-session-dir", live_sandbox_session_dir])
         if getattr(args, "nemoclaw_sandbox", None):
@@ -1156,12 +1453,7 @@ def run_openclaw_for_task(
             command.append("--no-local")
         if args.allow_failed_preflight:
             command.append("--allow-failed-preflight")
-        if args.weave_sidecar:
-            command.append("--weave-sidecar")
-        else:
-            command.append("--no-weave-sidecar")
-        if args.weave_sidecar and args.weave_sidecar_strict:
-            command.append("--weave-sidecar-strict")
+        command.append("--no-weave-sidecar")
         for denied_tool in effective_deny_tools(args):
             command.extend(["--deny-tool", denied_tool])
         for pattern in effective_deny_argument_patterns(args):
@@ -1322,6 +1614,13 @@ def run_openclaw_for_task(
         )
     if is_weave_sidecar_failure(sidecar):
         raise RuntimeError(f"Diagnostic Weave sidecar logging failed for {row['instance_id']}")
+    weave_agents_evidence = verify_weave_agents_for_attempt(
+        row,
+        task_dir,
+        args,
+        session_key=str(metadata.get("session_key") or ""),
+        sidecar=sidecar,
+    )
     metadata.update(
         {
             "openclaw_result_path": str(sidecar_path),
@@ -1341,6 +1640,7 @@ def run_openclaw_for_task(
             "weave_sidecar": sidecar.get("weave_sidecar", {}),
             "weave_sidecar_ok": (sidecar.get("weave_sidecar") or {}).get("ok"),
             "openclaw_disqualified_reason": metadata.get("openclaw_disqualified_reason", ""),
+            **weave_agents_evidence,
         }
     )
     return metadata
@@ -1542,6 +1842,19 @@ def parse_args() -> argparse.Namespace:
         help="Fail if --weave-sidecar is enabled and the diagnostic sidecar trace cannot be logged.",
     )
     parser.add_argument(
+        "--verify-weave-agents",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Require native weave-openclaw Agents traces to be visible after each instance.",
+    )
+    parser.add_argument("--weave-agents-entity", default=env_default_entity())
+    parser.add_argument("--weave-agents-project", default=env_default_project())
+    parser.add_argument("--weave-agents-agent-name", default=DEFAULT_WEAVE_AGENTS_AGENT_NAME)
+    parser.add_argument("--weave-agents-env-file", type=Path, default=DEFAULT_WEAVE_AGENTS_ENV_FILE)
+    parser.add_argument("--weave-agents-limit", type=int, default=50)
+    parser.add_argument("--weave-agents-verification-timeout", type=float, default=120.0)
+    parser.add_argument("--weave-agents-poll-seconds", type=float, default=5.0)
+    parser.add_argument(
         "--skip-agent",
         action="store_true",
         help="Only prepare prompts/checkouts and collect any existing diff.",
@@ -1551,6 +1864,11 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if getattr(args, "weave_sidecar", False) or getattr(args, "weave_sidecar_strict", False):
+        raise SystemExit(
+            "Weave sidecar logging is disabled for SWE-Bench Pro. Use native "
+            "weave-openclaw Agents traces only; manual sidecar traces are not valid evidence."
+        )
     rows = filter_rows(read_jsonl(args.dataset_jsonl), args)
     if not rows:
         raise SystemExit("No rows selected")
@@ -1609,6 +1927,7 @@ def main() -> None:
             "prefix": args.prefix,
             "cache_key": cache_key,
             "patch_capture_version": PATCH_CAPTURE_VERSION,
+            **default_weave_agents_evidence(args, required=False),
             **{
                 key: value
                 for key, value in openclaw_metadata.items()
@@ -1643,6 +1962,18 @@ def main() -> None:
                     "runtime_budget",
                     "weave_sidecar",
                     "weave_sidecar_ok",
+                    "weave_agents_ok",
+                    "weave_agents_required",
+                    "weave_agents_agent_name",
+                    "weave_agents_conversation_id",
+                    "weave_agents_conversation_id_contains",
+                    "weave_agents_conversation_url",
+                    "weave_agents_conversation_link_html",
+                    "weave_agents_trace_id",
+                    "weave_agents_url",
+                    "weave_agents_trace_url",
+                    "weave_agents_verifier_json",
+                    "weave_agents_error",
                 }
             },
         }

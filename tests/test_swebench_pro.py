@@ -27,6 +27,23 @@ def load_script_module(path: Path):
         sys.path.pop(0)
 
 
+def test_swebench_main_rejects_weave_sidecar_before_dataset_read(tmp_path, monkeypatch):
+    module = load_script_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_swebench_pro_openclaw.py",
+            "--dataset-jsonl",
+            str(tmp_path / "missing.jsonl"),
+            "--weave-sidecar",
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="Weave sidecar logging is disabled"):
+        module.main()
+
+
 def sample_row() -> dict:
     return {
         "repo": "example/repo",
@@ -323,10 +340,84 @@ def test_swebench_nemoclaw_task_agent_config_is_sandbox_visible(tmp_path):
     assert agent["agentDir"] == f"/sandbox/checkouts/{checkout_dir.name}/.nejumi_openclaw/agent_state"
     assert config["tools"]["toolSearch"] is False
     assert config["tools"]["web"]["fetch"]["enabled"] is False
+    assert "browser" not in config["tools"]
     metadata = json.loads((task_dir / "openclaw_task_agent.json").read_text(encoding="utf-8"))
     assert metadata["host_config_path"] == str(host_config)
     assert metadata["config_path"] == str(expected_sandbox_config)
     assert metadata["nemoclaw_sandbox"] == "nejumi-taiwan"
+
+
+def test_swebench_registers_nemoclaw_gateway_task_agent_when_no_local(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    row = sample_row()
+    checkout_dir = tmp_path / "checkout-example"
+    checkout_dir.mkdir()
+    task_dir = tmp_path / "task"
+    task_dir.mkdir()
+    calls = []
+
+    def fake_run_nemoclaw_text_command(
+        args,
+        command,
+        input_text=None,
+        timeout=60,
+        check=True,
+        workdir="/sandbox",
+    ):
+        calls.append(
+            {
+                "command": command,
+                "input_text": input_text,
+                "timeout": timeout,
+                "check": check,
+                "workdir": workdir,
+            }
+        )
+        return subprocess.CompletedProcess(command, 0, stdout='{"ok": true}\n', stderr="")
+
+    monkeypatch.setattr(module, "run_nemoclaw_text_command", fake_run_nemoclaw_text_command)
+    args = SimpleNamespace(
+        agent="fallback-agent",
+        deny_argument_pattern=None,
+        deny_tool=["web_search"],
+        dry_run=False,
+        model="openai-direct/gpt-4.1-mini-2025-04-14",
+        no_local=True,
+        nemoclaw_checkout_sandbox_root="/sandbox/checkouts",
+        nemoclaw_openclaw_config_path="/sandbox/.openclaw/openclaw.json",
+        nemoclaw_sandbox="nejumi-taiwan",
+        openclaw_config_template=None,
+        openclaw_tool_profile="coding",
+        task_agent_prefix="tw-swe",
+        use_task_agent=True,
+    )
+
+    agent_id, config_path = module.write_task_openclaw_config(row, checkout_dir, task_dir, args)
+
+    assert config_path is None
+    assert calls
+    command = calls[0]["command"]
+    assert command[0] == "env"
+    script_b64 = command[1].split("=", 1)[1]
+    script = module.base64.b64decode(script_b64).decode("utf-8")
+    assert "openclaw agents add" in script
+    assert command[2:5] == [
+        "bash",
+        "-lc",
+        'printf %s "$OPENCLAW_REGISTER_SCRIPT_B64" | base64 -d | bash -s -- "$@"',
+    ]
+    assert command[5] == "register-task-agent"
+    assert command[6] == agent_id
+    assert command[9] == "openai-direct/gpt-4.1-mini-2025-04-14"
+    metadata = json.loads((task_dir / "openclaw_task_agent.json").read_text(encoding="utf-8"))
+    assert metadata["config_path"] == "/sandbox/.openclaw/openclaw.json"
+    assert metadata["gateway_registered"]["ok"] is True
+    assert module.task_live_session_dir(checkout_dir, task_dir, args) is None
+    assert (
+        module.task_live_sandbox_session_dir(checkout_dir, args, agent_id)
+        == f"/sandbox/.openclaw/agents/{agent_id}/sessions"
+    )
+    module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS.clear()
 
 
 def test_swebench_host_task_agent_config_keeps_task_dir_state(tmp_path):
@@ -814,6 +905,24 @@ def test_swebench_nemoclaw_copy_mode_writes_config_to_sandbox(tmp_path, monkeypa
     sandbox_write = writes[-1]
     assert sandbox_write["command"][-1] == str(config_path)
     assert '"toolSearch": false' in sandbox_write["input_text"]
+    sandbox_config = json.loads(sandbox_write["input_text"])
+    assert "browser" not in sandbox_config["tools"]
+
+
+def test_swebench_nemoclaw_copy_mode_defaults_to_sandbox_checkout_root(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    checkout_dir = tmp_path / "checkout-example"
+    checkout_dir.mkdir()
+    args = SimpleNamespace(
+        nemoclaw_checkout_sandbox_root=None,
+        nemoclaw_checkout_transfer_mode="copy",
+        nemoclaw_sandbox="nejumi-taiwan",
+    )
+
+    assert (
+        str(module.sandbox_checkout_dir(checkout_dir, args))
+        == f"/sandbox/checkouts/{checkout_dir.name}"
+    )
 
 
 def test_swebench_main_copy_mode_captures_patch_in_sandbox(tmp_path, monkeypatch):

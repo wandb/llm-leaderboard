@@ -15,8 +15,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 OPENCLAW_RUNNER = REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py"
 DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 DEFAULT_MAX_INPUT_TOKENS = 500_000
-DEFAULT_MAX_TOOL_CALLS = 60
-DEFAULT_MAX_AGENT_TURNS = 60
+DEFAULT_MAX_TOOL_CALLS = 40
+DEFAULT_MAX_AGENT_TURNS = 40
 AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "nemoclaw_session_audit_ok",
     "nemoclaw_session_audit",
@@ -26,8 +26,17 @@ AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "conversation_order",
     "tool_policy_ok",
     "tool_policy_violations",
-    "weave_sidecar_ok",
-    "weave_sidecar",
+    "weave_agents_ok",
+    "weave_agents_required",
+    "weave_agents_agent_name",
+    "weave_agents_conversation_id",
+    "weave_agents_conversation_id_contains",
+    "weave_agents_conversation_url",
+    "weave_agents_trace_id",
+    "weave_agents_url",
+    "weave_agents_trace_url",
+    "weave_agents_verifier_json",
+    "weave_agents_error",
     "openclaw_result_path",
     "openclaw_invocation_path",
     "openclaw_invocation_sha256",
@@ -167,14 +176,28 @@ def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
         command.append("--allow-failed-preflight")
     if _cfg_get(cfg.agentic_math, "no_local", False):
         command.append("--no-local")
-    if _cfg_get(cfg.agentic_math, "weave_sidecar", False):
-        command.append("--weave-sidecar")
-        if _cfg_get(cfg.agentic_math, "weave_sidecar_strict", False):
-            command.append("--weave-sidecar-strict")
-        else:
-            command.append("--no-weave-sidecar-strict")
-    else:
-        command.append("--no-weave-sidecar")
+    if _cfg_get(cfg.agentic_math, "weave_sidecar", False) or _cfg_get(
+        cfg.agentic_math, "weave_sidecar_strict", False
+    ):
+        raise ValueError(
+            "agentic_math.weave_sidecar is disabled. Use native weave-openclaw "
+            "Agents traces only; manual sidecar traces are not valid evidence."
+        )
+    command.append("--no-weave-sidecar")
+    if _cfg_get(cfg.agentic_math, "verify_weave_agents", False):
+        command.append("--verify-weave-agents")
+    for cfg_key, cli_key in (
+        ("weave_agents_entity", "--weave-agents-entity"),
+        ("weave_agents_project", "--weave-agents-project"),
+        ("weave_agents_agent_name", "--weave-agents-agent-name"),
+        ("weave_agents_env_file", "--weave-agents-env-file"),
+        ("weave_agents_limit", "--weave-agents-limit"),
+        ("weave_agents_verification_timeout", "--weave-agents-verification-timeout"),
+        ("weave_agents_poll_seconds", "--weave-agents-poll-seconds"),
+    ):
+        value = _cfg_get(cfg.agentic_math, cfg_key)
+        if value is not None:
+            command.extend([cli_key, str(value)])
     for denied_tool in _as_list(_cfg_get(cfg.agentic_math, "deny_tool")):
         command.extend(["--deny-tool", str(denied_tool)])
     for pattern in _as_list(_cfg_get(cfg.agentic_math, "deny_argument_pattern")):
@@ -186,6 +209,10 @@ def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
         command.append("--dry-run")
     elif _cfg_get(cfg.agentic_math, "dry_run", False):
         command.append("--dry-run")
+    else:
+        limit = _cfg_get(cfg.agentic_math, "limit")
+        if limit is not None:
+            command.extend(["--limit", str(limit)])
     _run_command(command)
     return output_dir / "openclaw"
 
@@ -229,9 +256,87 @@ def _validate_output_table_columns(output_df: pd.DataFrame) -> None:
         )
 
 
-def _log_summary(run, cfg, summary: dict[str, Any], output_df: pd.DataFrame) -> None:
+def _json_cell_for_wandb_table(value: Any) -> Any:
+    if isinstance(value, (dict, list, tuple)):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+    return value
+
+
+def _prepare_output_table_for_wandb(output_df: pd.DataFrame) -> pd.DataFrame:
+    table_df = output_df.copy()
+    for column in table_df.columns:
+        if table_df[column].map(lambda value: isinstance(value, (dict, list, tuple))).any():
+            table_df[column] = table_df[column].map(_json_cell_for_wandb_table)
+    return table_df
+
+
+def _sanitize_artifact_component(value: str) -> str:
+    return (
+        value.replace("/", "-")
+        .replace(":", "-")
+        .replace(" ", "-")
+        .replace("_", "-")
+        .lower()
+    )
+
+
+def _make_result_artifact(
+    *,
+    artifact_name: str,
+    result_dir: Path,
+    summary: dict[str, Any],
+    model_name: str,
+    subset: str,
+    max_input_tokens: int,
+    max_tool_calls: int,
+    max_agent_turns: int,
+    nemoclaw_sandbox: str,
+) -> wandb.Artifact:
+    artifact = wandb.Artifact(
+        artifact_name,
+        type="evaluation-results",
+        metadata={
+            "model_name": model_name,
+            "benchmark": "OlymMATH-HARD zh-TW",
+            "total_instances": summary["total_instances"],
+            "correct_instances": summary["correct_instances"],
+            "accuracy": summary["accuracy"],
+            "source_result_dir": str(result_dir),
+            "subset": subset,
+            "max_input_tokens": max_input_tokens,
+            "max_tool_calls": max_tool_calls,
+            "max_agent_turns": max_agent_turns,
+            "nemoclaw_sandbox": nemoclaw_sandbox,
+        },
+    )
+    for filename in ("summary.json", "results.jsonl"):
+        path = result_dir / filename
+        if path.exists():
+            artifact.add_file(str(path), name=filename)
+    return artifact
+
+
+def _log_summary(
+    run,
+    cfg,
+    summary: dict[str, Any],
+    output_df: pd.DataFrame,
+    result_dir: Path,
+) -> None:
     _validate_output_table_columns(output_df)
+    output_table_df = _prepare_output_table_for_wandb(output_df)
     model_name = _cfg_get(cfg.model, "pretrained_model_name_or_path", "openclaw")
+    subset = str(_cfg_get(cfg.agentic_math, "subset", "leaderboard"))
+    max_input_tokens = int(
+        _cfg_get(cfg.agentic_math, "max_input_tokens", DEFAULT_MAX_INPUT_TOKENS) or 0
+    )
+    max_tool_calls = int(
+        _cfg_get(cfg.agentic_math, "max_tool_calls", DEFAULT_MAX_TOOL_CALLS) or 0
+    )
+    max_agent_turns = int(
+        _cfg_get(cfg.agentic_math, "max_agent_turns", DEFAULT_MAX_AGENT_TURNS) or 0
+    )
+    nemoclaw_sandbox = str(_cfg_get(cfg.agentic_math, "nemoclaw_sandbox", "") or "")
     leaderboard = pd.DataFrame(
         [
             {
@@ -247,26 +352,47 @@ def _log_summary(run, cfg, summary: dict[str, Any], output_df: pd.DataFrame) -> 
     run.log(
         {
             "agentic_math_leaderboard_table": wandb.Table(dataframe=leaderboard),
-            "agentic_math_output_table": wandb.Table(dataframe=output_df),
+            "agentic_math_output_table": wandb.Table(dataframe=output_table_df),
             "agentic_math_results": summary,
             "agentic_math/accuracy": float(summary["accuracy"]),
             "agentic_math/correct_instances": int(summary["correct_instances"]),
             "agentic_math/total_instances": int(summary["total_instances"]),
             "agentic_math/answered_instances": int(summary["answered_instances"]),
-            "agentic_math/max_input_tokens": int(
-                _cfg_get(cfg.agentic_math, "max_input_tokens", DEFAULT_MAX_INPUT_TOKENS) or 0
-            ),
-            "agentic_math/max_tool_calls": int(
-                _cfg_get(cfg.agentic_math, "max_tool_calls", DEFAULT_MAX_TOOL_CALLS) or 0
-            ),
-            "agentic_math/max_agent_turns": int(
-                _cfg_get(cfg.agentic_math, "max_agent_turns", DEFAULT_MAX_AGENT_TURNS) or 0
-            ),
+            "agentic_math/max_input_tokens": max_input_tokens,
+            "agentic_math/max_tool_calls": max_tool_calls,
+            "agentic_math/max_agent_turns": max_agent_turns,
             "agentic_math/runtime_budget_exceeded_instances": int(
                 summary.get("runtime_budget_exceeded_instances") or 0
             ),
+            "agentic_math/weave_agents_required_instances": int(
+                summary.get("weave_agents_required_instances") or 0
+            ),
+            "agentic_math/weave_agents_passed_instances": int(
+                summary.get("weave_agents_passed_instances") or 0
+            ),
+            "agentic_math/weave_agents_failed_instances": int(
+                summary.get("weave_agents_failed_instances") or 0
+            ),
             **_nemoclaw_audit_metrics(summary),
         }
+    )
+    run.log_artifact(
+        _make_result_artifact(
+            artifact_name=(
+                "agentic-math-olymmath-hard-zh-tw-"
+                + _sanitize_artifact_component(model_name)
+                + "-results"
+            ),
+            result_dir=result_dir,
+            summary=summary,
+            model_name=model_name,
+            subset=subset,
+            max_input_tokens=max_input_tokens,
+            max_tool_calls=max_tool_calls,
+            max_agent_turns=max_agent_turns,
+            nemoclaw_sandbox=nemoclaw_sandbox,
+        ),
+        aliases=["latest", "production"],
     )
 
 
@@ -307,5 +433,5 @@ def evaluate():
         )
         return None
 
-    _log_summary(run, cfg, summary, output_df)
+    _log_summary(run, cfg, summary, output_df, runner_output_dir)
     return summary

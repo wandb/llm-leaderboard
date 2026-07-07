@@ -82,6 +82,11 @@ sidecar independently scans tool calls and tool arguments for policy violations
 before scoring. A violation is logged to Weave and fails the task instead of
 producing a leaderboard result.
 
+Python usage must be non-interactive. Agents should run `python3 -c`, a heredoc
+such as `python3 - <<'PY' ... PY`, or a short script file. Interactive shells,
+Python REPLs, notebooks, background processes, and `exec` calls with `pty=true`
+are disallowed because they can hang the harness and distort cost accounting.
+
 The native `weave-openclaw` integration is the authoritative W&B Weave Agents
 trace path. It records OpenClaw conversations and tool calls in execution order.
 The production agent name is `nejumi-taiwan-openclaw`.

@@ -43,6 +43,7 @@ SANDBOX_OPENCLAW_ENV_PASSTHROUGH = ("OPENCLAW_GATEWAY_URL",)
 AGENTS_API_BASE_URL = "https://trace.wandb.ai"
 AGENTS_QUERY_ENDPOINT = "/agents/query"
 AGENTS_SPANS_QUERY_ENDPOINT = "/agents/spans/query"
+AGENTS_TRACES_CHAT_ENDPOINT = "/agents/traces/chat"
 AGENTS_DIAGNOSTIC_SCHEMA_VERSION = 1
 SANDBOX_LIVE_SESSION_SCAN_TIMEOUT = 10
 SANDBOX_LIVE_SESSION_POLL_SECONDS = 5.0
@@ -82,6 +83,57 @@ def tool_call_count(message):
             for index, call in enumerate(calls):
                 add_call(call, f"{key}:{index}")
     return count
+
+
+def iter_tool_calls(message):
+    content = message.get("content")
+    if isinstance(content, list):
+        for index, part in enumerate(content):
+            if isinstance(part, dict) and part.get("type") in {"toolCall", "tool_use"}:
+                yield part, f"content:{index}"
+
+    for key in ("tool_calls", "toolCalls"):
+        calls = message.get(key)
+        if isinstance(calls, list):
+            for index, call in enumerate(calls):
+                if isinstance(call, dict):
+                    yield call, f"{key}:{index}"
+
+
+def tool_name(value):
+    name = value.get("name") or value.get("toolName")
+    function = value.get("function")
+    if not isinstance(name, str) and isinstance(function, dict):
+        name = function.get("name")
+    return name if isinstance(name, str) else ""
+
+
+def tool_arguments(value):
+    arguments = value.get("arguments")
+    if arguments is None:
+        arguments = value.get("input")
+    function = value.get("function")
+    if arguments is None and isinstance(function, dict):
+        arguments = function.get("arguments")
+    if isinstance(arguments, str):
+        try:
+            return json.loads(arguments)
+        except json.JSONDecodeError:
+            return {"raw": arguments}
+    return arguments if isinstance(arguments, dict) else {}
+
+
+def forbidden_live_tool_policy_violations(message):
+    violations = []
+    for value, source in iter_tool_calls(message):
+        name = tool_name(value)
+        arguments = tool_arguments(value)
+        name_norm = name.lower()
+        if name_norm == "process" or name_norm.startswith("process_"):
+            violations.append({"type": "forbidden_process_tool", "toolName": name, "source": source})
+        if name_norm == "exec" and arguments.get("pty") is True:
+            violations.append({"type": "forbidden_interactive_exec_pty", "toolName": name, "source": source})
+    return violations
 
 
 def text_from_value(value):
@@ -131,6 +183,7 @@ for raw_dir in sys.argv[2:]:
             continue
         estimated_input_tokens = 0
         agent_turn_count = 0
+        policy_violations = []
         for raw in lines:
             try:
                 event = json.loads(raw)
@@ -143,6 +196,7 @@ for raw_dir in sys.argv[2:]:
             if message.get("role") == "assistant":
                 agent_turn_count += 1
                 tool_calls += tool_call_count(message)
+                policy_violations.extend(forbidden_live_tool_policy_violations(message))
         rows.append(
             {
                 "path": str(path),
@@ -150,6 +204,8 @@ for raw_dir in sys.argv[2:]:
                 "tool_call_count": tool_calls,
                 "estimated_input_tokens": estimated_input_tokens,
                 "agent_turn_count": agent_turn_count,
+                "live_tool_policy_violation_count": len(policy_violations),
+                "live_tool_policy_violations": policy_violations[:10],
             }
         )
 rows.sort(
@@ -167,8 +223,6 @@ FINAL_ANSWER_MARKERS = (
     "ANSWER:",
     "FINAL ANSWER",
     "Final answer",
-    "答案",
-    "\\boxed",
     "CANARY_RESULT",
 )
 
@@ -625,7 +679,7 @@ def build_openclaw_command(args: argparse.Namespace, message_text: str, openclaw
         [
             f"OPENCLAW_MESSAGE_B64={message_b64}",
             "bash",
-            "-lc",
+            "-c",
             shell_command,
         ]
     )
@@ -674,13 +728,24 @@ def configured_live_session_dirs(args: argparse.Namespace) -> list[Path]:
 def configured_live_sandbox_session_dirs(args: argparse.Namespace) -> list[str]:
     dirs: list[str] = []
     seen: set[str] = set()
-    for value in getattr(args, "live_sandbox_session_dir", None) or []:
+
+    def add_dir(value: str | None) -> None:
+        if value is None:
+            return
         path = str(value).strip()
-        if not path or "\n" in path or "\r" in path:
-            continue
+        if not path or "\n" in path or "\r" in path or "\x00" in path:
+            return
         if path not in seen:
             dirs.append(path)
             seen.add(path)
+
+    for value in getattr(args, "live_sandbox_session_dir", None) or []:
+        add_dir(value)
+    agent = str(getattr(args, "agent", "") or "").strip()
+    if getattr(args, "nemoclaw_sandbox", None) and agent and not any(
+        char in agent for char in ("/", "\n", "\r", "\x00")
+    ):
+        add_dir(f"/sandbox/.openclaw/agents/{agent}/sessions")
     return dirs
 
 
@@ -852,6 +917,8 @@ def live_tool_budget_status(
             estimated_input_tokens = session.get("estimated_input_tokens")
             agent_turn_count = session.get("agent_turn_count")
             path = session.get("path")
+            live_policy_count = session.get("live_tool_policy_violation_count")
+            live_policy_violations = session.get("live_tool_policy_violations")
             if isinstance(count, (int, float)) and isinstance(path, str) and path:
                 observations.append(
                     {
@@ -868,6 +935,16 @@ def live_tool_budget_status(
                             else None
                         ),
                         "session_file": path,
+                        "live_tool_policy_violation_count": (
+                            int(live_policy_count)
+                            if isinstance(live_policy_count, (int, float))
+                            else 0
+                        ),
+                        "live_tool_policy_violations": (
+                            live_policy_violations
+                            if isinstance(live_policy_violations, list)
+                            else []
+                        ),
                     }
                 )
     tool_observations = sorted(
@@ -888,6 +965,12 @@ def live_tool_budget_status(
     best_tool = tool_observations[0] if tool_observations else {}
     best_input = input_observations[0] if input_observations else {}
     best_turn = turn_observations[0] if turn_observations else {}
+    policy_observations = sorted(
+        observations,
+        key=lambda item: int(item.get("live_tool_policy_violation_count") or 0),
+        reverse=True,
+    )
+    best_policy = policy_observations[0] if policy_observations else {}
     best_count = int(best_tool.get("tool_call_count") or 0) if best_tool else None
     best_input_tokens = (
         int(best_input.get("estimated_input_tokens") or 0) if best_input else None
@@ -910,6 +993,10 @@ def live_tool_budget_status(
         and best_turn_count is not None
         and best_turn_count > max_agent_turns
     )
+    policy_violation_count = (
+        int(best_policy.get("live_tool_policy_violation_count") or 0) if best_policy else 0
+    )
+    policy_exceeded = policy_violation_count > 0
     exceeded_limits = []
     if input_exceeded:
         exceeded_limits.append("max_input_tokens_exceeded")
@@ -917,6 +1004,8 @@ def live_tool_budget_status(
         exceeded_limits.append("max_tool_calls_exceeded")
     if turn_exceeded:
         exceeded_limits.append("max_agent_turns_exceeded")
+    if policy_exceeded:
+        exceeded_limits.append("live_tool_policy_violation")
     reason = None
     if len(exceeded_limits) == 1:
         reason = exceeded_limits[0]
@@ -936,6 +1025,12 @@ def live_tool_budget_status(
         "input_session_source": best_input.get("source") if best_input else None,
         "turn_session_file": best_turn.get("session_file") if best_turn else None,
         "turn_session_source": best_turn.get("source") if best_turn else None,
+        "policy_session_file": best_policy.get("session_file") if best_policy else None,
+        "policy_session_source": best_policy.get("source") if best_policy else None,
+        "live_tool_policy_violation_count": policy_violation_count,
+        "live_tool_policy_violations": best_policy.get("live_tool_policy_violations", [])
+        if best_policy
+        else [],
         "session_dirs": session_dirs,
         "sandbox_session_dirs": sandbox_session_dirs,
         "sandbox_scan": sandbox_scan,
@@ -1012,6 +1107,12 @@ def run_openclaw_command_with_live_budget(
 
 
 def run_agent(args: argparse.Namespace) -> None:
+    if args.weave_sidecar or args.weave_sidecar_strict:
+        raise SystemExit(
+            "Weave sidecar logging is disabled for Taiwan agentic benchmarks. "
+            "Use the native weave-openclaw Agents integration; manual sidecar/relog "
+            "traces are not valid evidence."
+        )
     args.openclaw_config_path = effective_openclaw_config_path(args)
     status = preflight(
         args.openclaw_bin,
@@ -1234,10 +1335,7 @@ def copy_nemoclaw_session_file(
         "--timeout",
         "60",
         "--",
-        "bash",
-        "-lc",
-        'cat "$1"',
-        "cat-session",
+        "cat",
         session_file,
     ]
     result = subprocess.run(command, text=True, capture_output=True, check=False, env=env)
@@ -1563,6 +1661,9 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
     live_estimated_input_tokens = None
     live_input_exceeded = False
     live_turn_exceeded = False
+    live_policy_exceeded = False
+    live_policy_violation_count = 0
+    live_policy_violations: list[Any] = []
     if isinstance(live_budget, dict):
         live_count = live_budget.get("tool_call_count")
         if isinstance(live_count, (int, float)):
@@ -1588,6 +1689,13 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
             "max_agent_turns_exceeded" in exceeded_limit_set
             or reason == "max_agent_turns_exceeded"
         )
+        live_policy_exceeded = "live_tool_policy_violation" in exceeded_limit_set or reason == "live_tool_policy_violation"
+        live_policy_count = live_budget.get("live_tool_policy_violation_count")
+        if isinstance(live_policy_count, (int, float)):
+            live_policy_violation_count = int(live_policy_count)
+        live_policy_rows = live_budget.get("live_tool_policy_violations")
+        if isinstance(live_policy_rows, list):
+            live_policy_violations = live_policy_rows
     if live_tool_call_count is not None:
         if tool_call_count is None:
             tool_call_count = live_tool_call_count
@@ -1636,6 +1744,16 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
                 "observed": agent_turn_count,
                 "limit": max_agent_turns,
                 "source": "live_runtime_budget" if live_turn_exceeded else "openclaw_session_jsonl",
+            }
+        )
+    if live_policy_exceeded:
+        violations.append(
+            {
+                "type": "live_tool_policy_violation",
+                "observed": live_policy_violation_count,
+                "limit": 0,
+                "source": "live_runtime_budget",
+                "violations": live_policy_violations,
             }
         )
     return {
@@ -1943,6 +2061,15 @@ def extract_timeline_events(sidecar: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def parse_last_json_line(text: str) -> dict[str, Any] | None:
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", text or ""):
+        suffix = (text or "")[match.start() :]
+        try:
+            parsed, end = decoder.raw_decode(suffix)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict) and not suffix[end:].strip():
+            return parsed
     for line in reversed((text or "").splitlines()):
         stripped = line.strip()
         if not stripped or not stripped.startswith("{"):
@@ -2100,6 +2227,10 @@ def log_weave_sidecar(
 
 
 def relog_sidecar(args: argparse.Namespace) -> None:
+    raise SystemExit(
+        "relog-sidecar is disabled for Taiwan agentic benchmarks. Use native "
+        "weave-openclaw Agents traces only; manual relogging is not valid evidence."
+    )
     sidecar_path = args.sidecar_path
     sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
     enrich_sidecar_with_tool_events(sidecar)
@@ -2163,6 +2294,74 @@ def _jsonish_text(value: Any) -> str:
         return json.dumps(value, ensure_ascii=False, sort_keys=True)
     except (TypeError, ValueError):
         return str(value)
+
+
+def _chat_messages(trace_chat_payload: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(trace_chat_payload, dict):
+        return []
+    messages = trace_chat_payload.get("messages", [])
+    if not isinstance(messages, list):
+        return []
+    return [message for message in messages if isinstance(message, dict)]
+
+
+def _chat_component_text(message: dict[str, Any], component: str, fields: tuple[str, ...]) -> str:
+    payload = message.get(component)
+    if not isinstance(payload, dict):
+        return ""
+    parts = [_jsonish_text(payload.get(field)) for field in fields if payload.get(field)]
+    return "\n".join(part for part in parts if part)
+
+
+def _chat_user_text(message: dict[str, Any]) -> str:
+    return _chat_component_text(message, "user_message", ("text", "content", "message", "prompt"))
+
+
+def _chat_assistant_text(message: dict[str, Any]) -> str:
+    return _chat_component_text(
+        message,
+        "assistant_message",
+        ("text", "content", "message", "response"),
+    )
+
+
+def _chat_tool_content(message: dict[str, Any]) -> str:
+    return _chat_component_text(
+        message,
+        "tool_call",
+        ("tool_arguments", "tool_result", "arguments", "result", "input", "output"),
+    )
+
+
+def _chat_timestamp(message: dict[str, Any]) -> float | None:
+    return _parse_span_timestamp(message.get("started_at"))
+
+
+def _chat_is_tool_call(message: dict[str, Any]) -> bool:
+    return isinstance(message.get("tool_call"), dict)
+
+
+def _chat_is_final_answer(message: dict[str, Any]) -> bool:
+    assistant_text = _chat_assistant_text(message)
+    return any(marker in assistant_text for marker in FINAL_ANSWER_MARKERS)
+
+
+def summarize_chat_message(message: dict[str, Any]) -> dict[str, Any]:
+    user_text = _chat_user_text(message)
+    assistant_text = _chat_assistant_text(message)
+    tool_content = _chat_tool_content(message)
+    return {
+        "type": message.get("type"),
+        "started_at": message.get("started_at"),
+        "has_user_message": bool(user_text),
+        "has_assistant_message": bool(assistant_text),
+        "has_tool_call": _chat_is_tool_call(message),
+        "has_tool_content": bool(tool_content),
+        "is_final_answer": _chat_is_final_answer(message),
+        "user_text_preview": user_text[:500],
+        "assistant_text_preview": assistant_text[:500],
+        "tool_content_preview": tool_content[:500],
+    }
 
 
 def _span_output_text(span: dict[str, Any]) -> str:
@@ -2295,19 +2494,53 @@ def _span_time_label(spans: list[dict[str, Any]], key: str, *, minimum: bool) ->
 def build_agents_trace_order_health(
     spans: list[dict[str, Any]],
     timestamp_issues: list[dict[str, Any]],
+    *,
+    trace_chat_messages: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    chat_messages = trace_chat_messages or []
     message_spans = [span for span in spans if span.get("operation_name") in {"chat", "invoke_agent"}]
     message_spans_with_input = [span for span in message_spans if span.get("has_input_messages")]
     tool_spans = [span for span in spans if span.get("operation_name") == "execute_tool"]
     final_answer_spans = [span for span in message_spans if span.get("has_final_answer_marker")]
+    chat_messages_with_input = [message for message in chat_messages if _chat_user_text(message)]
+    chat_tool_calls = [message for message in chat_messages if _chat_is_tool_call(message)]
+    chat_final_answer_messages = [message for message in chat_messages if _chat_is_final_answer(message)]
+    input_start_records = [
+        (_span_start(span), str(span.get("started_at") or ""))
+        for span in message_spans_with_input
+    ] + [
+        (_chat_timestamp(message), str(message.get("started_at") or ""))
+        for message in chat_messages_with_input
+    ]
+    input_start_records = [record for record in input_start_records if record[0] is not None]
+    tool_start_records = [
+        (_span_start(span), str(span.get("started_at") or ""))
+        for span in tool_spans
+    ] + [
+        (_chat_timestamp(message), str(message.get("started_at") or ""))
+        for message in chat_tool_calls
+    ]
+    tool_start_records = [record for record in tool_start_records if record[0] is not None]
+    final_answer_boundary_records = [
+        (_span_end(span), str(span.get("ended_at") or ""))
+        for span in final_answer_spans
+    ] + [
+        (_chat_timestamp(message), str(message.get("started_at") or ""))
+        for message in chat_final_answer_messages
+    ]
+    final_answer_boundary_records = [
+        record for record in final_answer_boundary_records if record[0] is not None
+    ]
+    message_input_count = len(message_spans_with_input) + len(chat_messages_with_input)
+    final_answer_count = len(final_answer_spans) + len(chat_final_answer_messages)
     health: dict[str, Any] = {
         "timestamp_quality_ok": not timestamp_issues,
         "timestamp_issue_count": len(timestamp_issues),
         "timestamp_issues": timestamp_issues[:10],
         "message_span_count": len(message_spans),
-        "message_spans_with_input": len(message_spans_with_input),
+        "message_spans_with_input": message_input_count,
         "tool_span_count": len(tool_spans),
-        "final_answer_span_count": len(final_answer_spans),
+        "final_answer_span_count": final_answer_count,
         "trace_order_ok": True,
         "trace_user_message_order_ok": True,
         "trace_final_answer_order_ok": True,
@@ -2321,6 +2554,9 @@ def build_agents_trace_order_health(
         "first_tool_started_at": _span_time_label(tool_spans, "started_at", minimum=True),
         "last_tool_started_at": _span_time_label(tool_spans, "started_at", minimum=False),
         "first_final_answer_ended_at": _span_time_label(final_answer_spans, "ended_at", minimum=True),
+        "chat_messages_with_input": len(chat_messages_with_input),
+        "chat_tool_call_count": len(chat_tool_calls),
+        "chat_final_answer_message_count": len(chat_final_answer_messages),
     }
     order_issues = health["order_issues"]
     if timestamp_issues:
@@ -2343,20 +2579,32 @@ def build_agents_trace_order_health(
             order_issues.append("tool_started_before_or_at_first_message")
 
     if tool_spans:
-        if not message_spans_with_input:
+        if not input_start_records:
             health["trace_user_message_order_ok"] = False
             order_issues.append("tool_present_without_visible_user_input")
         else:
-            first_input_message = min(_span_start(span) for span in message_spans_with_input)
-            first_tool = min(_span_start(span) for span in tool_spans)
+            first_input_message, first_input_started_at = min(input_start_records)
+            first_tool, first_tool_started_at = min(tool_start_records)
+            health["first_input_message_started_at"] = first_input_started_at
+            health["first_tool_started_at"] = first_tool_started_at
             if first_input_message is None or first_tool is None or first_tool <= first_input_message:
                 health["trace_user_message_order_ok"] = False
                 order_issues.append("tool_started_before_or_at_visible_user_input")
 
-    if final_answer_spans and tool_spans:
-        first_final_answer_end = min(_span_end(span) for span in final_answer_spans)
-        last_tool_start = max(_span_start(span) for span in tool_spans)
-        if first_final_answer_end is None or last_tool_start is None or last_tool_start >= first_final_answer_end:
+    if final_answer_count > 0 and tool_spans:
+        if not final_answer_boundary_records or not tool_start_records:
+            health["trace_final_answer_order_ok"] = False
+            order_issues.append("trace_final_answer_order_not_comparable_invalid_timestamps")
+        else:
+            first_final_answer_boundary, first_final_answer_at = min(final_answer_boundary_records)
+            last_tool_start, last_tool_started_at = max(tool_start_records)
+            health["first_final_answer_at"] = first_final_answer_at
+            health["last_tool_started_at"] = last_tool_started_at
+        if (
+            not final_answer_boundary_records
+            or not tool_start_records
+            or last_tool_start >= first_final_answer_boundary
+        ):
             health["trace_final_answer_order_ok"] = False
             order_issues.append("tool_started_after_or_at_final_answer_end")
 
@@ -2367,6 +2615,7 @@ def build_agents_check_summary(
     agents: dict[str, Any],
     spans: dict[str, Any],
     *,
+    trace_chat_payload: dict[str, Any] | None = None,
     entity: str,
     project: str,
     agent_name: str | None,
@@ -2401,25 +2650,44 @@ def build_agents_check_summary(
     ]
     latest_trace_spans_chronological = sorted(latest_trace_spans, key=_chronological_key)
     timestamp_issues = _timestamp_quality_issues(latest_trace_spans_chronological)
+    trace_chat_messages = _chat_messages(trace_chat_payload)
+    chat_messages_with_content = [
+        message
+        for message in trace_chat_messages
+        if _chat_user_text(message) or _chat_assistant_text(message)
+    ]
+    chat_messages_with_input = [
+        message for message in trace_chat_messages if _chat_user_text(message)
+    ]
+    chat_tool_calls = [message for message in trace_chat_messages if _chat_is_tool_call(message)]
+    chat_tool_calls_with_content = [
+        message for message in chat_tool_calls if _chat_tool_content(message)
+    ]
+    chat_final_answer_messages = [
+        message for message in trace_chat_messages if _chat_is_final_answer(message)
+    ]
     trace_order_health = build_agents_trace_order_health(
         latest_trace_spans_chronological,
         timestamp_issues,
+        trace_chat_messages=trace_chat_messages,
+    )
+    message_span_content_count = sum(
+        1
+        for span in latest_trace_spans_chronological
+        if span.get("has_input_messages") or span.get("has_output_messages")
+    )
+    tool_span_content_count = sum(
+        1
+        for span in latest_trace_spans_chronological
+        if span.get("has_tool_call_arguments") or span.get("has_tool_call_result")
     )
     content_capture_health = {
         "span_count_checked": len(latest_trace_spans_chronological),
         "message_span_count": trace_order_health["message_span_count"],
-        "message_spans_with_content": sum(
-            1
-            for span in latest_trace_spans_chronological
-            if span.get("has_input_messages") or span.get("has_output_messages")
-        ),
+        "message_spans_with_content": message_span_content_count + len(chat_messages_with_content),
         "message_spans_with_input": trace_order_health["message_spans_with_input"],
         "tool_span_count": trace_order_health["tool_span_count"],
-        "tool_spans_with_content": sum(
-            1
-            for span in latest_trace_spans_chronological
-            if span.get("has_tool_call_arguments") or span.get("has_tool_call_result")
-        ),
+        "tool_spans_with_content": tool_span_content_count + len(chat_tool_calls_with_content),
         "final_answer_span_count": trace_order_health["final_answer_span_count"],
         "spans_with_valid_timestamps": len(latest_trace_spans_chronological) - len(timestamp_issues),
         "spans_with_invalid_timestamps": len(timestamp_issues),
@@ -2428,36 +2696,76 @@ def build_agents_check_summary(
         "trace_user_message_order_ok": trace_order_health["trace_user_message_order_ok"],
         "trace_final_answer_order_ok": trace_order_health["trace_final_answer_order_ok"],
     }
+    if trace_chat_payload is not None:
+        content_capture_health.update(
+            {
+                "chat_message_count": len(trace_chat_messages),
+                "chat_messages_with_content": len(chat_messages_with_content),
+                "chat_messages_with_input": len(chat_messages_with_input),
+                "chat_tool_call_count": len(chat_tool_calls),
+                "chat_tool_calls_with_content": len(chat_tool_calls_with_content),
+                "chat_final_answer_message_count": len(chat_final_answer_messages),
+            }
+        )
+    query_source = {
+        "kind": "wandb_agents_api",
+        "api_base_url": AGENTS_API_BASE_URL,
+        "agents_endpoint": AGENTS_QUERY_ENDPOINT,
+        "spans_endpoint": AGENTS_SPANS_QUERY_ENDPOINT,
+        "project_id": project_id,
+        "agent_name": agent_name or "",
+        "conversation_id": conversation_id or "",
+        "conversation_id_contains": conversation_id_contains or "",
+        "limit": limit,
+        "span_limit": span_limit if isinstance(span_limit, int) else max(limit, limit * 4),
+        "agents_count": len(agents_list),
+        "spans_count": len(spans_list),
+        "matching_span_count": len(raw_spans),
+        "latest_trace_span_count": len(latest_trace_spans_chronological),
+    }
+    if trace_chat_payload is not None:
+        query_source.update(
+            {
+                "trace_chat_endpoint": AGENTS_TRACES_CHAT_ENDPOINT,
+                "trace_chat_message_count": len(trace_chat_messages),
+            }
+        )
     return {
         "diagnostic_schema_version": AGENTS_DIAGNOSTIC_SCHEMA_VERSION,
         "generated_at": time.time(),
         "project_id": project_id,
         "agent_name_filter": agent_name,
         "agents_url": f"https://wandb.ai/{entity}/{project}/weave/agents",
-        "query_source": {
-            "kind": "wandb_agents_api",
-            "api_base_url": AGENTS_API_BASE_URL,
-            "agents_endpoint": AGENTS_QUERY_ENDPOINT,
-            "spans_endpoint": AGENTS_SPANS_QUERY_ENDPOINT,
-            "project_id": project_id,
-            "agent_name": agent_name or "",
-            "conversation_id": conversation_id or "",
-            "conversation_id_contains": conversation_id_contains or "",
-            "limit": limit,
-            "span_limit": span_limit if isinstance(span_limit, int) else max(limit, limit * 4),
-            "agents_count": len(agents_list),
-            "spans_count": len(spans_list),
-            "matching_span_count": len(raw_spans),
-            "latest_trace_span_count": len(latest_trace_spans_chronological),
-        },
+        "query_source": query_source,
         "agents": agents_list,
         "total_count": agents.get("total_count", 0),
         "latest_trace_id": latest_trace_id,
         "latest_trace_spans_chronological": latest_trace_spans_chronological,
+        "latest_trace_chat_messages_chronological": [
+            summarize_chat_message(message) for message in trace_chat_messages
+        ],
         "content_capture_health": content_capture_health,
         "trace_order_health": trace_order_health,
         "latest_spans_api_order": latest_spans_api_order,
     }
+
+
+def query_trace_chat(
+    *,
+    env: dict[str, str],
+    entity: str,
+    project: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    return agents_api_post(
+        env,
+        AGENTS_TRACES_CHAT_ENDPOINT,
+        {
+            "project_id": f"{entity}/{project}",
+            "trace_id": trace_id,
+            "include_feedback": False,
+        },
+    )
 
 
 def check_agents(args: argparse.Namespace) -> None:
@@ -2475,9 +2783,35 @@ def check_agents(args: argparse.Namespace) -> None:
     spans_payload["limit"] = span_limit
     agents = agents_api_post(env, AGENTS_QUERY_ENDPOINT, agents_payload)
     spans = agents_api_post(env, AGENTS_SPANS_QUERY_ENDPOINT, spans_payload)
+    raw_spans = [
+        span
+        for span in (spans.get("spans", []) if isinstance(spans.get("spans"), list) else [])
+        if isinstance(span, dict)
+        and (not args.agent_name or span.get("agent_name") == args.agent_name)
+        and (not args.conversation_id or span.get("conversation_id") == args.conversation_id)
+        and (
+            not args.conversation_id_contains
+            or (
+                isinstance(span.get("conversation_id"), str)
+                and args.conversation_id_contains in span.get("conversation_id")
+            )
+        )
+    ]
+    latest_trace_id = _latest_trace_id(raw_spans)
+    trace_chat_payload = (
+        query_trace_chat(
+            env=env,
+            entity=args.entity,
+            project=args.project,
+            trace_id=latest_trace_id,
+        )
+        if latest_trace_id
+        else None
+    )
     result = build_agents_check_summary(
         agents,
         spans,
+        trace_chat_payload=trace_chat_payload,
         entity=args.entity,
         project=args.project,
         agent_name=args.agent_name,

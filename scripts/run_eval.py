@@ -372,6 +372,8 @@ try:
             resume="allow" if wandb_run else None,
             settings=wandb.Settings(init_timeout=300),
         )
+        if run is not None and getattr(run, "id", None):
+            os.environ["WANDB_RUN_ID"] = str(run.id)
         os.environ["NEJUMI_WANDB_INIT_DONE"] = "1"
 except Exception as e:
     raise SystemExit(

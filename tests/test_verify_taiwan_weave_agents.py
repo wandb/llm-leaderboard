@@ -110,6 +110,52 @@ def spans_payload(
     return {"spans": spans}
 
 
+def trace_chat_payload(
+    *,
+    canary_id="TEST_CANARY",
+    conversation_id="agentic_math:task-1",
+    request_model="gpt-4.1-mini-2025-04-14",
+):
+    return {
+        "trace_id": "trace-1",
+        "conversation_id": conversation_id,
+        "messages": [
+            {
+                "type": "user_message",
+                "started_at": "2026-06-27T00:00:01.000000",
+                "user_message": {
+                    "text": f"problem\nCanary ID: {canary_id}",
+                },
+            },
+            {
+                "type": "agent_start",
+                "started_at": "2026-06-27T00:00:01.100000",
+                "agent_start": {
+                    "model": request_model,
+                    "system_instructions": "solve the problem",
+                },
+            },
+            {
+                "type": "tool_call",
+                "started_at": "2026-06-27T00:00:02.000000",
+                "tool_call": {
+                    "tool_name": "exec",
+                    "tool_arguments": "{\"code\":\"return 7 * 13\"}",
+                    "tool_result": "{\"value\":91}",
+                },
+            },
+            {
+                "type": "assistant_message",
+                "started_at": "2026-06-27T00:00:03.000000",
+                "assistant_message": {
+                    "text": f"CANARY_RESULT {canary_id} 91",
+                    "model": request_model,
+                },
+            },
+        ],
+    }
+
+
 def test_verify_weave_agents_accepts_contentful_ordered_trace():
     module = load_module()
 
@@ -158,6 +204,44 @@ def test_verify_weave_agents_accepts_contentful_ordered_trace():
         "required_text_count": 0,
         "request_model_count": 1,
     }
+
+
+def test_verify_weave_agents_accepts_content_from_trace_chat_when_span_rows_are_scalar_only():
+    module = load_module()
+
+    result = module.verify_agents_payload(
+        agents_payload(),
+        spans_payload(content=False),
+        trace_chat_payload=trace_chat_payload(canary_id="TEST_CANARY"),
+        entity="llm-leaderboard",
+        project="tc-leaderboard",
+        agent_name="nejumi-taiwan-openclaw",
+        require_content=True,
+        require_tool_span=True,
+        require_tool_content=True,
+        require_usage=True,
+        required_texts=["problem", "CANARY_RESULT TEST_CANARY 91"],
+        expected_request_models=[
+            "openai-direct/gpt-4.1-mini-2025-04-14",
+            "gpt-4.1-mini-2025-04-14",
+        ],
+    )
+
+    assert result["ok"] is True
+    assert result["query_source"]["trace_chat_endpoint"] == module.AGENTS_TRACES_CHAT_ENDPOINT
+    assert result["content_capture_health"]["message_spans_with_content"] == 2
+    assert result["content_capture_health"]["message_spans_with_input"] == 1
+    assert result["content_capture_health"]["tool_spans_with_content"] == 1
+    assert result["content_capture_health"]["final_answer_span_count"] == 1
+    assert result["content_capture_health"]["chat_tool_calls_with_content"] == 1
+    assert any(
+        check["name"] == "required_text_capture" and check["ok"]
+        for check in result["checks"]
+    )
+    assert any(
+        check["name"] == "trace_final_answer_order" and check["ok"]
+        for check in result["checks"]
+    )
 
 
 def test_verify_weave_agents_rejects_empty_message_content_when_required():

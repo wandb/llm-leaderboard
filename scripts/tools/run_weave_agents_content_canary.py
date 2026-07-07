@@ -91,7 +91,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--agents-limit", type=int, default=30)
     parser.add_argument("--no-require-tool", action="store_true")
     parser.add_argument("--no-require-usage", action="store_true")
-    parser.add_argument("--weave-sidecar", action="store_true", help="Also run diagnostic sidecar logging; native OpenClaw trace remains authoritative.")
     parser.add_argument(
         "--external-action-approval-report-json",
         type=Path,
@@ -410,8 +409,6 @@ def build_run_command(args: argparse.Namespace, paths: CanaryPaths) -> list[str]
         command.extend(["--live-sandbox-session-dir", f"/sandbox/.openclaw/agents/{args.agent}/sessions"])
     if args.allow_failed_preflight:
         command.append("--allow-failed-preflight")
-    if args.weave_sidecar:
-        command.append("--weave-sidecar")
     for pattern in NETWORK_DENY_PATTERNS:
         command.extend(["--deny-argument-pattern", pattern])
     return command

@@ -15,8 +15,17 @@ AGENTIC_MATH_OUTPUT_COLUMNS = [
     "conversation_order",
     "tool_policy_ok",
     "tool_policy_violations",
-    "weave_sidecar_ok",
-    "weave_sidecar",
+    "weave_agents_ok",
+    "weave_agents_required",
+    "weave_agents_agent_name",
+    "weave_agents_conversation_id",
+    "weave_agents_conversation_id_contains",
+    "weave_agents_conversation_url",
+    "weave_agents_trace_id",
+    "weave_agents_url",
+    "weave_agents_trace_url",
+    "weave_agents_verifier_json",
+    "weave_agents_error",
     "openclaw_result_path",
     "openclaw_invocation_path",
     "openclaw_invocation_sha256",
@@ -32,8 +41,17 @@ AGENTIC_SWE_OUTPUT_COLUMNS = [
     "conversation_order",
     "tool_policy_ok",
     "tool_policy_violations",
-    "weave_sidecar_ok",
-    "weave_sidecar",
+    "weave_agents_ok",
+    "weave_agents_required",
+    "weave_agents_agent_name",
+    "weave_agents_conversation_id",
+    "weave_agents_conversation_id_contains",
+    "weave_agents_conversation_url",
+    "weave_agents_trace_id",
+    "weave_agents_url",
+    "weave_agents_trace_url",
+    "weave_agents_verifier_json",
+    "weave_agents_error",
     "openclaw_result_path",
     "openclaw_invocation_path",
     "openclaw_invocation_sha256",
@@ -47,8 +65,31 @@ def table_value(column, row_index):
         return True
     if column in {"tool_policy_violations"}:
         return []
-    if column in {"conversation_order", "weave_sidecar", "nemoclaw_session_audit"}:
+    if column in {"conversation_order", "nemoclaw_session_audit"}:
         return {"ok": True, "required": True}
+    if column == "weave_agents_required":
+        return True
+    if column == "weave_agents_agent_name":
+        return "nejumi-taiwan-openclaw"
+    if column == "weave_agents_conversation_id":
+        return f"agent:main:run123:agentic:{row_index}"
+    if column == "weave_agents_conversation_id_contains":
+        return f"run123:agentic:{row_index}"
+    if column == "weave_agents_conversation_url":
+        return (
+            "https://wandb.ai/llm-leaderboard/tc-leaderboard/weave/agents/"
+            f"conversations/agent%3Amain%3Arun123%3Aagentic%3A{row_index}"
+        )
+    if column == "weave_agents_trace_id":
+        return f"trace-{row_index}"
+    if column == "weave_agents_url":
+        return "https://wandb.ai/llm-leaderboard/tc-leaderboard/weave/agents"
+    if column == "weave_agents_trace_url":
+        return f"https://wandb.ai/llm-leaderboard/tc-leaderboard/weave/agents?trace_id=trace-{row_index}"
+    if column == "weave_agents_verifier_json":
+        return f"/tmp/task-{row_index}/weave_agents_verification.json"
+    if column == "weave_agents_error":
+        return ""
     if column == "nemoclaw_session_audit_required":
         return True
     if column == "nemoclaw_session_copy_source":
@@ -299,7 +340,8 @@ def test_verify_agentic_math_wandb_completion_accepts_complete_run():
                 "nemoclaw_session_audit_ok",
                 "conversation_order_ok",
                 "tool_policy_ok",
-                "weave_sidecar_ok",
+                "weave_agents_ok",
+                "weave_agents_required",
             ],
             "row_observability_required_empty_list_columns": [
                 "tool_policy_violations",
@@ -307,7 +349,15 @@ def test_verify_agentic_math_wandb_completion_accepts_complete_run():
             "row_observability_required_dict_ok_columns": [
                 "nemoclaw_session_audit",
                 "conversation_order",
-                "weave_sidecar",
+            ],
+            "row_observability_required_nonempty_string_columns": [
+                "weave_agents_agent_name",
+                "weave_agents_conversation_id",
+                "weave_agents_conversation_id_contains",
+                "weave_agents_conversation_url",
+                "weave_agents_trace_id",
+                "weave_agents_url",
+                "weave_agents_verifier_json",
             ],
             "row_observability_required_copy_source_columns": [
                 "nemoclaw_session_copy_source",
@@ -359,7 +409,7 @@ def test_verify_agentic_math_wandb_completion_rejects_missing_output_observabili
     summary["agentic_math_output_table"]["columns"] = [
         column
         for column in AGENTIC_MATH_OUTPUT_COLUMNS
-        if column != "weave_sidecar_ok"
+        if column != "weave_agents_trace_id"
     ]
     run = FakeRun(summary=summary, artifacts=[complete_result_artifact()])
 
@@ -370,14 +420,14 @@ def test_verify_agentic_math_wandb_completion_rejects_missing_output_observabili
         check for check in result["checks"] if check["name"] == "output_table_columns"
     )
     assert column_check["ok"] is False
-    assert column_check["missing_columns"] == ["weave_sidecar_ok"]
+    assert column_check["missing_columns"] == ["weave_agents_trace_id"]
     output_table = next(
         table
         for table in result["observed_evidence"]["tables"]
         if table["name"] == "agentic_math_output_table"
     )
     assert output_table["columns_ok"] is False
-    assert output_table["missing_columns"] == ["weave_sidecar_ok"]
+    assert output_table["missing_columns"] == ["weave_agents_trace_id"]
 
 
 def test_verify_agentic_math_wandb_completion_loads_output_columns_from_table_file():
@@ -564,6 +614,36 @@ def test_verify_agentic_swe_wandb_completion_rejects_failed_nested_observability
     assert check["ok"] is False
     assert check["invalid_row_count"] == 1
     assert check["invalid_examples"][0]["dict_not_ok"] == ["conversation_order"]
+
+
+def test_verify_agentic_math_wandb_completion_accepts_json_string_observability():
+    module = load_module()
+    summary = complete_agentic_math_summary()
+    payload = table_payload(AGENTIC_MATH_OUTPUT_COLUMNS, 100)
+    conversation_index = AGENTIC_MATH_OUTPUT_COLUMNS.index("conversation_order")
+    audit_index = AGENTIC_MATH_OUTPUT_COLUMNS.index("nemoclaw_session_audit")
+    violations_index = AGENTIC_MATH_OUTPUT_COLUMNS.index("tool_policy_violations")
+    payload["data"][0][conversation_index] = json.dumps(
+        {"ok": True, "first_final_answer_index": 6}
+    )
+    payload["data"][0][audit_index] = json.dumps({"ok": True, "required": True})
+    payload["data"][0][violations_index] = json.dumps([])
+    run = FakeRun(
+        summary=summary,
+        artifacts=[complete_result_artifact()],
+        table_files={
+            "media/table/agentic_math_output_table_0.table.json": payload,
+        },
+    )
+
+    result = module.verify_run(run, module.BENCHMARK_SPECS["agentic_math"])
+
+    check = next(
+        check
+        for check in result["checks"]
+        if check["name"] == "output_table_row_observability"
+    )
+    assert check["ok"] is True
 
 
 def test_verify_agentic_math_wandb_completion_rejects_invalid_session_copy_evidence():

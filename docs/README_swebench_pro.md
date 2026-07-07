@@ -150,7 +150,8 @@ python3 scripts/tools/run_swebench_pro_openclaw.py \
   --nemoclaw-sandbox nejumi-taiwan \
   --nemoclaw-checkout-sandbox-root /sandbox/checkouts \
   --max-input-tokens 1000000 \
-  --max-tool-calls 60
+  --max-tool-calls 40 \
+  --max-agent-turns 40
 ```
 
 If the sandbox mounts host paths unchanged, omit
@@ -172,7 +173,8 @@ uv run python scripts/tools/run_swebench_pro_openclaw.py \
   --nemoclaw-sandbox nejumi-taiwan \
   --nemoclaw-checkout-transfer-mode copy \
   --max-input-tokens 1000000 \
-  --max-tool-calls 60
+  --max-tool-calls 40 \
+  --max-agent-turns 40
 ```
 
 Copy mode uploads the prepared git checkout, including `.git`, into the
@@ -304,7 +306,8 @@ artifact has been built and uploaded:
 swebench_pro:
   subset: leaderboard_compact_40
   max_input_tokens: 1000000
-  max_tool_calls: 60
+  max_tool_calls: 40
+  max_agent_turns: 40
 ```
 
 For the main lower-cost Taiwan leaderboard candidate, use:
@@ -313,17 +316,19 @@ For the main lower-cost Taiwan leaderboard candidate, use:
 swebench_pro:
   subset: leaderboard_compact_80
   max_input_tokens: 1000000
-  max_tool_calls: 60
+  max_tool_calls: 40
+  max_agent_turns: 40
   nemoclaw_sandbox: nejumi-taiwan
   nemoclaw_checkout_sandbox_root: /sandbox/checkouts
 ```
 
-`max_input_tokens` and `max_tool_calls` are hard harness budgets. A task that
-exceeds them is recorded as `runtime_budget_exceeded` and receives an empty
-patch, so the run remains scoreable instead of becoming an infrastructure
-failure. `max_tool_calls` is also enforced live where the OpenClaw session JSONL
-is visible: the protocol wrapper monitors the task agent's session file and
-terminates the OpenClaw subprocess after the cap is exceeded. `max_input_tokens`
+`max_input_tokens`, `max_tool_calls`, and `max_agent_turns` are hard harness
+budgets. A task that exceeds them is recorded as `runtime_budget_exceeded` and
+receives an empty patch, so the run remains scoreable instead of becoming an
+infrastructure failure. `max_tool_calls` and `max_agent_turns` are also enforced
+live where the OpenClaw session JSONL is visible: the protocol wrapper monitors
+the task agent's session file and terminates the OpenClaw subprocess after the
+cap is exceeded. `max_input_tokens`
 is checked from OpenClaw's completed usage metadata because OpenClaw 2026.6.9
 does not expose live token usage to the CLI. If a future OpenClaw/NeMoClaw hook
 supports native live token interruption, wire the same config field to that

@@ -139,7 +139,6 @@ cmd=(
   "--deny-tool" "web_fetch"
   "--deny-tool" "browser"
   "--deny-tool" "browser_*"
-  "--deny-tool" "*search*"
   "--deny-argument-pattern" "https?://"
   "--deny-argument-pattern" "\\b(curl|wget)\\b"
   "--deny-argument-pattern" "\\b(requests|urllib|httpx)\\."

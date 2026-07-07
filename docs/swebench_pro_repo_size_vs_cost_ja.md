@@ -68,8 +68,8 @@ top3/top4の巨大repo除外は、Public問題数を約27-30%減らしますが�
 
 1. サンプリングは必要。Public 731問をそのまま本番評価するのは費用的にも運用的にも重い。
 2. 巨大repo除外は、コスト削減の主策ではなく、静的リスクと運用負荷を下げるための補助策として使う。
-3. コスト爆発の主策は、前回の実績ベースシミュレーション通り `1M input cap + 60 tool-call cap` のようなruntime capにする。
-4. subsetは `Compact80 + 1M input cap + 60 tool-call cap` を第一候補にする。Compact40は最終手段。
+3. コスト爆発の主策は、前回の実績ベースシミュレーション通りruntime capにする。現在の実行設定は `1M input cap + 40 tool-call cap + 40 turn cap`。
+4. subsetは `Compact80 + 1M input cap + 40 tool-call cap + 40 turn cap` を第一候補にする。Compact40は最終手段。
 5. 巨大repoは完全除外ではなく、per-repo capと静的cost proxyで露出を制限する方がよい。例: top3/top4 repoは各repo少数に制限し、全体のカテゴリ/言語/難度分布を維持する。
 
 このデータからは、「巨大repoだから高コスト」というより、「小規模repoでもagentが詰まると爆発する」という見方が正しいです。したがって、サンプリング設計とruntime capを併用する必要があります。

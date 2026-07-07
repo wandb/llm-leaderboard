@@ -1,5 +1,5 @@
 wandb:
-  run_name: 'taiwan/full/openai/gpt-4.1-mini: openai-direct-canary'
+  run_name: 'taiwan/full/openai/gpt-4.1-mini: production-spec-one-model'
 api: openai_responses
 batch_size: 32
 model:
@@ -44,25 +44,39 @@ agentic_math:
   openclaw_max_attempts: 3
   openclaw_retry_base_seconds: 15
   max_input_tokens: 500000
-  max_tool_calls: 60
-  max_agent_turns: 60
+  max_tool_calls: 40
+  max_agent_turns: 40
+  verify_weave_agents: true
+  weave_agents_entity: 'llm-leaderboard'
+  weave_agents_project: 'tc-leaderboard'
+  weave_agents_agent_name: 'nejumi-taiwan-openclaw'
+  weave_agents_limit: 50
+  weave_agents_verification_timeout: 120
+  weave_agents_poll_seconds: 5
   dry_run: false
   run_openclaw: false
   results_dir: outputs/taiwan_full_eval/agentic_math/gpt-4_1-mini-openai-direct-canary/openclaw
+  no_local: true
   weave_sidecar: false
   weave_sidecar_strict: false
   openclaw_tool_profile: coding
   deny_tool:
   - code_execution
+  - process
+  - process_*
   - web_search
   - web_fetch
   - browser
   - browser_*
-  - '*search*'
   deny_argument_pattern:
   - https?://
   - \b(curl|wget)\b
   - \b(requests|urllib|httpx)\.
+  nemoclaw_sandbox: nejumi-taiwan
+  nemoclaw_bin: nemoclaw
+  nemoclaw_workdir: /sandbox
+  use_task_agent: true
+  nemoclaw_openclaw_config_path: /sandbox/.openclaw/openclaw.json
 swebench_pro:
   subset: leaderboard_compact_80
   output_dir: outputs/taiwan_full_eval/swebench_pro/gpt-4_1-mini-openai-direct-canary
@@ -77,34 +91,35 @@ swebench_pro:
   run_openclaw: false
   patch_path: outputs/taiwan_full_eval/swebench_pro/gpt-4_1-mini-openai-direct-canary/openclaw/patches.json
   evaluate: true
+  no_local: true
   weave_sidecar: false
   weave_sidecar_strict: false
   openclaw_tool_profile: coding
   max_input_tokens: 1000000
-  max_tool_calls: 60
-  max_agent_turns: 60
+  max_tool_calls: 40
+  max_agent_turns: 40
+  verify_weave_agents: true
+  weave_agents_entity: 'llm-leaderboard'
+  weave_agents_project: 'tc-leaderboard'
+  weave_agents_agent_name: 'nejumi-taiwan-openclaw'
+  weave_agents_limit: 50
+  weave_agents_verification_timeout: 120
+  weave_agents_poll_seconds: 5
   deny_tool:
   - code_execution
+  - process
+  - process_*
   - web_search
   - web_fetch
   - browser
   - browser_*
-  - '*search*'
   deny_argument_pattern:
   - https?://
   - \b(curl|wget)\b
   - \b(requests|urllib|httpx)\.
+  nemoclaw_sandbox: nejumi-taiwan
+  nemoclaw_bin: nemoclaw
+  nemoclaw_checkout_transfer_mode: copy
+  nemoclaw_openclaw_config_path: /sandbox/.openclaw/openclaw.json
 bfcl:
   allow_overwrite: false
-mtbench:
-  judge:
-    model: gpt-4.1-mini-2025-04-14
-    parallel: 2
-hle:
-  judge:
-    model: gpt-4.1-mini-2025-04-14
-    parallel: 2
-hallulens_zh_tw:
-  judge:
-    model: gpt-4.1-mini-2025-04-14
-    parallel: 2

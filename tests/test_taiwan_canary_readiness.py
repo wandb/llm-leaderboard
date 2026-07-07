@@ -140,6 +140,8 @@ Policy:
   network_policies:
     clawhub:
       name: clawhub
+    npm_yarn:
+      name: npm_yarn
     wandb-weave:
       name: wandb-weave
 TEXT
@@ -176,7 +178,7 @@ exit 1
         if check.name == "NeMoClaw sandbox runtime policy is introspectable: nejumi-taiwan"
     )
     assert '"summary_policy_count": 0' in policy_check.detail
-    assert '"detailed_status_network_policy_count": 2' in policy_check.detail
+    assert '"detailed_status_network_policy_count": 3' in policy_check.detail
     assert '"wandb_weave_policy_present": true' in policy_check.detail
     weave_check = next(
         check
@@ -191,6 +193,7 @@ exit 1
     )
     assert allowlist_check.ok
     assert '"runtime_network_policy_allowlist_ok": true' in allowlist_check.detail
+    assert '"npm_yarn"' in allowlist_check.detail
 
 
 def test_nemoclaw_required_readiness_fails_unknown_runtime_network_policy(tmp_path):
@@ -796,13 +799,13 @@ model:
   pretrained_model_name_or_path: gpt-4.1-mini-2025-04-14
 agentic_math:
   openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14
-  deny_tool: [code_execution, web_search, web_fetch, browser, browser_*, '*search*']
+  deny_tool: [code_execution, process, process_*, web_search, web_fetch, browser, browser_*]
   deny_argument_pattern: ['https?://', '\\b(curl|wget)\\b', '\\b(requests|urllib|httpx)\\.']
   nemoclaw_sandbox: nejumi-taiwan
   use_task_agent: true
 swebench_pro:
   openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14
-  deny_tool: [code_execution, web_search, web_fetch, browser, browser_*, '*search*']
+  deny_tool: [code_execution, process, process_*, web_search, web_fetch, browser, browser_*]
   deny_argument_pattern: ['https?://', '\\b(curl|wget)\\b', '\\b(requests|urllib|httpx)\\.']
   nemoclaw_sandbox: nejumi-taiwan
   nemoclaw_checkout_transfer_mode: copy
@@ -854,13 +857,13 @@ model:
   pretrained_model_name_or_path: gpt-4.1-mini-2025-04-14
 agentic_math:
   openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14
-  deny_tool: [code_execution, exec, web_search, web_fetch, browser, browser_*, '*search*']
+  deny_tool: [code_execution, process, process_*, exec, web_search, web_fetch, browser, browser_*]
   deny_argument_pattern: ['https?://', '\\b(curl|wget)\\b', '\\b(requests|urllib|httpx)\\.']
   nemoclaw_sandbox: nejumi-taiwan
   use_task_agent: true
 swebench_pro:
   openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14
-  deny_tool: [code_execution, '*exec*', web_search, web_fetch, browser, browser_*, '*search*']
+  deny_tool: [code_execution, process, process_*, '*exec*', web_search, web_fetch, browser, browser_*]
   deny_argument_pattern: ['https?://', '\\b(curl|wget)\\b', '\\b(requests|urllib|httpx)\\.']
   nemoclaw_sandbox: nejumi-taiwan
   nemoclaw_checkout_transfer_mode: copy

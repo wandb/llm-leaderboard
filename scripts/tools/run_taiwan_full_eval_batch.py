@@ -411,12 +411,18 @@ def build_nemoclaw_agentic_config_guard(
         math_sandbox = lookup("agentic_math.nemoclaw_sandbox")
         math_config_path = lookup("agentic_math.nemoclaw_openclaw_config_path")
         math_use_task_agent = lookup("agentic_math.use_task_agent")
+        math_no_local = lookup("agentic_math.no_local")
+        math_weave_sidecar = lookup("agentic_math.weave_sidecar")
+        math_weave_sidecar_strict = lookup("agentic_math.weave_sidecar_strict")
         math_deny_tools = lookup("agentic_math.deny_tool")
         math_deny_argument_patterns = lookup("agentic_math.deny_argument_pattern")
         swe_sandbox = lookup("swebench_pro.nemoclaw_sandbox")
         swe_config_path = lookup("swebench_pro.nemoclaw_openclaw_config_path")
         swe_transfer_mode = lookup("swebench_pro.nemoclaw_checkout_transfer_mode")
         swe_checkout_root = lookup("swebench_pro.nemoclaw_checkout_sandbox_root")
+        swe_no_local = lookup("swebench_pro.no_local")
+        swe_weave_sidecar = lookup("swebench_pro.weave_sidecar")
+        swe_weave_sidecar_strict = lookup("swebench_pro.weave_sidecar_strict")
         swe_deny_tools = lookup("swebench_pro.deny_tool")
         swe_deny_argument_patterns = lookup("swebench_pro.deny_argument_pattern")
 
@@ -429,6 +435,9 @@ def build_nemoclaw_agentic_config_guard(
                     math_config_path if isinstance(math_config_path, str) else ""
                 ),
                 "agentic_math_use_task_agent": math_use_task_agent,
+                "agentic_math_no_local": math_no_local,
+                "agentic_math_weave_sidecar": math_weave_sidecar,
+                "agentic_math_weave_sidecar_strict": math_weave_sidecar_strict,
                 "agentic_math_deny_tool": string_list(math_deny_tools) or [],
                 "agentic_math_local_exec_blocking_patterns": local_exec_blocking_patterns(
                     math_deny_tools
@@ -449,6 +458,9 @@ def build_nemoclaw_agentic_config_guard(
                 "swebench_pro_nemoclaw_checkout_sandbox_root": (
                     swe_checkout_root if isinstance(swe_checkout_root, str) else ""
                 ),
+                "swebench_pro_no_local": swe_no_local,
+                "swebench_pro_weave_sidecar": swe_weave_sidecar,
+                "swebench_pro_weave_sidecar_strict": swe_weave_sidecar_strict,
                 "swebench_pro_deny_tool": string_list(swe_deny_tools) or [],
                 "swebench_pro_local_exec_blocking_patterns": local_exec_blocking_patterns(
                     swe_deny_tools
@@ -475,6 +487,18 @@ def build_nemoclaw_agentic_config_guard(
                 )
             if math_use_task_agent is False:
                 issues.append("agentic_math.use_task_agent must not be false")
+            if math_no_local is not True:
+                issues.append(
+                    "agentic_math.no_local must be true for production native "
+                    "weave-openclaw tracing; local OpenClaw execution is not "
+                    "accepted as production trace evidence"
+                )
+            if math_weave_sidecar is True or math_weave_sidecar_strict is True:
+                issues.append(
+                    "agentic_math must use native weave-openclaw tracing only; "
+                    "weave_sidecar/weave_sidecar_strict are diagnostic paths and "
+                    "are not valid production evidence"
+                )
             require_string_superset(
                 section="agentic_math",
                 field="deny_tool",
@@ -502,6 +526,18 @@ def build_nemoclaw_agentic_config_guard(
                 issues.append(
                     "swebench_pro must set nemoclaw_checkout_transfer_mode=copy "
                     "or nemoclaw_checkout_sandbox_root"
+                )
+            if swe_no_local is not True:
+                issues.append(
+                    "swebench_pro.no_local must be true for production native "
+                    "weave-openclaw tracing; local OpenClaw execution is not "
+                    "accepted as production trace evidence"
+                )
+            if swe_weave_sidecar is True or swe_weave_sidecar_strict is True:
+                issues.append(
+                    "swebench_pro must use native weave-openclaw tracing only; "
+                    "weave_sidecar/weave_sidecar_strict are diagnostic paths and "
+                    "are not valid production evidence"
                 )
             require_string_superset(
                 section="swebench_pro",

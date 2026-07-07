@@ -26,6 +26,23 @@ def load_script_module(path: Path):
         sys.path.pop(0)
 
 
+def test_agentic_math_main_rejects_weave_sidecar_before_dataset_read(tmp_path, monkeypatch):
+    module = load_script_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_agentic_math_openclaw.py",
+            "--dataset-jsonl",
+            str(tmp_path / "missing.jsonl"),
+            "--weave-sidecar",
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="Weave sidecar logging is disabled"):
+        module.main()
+
+
 def test_extract_answer_prefers_answer_line():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
     text = "I checked 12 cases.\nANSWER: 070\n"
@@ -732,6 +749,43 @@ def test_success_sidecar_matches_cache_and_recovers_attempt_metadata(tmp_path):
     assert metadata["openclaw_attempt_output_dir"].endswith("openclaw_attempts/attempt-1")
 
 
+def test_success_sidecar_recovery_requires_invocation_cache_key_match(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    cache_key = {
+        "runner_version": module.RUNNER_VERSION,
+        "task_id": "task_1",
+        "prompt_hash": "prompt-hash",
+        "model": "provider/model",
+        "thinking": "high",
+        "answer_format": "math_expression",
+        "deny_tools": ["web_search"],
+        "deny_argument_patterns": [r"https?://"],
+        "openclaw_config_source": "/sandbox/.openclaw/openclaw.json",
+    }
+    sidecar_path = (
+        tmp_path
+        / "task"
+        / "openclaw_attempts"
+        / "attempt-1"
+        / "agentic_math"
+        / "task_1"
+        / "openclaw_result.json"
+    )
+    sidecar_path.parent.mkdir(parents=True)
+    invocation_dir = tmp_path / "task" / "openclaw_invocations"
+    invocation_dir.mkdir(parents=True)
+    invocation_path = invocation_dir / "attempt-1.json"
+    invocation_path.write_text(
+        json.dumps({"cache_key": {**cache_key, "runner_version": "old-runner"}}),
+        encoding="utf-8",
+    )
+
+    assert not module.sidecar_invocation_matches_cache(tmp_path / "task", sidecar_path, cache_key)
+
+    invocation_path.write_text(json.dumps({"cache_key": cache_key}), encoding="utf-8")
+    assert module.sidecar_invocation_matches_cache(tmp_path / "task", sidecar_path, cache_key)
+
+
 def test_success_sidecar_recovery_rejects_config_source_mismatch():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
     cache_key = {
@@ -949,6 +1003,9 @@ def test_build_prompt_includes_python_tool_guidance():
     assert "sympy" in prompt
     assert "Do not rely on unbounded brute force" in prompt
     assert "local shell/Python execution" in prompt
+    assert "Do not start an interactive shell" in prompt
+    assert "Never call `exec` with `pty=true`" in prompt
+    assert "python3 - <<" in prompt
     assert "Do not use web search" in prompt
 
 
@@ -984,6 +1041,7 @@ def test_task_openclaw_config_includes_tool_deny_policy(tmp_path):
     assert agent_entry["tools"]["deny"] == ["web_search"]
     assert config["tools"]["toolSearch"] is False
     assert config["tools"]["web"]["fetch"]["enabled"] is False
+    assert "browser" not in config["tools"]
 
 
 def test_task_openclaw_config_supports_nemoclaw_task_workspace(tmp_path, monkeypatch):
@@ -1041,9 +1099,124 @@ def test_task_openclaw_config_supports_nemoclaw_task_workspace(tmp_path, monkeyp
     assert agent_entry["agentDir"].endswith("/openclaw_agent_state")
     assert writes["config"]["tools"]["toolSearch"] is False
     assert writes["config"]["tools"]["web"]["fetch"]["enabled"] is False
+    assert "browser" not in writes["config"]["tools"]
     metadata = json.loads((task_dir / "openclaw_task_agent.json").read_text(encoding="utf-8"))
     assert metadata["nemoclaw_sandbox"] == "nejumi-taiwan"
     assert metadata["config_path"] == str(config_path)
+
+
+def test_task_openclaw_config_registers_nemoclaw_gateway_agent_when_no_local(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    calls = []
+
+    def fake_run_nemoclaw_text_command(args, command, input_text=None, timeout=60, check=True):
+        calls.append(
+            {
+                "command": command,
+                "input_text": input_text,
+                "timeout": timeout,
+                "check": check,
+            }
+        )
+        return subprocess.CompletedProcess(command, 0, stdout='{"ok": true}\n', stderr="")
+
+    monkeypatch.setattr(module, "run_nemoclaw_text_command", fake_run_nemoclaw_text_command)
+    args = type(
+        "Args",
+        (),
+        {
+            "agent": "main",
+            "dry_run": False,
+            "model": "openai-direct/gpt-4.1-mini-2025-04-14",
+            "use_task_agent": True,
+            "no_local": True,
+            "nemoclaw_sandbox": "nejumi-taiwan",
+            "nemoclaw_bin": "nemoclaw",
+            "nemoclaw_workdir": "/sandbox/tasks",
+            "nemoclaw_openclaw_config_path": "/sandbox/.openclaw/openclaw.json",
+            "openclaw_config_template": None,
+            "task_agent_prefix": "tw-math",
+            "openclaw_tool_profile": "coding",
+            "deny_tool": ["web_search"],
+            "deny_argument_pattern": None,
+        },
+    )()
+    task_dir = tmp_path / "task"
+    task_dir.mkdir()
+
+    agent_id, config_path = module.write_task_openclaw_config(
+        {"task_id": "math/task 1"},
+        tmp_path / "workspace",
+        task_dir,
+        args,
+    )
+
+    assert config_path is None
+    assert calls
+    command = calls[0]["command"]
+    assert command[0] == "env"
+    script_b64 = command[1].split("=", 1)[1]
+    script = module.base64.b64decode(script_b64).decode("utf-8")
+    assert "openclaw agents add" in script
+    assert command[2:5] == [
+        "bash",
+        "-lc",
+        'printf %s "$OPENCLAW_REGISTER_SCRIPT_B64" | base64 -d | bash -s -- "$@"',
+    ]
+    assert command[5] == "register-task-agent"
+    assert command[6] == agent_id
+    assert command[9] == "openai-direct/gpt-4.1-mini-2025-04-14"
+    metadata = json.loads((task_dir / "openclaw_task_agent.json").read_text(encoding="utf-8"))
+    assert metadata["config_path"] == "/sandbox/.openclaw/openclaw.json"
+    assert metadata["gateway_registered"]["ok"] is True
+    assert (
+        module.task_live_sandbox_session_dir({"task_id": "math/task 1"}, args, agent_id)
+        == f"/sandbox/.openclaw/agents/{agent_id}/sessions"
+    )
+    module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS.clear()
+
+
+def test_task_python_sitecustomize_is_written_for_nemoclaw(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    writes = []
+
+    def fake_write(args, path, text):
+        writes.append({"path": path, "text": text})
+
+    monkeypatch.setattr(module, "write_nemoclaw_text_file", fake_write)
+    args = type(
+        "Args",
+        (),
+        {
+            "nemoclaw_sandbox": "nejumi-taiwan",
+            "nemoclaw_workdir": "/sandbox/tasks",
+        },
+    )()
+
+    module.write_task_python_sitecustomize(
+        {"task_id": "math/task 1"},
+        tmp_path / "workspace",
+        args,
+        "tw-math-task-1",
+    )
+
+    paths = [write["path"] for write in writes]
+    assert "/sandbox/sitecustomize.py" in paths
+    assert any(path.endswith("/sitecustomize.py") and path != "/sandbox/sitecustomize.py" for path in paths)
+    assert all("/tmp/.local/lib" in write["text"] for write in writes)
+    assert all("sys.path.insert" in write["text"] for write in writes)
+
+
+def test_task_python_sitecustomize_is_written_for_local_workspace(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    args = type("Args", (), {"nemoclaw_sandbox": None})()
+    workspace = tmp_path / "workspace"
+
+    module.write_task_python_sitecustomize({"task_id": "task_1"}, workspace, args, "agent")
+
+    text = (workspace / "sitecustomize.py").read_text(encoding="utf-8")
+    assert "/tmp/.local/lib" in text
+    assert "sys.path.insert" in text
 
 
 def test_task_live_session_dir_uses_local_task_agent_state(tmp_path):

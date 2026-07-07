@@ -201,7 +201,6 @@ payloads = {
                         "section": "agentic_math",
                         "missing": [],
                         "observed": [
-                            "*search*",
                             "browser",
                             "browser_*",
                             "code_execution",
@@ -219,7 +218,6 @@ payloads = {
                         "section": "swebench_pro",
                         "missing": [],
                         "observed": [
-                            "*search*",
                             "browser",
                             "browser_*",
                             "code_execution",

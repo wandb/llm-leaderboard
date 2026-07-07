@@ -91,6 +91,7 @@ jaster:
   message_intro: '以下是一項任務的說明，附帶的輸入提供了更多上下文。請撰寫適當的回答以完成該任務。'
   artifacts_path: 'llm-leaderboard/tc-leaderboard/tmmluplus_robust:production'
   dataset_dir: 'tmmluplus_robust'
+  override_max_tokens: null
 
 mtbench:
   question_artifacts_path: 'llm-leaderboard/tc-leaderboard/mtbench_tw_question:production'
@@ -202,10 +203,17 @@ swebench_pro:
   thinking: 'medium'
   openclaw_timeout: 3600
   max_input_tokens: 1000000
-  max_tool_calls: 60
-  max_agent_turns: 60
+  max_tool_calls: 40
+  max_agent_turns: 40
+  verify_weave_agents: true
+  weave_agents_entity: 'llm-leaderboard'
+  weave_agents_project: 'tc-leaderboard'
+  weave_agents_agent_name: 'nejumi-taiwan-openclaw'
+  weave_agents_limit: 50
+  weave_agents_verification_timeout: 120
+  weave_agents_poll_seconds: 5
   allow_failed_preflight: false
-  no_local: false
+  no_local: true
   skip_agent: false
   testmode_max_samples: 1
   use_local_docker: true
@@ -237,10 +245,17 @@ agentic_math:
   nemoclaw_workdir: '/sandbox'
   openclaw_timeout: 2400
   max_input_tokens: 500000
-  max_tool_calls: 60
-  max_agent_turns: 60
+  max_tool_calls: 40
+  max_agent_turns: 40
+  verify_weave_agents: true
+  weave_agents_entity: 'llm-leaderboard'
+  weave_agents_project: 'tc-leaderboard'
+  weave_agents_agent_name: 'nejumi-taiwan-openclaw'
+  weave_agents_limit: 50
+  weave_agents_verification_timeout: 120
+  weave_agents_poll_seconds: 5
   allow_failed_preflight: false
-  no_local: false
+  no_local: true
   testmode_max_samples: 1
 
 hle:
@@ -256,7 +271,7 @@ hle:
     parallel: 32
     params:
       reasoning:
-        effort: high
+        effort: medium
     prompt_template: |
       請判斷以下[問題]的[回答]是否依據明確且不含歧義的[正解]作答正確。
 
@@ -290,7 +305,7 @@ hallulens_zh_tw:
     parallel: 32
     params:
       reasoning:
-        effort: medium
+        effort: low
 
 arc_agi:
   arc_agi_1_artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-1_public-eval_50:production"

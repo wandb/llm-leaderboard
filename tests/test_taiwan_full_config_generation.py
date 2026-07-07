@@ -8,6 +8,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 TOOLS_DIR = ROOT / "scripts" / "tools"
 OPENAI_CANARY_MANIFEST = ROOT / "configs" / "taiwan_openai_canary_models.yaml"
+BASE_TAIWAN_CONFIG = ROOT / "configs" / "base_config_taiwan.yaml"
 if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
@@ -20,9 +21,29 @@ from prepare_taiwan_full_eval_configs import (
 )
 
 
-def _args(tmp_path: Path, phase: str) -> argparse.Namespace:
+def _minimal_manifest(tmp_path: Path) -> Path:
+    path = tmp_path / "models.yaml"
+    path.write_text(
+        """
+models:
+  - slug: gpt-4_1-mini-openai-direct-canary
+    source_config: config-gpt-4.1-mini-2025-04-14.yaml
+    run_name: "taiwan/full/openai/gpt-4.1-mini: production-spec-one-model"
+    japanese_runname: "openai/gpt-4-1-mini-2025-04-14"
+    openclaw_model: "openai-direct/gpt-4.1-mini-2025-04-14"
+    reasoning_effort: null
+    agentic_thinking: "off"
+    swe_thinking: "off"
+    canary: true
+""".lstrip(),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _args(tmp_path: Path, phase: str, *, manifest: Path | None = None) -> argparse.Namespace:
     return argparse.Namespace(
-        manifest=DEFAULT_MANIFEST,
+        manifest=manifest or _minimal_manifest(tmp_path),
         output_dir=tmp_path / "generated",
         output_root=tmp_path / "outputs" / "taiwan_full_eval",
         model=["gpt-4_1-mini-openai-direct-canary"],
@@ -52,9 +73,10 @@ def test_nonagentic_phase_skips_agentic_and_aggregate(tmp_path):
     assert cfg.run.bfcl is True
     assert cfg.run.mtbench is True
     assert cfg.run.hle is True
-    assert cfg.mtbench.judge.model == "gpt-4.1-mini-2025-04-14"
-    assert cfg.hle.judge.model == "gpt-4.1-mini-2025-04-14"
-    assert cfg.hallulens_zh_tw.judge.model == "gpt-4.1-mini-2025-04-14"
+    resolved = OmegaConf.merge(OmegaConf.load(BASE_TAIWAN_CONFIG), cfg)
+    assert resolved.mtbench.judge.model == "gpt-5.5-2026-04-23"
+    assert resolved.hle.judge.model == "gpt-5.5-2026-04-23"
+    assert resolved.hallulens_zh_tw.judge.model == "gpt-5.5-2026-04-23"
 
 
 def test_agentic_aggregate_phase_reuses_completed_outputs(tmp_path):
@@ -90,12 +112,12 @@ def test_agentic_phase_runs_only_agentic_generation(tmp_path):
     assert cfg.agentic_math.results_dir is None
     assert cfg.swebench_pro.patch_path is None
     assert cfg.agentic_math.max_input_tokens == 500_000
-    assert cfg.agentic_math.max_tool_calls == 60
-    assert cfg.agentic_math.max_agent_turns == 60
+    assert cfg.agentic_math.max_tool_calls == 40
+    assert cfg.agentic_math.max_agent_turns == 40
     assert cfg.swebench_pro.subset == "leaderboard_compact_80"
     assert cfg.swebench_pro.max_input_tokens == 1_000_000
-    assert cfg.swebench_pro.max_tool_calls == 60
-    assert cfg.swebench_pro.max_agent_turns == 60
+    assert cfg.swebench_pro.max_tool_calls == 40
+    assert cfg.swebench_pro.max_agent_turns == 40
 
 
 def test_agentic_math_nemoclaw_cli_override_is_agentic_math_only(tmp_path):
@@ -196,24 +218,20 @@ def test_swebench_pro_nemoclaw_manifest_override_does_not_touch_agentic_math(tmp
     assert "nemoclaw_sandbox" not in override["agentic_math"]
 
 
-def test_manifest_can_override_judge_params_for_low_cost_canary(tmp_path):
-    override = build_override(
-        {
-            "slug": "model-a",
-            "run_name": "model-a",
-            "openclaw_model": "provider/model-a",
-            "judge_model": "openrouter/openai/gpt-4.1-nano",
-            "judge_parallel": 2,
-            "judge_params": {},
-        },
-        tmp_path / "outputs",
-        phase="full",
-    )
-
-    for task_name in ("mtbench", "hle", "hallulens_zh_tw"):
-        assert override[task_name]["judge"]["model"] == "openrouter/openai/gpt-4.1-nano"
-        assert override[task_name]["judge"]["parallel"] == 2
-        assert override[task_name]["judge"]["params"] == {}
+def test_manifest_judge_override_is_rejected(tmp_path):
+    with pytest.raises(ValueError, match="Manifest-level judge overrides are forbidden"):
+        build_override(
+            {
+                "slug": "model-a",
+                "run_name": "model-a",
+                "openclaw_model": "provider/model-a",
+                "judge_model": "openrouter/openai/gpt-4.1-nano",
+                "judge_parallel": 2,
+                "judge_params": {},
+            },
+            tmp_path / "outputs",
+            phase="full",
+        )
 
 
 def test_canary_generates_openai_direct_only(tmp_path):
@@ -232,8 +250,7 @@ def test_canary_generates_openai_direct_only(tmp_path):
 
 
 def test_openai_direct_canary_manifest_generates_openai_configs(tmp_path):
-    args = _args(tmp_path, "agentic")
-    args.manifest = OPENAI_CANARY_MANIFEST
+    args = _args(tmp_path, "agentic", manifest=OPENAI_CANARY_MANIFEST)
     args.model = None
     args.canary = True
 
@@ -246,7 +263,21 @@ def test_openai_direct_canary_manifest_generates_openai_configs(tmp_path):
     assert cfg.swebench_pro.openclaw_model == "openai-direct/gpt-4.1-mini-2025-04-14"
     assert cfg.agentic_math.thinking == "off"
     assert cfg.swebench_pro.thinking == "off"
-    assert cfg.mtbench.judge.model == "gpt-4.1-mini-2025-04-14"
+    assert "mtbench" not in cfg
+    resolved = OmegaConf.merge(
+        OmegaConf.load(ROOT / "configs" / "base_config_taiwan.yaml"),
+        cfg,
+    )
+    assert resolved.mtbench.judge.model == "gpt-5.5-2026-04-23"
+    assert resolved.mtbench.judge.params.reasoning.effort == "low"
+    assert resolved.hle.judge.model == "gpt-5.5-2026-04-23"
+    assert resolved.hle.judge.params.reasoning.effort == "medium"
+    assert resolved.hallulens_zh_tw.judge.model == "gpt-5.5-2026-04-23"
+    assert resolved.hallulens_zh_tw.judge.params.reasoning.effort == "low"
+    assert resolved.agentic_math.max_tool_calls == 40
+    assert resolved.agentic_math.max_agent_turns == 40
+    assert resolved.swebench_pro.max_tool_calls == 40
+    assert resolved.swebench_pro.max_agent_turns == 40
 
 
 def test_default_selection_skips_final_only_models():
