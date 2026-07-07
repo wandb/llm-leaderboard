@@ -46,6 +46,9 @@ PATCH_CAPTURE_VERSION = "git-diff-with-untracked-excluding-selected-tests-v2"
 DEFAULT_MAX_INPUT_TOKENS = 1_000_000
 DEFAULT_MAX_TOOL_CALLS = 40
 DEFAULT_MAX_AGENT_TURNS = 40
+OPENCLAW_BUDGET_GUARD_PLUGIN_ID = "nejumi-budget-guard"
+OPENCLAW_BUDGET_GUARD_PLUGIN_VERSION = "0.1.0"
+OPENCLAW_BUDGET_GUARD_BLOCK_PREFIX = "NEJUMI_BUDGET_GUARD_BLOCKED"
 OPENCLAW_RUNTIME_DIR = ".nejumi_openclaw"
 RUNTIME_EXCLUDED_PATHS = [OPENCLAW_RUNTIME_DIR]
 NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
@@ -155,6 +158,9 @@ def build_cache_key(row: dict[str, Any], prompt_text: str, args: argparse.Namesp
         "max_input_tokens": int(getattr(args, "max_input_tokens", 0) or 0),
         "max_tool_calls": int(getattr(args, "max_tool_calls", 0) or 0),
         "max_agent_turns": int(getattr(args, "max_agent_turns", 0) or 0),
+        "openclaw_budget_guard_plugin": OPENCLAW_BUDGET_GUARD_PLUGIN_ID,
+        "openclaw_budget_guard_plugin_version": OPENCLAW_BUDGET_GUARD_PLUGIN_VERSION,
+        "openclaw_budget_guard_enforcement": "before_tool_call_and_before_agent_run",
         "nemoclaw_sandbox": str(getattr(args, "nemoclaw_sandbox", "") or ""),
         "nemoclaw_checkout_sandbox_root": str(
             getattr(args, "nemoclaw_checkout_sandbox_root", "") or ""
@@ -469,6 +475,9 @@ def register_nemoclaw_gateway_task_agent(
     model = str(getattr(args, "model", "") or "")
     tool_profile = str(getattr(args, "openclaw_tool_profile", "") or "")
     deny_json = json.dumps(effective_deny_tools(args), ensure_ascii=False, separators=(",", ":"))
+    max_tool_calls = str(int(getattr(args, "max_tool_calls", 0) or 0))
+    max_agent_turns = str(int(getattr(args, "max_agent_turns", 0) or 0))
+    session_prefix = resolve_session_prefix(args)
     if bool(getattr(args, "dry_run", False)):
         return {
             "ok": None,
@@ -492,6 +501,9 @@ agent_dir = sys.argv[4]
 model = sys.argv[5]
 tool_profile = sys.argv[6]
 deny_tools = json.loads(sys.argv[7])
+max_tool_calls = int(sys.argv[8])
+max_agent_turns = int(sys.argv[9])
+session_prefix = sys.argv[10]
 
 config = json.loads(config_path.read_text(encoding="utf-8"))
 tools = config.setdefault("tools", {})
@@ -502,6 +514,32 @@ if isinstance(tools, dict):
         fetch = web.setdefault("fetch", {})
         if isinstance(fetch, dict):
             fetch["enabled"] = False
+
+plugins = config.setdefault("plugins", {})
+if not isinstance(plugins, dict):
+    raise SystemExit("OpenClaw config field plugins must be an object")
+allow = plugins.setdefault("allow", [])
+if isinstance(allow, list) and "nejumi-budget-guard" not in allow:
+    allow.append("nejumi-budget-guard")
+plugin_entries = plugins.setdefault("entries", {})
+if not isinstance(plugin_entries, dict):
+    raise SystemExit("OpenClaw config field plugins.entries must be an object")
+budget_guard = plugin_entries.setdefault("nejumi-budget-guard", {})
+if not isinstance(budget_guard, dict):
+    raise SystemExit("OpenClaw config field plugins.entries.nejumi-budget-guard must be an object")
+budget_guard["enabled"] = True
+budget_guard["config"] = {
+    "enabled": True,
+    "maxToolCalls": max_tool_calls,
+    "maxAgentTurns": max_agent_turns,
+    "agentIds": [agent_id],
+    "sessionKeyPrefixes": [session_prefix],
+    "blockReasonPrefix": "NEJUMI_BUDGET_GUARD_BLOCKED",
+}
+budget_guard["hooks"] = {
+    "allowConversationAccess": True,
+    "timeoutMs": 1000,
+}
 
 agents = config.setdefault("agents", {})
 entries = agents.setdefault("list", [])
@@ -536,13 +574,16 @@ model="$4"
 tool_profile="$5"
 deny_json="$6"
 config_path="$7"
+max_tool_calls="$8"
+max_agent_turns="$9"
+session_prefix="${10}"
 openclaw agents delete "$agent_id" --force --json >/dev/null 2>&1 || true
 cmd=(openclaw agents add "$agent_id" --workspace "$workspace" --agent-dir "$agent_dir" --non-interactive --json)
 if [ -n "$model" ]; then
   cmd+=(--model "$model")
 fi
 "${cmd[@]}"
-python3 - "$config_path" "$agent_id" "$workspace" "$agent_dir" "$model" "$tool_profile" "$deny_json" <<'PY'
+python3 - "$config_path" "$agent_id" "$workspace" "$agent_dir" "$model" "$tool_profile" "$deny_json" "$max_tool_calls" "$max_agent_turns" "$session_prefix" <<'PY'
 """ + patch_script + r"""
 PY
 """
@@ -563,6 +604,9 @@ PY
             tool_profile,
             deny_json,
             config_path,
+            max_tool_calls,
+            max_agent_turns,
+            session_prefix,
         ],
         timeout=60,
     )
@@ -624,6 +668,47 @@ def read_openclaw_config_template(args: argparse.Namespace) -> tuple[dict[str, A
         return json.loads(result.stdout), sandbox_path
     template_path = default_openclaw_config_template()
     return json.loads(template_path.read_text(encoding="utf-8")), str(template_path)
+
+
+def configure_openclaw_budget_guard(
+    config: dict[str, Any],
+    args: argparse.Namespace,
+    *,
+    agent_id: str,
+    session_prefix: str,
+) -> None:
+    max_tool_calls = int(getattr(args, "max_tool_calls", 0) or 0)
+    max_agent_turns = int(getattr(args, "max_agent_turns", 0) or 0)
+    if max_tool_calls <= 0 and max_agent_turns <= 0:
+        return
+
+    plugins = config.setdefault("plugins", {})
+    if not isinstance(plugins, dict):
+        raise RuntimeError("OpenClaw config field plugins must be an object")
+    allow = plugins.setdefault("allow", [])
+    if isinstance(allow, list) and OPENCLAW_BUDGET_GUARD_PLUGIN_ID not in allow:
+        allow.append(OPENCLAW_BUDGET_GUARD_PLUGIN_ID)
+    entries = plugins.setdefault("entries", {})
+    if not isinstance(entries, dict):
+        raise RuntimeError("OpenClaw config field plugins.entries must be an object")
+    entry = entries.setdefault(OPENCLAW_BUDGET_GUARD_PLUGIN_ID, {})
+    if not isinstance(entry, dict):
+        raise RuntimeError(
+            f"OpenClaw config field plugins.entries.{OPENCLAW_BUDGET_GUARD_PLUGIN_ID} must be an object"
+        )
+    entry["enabled"] = True
+    entry["config"] = {
+        "enabled": True,
+        "maxToolCalls": max_tool_calls,
+        "maxAgentTurns": max_agent_turns,
+        "agentIds": [agent_id],
+        "sessionKeyPrefixes": [session_prefix],
+        "blockReasonPrefix": OPENCLAW_BUDGET_GUARD_BLOCK_PREFIX,
+    }
+    entry["hooks"] = {
+        "allowConversationAccess": True,
+        "timeoutMs": 1000,
+    }
 
 
 def openclaw_config_cache_source(args: argparse.Namespace) -> str:
@@ -1313,6 +1398,12 @@ def write_task_openclaw_config(
 
     config, template_path = read_openclaw_config_template(args)
     disable_remote_lookup_tools(config)
+    configure_openclaw_budget_guard(
+        config,
+        args,
+        agent_id=agent_id,
+        session_prefix=resolve_session_prefix(args),
+    )
     agent_entry = {
         "id": agent_id,
         "workspace": workspace,

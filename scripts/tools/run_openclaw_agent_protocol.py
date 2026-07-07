@@ -54,6 +54,7 @@ from pathlib import Path
 
 threshold = float(sys.argv[1])
 rows = []
+BUDGET_GUARD_BLOCK_MARKER = "NEJUMI_BUDGET_GUARD_BLOCKED"
 
 
 def tool_call_count(message):
@@ -184,7 +185,15 @@ for raw_dir in sys.argv[2:]:
         estimated_input_tokens = 0
         agent_turn_count = 0
         policy_violations = []
-        for raw in lines:
+        budget_guard_blocks = []
+        for line_index, raw in enumerate(lines):
+            if BUDGET_GUARD_BLOCK_MARKER in raw:
+                budget_guard_blocks.append(
+                    {
+                        "line_index": line_index,
+                        "marker": BUDGET_GUARD_BLOCK_MARKER,
+                    }
+                )
             try:
                 event = json.loads(raw)
             except json.JSONDecodeError:
@@ -206,6 +215,8 @@ for raw_dir in sys.argv[2:]:
                 "agent_turn_count": agent_turn_count,
                 "live_tool_policy_violation_count": len(policy_violations),
                 "live_tool_policy_violations": policy_violations[:10],
+                "budget_guard_block_count": len(budget_guard_blocks),
+                "budget_guard_blocks": budget_guard_blocks[:10],
             }
         )
 rows.sort(
@@ -813,17 +824,31 @@ def session_message_role_counts(path: Path) -> dict[str, int]:
     return counts
 
 
+def session_budget_guard_blocks(path: Path) -> list[dict[str, Any]]:
+    marker = "NEJUMI_BUDGET_GUARD_BLOCKED"
+    blocks: list[dict[str, Any]] = []
+    if not path.exists():
+        return blocks
+    for line_index, raw in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines()):
+        if marker in raw:
+            blocks.append({"line_index": line_index, "marker": marker})
+    return blocks
+
+
 def session_budget_observation(path: Path) -> dict[str, Any]:
     sidecar = {"live_session_file": str(path)}
     tool_events = extract_tool_events(sidecar)
     timeline_events = extract_timeline_events(sidecar)
     role_counts = session_message_role_counts(path)
+    budget_guard_blocks = session_budget_guard_blocks(path)
     return {
         "source": "host",
         "tool_call_count": sum(1 for event in tool_events if event.get("type") == "tool_call"),
         "estimated_input_tokens": estimate_session_input_tokens_from_timeline(timeline_events),
         "agent_turn_count": role_counts["assistant"],
         "session_file": str(path),
+        "budget_guard_block_count": len(budget_guard_blocks),
+        "budget_guard_blocks": budget_guard_blocks[:10],
     }
 
 
@@ -919,6 +944,8 @@ def live_tool_budget_status(
             path = session.get("path")
             live_policy_count = session.get("live_tool_policy_violation_count")
             live_policy_violations = session.get("live_tool_policy_violations")
+            budget_guard_block_count = session.get("budget_guard_block_count")
+            budget_guard_blocks = session.get("budget_guard_blocks")
             if isinstance(count, (int, float)) and isinstance(path, str) and path:
                 observations.append(
                     {
@@ -943,6 +970,16 @@ def live_tool_budget_status(
                         "live_tool_policy_violations": (
                             live_policy_violations
                             if isinstance(live_policy_violations, list)
+                            else []
+                        ),
+                        "budget_guard_block_count": (
+                            int(budget_guard_block_count)
+                            if isinstance(budget_guard_block_count, (int, float))
+                            else 0
+                        ),
+                        "budget_guard_blocks": (
+                            budget_guard_blocks
+                            if isinstance(budget_guard_blocks, list)
                             else []
                         ),
                     }
@@ -971,6 +1008,12 @@ def live_tool_budget_status(
         reverse=True,
     )
     best_policy = policy_observations[0] if policy_observations else {}
+    budget_guard_observations = sorted(
+        observations,
+        key=lambda item: int(item.get("budget_guard_block_count") or 0),
+        reverse=True,
+    )
+    best_budget_guard = budget_guard_observations[0] if budget_guard_observations else {}
     best_count = int(best_tool.get("tool_call_count") or 0) if best_tool else None
     best_input_tokens = (
         int(best_input.get("estimated_input_tokens") or 0) if best_input else None
@@ -997,6 +1040,12 @@ def live_tool_budget_status(
         int(best_policy.get("live_tool_policy_violation_count") or 0) if best_policy else 0
     )
     policy_exceeded = policy_violation_count > 0
+    budget_guard_block_count = (
+        int(best_budget_guard.get("budget_guard_block_count") or 0)
+        if best_budget_guard
+        else 0
+    )
+    budget_guard_exceeded = budget_guard_block_count > 0
     exceeded_limits = []
     if input_exceeded:
         exceeded_limits.append("max_input_tokens_exceeded")
@@ -1006,6 +1055,8 @@ def live_tool_budget_status(
         exceeded_limits.append("max_agent_turns_exceeded")
     if policy_exceeded:
         exceeded_limits.append("live_tool_policy_violation")
+    if budget_guard_exceeded:
+        exceeded_limits.append("budget_guard_blocked")
     reason = None
     if len(exceeded_limits) == 1:
         reason = exceeded_limits[0]
@@ -1027,9 +1078,15 @@ def live_tool_budget_status(
         "turn_session_source": best_turn.get("source") if best_turn else None,
         "policy_session_file": best_policy.get("session_file") if best_policy else None,
         "policy_session_source": best_policy.get("source") if best_policy else None,
+        "budget_guard_session_file": best_budget_guard.get("session_file") if best_budget_guard else None,
+        "budget_guard_session_source": best_budget_guard.get("source") if best_budget_guard else None,
         "live_tool_policy_violation_count": policy_violation_count,
         "live_tool_policy_violations": best_policy.get("live_tool_policy_violations", [])
         if best_policy
+        else [],
+        "budget_guard_block_count": budget_guard_block_count,
+        "budget_guard_blocks": best_budget_guard.get("budget_guard_blocks", [])
+        if best_budget_guard
         else [],
         "session_dirs": session_dirs,
         "sandbox_session_dirs": sandbox_session_dirs,
@@ -1664,6 +1721,9 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
     live_policy_exceeded = False
     live_policy_violation_count = 0
     live_policy_violations: list[Any] = []
+    live_budget_guard_exceeded = False
+    live_budget_guard_block_count = 0
+    live_budget_guard_blocks: list[Any] = []
     if isinstance(live_budget, dict):
         live_count = live_budget.get("tool_call_count")
         if isinstance(live_count, (int, float)):
@@ -1696,6 +1756,13 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
         live_policy_rows = live_budget.get("live_tool_policy_violations")
         if isinstance(live_policy_rows, list):
             live_policy_violations = live_policy_rows
+        live_budget_guard_exceeded = "budget_guard_blocked" in exceeded_limit_set or reason == "budget_guard_blocked"
+        live_budget_guard_count = live_budget.get("budget_guard_block_count")
+        if isinstance(live_budget_guard_count, (int, float)):
+            live_budget_guard_block_count = int(live_budget_guard_count)
+        live_budget_guard_rows = live_budget.get("budget_guard_blocks")
+        if isinstance(live_budget_guard_rows, list):
+            live_budget_guard_blocks = live_budget_guard_rows
     if live_tool_call_count is not None:
         if tool_call_count is None:
             tool_call_count = live_tool_call_count
@@ -1754,6 +1821,16 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
                 "limit": 0,
                 "source": "live_runtime_budget",
                 "violations": live_policy_violations,
+            }
+        )
+    if live_budget_guard_exceeded:
+        violations.append(
+            {
+                "type": "budget_guard_blocked",
+                "observed": live_budget_guard_block_count,
+                "limit": 0,
+                "source": "openclaw_before_tool_call_or_before_agent_run",
+                "blocks": live_budget_guard_blocks,
             }
         )
     return {

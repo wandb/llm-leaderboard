@@ -1,0 +1,21 @@
+{
+  "name": "nejumi-budget-guard",
+  "version": "0.1.0",
+  "description": "OpenClaw before-tool-call and before-agent-run hard budget guard for Nejumi Taiwan agentic benchmarks.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.4.25"
+    }
+  },
+  "files": [
+    "dist/",
+    "openclaw.plugin.json",
+    "README.md"
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "id": "nejumi-budget-guard",
+  "name": "Nejumi Budget Guard",
+  "version": "0.1.0",
+  "description": "Blocks OpenClaw agent runs before tool or model-turn budgets are exceeded.",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "maxToolCalls": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 0
+      },
+      "maxAgentTurns": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 0
+      },
+      "agentIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
+      "sessionKeyPrefixes": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
+      "blockReasonPrefix": {
+        "type": "string",
+        "default": "NEJUMI_BUDGET_GUARD_BLOCKED"
+      }
+    }
+  },
+  "uiHints": {
+    "maxToolCalls": {
+      "label": "Maximum tool calls"
+    },
+    "maxAgentTurns": {
+      "label": "Maximum agent turns"
+    }
+  }
+}
