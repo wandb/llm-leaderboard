@@ -287,6 +287,8 @@ def test_openclaw_prompt_ignores_embedded_text_fields():
     assert "allowed_repository_context" not in prompt
     assert "secret code" not in prompt
     assert "local shell execution" in prompt
+    assert "Use repository search before reading specific files" in prompt
+    assert "stop guessing paths and search the checkout" in prompt
     assert "Do not use web search" in prompt
 
 

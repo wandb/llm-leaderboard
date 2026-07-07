@@ -41,7 +41,7 @@ from weave_agents_native_trace import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROTOCOL_RUNNER = REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py"
-RUNNER_VERSION = "swebench-pro-openclaw-2026-07-07-dynamic-task-agent-v2"
+RUNNER_VERSION = "swebench-pro-openclaw-2026-07-07-repo-orientation-v3"
 PATCH_CAPTURE_VERSION = "git-diff-with-untracked-excluding-selected-tests-v2"
 DEFAULT_MAX_INPUT_TOKENS = 1_000_000
 DEFAULT_MAX_TOOL_CALLS = 40
@@ -909,6 +909,17 @@ def build_prompt(row: dict[str, Any]) -> str:
     before_cmd = str(row.get("before_repo_set_cmd") or "").strip()
     if before_cmd:
         parts.extend(["", "## Evaluation Setup Hint", "", before_cmd])
+    parts.extend(
+        [
+            "",
+            "## Agent Workflow",
+            "",
+            "First orient yourself with local repository tools such as `pwd`, `ls`, `find`, or `rg`.",
+            "Use repository search before reading specific files unless the exact path is already proven.",
+            "If a file read returns missing-path errors, stop guessing paths and search the checkout.",
+            "Run the relevant local tests when practical after making changes.",
+        ]
+    )
     parts.extend(
         [
             "",
