@@ -24,6 +24,7 @@ RUN_FLAGS: dict[str, bool] = {
     "bfcl": True,
     "swebench": False,
     "swebench_pro": True,
+    "deepswe": False,
     "mtbench": True,
     "jbbq": False,
     "toxicity": False,
@@ -95,12 +96,16 @@ def _run_flags_for_phase(phase: str) -> dict[str, bool]:
     if phase == "nonagentic":
         flags["agentic_math"] = False
         flags["swebench_pro"] = False
+        flags["deepswe"] = False
         flags["aggregate_taiwan"] = False
         return flags
     if phase == "agentic":
-        return {key: key in {"agentic_math", "swebench_pro"} for key in flags}
+        return {key: key in {"agentic_math", "swebench_pro", "deepswe"} for key in flags}
     if phase == "agentic_aggregate":
-        return {key: key in {"agentic_math", "swebench_pro", "aggregate_taiwan"} for key in flags}
+        return {
+            key: key in {"agentic_math", "swebench_pro", "deepswe", "aggregate_taiwan"}
+            for key in flags
+        }
     raise ValueError(f"Unsupported Taiwan eval phase: {phase}")
 
 
@@ -136,6 +141,18 @@ def _with_cli_nemoclaw_overrides(
         swe_config_path = getattr(args, "swebench_pro_nemoclaw_openclaw_config_path", None)
         if swe_config_path:
             updated["swebench_pro_nemoclaw_openclaw_config_path"] = str(swe_config_path)
+    deepswe_sandbox = getattr(args, "deepswe_nemoclaw_sandbox", None)
+    if deepswe_sandbox:
+        updated["deepswe_nemoclaw_sandbox"] = str(deepswe_sandbox)
+        updated["deepswe_nemoclaw_bin"] = str(
+            getattr(args, "deepswe_nemoclaw_bin", None) or "nemoclaw"
+        )
+        deepswe_workdir = getattr(args, "deepswe_nemoclaw_workdir", None)
+        if deepswe_workdir:
+            updated["deepswe_nemoclaw_workdir"] = str(deepswe_workdir)
+        deepswe_config_path = getattr(args, "deepswe_nemoclaw_openclaw_config_path", None)
+        if deepswe_config_path:
+            updated["deepswe_nemoclaw_openclaw_config_path"] = str(deepswe_config_path)
     math_config_path = getattr(args, "agentic_math_nemoclaw_openclaw_config_path", None)
     if sandbox:
         updated["agentic_math_nemoclaw_openclaw_config_path"] = str(
@@ -196,6 +213,28 @@ def _apply_swebench_pro_nemoclaw_config(
         or DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH
     )
     swebench_pro["nemoclaw_openclaw_config_path"] = str(config_path)
+
+
+def _apply_deepswe_nemoclaw_config(
+    deepswe: dict[str, Any],
+    model: dict[str, Any],
+) -> None:
+    sandbox = model.get("deepswe_nemoclaw_sandbox") or model.get("nemoclaw_sandbox")
+    if not sandbox:
+        return
+    deepswe["nemoclaw_sandbox"] = str(sandbox)
+    deepswe["nemoclaw_bin"] = str(
+        model.get("deepswe_nemoclaw_bin") or model.get("nemoclaw_bin") or "nemoclaw"
+    )
+    deepswe["nemoclaw_workdir"] = str(
+        model.get("deepswe_nemoclaw_workdir") or model.get("nemoclaw_workdir") or "/sandbox"
+    )
+    config_path = (
+        model.get("deepswe_nemoclaw_openclaw_config_path")
+        or model.get("nemoclaw_openclaw_config_path")
+        or DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH
+    )
+    deepswe["nemoclaw_openclaw_config_path"] = str(config_path)
 
 
 def build_override(
@@ -336,6 +375,63 @@ def build_override(
             "deny_tool": AGENTIC_DENIED_TOOLS,
             "deny_argument_pattern": AGENTIC_DENIED_ARGUMENT_PATTERNS,
         },
+        "deepswe": {
+            "subset": str(model.get("deepswe_subset", "pilot_16")),
+            "local_dataset_dir": str(model.get("deepswe_local_dataset_dir", "data/taiwan/deepswe")),
+            "tasks_root": str(model.get("deepswe_tasks_root", "external/deep-swe/tasks")),
+            "output_dir": str(output_root / "deepswe" / slug),
+            "job_name": f"deepswe-{slug}",
+            "prefix": f"taiwan-deepswe-{slug}",
+            "task_agent_prefix": f"tw-deepswe-{slug}",
+            "session_prefix": f"deepswe-{slug}",
+            "openclaw_model": openclaw_model,
+            "thinking": str(model.get("deepswe_thinking", model.get("swe_thinking", "high"))),
+            "n_concurrent": int(model.get("deepswe_n_concurrent", 1)),
+            "openclaw_timeout": int(model.get("deepswe_openclaw_timeout", 3600)),
+            "openclaw_max_attempts": int(model.get("deepswe_openclaw_max_attempts", 1)),
+            "openclaw_retry_base_seconds": int(model.get("openclaw_retry_base_seconds", 15)),
+            "dry_run": False,
+            "run_openclaw": phase != "agentic_aggregate",
+            "results_dir": str(output_root / "deepswe" / slug / "runner")
+            if phase == "agentic_aggregate"
+            else None,
+            "no_local": True,
+            "use_task_agent": bool(model.get("deepswe_use_task_agent", True)),
+            "restart_gateway_before_run": bool(
+                model.get("deepswe_restart_gateway_before_run", True)
+            ),
+            "delete": bool(model.get("deepswe_delete_environment", True)),
+            "disable_verification": bool(model.get("deepswe_disable_verification", False)),
+            "quiet": bool(model.get("deepswe_quiet", False)),
+            "openclaw_tool_profile": "coding",
+            "max_input_tokens": int(model.get("deepswe_max_input_tokens", 1_000_000)),
+            "max_cumulative_input_tokens": int(
+                model.get(
+                    "deepswe_max_cumulative_input_tokens",
+                    model.get("deepswe_max_input_tokens", 1_000_000),
+                )
+            ),
+            "max_cumulative_output_tokens": int(
+                model.get("deepswe_max_cumulative_output_tokens", 500_000)
+            ),
+            "require_actual_token_usage": bool(model.get("require_actual_token_usage", True)),
+            "max_tool_calls": int(model.get("deepswe_max_tool_calls", 40)),
+            "max_agent_turns": int(model.get("deepswe_max_agent_turns", 40)),
+            "max_tool_wall_seconds": int(model.get("deepswe_max_tool_wall_seconds", 300)),
+            "verify_weave_agents": bool(model.get("verify_weave_agents", True)),
+            "weave_agents_entity": str(model.get("weave_agents_entity", "llm-leaderboard")),
+            "weave_agents_project": str(model.get("weave_agents_project", "tc-leaderboard")),
+            "weave_agents_agent_name": str(
+                model.get("weave_agents_agent_name", "nejumi-taiwan-openclaw")
+            ),
+            "weave_agents_limit": int(model.get("weave_agents_limit", 50)),
+            "weave_agents_verification_timeout": int(
+                model.get("weave_agents_verification_timeout", 120)
+            ),
+            "weave_agents_poll_seconds": int(model.get("weave_agents_poll_seconds", 5)),
+            "deny_tool": AGENTIC_DENIED_TOOLS,
+            "deny_argument_pattern": AGENTIC_DENIED_ARGUMENT_PATTERNS,
+        },
         "bfcl": {
             "allow_overwrite": False,
             "num_threads": int(model.get("bfcl_num_threads", 4)),
@@ -355,6 +451,7 @@ def build_override(
     }
     _apply_agentic_math_nemoclaw_config(override["agentic_math"], model)
     _apply_swebench_pro_nemoclaw_config(override["swebench_pro"], model)
+    _apply_deepswe_nemoclaw_config(override["deepswe"], model)
     if reasoning_effort:
         override.setdefault("generator", {}).setdefault("extra_body", {}).setdefault(
             "reasoning", {}
@@ -536,6 +633,30 @@ def parse_args() -> argparse.Namespace:
         "--swebench-pro-nemoclaw-openclaw-config-path",
         help=(
             "Sandbox OpenClaw config path to read as the SWE-Bench Pro per-task "
+            "template. Defaults to the runner's NeMoClaw config path."
+        ),
+    )
+    parser.add_argument(
+        "--deepswe-nemoclaw-sandbox",
+        help=(
+            "Opt selected DeepSWE configs into NeMoClaw sandbox execution. "
+            "DeepSWE runs through Pier and uses the same native OpenClaw/Weave path."
+        ),
+    )
+    parser.add_argument(
+        "--deepswe-nemoclaw-bin",
+        default="nemoclaw",
+        help="NeMoClaw executable to use when --deepswe-nemoclaw-sandbox is set.",
+    )
+    parser.add_argument(
+        "--deepswe-nemoclaw-workdir",
+        default="/sandbox",
+        help="Working directory inside the NeMoClaw sandbox for DeepSWE.",
+    )
+    parser.add_argument(
+        "--deepswe-nemoclaw-openclaw-config-path",
+        help=(
+            "Sandbox OpenClaw config path to read as the DeepSWE per-task "
             "template. Defaults to the runner's NeMoClaw config path."
         ),
     )

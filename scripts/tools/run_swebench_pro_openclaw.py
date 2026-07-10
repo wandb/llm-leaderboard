@@ -397,8 +397,8 @@ def load_cached_patch_record(
     return cached
 
 
-def task_sidecar_path(protocol_output_dir: Path, instance_id: str) -> Path:
-    return protocol_output_dir / "agentic_swe" / instance_id / "openclaw_result.json"
+def task_sidecar_path(protocol_output_dir: Path, instance_id: str, benchmark_id: str = "agentic_swe") -> Path:
+    return protocol_output_dir / benchmark_id / instance_id / "openclaw_result.json"
 
 
 def effective_deny_tools(args: argparse.Namespace) -> list[str]:
@@ -1515,6 +1515,7 @@ def list_text(value: Any) -> str:
 
 
 def build_prompt(row: dict[str, Any], max_tool_wall_seconds: int | None = DEFAULT_MAX_TOOL_WALL_SECONDS) -> str:
+    benchmark_name = str(row.get("benchmark_name") or "SWE-bench Pro")
     issue_categories = list_text(row.get("issue_categories"))
     selected_tests = list_text(row.get("selected_test_files_to_run"))
     requirements = str(row.get("requirements") or "").strip()
@@ -1523,7 +1524,7 @@ def build_prompt(row: dict[str, Any], max_tool_wall_seconds: int | None = DEFAUL
     wall_limit_text = f"{wall_limit} seconds" if wall_limit > 0 else "the configured runtime limit"
 
     parts = [
-        "# SWE-bench Pro Task",
+        f"# {benchmark_name} Task",
         "",
         "You are running inside a checkout of the target repository at the base commit.",
         "Inspect the repository, edit files as needed, and leave the working tree with the minimal fix.",
@@ -2093,16 +2094,17 @@ def run_openclaw_for_task(
     sidecar_path: Path | None = None
     for attempt_number in range(1, max_attempts + 1):
         attempt_id = f"{int(time.time())}-{os.getpid()}-{attempt_number}"
+        benchmark_id = str(row.get("benchmark_id") or "agentic_swe")
         session_key = f"{resolve_session_prefix(args)}:{row['instance_id']}:{attempt_id}"
         attempt_output_dir = task_dir / "openclaw_attempts" / attempt_id
-        sidecar_path = task_sidecar_path(attempt_output_dir, str(row["instance_id"]))
+        sidecar_path = task_sidecar_path(attempt_output_dir, str(row["instance_id"]), benchmark_id=benchmark_id)
         invocation_path = invocation_dir / f"{attempt_id}.json"
         command = [
             sys.executable,
             str(PROTOCOL_RUNNER),
             "run",
             "--benchmark-id",
-            "agentic_swe",
+            benchmark_id,
             "--task-id",
             str(row["instance_id"]),
             "--prompt-file",

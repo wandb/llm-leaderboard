@@ -92,6 +92,12 @@ def apply_run_scoped_outputs(
         if _as_bool(swebench_pro.get("run_openclaw", True)):
             swebench_pro["patch_path"] = None
 
+    if _as_bool(run_cfg.get("deepswe")):
+        deepswe = _section(resolved, "deepswe")
+        deepswe["output_dir"] = str(root / "deepswe")
+        if _as_bool(deepswe.get("run_openclaw", True)):
+            deepswe["results_dir"] = None
+
     if _as_bool(run_cfg.get("bfcl")):
         bfcl = _section(resolved, "bfcl")
         bfcl["result_dir"] = str(root / "bfcl" / "result")

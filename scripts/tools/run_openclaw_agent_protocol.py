@@ -3526,7 +3526,7 @@ def build_parser() -> argparse.ArgumentParser:
     config_parser.set_defaults(func=write_weave_config)
 
     run_parser = subparsers.add_parser("run")
-    run_parser.add_argument("--benchmark-id", required=True, choices=["agentic_math", "agentic_swe"])
+    run_parser.add_argument("--benchmark-id", required=True, choices=["agentic_math", "agentic_swe", "deepswe"])
     run_parser.add_argument("--task-id", required=True)
     run_parser.add_argument("--prompt-file", type=Path, required=True)
     run_parser.add_argument("--tool-policy", type=Path)

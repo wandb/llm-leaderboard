@@ -57,6 +57,7 @@ aggregate = LazyEvaluatorModule("aggregate")
 aggregate_taiwan = LazyEvaluatorModule("aggregate_taiwan")
 swe_bench = LazyEvaluatorModule("swe_bench")
 swebench_pro = LazyEvaluatorModule("swebench_pro")
+deepswe = LazyEvaluatorModule("deepswe")
 agentic_math = LazyEvaluatorModule("agentic_math")
 arc_agi = LazyEvaluatorModule("arc_agi")
 ifeval_zh_tw = LazyEvaluatorModule("ifeval_zh_tw")
@@ -70,6 +71,7 @@ BENCHMARK_MAP = {
     'agentic_math': 'agentic_math',
     'swebench': 'swebench',
     'swebench_pro': 'swebench_pro',
+    'deepswe': 'deepswe',
     'mtbench': 'mtbench',
     'script_adherence': 'script_adherence',
     'jbbq': 'jbbq',
@@ -689,6 +691,12 @@ if cfg.run.get('swebench_pro', False):
     start_benchmark_tracking('swebench_pro')
     swebench_pro.evaluate()
     complete_benchmark_tracking('swebench_pro')
+
+# DeepSWE agentic evaluation
+if cfg.run.get('deepswe', False):
+    start_benchmark_tracking('deepswe')
+    deepswe.evaluate()
+    complete_benchmark_tracking('deepswe')
 
 # mt-bench evaluation
 if is_run_flag_enabled(cfg.run.get("mtbench", False)):

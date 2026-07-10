@@ -1,0 +1,18 @@
+[
+  "koota-composite-trait-aspects",
+  "csstree-shorthand-expansion-compression",
+  "dynamodb-toolbox-conditional-attribute-requirements",
+  "ipython-session-bundle-replay",
+  "scriggo-method-declarations",
+  "go-git-worktree-merge-conflicts",
+  "oxvg-structural-selector-preservation",
+  "kcp-go-multiplexed-kcp-streams",
+  "fastapi-deprecation-response-headers",
+  "happy-dom-abort-pending-body-reads",
+  "tomlkit-toml-table-converters",
+  "onedump-dump-encryption-pipeline",
+  "obsidian-linter-scoped-ignore-markers",
+  "tengo-destructuring-bindings",
+  "igel-persist-feature-schema",
+  "koota-deferred-mutation-buffer"
+]

@@ -73,6 +73,7 @@ run:
   bfcl: true
   swebench: false
   swebench_pro: false
+  deepswe: false
   mtbench: true
   jbbq: false
   toxicity: false
@@ -241,6 +242,71 @@ swebench_pro:
   num_workers: 8
   redo: false
   block_network: false
+
+deepswe:
+  artifacts_path: null
+  dataset_dir: 'deepswe'
+  local_dataset_dir: 'data/taiwan/deepswe'
+  task_names_file: null
+  tasks_root: 'external/deep-swe/tasks'
+  subset: 'essential_16'
+  output_dir: 'outputs/deepswe'
+  results_dir: null
+  run_openclaw: true
+  dry_run: false
+  job_name: 'deepswe-openclaw'
+  openclaw_model: null
+  thinking: 'high'
+  agent: 'main'
+  prefix: 'deepswe-openclaw'
+  n_concurrent: 1
+  openclaw_timeout: 3600
+  openclaw_max_attempts: 1
+  openclaw_retry_base_seconds: 15
+  max_input_tokens: 1000000
+  max_cumulative_input_tokens: 1000000
+  max_cumulative_output_tokens: 500000
+  require_actual_token_usage: true
+  max_tool_calls: 40
+  max_agent_turns: 40
+  max_tool_wall_seconds: 300
+  nemoclaw_bin: 'nemoclaw'
+  nemoclaw_sandbox: null
+  nemoclaw_workdir: '/sandbox'
+  nemoclaw_openclaw_config_path: '/sandbox/.openclaw/openclaw.json'
+  nemoclaw_checkout_transfer_mode: 'copy'
+  nemoclaw_checkout_transfer_timeout: 600
+  openclaw_tool_profile: 'coding'
+  task_agent_prefix: 'tw-deepswe'
+  session_prefix: 'deepswe'
+  no_local: true
+  use_task_agent: true
+  restart_gateway_before_run: true
+  verify_weave_agents: true
+  weave_agents_entity: 'llm-leaderboard'
+  weave_agents_project: 'tc-leaderboard'
+  weave_agents_agent_name: 'nejumi-taiwan-openclaw'
+  weave_agents_limit: 50
+  weave_agents_verification_timeout: 120
+  weave_agents_poll_seconds: 5
+  allow_failed_preflight: false
+  quiet: false
+  delete: true
+  disable_verification: false
+  agent_timeout_multiplier: null
+  deny_tool:
+    - 'code_execution'
+    - 'process'
+    - 'process_*'
+    - 'web_search'
+    - 'web_fetch'
+    - 'browser'
+    - 'browser_*'
+  deny_argument_pattern:
+    - 'https?://'
+    - '\b(curl|wget)\b'
+    - '\b(?:python(?:3)?\s+-m\s+)?pip(?:3)?\s+install\b'
+    - '\b(requests|urllib|httpx)\.'
 
 agentic_math:
   artifacts_path: 'llm-leaderboard/tc-leaderboard/agentic-math-olymmath-hard-zh-tw:production'

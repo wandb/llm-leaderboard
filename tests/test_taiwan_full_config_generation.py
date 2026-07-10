@@ -60,6 +60,10 @@ def _args(tmp_path: Path, phase: str, *, manifest: Path | None = None) -> argpar
         swebench_pro_nemoclaw_checkout_transfer_mode=None,
         swebench_pro_nemoclaw_workdir=None,
         swebench_pro_nemoclaw_openclaw_config_path=None,
+        deepswe_nemoclaw_sandbox=None,
+        deepswe_nemoclaw_bin="nemoclaw",
+        deepswe_nemoclaw_workdir="/sandbox",
+        deepswe_nemoclaw_openclaw_config_path=None,
     )
 
 
@@ -69,6 +73,7 @@ def test_nonagentic_phase_skips_agentic_and_aggregate(tmp_path):
 
     assert cfg.run.agentic_math is False
     assert cfg.run.swebench_pro is False
+    assert cfg.run.deepswe is False
     assert cfg.run.aggregate_taiwan is False
     assert cfg.run.bfcl is True
     assert cfg.run.mtbench is True
@@ -87,6 +92,7 @@ def test_agentic_aggregate_phase_reuses_completed_outputs(tmp_path):
 
     assert cfg.run.agentic_math is True
     assert cfg.run.swebench_pro is True
+    assert cfg.run.deepswe is True
     assert cfg.run.aggregate_taiwan is True
     assert cfg.run.bfcl is False
     assert cfg.run.mtbench is False
@@ -96,6 +102,8 @@ def test_agentic_aggregate_phase_reuses_completed_outputs(tmp_path):
     assert Path(cfg.swebench_pro.patch_path) == (
         output_root / "swebench_pro" / slug / "openclaw" / "patches.json"
     )
+    assert cfg.deepswe.run_openclaw is False
+    assert Path(cfg.deepswe.results_dir) == output_root / "deepswe" / slug / "runner"
 
 
 def test_agentic_phase_runs_only_agentic_generation(tmp_path):
@@ -104,6 +112,7 @@ def test_agentic_phase_runs_only_agentic_generation(tmp_path):
 
     assert cfg.run.agentic_math is True
     assert cfg.run.swebench_pro is True
+    assert cfg.run.deepswe is True
     assert cfg.run.aggregate_taiwan is False
     assert cfg.run.bfcl is False
     assert cfg.run.mtbench is False
@@ -113,8 +122,10 @@ def test_agentic_phase_runs_only_agentic_generation(tmp_path):
     assert cfg.provider_rate_limit.request_jitter_sec == 0.25
     assert cfg.agentic_math.run_openclaw is True
     assert cfg.swebench_pro.run_openclaw is True
+    assert cfg.deepswe.run_openclaw is True
     assert cfg.agentic_math.results_dir is None
     assert cfg.swebench_pro.patch_path is None
+    assert cfg.deepswe.results_dir is None
     assert cfg.agentic_math.limit == 50
     assert cfg.agentic_math.num_workers == 8
     assert cfg.agentic_math.task_start_min_interval_seconds == 5.0
@@ -129,6 +140,12 @@ def test_agentic_phase_runs_only_agentic_generation(tmp_path):
     assert cfg.swebench_pro.max_tool_calls == 40
     assert cfg.swebench_pro.max_agent_turns == 40
     assert cfg.swebench_pro.max_tool_wall_seconds == 300
+    assert cfg.deepswe.subset == "pilot_16"
+    assert cfg.deepswe.n_concurrent == 1
+    assert cfg.deepswe.max_input_tokens == 1_000_000
+    assert cfg.deepswe.max_tool_calls == 40
+    assert cfg.deepswe.max_agent_turns == 40
+    assert cfg.deepswe.max_tool_wall_seconds == 300
     assert cfg.bfcl.num_threads == 4
     assert cfg.bfcl.provider_min_request_interval_sec == 2.0
     assert cfg.bfcl.provider_request_jitter_sec == 0.5
@@ -149,6 +166,7 @@ def test_agentic_math_nemoclaw_cli_override_is_agentic_math_only(tmp_path):
     assert cfg.agentic_math.nemoclaw_openclaw_config_path == DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH
     assert cfg.agentic_math.use_task_agent is True
     assert "nemoclaw_sandbox" not in cfg.swebench_pro
+    assert "nemoclaw_sandbox" not in cfg.deepswe
 
 
 def test_swebench_pro_nemoclaw_cli_override_is_swe_only(tmp_path):
@@ -166,6 +184,7 @@ def test_swebench_pro_nemoclaw_cli_override_is_swe_only(tmp_path):
     assert cfg.swebench_pro.nemoclaw_checkout_transfer_mode == "copy"
     assert cfg.swebench_pro.nemoclaw_openclaw_config_path == DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH
     assert "nemoclaw_sandbox" not in cfg.agentic_math
+    assert "nemoclaw_sandbox" not in cfg.deepswe
 
 
 def test_nemoclaw_cli_openclaw_config_path_override(tmp_path):
@@ -174,12 +193,15 @@ def test_nemoclaw_cli_openclaw_config_path_override(tmp_path):
     args.agentic_math_nemoclaw_openclaw_config_path = "/custom/math/openclaw.json"
     args.swebench_pro_nemoclaw_sandbox = "nejumi-taiwan"
     args.swebench_pro_nemoclaw_openclaw_config_path = "/custom/swe/openclaw.json"
+    args.deepswe_nemoclaw_sandbox = "nejumi-taiwan"
+    args.deepswe_nemoclaw_openclaw_config_path = "/custom/deepswe/openclaw.json"
 
     [config_path] = generate_configs(args)
     cfg = OmegaConf.load(config_path)
 
     assert cfg.agentic_math.nemoclaw_openclaw_config_path == "/custom/math/openclaw.json"
     assert cfg.swebench_pro.nemoclaw_openclaw_config_path == "/custom/swe/openclaw.json"
+    assert cfg.deepswe.nemoclaw_openclaw_config_path == "/custom/deepswe/openclaw.json"
 
 
 def test_agentic_math_nemoclaw_manifest_override_does_not_touch_swebench_pro(tmp_path):
@@ -205,6 +227,7 @@ def test_agentic_math_nemoclaw_manifest_override_does_not_touch_swebench_pro(tmp
     )
     assert override["agentic_math"]["use_task_agent"] is True
     assert "nemoclaw_sandbox" not in override["swebench_pro"]
+    assert "nemoclaw_sandbox" not in override["deepswe"]
 
 
 def test_swebench_pro_nemoclaw_manifest_override_does_not_touch_agentic_math(tmp_path):
@@ -231,6 +254,32 @@ def test_swebench_pro_nemoclaw_manifest_override_does_not_touch_agentic_math(tmp
         == DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH
     )
     assert "nemoclaw_sandbox" not in override["agentic_math"]
+    assert "nemoclaw_sandbox" not in override["deepswe"]
+
+
+def test_deepswe_nemoclaw_manifest_override_does_not_touch_other_agentic_benchmarks(tmp_path):
+    override = build_override(
+        {
+            "slug": "model-a",
+            "run_name": "model-a",
+            "openclaw_model": "provider/model-a",
+            "deepswe_nemoclaw_sandbox": "nejumi-taiwan",
+            "deepswe_nemoclaw_bin": "/usr/local/bin/nemoclaw",
+            "deepswe_nemoclaw_workdir": "/sandbox/work",
+        },
+        tmp_path / "outputs",
+        phase="agentic",
+    )
+
+    assert override["deepswe"]["nemoclaw_sandbox"] == "nejumi-taiwan"
+    assert override["deepswe"]["nemoclaw_bin"] == "/usr/local/bin/nemoclaw"
+    assert override["deepswe"]["nemoclaw_workdir"] == "/sandbox/work"
+    assert (
+        override["deepswe"]["nemoclaw_openclaw_config_path"]
+        == DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH
+    )
+    assert "nemoclaw_sandbox" not in override["agentic_math"]
+    assert "nemoclaw_sandbox" not in override["swebench_pro"]
 
 
 def test_manifest_judge_override_is_rejected(tmp_path):
@@ -261,8 +310,10 @@ def test_canary_generates_openai_direct_only(tmp_path):
     assert cfg.model.pretrained_model_name_or_path == "gpt-4.1-mini-2025-04-14"
     assert cfg.agentic_math.openclaw_model == "openai-direct/gpt-4.1-mini-2025-04-14"
     assert cfg.swebench_pro.openclaw_model == "openai-direct/gpt-4.1-mini-2025-04-14"
+    assert cfg.deepswe.openclaw_model == "openai-direct/gpt-4.1-mini-2025-04-14"
     assert cfg.agentic_math.limit == 50
     assert cfg.swebench_pro.subset == "leaderboard_compact_80"
+    assert cfg.run.deepswe is False
 
 
 def test_openai_direct_canary_manifest_generates_openai_configs(tmp_path):
@@ -277,8 +328,10 @@ def test_openai_direct_canary_manifest_generates_openai_configs(tmp_path):
     assert cfg.model.pretrained_model_name_or_path == "gpt-4.1-mini-2025-04-14"
     assert cfg.agentic_math.openclaw_model == "openai-direct/gpt-4.1-mini-2025-04-14"
     assert cfg.swebench_pro.openclaw_model == "openai-direct/gpt-4.1-mini-2025-04-14"
+    assert cfg.deepswe.openclaw_model == "openai-direct/gpt-4.1-mini-2025-04-14"
     assert cfg.agentic_math.thinking == "off"
     assert cfg.swebench_pro.thinking == "off"
+    assert cfg.deepswe.thinking == "off"
     assert "mtbench" not in cfg
     resolved = OmegaConf.merge(
         OmegaConf.load(ROOT / "configs" / "base_config_taiwan.yaml"),
@@ -297,6 +350,9 @@ def test_openai_direct_canary_manifest_generates_openai_configs(tmp_path):
     assert resolved.swebench_pro.max_tool_calls == 40
     assert resolved.swebench_pro.max_agent_turns == 40
     assert resolved.swebench_pro.max_tool_wall_seconds == 300
+    assert resolved.deepswe.max_tool_calls == 40
+    assert resolved.deepswe.max_agent_turns == 40
+    assert resolved.deepswe.max_tool_wall_seconds == 300
 
 
 def test_default_glm_manifest_generates_math50_swe40(tmp_path):
@@ -309,6 +365,8 @@ def test_default_glm_manifest_generates_math50_swe40(tmp_path):
     assert config_path.name == "config-taiwan-full-glm-5_2-openrouter-reasoning.yaml"
     assert cfg.agentic_math.limit == 50
     assert cfg.swebench_pro.subset == "leaderboard_compact_40"
+    assert cfg.deepswe.subset == "pilot_16"
+    assert cfg.run.deepswe is False
     assert cfg.agentic_math.max_tool_calls == 40
     assert cfg.agentic_math.max_agent_turns == 40
     assert cfg.agentic_math.max_tool_wall_seconds == 120

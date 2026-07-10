@@ -72,9 +72,12 @@ def test_run_eval_preflight_writes_no_execution_payload(tmp_path):
         run:
           agentic_math: false
           swebench_pro: false
+          deepswe: false
         agentic_math:
           max_tokens: 2048
         swebench_pro:
+          max_tokens: 2048
+        deepswe:
           max_tokens: 2048
         """,
     )
@@ -132,6 +135,7 @@ def test_run_eval_preflight_schedules_taiwan_full_evaluators(tmp_path):
           bfcl: false
           swebench: false
           swebench_pro: false
+          deepswe: false
           mtbench: false
           jbbq: false
           toxicity: false
@@ -155,6 +159,8 @@ def test_run_eval_preflight_schedules_taiwan_full_evaluators(tmp_path):
           max_tokens: 2048
         swebench_pro:
           max_tokens: 2048
+        deepswe:
+          max_tokens: 2048
         """,
     )
     write_yaml(
@@ -164,6 +170,7 @@ def test_run_eval_preflight_schedules_taiwan_full_evaluators(tmp_path):
           agentic_math: true
           bfcl: true
           swebench_pro: true
+          deepswe: true
           mtbench: true
           hle: true
           hallulens_zh_tw: true
@@ -186,6 +193,7 @@ def test_run_eval_preflight_schedules_taiwan_full_evaluators(tmp_path):
         "bfcl",
         "agentic_math",
         "swebench_pro",
+        "deepswe",
         "mtbench",
         "script_adherence",
         "hle",

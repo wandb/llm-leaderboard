@@ -1,0 +1,179 @@
+{
+  "benchmark": "DeepSWE",
+  "source": "external/deep-swe/tasks",
+  "source_task_count": 113,
+  "seed": 20260711,
+  "language_distribution": {
+    "go": 34,
+    "javascript": 5,
+    "python": 34,
+    "rust": 5,
+    "typescript": 35
+  },
+  "subsets": {
+    "full": {
+      "count": 113,
+      "language_distribution": {
+        "go": 34,
+        "javascript": 5,
+        "python": 34,
+        "rust": 5,
+        "typescript": 35
+      },
+      "task_names_path": "subsets/full_task_names.json",
+      "metadata_jsonl_path": "subsets/full.jsonl"
+    },
+    "leaderboard_50": {
+      "count": 50,
+      "language_distribution": {
+        "go": 15,
+        "javascript": 2,
+        "python": 15,
+        "rust": 2,
+        "typescript": 16
+      },
+      "task_names_path": "subsets/leaderboard_50_task_names.json",
+      "metadata_jsonl_path": "subsets/leaderboard_50.jsonl"
+    },
+    "pilot_16": {
+      "count": 16,
+      "language_distribution": {
+        "go": 5,
+        "javascript": 1,
+        "python": 4,
+        "rust": 1,
+        "typescript": 5
+      },
+      "task_names_path": "subsets/pilot_16_task_names.json",
+      "metadata_jsonl_path": "subsets/pilot_16.jsonl"
+    },
+    "essential_10": {
+      "display_name": "DeepSWE-Essential-10",
+      "count": 10,
+      "language_distribution": {
+        "go": 2,
+        "python": 2,
+        "rust": 2,
+        "typescript": 4
+      },
+      "task_names_path": "subsets/essential_10_task_names.json",
+      "metadata_jsonl_path": "subsets/essential_10.jsonl",
+      "selection_metrics": {
+        "k": 10,
+        "in_mae": 0.0237185366116173,
+        "in_pearson": 0.9874663668488748,
+        "in_spearman": 0.9865644931976278,
+        "in_kendall": 0.9277163250538312,
+        "in_r2": 0.9713979723393498,
+        "lo_family_mean_pearson": 0.768532856809396,
+        "lo_family_min_pearson": 0.2573391825446062,
+        "lo_family_mean_spearman": 0.696753895669916,
+        "lo_family_min_spearman": 0.0512989176042577,
+        "lo_family_mean_kendall": 0.6292187791484698,
+        "lo_family_min_kendall": -0.1054092553389459,
+        "lo_family_mean_mae": 0.050543483774272,
+        "lo_family_min_mae": 0.0011061946902654,
+        "lo_family_mean_r2": -0.028469550668055,
+        "lo_family_min_r2": -1.5734774534182718
+      }
+    },
+    "essential_16": {
+      "display_name": "DeepSWE-Essential-16",
+      "count": 16,
+      "language_distribution": {
+        "go": 3,
+        "python": 5,
+        "rust": 2,
+        "typescript": 6
+      },
+      "task_names_path": "subsets/essential_16_task_names.json",
+      "metadata_jsonl_path": "subsets/essential_16.jsonl",
+      "selection_metrics": {
+        "k": 16,
+        "in_mae": 0.0192642175389255,
+        "in_pearson": 0.9936351856398457,
+        "in_spearman": 0.9915023429533733,
+        "in_kendall": 0.9404531691727572,
+        "in_r2": 0.9818336677177604,
+        "lo_family_mean_pearson": 0.8794992488704436,
+        "lo_family_min_pearson": 0.3859185055008359,
+        "lo_family_mean_spearman": 0.8029689545240176,
+        "lo_family_min_spearman": 0.1999999999999999,
+        "lo_family_mean_kendall": 0.7625521124818031,
+        "lo_family_min_kendall": 0.1999999999999999,
+        "lo_family_mean_mae": 0.0378045360529284,
+        "lo_family_min_mae": 0.0024598115299334,
+        "lo_family_mean_r2": 0.3509725626988362,
+        "lo_family_min_r2": -1.2216095640939093
+      }
+    },
+    "essential_20": {
+      "display_name": "DeepSWE-Essential-20",
+      "count": 20,
+      "language_distribution": {
+        "go": 4,
+        "javascript": 1,
+        "python": 5,
+        "rust": 2,
+        "typescript": 8
+      },
+      "task_names_path": "subsets/essential_20_task_names.json",
+      "metadata_jsonl_path": "subsets/essential_20.jsonl",
+      "selection_metrics": {
+        "k": 20,
+        "in_mae": 0.0185374147509611,
+        "in_pearson": 0.9946726801668128,
+        "in_spearman": 0.9963857326132588,
+        "in_kendall": 0.9689813246328768,
+        "in_r2": 0.9829285316104216,
+        "lo_family_mean_pearson": 0.9394795307500174,
+        "lo_family_min_pearson": 0.7793165895947236,
+        "lo_family_mean_spearman": 0.8424809423001467,
+        "lo_family_min_spearman": 0.6,
+        "lo_family_mean_kendall": 0.7751059797643649,
+        "lo_family_min_kendall": 0.3999999999999999,
+        "lo_family_mean_mae": 0.0422578761525892,
+        "lo_family_min_mae": 0.0071902654867256,
+        "lo_family_mean_r2": 0.2119092483019791,
+        "lo_family_min_r2": -2.7254700522913797
+      }
+    },
+    "essential_30": {
+      "display_name": "DeepSWE-Essential-30",
+      "count": 30,
+      "language_distribution": {
+        "go": 8,
+        "javascript": 1,
+        "python": 10,
+        "rust": 2,
+        "typescript": 9
+      },
+      "task_names_path": "subsets/essential_30_task_names.json",
+      "metadata_jsonl_path": "subsets/essential_30.jsonl",
+      "selection_metrics": {
+        "k": 30,
+        "in_mae": 0.0120333189144383,
+        "in_pearson": 0.99652369641954,
+        "in_spearman": 0.9959635742875472,
+        "in_kendall": 0.9670918564886608,
+        "in_r2": 0.9919949382486464,
+        "lo_family_mean_pearson": 0.9659764861091354,
+        "lo_family_min_pearson": 0.8937013741893745,
+        "lo_family_mean_spearman": 0.9249542049258422,
+        "lo_family_min_spearman": 0.7,
+        "lo_family_mean_kendall": 0.8879071378167401,
+        "lo_family_min_kendall": 0.6,
+        "lo_family_mean_mae": 0.0372137180669906,
+        "lo_family_min_mae": 0.0076681448632667,
+        "lo_family_mean_r2": 0.0844358171935066,
+        "lo_family_min_r2": -3.435322328358501
+      }
+    }
+  },
+  "essential_selection": {
+    "name_prefix": "DeepSWE-Essential",
+    "public_trials_url": "https://deepswe.datacurve.ai/artifacts/v1.1/trials.json",
+    "public_tasks_url": "https://deepswe.datacurve.ai/artifacts/v1.1/tasks.json",
+    "method": "Supervised sparse greedy task selection from public DeepSWE v1.1 rollout matrix. Objective maximizes Spearman correlation to the full 113-task score with MAE, cost, duration, language, and repository penalties."
+  }
+}
