@@ -486,7 +486,7 @@ def run_nemoclaw_subprocess(
     except subprocess.TimeoutExpired as exc:
         stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
         stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
-        result = subprocess.CompletedProcess(
+        return subprocess.CompletedProcess(
             full_command,
             124,
             stdout=stdout,
@@ -594,6 +594,46 @@ def uses_nemoclaw_gateway_task_agent(args: argparse.Namespace) -> bool:
         bool(getattr(args, "use_task_agent", True))
         and bool(getattr(args, "no_local", False))
         and bool(getattr(args, "nemoclaw_sandbox", None))
+    )
+
+
+def restart_nemoclaw_gateway_after_task_agent_registration(
+    args: argparse.Namespace,
+    *,
+    label: str,
+    timeout: int = 120,
+) -> None:
+    if (
+        not uses_nemoclaw_gateway_task_agent(args)
+        or bool(getattr(args, "dry_run", False))
+        or not bool(getattr(args, "restart_gateway_after_task_agent_registration", True))
+    ):
+        return
+    command = [
+        str(getattr(args, "nemoclaw_bin", "nemoclaw")),
+        "sandbox",
+        "gateway",
+        "restart",
+        str(getattr(args, "nemoclaw_sandbox")),
+        "--quiet",
+    ]
+    print(
+        f"Restarting NeMoClaw Gateway after {label} task-agent registration.",
+        flush=True,
+    )
+    with _NEMOCLAW_EXEC_LOCK:
+        result = run_nemoclaw_subprocess(command, timeout=timeout)
+    if result.returncode != 0:
+        raise RuntimeError(
+            "NeMoClaw Gateway restart failed after task-agent registration\n"
+            f"cmd: {' '.join(shlex.quote(part) for part in command)}\n"
+            f"returncode: {result.returncode}\n"
+            f"stdout:\n{result.stdout}\n"
+            f"stderr:\n{result.stderr}"
+        )
+    print(
+        f"NeMoClaw Gateway restarted after {label} task-agent registration.",
+        flush=True,
     )
 
 
@@ -2474,6 +2514,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--deny-argument-pattern", action="append")
     parser.add_argument("--use-task-agent", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--task-agent-prefix", default="nejumi-swe")
+    parser.add_argument(
+        "--restart-gateway-after-task-agent-registration",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Restart the NeMoClaw Gateway after bulk task-agent registration so "
+            "parallel dynamic agents are visible to the running Gateway."
+        ),
+    )
     parser.add_argument("--session-prefix", default="swebench-pro")
     parser.add_argument("--openclaw-timeout", type=int, default=3600)
     parser.add_argument(
@@ -2738,6 +2787,7 @@ def main() -> None:
                 f"[{index}/{len(rows)}] Pre-registered SWE-Bench Pro task agent: {instance_id}",
                 flush=True,
             )
+        restart_nemoclaw_gateway_after_task_agent_registration(args, label="SWE-Bench Pro")
 
     openclaw_num_workers = max(1, int(getattr(args, "openclaw_num_workers", 1) or 1))
     task_start_limiter = TaskStartLimiter(
