@@ -1801,7 +1801,35 @@ def verify_full_taiwan_run(
         for table_name in AGGREGATE_TABLES:
             checks.append(_table_check(summary, table_name, name="aggregate_table"))
 
-    for metric_name in (BFCL_TIMEOUT_METRIC, BFCL_INFERENCE_ERROR_METRIC):
+    raw_timeout_value = _metric(summary, BFCL_TIMEOUT_METRIC)
+    try:
+        timeout_value = int(raw_timeout_value)
+    except (TypeError, ValueError):
+        timeout_value = None
+    if timeout_value is None:
+        checks.append(
+            _fail_check(
+                "bfcl_runtime_error_metric",
+                f"missing or invalid {BFCL_TIMEOUT_METRIC}",
+                metric=BFCL_TIMEOUT_METRIC,
+                value=raw_timeout_value,
+            )
+        )
+    else:
+        checks.append(
+            _ok_check(
+                "bfcl_runtime_error_metric",
+                (
+                    f"{BFCL_TIMEOUT_METRIC}={timeout_value}; BFCL case timeouts "
+                    "are scored as incorrect model outcomes"
+                ),
+                metric=BFCL_TIMEOUT_METRIC,
+                value=timeout_value,
+                expected="integer >= 0",
+            )
+        )
+
+    for metric_name in (BFCL_INFERENCE_ERROR_METRIC,):
         raw_value = _metric(summary, metric_name)
         try:
             value = int(raw_value)

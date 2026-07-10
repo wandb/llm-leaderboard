@@ -259,8 +259,6 @@ def evaluate():
         return bool(raw_entry.get("timeout")) or raw_entry.get("error") == "bfcl_case_timeout"
 
     def result_has_inference_error(raw_entry):
-        if result_has_timeout(raw_entry):
-            return True
         if raw_entry.get("error"):
             return True
         result = raw_entry.get("result")
@@ -443,6 +441,7 @@ def evaluate():
             "bfcl_radar_table": table_radar,
             "bfcl_timeout_count": timeout_count,
             "bfcl_inference_error_count": inference_error_count,
+            "bfcl_timeout_policy": "score_as_incorrect",
         })
 
     print("BFCLの評価が正常に完了しました！")

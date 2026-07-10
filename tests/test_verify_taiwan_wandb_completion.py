@@ -820,7 +820,7 @@ def test_verify_taiwan_full_completion_rejects_missing_required_table():
     )
 
 
-def test_verify_taiwan_full_completion_rejects_bfcl_timeout_count():
+def test_verify_taiwan_full_completion_allows_bfcl_timeout_count_as_scored_incorrect():
     module = load_module()
     summary = complete_taiwan_full_summary()
     summary["bfcl_timeout_count"] = 1
@@ -831,11 +831,11 @@ def test_verify_taiwan_full_completion_rejects_bfcl_timeout_count():
         taxonomy_path=REPO_ROOT / "taxonomies" / "nejumi45_taiwan.yaml",
     )
 
-    assert result["ok"] is False
+    assert result["ok"] is True
     assert any(
         check["name"] == "bfcl_runtime_error_metric"
         and check.get("metric") == "bfcl_timeout_count"
-        and not check["ok"]
+        and check["ok"]
         for check in result["checks"]
     )
 

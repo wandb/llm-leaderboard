@@ -89,8 +89,13 @@ class TaskStartLimiter:
 
 
 _REGISTERED_NEMOCLAW_GATEWAY_AGENTS: list[tuple[argparse.Namespace, str]] = []
+_NEMOCLAW_EXEC_LOCK = threading.Lock()
 NEMOCLAW_GATEWAY_CLEANUP_TOTAL_TIMEOUT_SEC = 30.0
 NEMOCLAW_GATEWAY_CLEANUP_PER_AGENT_TIMEOUT_SEC = 3
+NEMOCLAW_PERMISSION_CLEANUP_RE = re.compile(
+    r"OpenClaw permission cleanup failed|normalize_mutable_config_perms|expected 660 group-writable",
+    re.IGNORECASE,
+)
 
 
 def run_command(
@@ -440,8 +445,37 @@ def run_nemoclaw_text_command(
         "--",
         *command,
     ]
+    with _NEMOCLAW_EXEC_LOCK:
+        result = run_nemoclaw_subprocess(full_command, input_text=input_text, timeout=timeout)
+        if result.returncode != 0 and nemoclaw_permission_cleanup_failed(result):
+            repair = repair_nemoclaw_openclaw_permissions_locked(args, timeout=timeout)
+            if repair.returncode == 0:
+                result = run_nemoclaw_subprocess(full_command, input_text=input_text, timeout=timeout)
+            else:
+                result.stderr += (
+                    "\nNeMoClaw OpenClaw config permission repair failed before retry.\n"
+                    f"repair stdout:\n{repair.stdout}\n"
+                    f"repair stderr:\n{repair.stderr}"
+                )
+    if check and result.returncode != 0:
+        raise RuntimeError(
+            "NeMoClaw command failed\n"
+            f"cmd: {' '.join(shlex.quote(part) for part in full_command)}\n"
+            f"returncode: {result.returncode}\n"
+            f"stdout:\n{result.stdout}\n"
+            f"stderr:\n{result.stderr}"
+        )
+    return result
+
+
+def run_nemoclaw_subprocess(
+    full_command: list[str],
+    *,
+    input_text: str | None = None,
+    timeout: int = 60,
+) -> subprocess.CompletedProcess[str]:
     try:
-        result = subprocess.run(
+        return subprocess.run(
             full_command,
             text=True,
             input=input_text,
@@ -458,15 +492,61 @@ def run_nemoclaw_text_command(
             stdout=stdout,
             stderr=stderr + f"\nNeMoClaw host command timed out after {timeout + 10} seconds",
         )
-    if check and result.returncode != 0:
+
+
+def nemoclaw_permission_cleanup_failed(result: subprocess.CompletedProcess[str]) -> bool:
+    return bool(NEMOCLAW_PERMISSION_CLEANUP_RE.search((result.stderr or "") + "\n" + (result.stdout or "")))
+
+
+def repair_nemoclaw_openclaw_permissions_locked(
+    args: argparse.Namespace,
+    *,
+    timeout: int = 60,
+) -> subprocess.CompletedProcess[str]:
+    config_path = str(getattr(args, "nemoclaw_openclaw_config_path", NEMOCLAW_OPENCLAW_CONFIG_PATH))
+    config_dir = config_path.rsplit("/", 1)[0] or "."
+    script = (
+        "set -eu; "
+        'config_dir="$1"; config_path="$2"; '
+        'test -d "$config_dir"; '
+        'chmod 2770 "$config_dir"; '
+        'if [ -f "$config_path" ]; then chmod 660 "$config_path"; fi; '
+        'hash_path="$config_dir/.config-hash"; '
+        'if [ -f "$hash_path" ]; then chmod 660 "$hash_path"; fi; '
+        "stat -c '%a %u %g %n' \"$config_dir\" \"$config_path\" \"$hash_path\" 2>/dev/null || true"
+    )
+    full_command = [
+        args.nemoclaw_bin,
+        "sandbox",
+        "exec",
+        args.nemoclaw_sandbox,
+        "--workdir",
+        "/sandbox",
+        "--no-tty",
+        "--timeout",
+        str(timeout),
+        "--",
+        "sh",
+        "-lc",
+        script,
+        "repair-openclaw-perms",
+        config_dir,
+        config_path,
+    ]
+    return run_nemoclaw_subprocess(full_command, timeout=timeout)
+
+
+def ensure_nemoclaw_openclaw_permissions(args: argparse.Namespace) -> None:
+    if not getattr(args, "nemoclaw_sandbox", None):
+        return
+    with _NEMOCLAW_EXEC_LOCK:
+        result = repair_nemoclaw_openclaw_permissions_locked(args, timeout=60)
+    if result.returncode != 0:
         raise RuntimeError(
-            "NeMoClaw command failed\n"
-            f"cmd: {' '.join(shlex.quote(part) for part in full_command)}\n"
-            f"returncode: {result.returncode}\n"
+            "NeMoClaw OpenClaw config permission preflight failed\n"
             f"stdout:\n{result.stdout}\n"
             f"stderr:\n{result.stderr}"
         )
-    return result
 
 
 def run_nemoclaw_binary_command(
@@ -2490,6 +2570,7 @@ def main() -> None:
 
     patches_by_index: dict[int, dict[str, Any]] = {}
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    ensure_nemoclaw_openclaw_permissions(args)
 
     def ordered_patches() -> list[dict[str, Any]]:
         return [patches_by_index[index] for index in sorted(patches_by_index)]
