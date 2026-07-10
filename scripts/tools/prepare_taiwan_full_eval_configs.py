@@ -59,6 +59,7 @@ AGENTIC_DENIED_TOOLS = [
 AGENTIC_DENIED_ARGUMENT_PATTERNS = [
     r"https?://",
     r"\b(curl|wget)\b",
+    r"\b(?:python(?:3)?\s+-m\s+)?pip(?:3)?\s+install\b",
     r"\b(requests|urllib|httpx)\.",
 ]
 MANIFEST_JUDGE_OVERRIDE_KEYS = (
@@ -197,28 +198,63 @@ def _apply_swebench_pro_nemoclaw_config(
     swebench_pro["nemoclaw_openclaw_config_path"] = str(config_path)
 
 
-def build_override(model: dict[str, Any], output_root: Path, phase: str = "full") -> dict[str, Any]:
+def build_override(
+    model: dict[str, Any],
+    output_root: Path,
+    phase: str = "full",
+) -> dict[str, Any]:
     _reject_manifest_judge_overrides(model)
     slug = str(model["slug"])
     openclaw_model = str(model["openclaw_model"])
     reasoning_effort = model.get("reasoning_effort")
+    math_limit = model.get("math_limit", 50)
+    if math_limit is None:
+        math_limit = 50
 
     override: dict[str, Any] = {
         "testmode": False,
         "wandb": {"run_name": str(model["run_name"])},
         "run": _run_flags_for_phase(phase),
+        "provider_rate_limit": {
+            "enabled": bool(model.get("provider_rate_limit_enabled", True)),
+            "key": str(model.get("provider_rate_limit_key", f"llm:{slug}")),
+            "min_request_interval_sec": float(
+                model.get("provider_min_request_interval_sec", 1.0)
+            ),
+            "request_jitter_sec": float(model.get("provider_request_jitter_sec", 0.25)),
+        },
         "agentic_math": {
-            "subset": "leaderboard",
+            "subset": str(model.get("math_subset", "leaderboard")),
+            "limit": int(math_limit),
             "output_dir": str(output_root / "agentic_math" / slug),
             "prefix": f"taiwan-math-{slug}",
             "task_agent_prefix": f"tw-math-{slug}",
             "openclaw_model": openclaw_model,
             "thinking": str(model.get("agentic_thinking", "high")),
+            "num_workers": int(model.get("math_num_workers", 8)),
+            "task_start_min_interval_seconds": float(
+                model.get("math_task_start_min_interval_seconds", 5.0)
+            ),
+            "openclaw_timeout": int(model.get("math_openclaw_timeout", 900)),
             "openclaw_max_attempts": int(model.get("openclaw_max_attempts", 3)),
             "openclaw_retry_base_seconds": int(model.get("openclaw_retry_base_seconds", 15)),
             "max_input_tokens": int(model.get("math_max_input_tokens", 500_000)),
+            "max_cumulative_input_tokens": int(
+                model.get(
+                    "math_max_cumulative_input_tokens",
+                    model.get("math_max_input_tokens", 500_000),
+                )
+            ),
+            "max_cumulative_output_tokens": int(
+                model.get(
+                    "math_max_cumulative_output_tokens",
+                    model.get("math_max_input_tokens", 500_000),
+                )
+            ),
+            "require_actual_token_usage": bool(model.get("require_actual_token_usage", True)),
             "max_tool_calls": int(model.get("math_max_tool_calls", 40)),
             "max_agent_turns": int(model.get("math_max_agent_turns", 40)),
+            "max_tool_wall_seconds": int(model.get("math_max_tool_wall_seconds", 120)),
             "verify_weave_agents": bool(model.get("verify_weave_agents", True)),
             "weave_agents_entity": str(model.get("weave_agents_entity", "llm-leaderboard")),
             "weave_agents_project": str(model.get("weave_agents_project", "tc-leaderboard")),
@@ -232,6 +268,7 @@ def build_override(model: dict[str, Any], output_root: Path, phase: str = "full"
             "weave_agents_poll_seconds": int(model.get("weave_agents_poll_seconds", 5)),
             "dry_run": False,
             "run_openclaw": phase != "agentic_aggregate",
+            "redo": bool(model.get("agentic_math_redo", False)),
             "results_dir": str(output_root / "agentic_math" / slug / "openclaw")
             if phase == "agentic_aggregate"
             else None,
@@ -250,10 +287,16 @@ def build_override(model: dict[str, Any], output_root: Path, phase: str = "full"
             "task_agent_prefix": f"tw-swe-{slug}",
             "openclaw_model": openclaw_model,
             "thinking": str(model.get("swe_thinking", "medium")),
+            "openclaw_num_workers": int(model.get("swe_openclaw_num_workers", 8)),
+            "openclaw_task_start_min_interval_seconds": float(
+                model.get("swe_openclaw_task_start_min_interval_seconds", 15.0)
+            ),
+            "openclaw_timeout": int(model.get("swe_openclaw_timeout", 3600)),
             "openclaw_max_attempts": int(model.get("openclaw_max_attempts", 3)),
             "openclaw_retry_base_seconds": int(model.get("openclaw_retry_base_seconds", 15)),
             "dry_run": False,
             "run_openclaw": phase != "agentic_aggregate",
+            "redo": bool(model.get("swebench_pro_redo", False)),
             "patch_path": str(output_root / "swebench_pro" / slug / "openclaw" / "patches.json")
             if phase == "agentic_aggregate"
             else None,
@@ -263,8 +306,22 @@ def build_override(model: dict[str, Any], output_root: Path, phase: str = "full"
             "weave_sidecar_strict": False,
             "openclaw_tool_profile": "coding",
             "max_input_tokens": int(model.get("swe_max_input_tokens", 1_000_000)),
+            "max_cumulative_input_tokens": int(
+                model.get(
+                    "swe_max_cumulative_input_tokens",
+                    model.get("swe_max_input_tokens", 1_000_000),
+                )
+            ),
+            "max_cumulative_output_tokens": int(
+                model.get(
+                    "swe_max_cumulative_output_tokens",
+                    model.get("swe_max_input_tokens", 1_000_000),
+                )
+            ),
+            "require_actual_token_usage": bool(model.get("require_actual_token_usage", True)),
             "max_tool_calls": int(model.get("swe_max_tool_calls", 40)),
             "max_agent_turns": int(model.get("swe_max_agent_turns", 40)),
+            "max_tool_wall_seconds": int(model.get("swe_max_tool_wall_seconds", 300)),
             "verify_weave_agents": bool(model.get("verify_weave_agents", True)),
             "weave_agents_entity": str(model.get("weave_agents_entity", "llm-leaderboard")),
             "weave_agents_project": str(model.get("weave_agents_project", "tc-leaderboard")),
@@ -281,6 +338,19 @@ def build_override(model: dict[str, Any], output_root: Path, phase: str = "full"
         },
         "bfcl": {
             "allow_overwrite": False,
+            "num_threads": int(model.get("bfcl_num_threads", 4)),
+            "provider_min_request_interval_sec": float(
+                model.get("bfcl_provider_min_request_interval_sec", 2.0)
+            ),
+            "provider_request_jitter_sec": float(
+                model.get("bfcl_provider_request_jitter_sec", 0.5)
+            ),
+            "provider_rate_limit_key": str(
+                model.get("bfcl_provider_rate_limit_key", f"bfcl:{slug}")
+            ),
+            "consecutive_failure_fail_fast": int(
+                model.get("bfcl_consecutive_failure_fail_fast", 5)
+            ),
         },
     }
     _apply_agentic_math_nemoclaw_config(override["agentic_math"], model)
@@ -358,7 +428,13 @@ def generate_configs(args: argparse.Namespace) -> list[Path]:
         if not source_path.exists():
             raise FileNotFoundError(source_path)
         source_cfg = OmegaConf.load(source_path)
-        override = OmegaConf.create(build_override(model, args.output_root, phase=phase))
+        override = OmegaConf.create(
+            build_override(
+                model,
+                args.output_root,
+                phase=phase,
+            )
+        )
         generated = OmegaConf.merge(source_cfg, override)
         output_path = output_dir / f"config-taiwan-full-{model['slug']}.yaml"
         OmegaConf.save(config=generated, f=output_path)

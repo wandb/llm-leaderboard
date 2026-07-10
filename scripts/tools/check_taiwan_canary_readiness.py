@@ -51,6 +51,7 @@ AGENTIC_REQUIRED_DENIED_TOOLS = {
 }
 AGENTIC_REQUIRED_DENIED_ARGUMENT_PATTERNS = {
     r"\b(curl|wget)\b",
+    r"\b(?:python(?:3)?\s+-m\s+)?pip(?:3)?\s+install\b",
     r"\b(requests|urllib|httpx)\.",
     r"https?://",
 }
@@ -63,6 +64,8 @@ NEMOCLAW_ALLOWED_RUNTIME_NETWORK_POLICIES = {
     "nvidia",
     "openclaw_api",
     "openclaw_docs",
+    "openclaw_gateway_dialback",
+    "openrouter-inference",
     "wandb-weave",
 }
 NEMOCLAW_SANDBOX_SECRET_REF_PROBE = r"""
@@ -676,13 +679,21 @@ def check_nemoclaw(
         env,
     )
     policy_detail = _sandbox_policy_detail(status_json, sandbox, status_detail)
+    policy_introspectable = (
+        status_json_ok and bool(policy_detail["sandbox_found"])
+    ) or (
+        status_ok
+        and bool(policy_detail["policy_configured"])
+        and int(policy_detail["detailed_status_network_policy_count"]) > 0
+    )
     checks.append(
         Check(
             f"NeMoClaw sandbox runtime policy is introspectable: {sandbox}",
-            (status_json_ok and bool(policy_detail["sandbox_found"])) or not require,
+            policy_introspectable or not require,
             json.dumps(
                 {
                     **policy_detail,
+                    "sandbox_status_ok": status_ok,
                     "status_json_ok": status_json_ok,
                     "error": "" if status_json_ok else status_json_detail,
                     "anti_cheat_note": (

@@ -16,6 +16,9 @@ from .utils import (
     system_prompt_pre_processing_chat_model,
 )
 from evaluator.evaluate_utils.llm_async_processor import LLMAsyncProcessor
+from evaluator.evaluate_utils.provider_rate_limiter import (
+    get_provider_request_rate_limiter,
+)
 from overrides import EnforceOverrides, final, override
 from config_singleton import WandbConfigSingleton
 from omegaconf import OmegaConf
@@ -45,6 +48,26 @@ def _deep_merge_dicts(base: dict, override: dict) -> dict:
     return merged
 
 
+def _positive_float_or_none(value):
+    if value is None:
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def _nonnegative_int_or_none(value):
+    if value is None:
+        return None
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0, value)
+
+
 class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
     def __init__(self, model_name, temperature) -> None:
         # temperatureは後方互換のため残しているがgenerator_configから取るので使用しない
@@ -62,10 +85,53 @@ class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
             _to_plain_dict(cfg.bfcl.generator_config),
         )
         self.max_tokens = self.generator_config.pop("max_tokens") # 使用済みTokenに応じて調整するためgenerator_configから取り除く
+        self.request_timeout_sec = _positive_float_or_none(
+            OmegaConf.select(cfg, "bfcl.request_timeout_sec", default=None)
+        )
+        self.request_max_retries = _nonnegative_int_or_none(
+            OmegaConf.select(cfg, "bfcl.request_max_retries", default=1)
+        )
+        provider_min_interval_sec = _positive_float_or_none(
+            OmegaConf.select(cfg, "bfcl.provider_min_request_interval_sec", default=0)
+        ) or 0.0
+        provider_jitter_sec = _positive_float_or_none(
+            OmegaConf.select(cfg, "bfcl.provider_request_jitter_sec", default=0)
+        ) or 0.0
+        provider_key = str(
+            OmegaConf.select(
+                cfg,
+                "bfcl.provider_rate_limit_key",
+                default=f"bfcl:{self.model_name_huggingface}",
+            )
+        )
+        self.provider_request_limiter = get_provider_request_rate_limiter(
+            provider_key,
+            min_interval_sec=provider_min_interval_sec,
+            jitter_sec=provider_jitter_sec,
+        )
+        backoff_max_time = _positive_float_or_none(
+            OmegaConf.select(cfg, "bfcl.backoff_max_time_sec", default=90)
+        )
+        backoff_max_tries = _nonnegative_int_or_none(
+            OmegaConf.select(cfg, "bfcl.backoff_max_tries", default=4)
+        )
 
         # Read from env vars with fallbacks
         llm = instance.llm
-        self.llm_ap = LLMAsyncProcessor(llm)
+        self.llm_ap = LLMAsyncProcessor(
+            llm,
+            backoff_max_time=backoff_max_time,
+            backoff_max_tries=backoff_max_tries,
+            provider_rate_limit_enabled=False,
+        )
+
+    def _request_control_kwargs(self) -> dict:
+        kwargs = {}
+        if self.request_timeout_sec is not None:
+            kwargs["timeout"] = self.request_timeout_sec
+        if self.request_max_retries is not None:
+            kwargs["request_max_retries"] = self.request_max_retries
+        return kwargs
 
     @override
     def decode_ast(self, result, language="Python"):
@@ -98,12 +164,14 @@ class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
             "model": self.model_name.replace("-FC", ""),
             "max_tokens": self.max_tokens,
             **self.generator_config,
+            **self._request_control_kwargs(),
         }
 
         if len(tools) > 0:
             kwargs["tools"] = tools
 
         start_time = time.time()
+        self.provider_request_limiter.wait()
         api_response = self.llm_ap.process_single(message, **kwargs)
         end_time = time.time()
 
@@ -119,12 +187,14 @@ class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
             "model": self.model_name.replace("-FC", ""),
             "max_tokens": self.max_tokens,
             **self.generator_config,
+            **self._request_control_kwargs(),
         }
 
         if len(tools) > 0:
             kwargs["tools"] = tools
 
         start_time = time.time()
+        await self.provider_request_limiter.wait_async()
         api_response = await self.llm_ap.process_single_async(message, **kwargs)
         end_time = time.time()
 
@@ -157,7 +227,7 @@ class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
             tool_call_ids = [
                 func_call.id for func_call in api_response.tool_calls
             ]
-        except:
+        except Exception:
             model_responses = api_response.content
             tool_call_ids = []
 
@@ -302,9 +372,11 @@ class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
             "model": self.model_name,
             "max_tokens": self.max_tokens,
             **self.generator_config,
+            **self._request_control_kwargs(),
         }
 
         start_time = time.time()
+        self.provider_request_limiter.wait()
         api_response = self.llm_ap.process_single(message, **kwargs)
         end_time = time.time()
 
@@ -319,9 +391,11 @@ class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
             "model": self.model_name,
             "max_tokens": self.max_tokens,
             **self.generator_config,
+            **self._request_control_kwargs(),
         }
 
         start_time = time.time()
+        await self.provider_request_limiter.wait_async()
         api_response = await self.llm_ap.process_single_async(message, **kwargs)
         end_time = time.time()
 

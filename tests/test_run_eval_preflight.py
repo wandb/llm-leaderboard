@@ -15,10 +15,23 @@ def write_yaml(path: Path, text: str) -> None:
     path.write_text(dedent(text).strip() + "\n", encoding="utf-8")
 
 
-def run_preflight(config: Path, base_config: Path, output_json: Path) -> subprocess.CompletedProcess:
+def run_preflight(
+    config: Path,
+    base_config: Path,
+    output_json: Path,
+    extra_env: dict[str, str | None] | None = None,
+) -> subprocess.CompletedProcess:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT / "scripts")
+    env["NEJUMI_DISABLE_DOTENV"] = "1"
+    env.setdefault("OPENAI_API_KEY", "test-openai-key")
     env.pop("NEJUMI_MAIN_STARTED", None)
+    if extra_env:
+        for key, value in extra_env.items():
+            if value is None:
+                env.pop(key, None)
+            else:
+                env[key] = value
     return subprocess.run(
         [
             sys.executable,
@@ -270,6 +283,162 @@ def test_run_eval_preflight_fails_on_critical_token_validation(tmp_path):
     assert payload["status"] == "failed"
     assert payload["token_validation"]["has_errors"] is True
     assert payload["will_initialize_wandb"] is False
+
+
+def test_run_eval_preflight_fails_for_api_twbias_hf_perplexity_without_model_path(tmp_path):
+    base_config = tmp_path / "base.yaml"
+    config = tmp_path / "config.yaml"
+    output_json = tmp_path / "preflight.json"
+
+    write_yaml(
+        base_config,
+        """
+        wandb:
+          entity: llm-leaderboard
+          project: tc-leaderboard
+          run_name: preflight-base
+        api: openai_responses
+        model:
+          pretrained_model_name_or_path: gpt-4.1-mini-2025-04-14
+        generator:
+          max_tokens: 2048
+        run:
+          twbias: false
+        twbias:
+          backend: hf_perplexity
+          model_path: null
+          allow_unknown_license: true
+        """,
+    )
+    write_yaml(
+        config,
+        """
+        run:
+          twbias: true
+        """,
+    )
+
+    result = run_preflight(config, base_config, output_json)
+
+    assert result.returncode == 2
+    payload = json.loads(output_json.read_text(encoding="utf-8"))
+    assert payload["ok"] is False
+    assert payload["runtime_validation"]["ok"] is False
+    assert "TWBias hf_perplexity requires direct HF/local model access" in (
+        payload["runtime_validation"]["errors"][0]
+    )
+    assert payload["will_initialize_wandb"] is False
+
+
+def test_run_eval_preflight_fails_before_execution_when_openrouter_key_missing(tmp_path):
+    base_config = tmp_path / "base.yaml"
+    config = tmp_path / "config.yaml"
+    output_json = tmp_path / "preflight.json"
+
+    write_yaml(
+        base_config,
+        """
+        wandb:
+          entity: llm-leaderboard
+          project: tc-leaderboard
+          run_name: preflight-base
+        api: openai-compatible
+        base_url: https://openrouter.ai/api/v1
+        model:
+          pretrained_model_name_or_path: z-ai/glm-5.2
+        generator:
+          max_tokens: 2048
+        run:
+          bfcl: false
+        bfcl:
+          max_tokens: 2048
+        """,
+    )
+    write_yaml(
+        config,
+        """
+        run:
+          bfcl: true
+        """,
+    )
+
+    result = run_preflight(
+        config,
+        base_config,
+        output_json,
+        extra_env={
+            "NEJUMI_DISABLE_DOTENV": "1",
+            "OPENROUTER_API_KEY": None,
+            "OPENAI_COMPATIBLE_API_KEY": None,
+            "NEJUMI_OPENROUTER_API_KEY_ENV": None,
+        },
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(output_json.read_text(encoding="utf-8"))
+    assert payload["ok"] is False
+    assert payload["runtime_validation"]["ok"] is False
+    assert "Missing credential for answer model OpenRouter API" in (
+        payload["runtime_validation"]["errors"][0]
+    )
+    assert payload["runtime_validation"]["credential_checks"][0]["required_any_of"] == [
+        "OPENROUTER_API_KEY",
+        "OPENAI_COMPATIBLE_API_KEY",
+    ]
+    assert payload["will_initialize_wandb"] is False
+
+
+def test_run_eval_preflight_passes_when_openrouter_key_present(tmp_path):
+    base_config = tmp_path / "base.yaml"
+    config = tmp_path / "config.yaml"
+    output_json = tmp_path / "preflight.json"
+
+    write_yaml(
+        base_config,
+        """
+        wandb:
+          entity: llm-leaderboard
+          project: tc-leaderboard
+          run_name: preflight-base
+        api: openai-compatible
+        base_url: https://openrouter.ai/api/v1
+        model:
+          pretrained_model_name_or_path: z-ai/glm-5.2
+        generator:
+          max_tokens: 2048
+        run:
+          bfcl: false
+        bfcl:
+          max_tokens: 2048
+        """,
+    )
+    write_yaml(
+        config,
+        """
+        run:
+          bfcl: true
+        """,
+    )
+
+    result = run_preflight(
+        config,
+        base_config,
+        output_json,
+        extra_env={
+            "NEJUMI_DISABLE_DOTENV": "1",
+            "OPENROUTER_API_KEY": "test-openrouter-key",
+            "OPENAI_COMPATIBLE_API_KEY": None,
+            "NEJUMI_OPENROUTER_API_KEY_ENV": None,
+        },
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    payload = json.loads(output_json.read_text(encoding="utf-8"))
+    assert payload["ok"] is True
+    assert payload["runtime_validation"]["ok"] is True
+    assert payload["runtime_validation"]["credential_checks"][0]["present_envs"] == [
+        "OPENROUTER_API_KEY"
+    ]
 
 
 def _literal_assignment_from_source(path: Path, name: str):

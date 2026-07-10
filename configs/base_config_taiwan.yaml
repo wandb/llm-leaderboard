@@ -9,6 +9,12 @@ error_handling:
   request_failure:
     mode: hard
 
+provider_rate_limit:
+  enabled: false
+  key: null
+  min_request_interval_sec: 0.0
+  request_jitter_sec: 0.0
+
 network:
   http_timeout:
     connect: 10.0
@@ -163,7 +169,14 @@ twbias:
 bfcl:
   test_category: "java javascript live_irrelevance live_multiple live_relevance live_simple multi_turn_base multi_turn_miss_func multi_turn_miss_param simple multiple irrelevance"
   temperature: 0.01
-  num_threads: 2
+  num_threads: 4
+  provider_min_request_interval_sec: 2.0
+  provider_request_jitter_sec: 0.5
+  request_timeout_sec: 300
+  case_timeout_sec: 600
+  case_timeout_retries: 0
+  consecutive_failure_fail_fast: 5
+  progress_poll_sec: 5
   artifacts_path: 'llm-leaderboard/tc-leaderboard/bfcl-zh-tw:production'
   generator_config:
     max_tokens: 8096
@@ -184,7 +197,7 @@ bfcl:
 swebench_pro:
   artifacts_path: 'llm-leaderboard/tc-leaderboard/swebench-pro-public:production'
   dataset_dir: 'swebench_pro_public'
-  subset: 'leaderboard_compact_80'
+  subset: 'leaderboard_compact_40'
   local_dataset_dir: null
   output_dir: 'outputs/swebench_pro'
   checkout_root: 'outputs/swebench_pro_checkouts'
@@ -201,10 +214,16 @@ swebench_pro:
   openclaw_config_template: null
   openclaw_model: null
   thinking: 'medium'
+  openclaw_num_workers: 8
+  openclaw_task_start_min_interval_seconds: 15.0
   openclaw_timeout: 3600
   max_input_tokens: 1000000
+  max_cumulative_input_tokens: 1000000
+  max_cumulative_output_tokens: 1000000
+  require_actual_token_usage: true
   max_tool_calls: 40
   max_agent_turns: 40
+  max_tool_wall_seconds: 300
   verify_weave_agents: true
   weave_agents_entity: 'llm-leaderboard'
   weave_agents_project: 'tc-leaderboard'
@@ -227,6 +246,7 @@ agentic_math:
   artifacts_path: 'llm-leaderboard/tc-leaderboard/agentic-math-olymmath-hard-zh-tw:production'
   dataset_dir: 'agentic_math_olymmath_hard_zh_tw'
   subset: 'leaderboard'
+  limit: 50
   local_dataset_dir: null
   output_dir: 'outputs/agentic_math'
   results_dir: null
@@ -243,10 +263,16 @@ agentic_math:
   nemoclaw_bin: 'nemoclaw'
   nemoclaw_sandbox: null
   nemoclaw_workdir: '/sandbox'
-  openclaw_timeout: 2400
+  num_workers: 8
+  task_start_min_interval_seconds: 5.0
+  openclaw_timeout: 900
   max_input_tokens: 500000
+  max_cumulative_input_tokens: 500000
+  max_cumulative_output_tokens: 500000
+  require_actual_token_usage: true
   max_tool_calls: 40
   max_agent_turns: 40
+  max_tool_wall_seconds: 120
   verify_weave_agents: true
   weave_agents_entity: 'llm-leaderboard'
   weave_agents_project: 'tc-leaderboard'

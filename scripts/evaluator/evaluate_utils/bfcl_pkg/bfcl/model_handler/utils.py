@@ -16,6 +16,7 @@ from tenacity import (
     retry,
     retry_if_exception_message,
     retry_if_exception_type,
+    stop_after_attempt,
     wait_random_exponential,
 )
 
@@ -760,6 +761,7 @@ def retry_with_backoff(
     error_message_pattern: Optional[str] = None,
     min_wait: int = 6,
     max_wait: int = 120,
+    max_attempts: int = 5,
     **kwargs,
 ) -> Callable:
     """
@@ -777,6 +779,7 @@ def retry_with_backoff(
             especially if the exception raised is too broad.
         min_wait (int, optional): Minimum wait time in seconds for the backoff.
         max_wait (int, optional): Maximum wait time in seconds for the backoff.
+        max_attempts (int, optional): Maximum number of attempts before raising.
         **kwargs: Additional keyword arguments for the `tenacity.retry` decorator, such as `stop`, `reraise`, etc.
 
     Returns:
@@ -809,6 +812,8 @@ def retry_with_backoff(
                 f"Sleeping for {retry_state.next_action.sleep:.2f} seconds before retrying... "
                 f"Error: {retry_state.outcome.exception()}"
             ),
+            stop=kwargs.pop("stop", stop_after_attempt(max_attempts)),
+            reraise=kwargs.pop("reraise", True),
             **kwargs,
         )
         def wrapped(*args, **inner_kwargs):

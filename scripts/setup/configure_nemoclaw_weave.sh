@@ -24,6 +24,7 @@ Options:
   --openclaw-config PATH      Sandbox OpenClaw config path. Default: /sandbox/.openclaw/openclaw.json.
   --weave-plugin-source MODE  auto|local|npm. Default: auto.
   --local-weave-project PATH  Host weave-openclaw npm project for local install fallback.
+  --force-plugin-install      Reinstall weave-openclaw even when the sandbox reports it as loaded.
   --check-only                Do not mutate; inspect current sandbox state only.
   --skip-policy               Do not add the W&B egress policy.
   --skip-plugin-install       Do not install weave-openclaw.
@@ -57,6 +58,7 @@ CHECK_ONLY=0
 SKIP_POLICY=0
 SKIP_PLUGIN_INSTALL=0
 SKIP_OPENAI_DIRECT=0
+FORCE_PLUGIN_INSTALL=0
 JSON_OUT=""
 
 while [ "$#" -gt 0 ]; do
@@ -76,6 +78,7 @@ while [ "$#" -gt 0 ]; do
     --openclaw-config) OPENCLAW_CONFIG="$2"; shift 2 ;;
     --weave-plugin-source) WEAVE_PLUGIN_SOURCE="$2"; shift 2 ;;
     --local-weave-project) LOCAL_WEAVE_PROJECT="$2"; shift 2 ;;
+    --force-plugin-install) FORCE_PLUGIN_INSTALL=1; shift ;;
     --check-only) CHECK_ONLY=1; shift ;;
     --skip-policy) SKIP_POLICY=1; shift ;;
     --skip-plugin-install) SKIP_PLUGIN_INSTALL=1; shift ;;
@@ -299,7 +302,7 @@ if [ "$CHECK_ONLY" -eq 0 ]; then
   fi
 
   if [ "$SKIP_PLUGIN_INSTALL" -eq 0 ]; then
-    if [ "$(plugin_probe)" = true ]; then
+    if [ "$FORCE_PLUGIN_INSTALL" -eq 0 ] && [ "$(plugin_probe)" = true ]; then
       plugin_install_method="already_installed"
     elif [ "$WEAVE_PLUGIN_SOURCE" != "npm" ] && [ -d "$LOCAL_WEAVE_PROJECT/node_modules/weave-openclaw" ]; then
       plugin_install_attempted=true
@@ -449,7 +452,7 @@ if [ "$plugin_installed" = true ] \
   ok=true
 fi
 
-report_json="$(python3 - "$SANDBOX" "$WANDB_KEY_ENV" "$OPENAI_KEY_ENV" "$credential_available" "$openai_credential_available" "$policy_added" "$plugin_install_attempted" "$plugin_install_method" "$secret_written" "$openai_secret_written" "$config_written" "$plugin_installed" "$config_ok" "$policy_ok" "$secret_ok" "$openai_direct_config_ok" "$openai_secret_ok" "$ok" "$SECRET_FILE" "$OPENCLAW_CONFIG" "$POLICY_FILE" "$WEAVE_PLUGIN_SOURCE" "$LOCAL_WEAVE_PROJECT" "$SKIP_OPENAI_DIRECT" <<'PY'
+report_json="$(python3 - "$SANDBOX" "$WANDB_KEY_ENV" "$OPENAI_KEY_ENV" "$credential_available" "$openai_credential_available" "$policy_added" "$plugin_install_attempted" "$plugin_install_method" "$secret_written" "$openai_secret_written" "$config_written" "$plugin_installed" "$config_ok" "$policy_ok" "$secret_ok" "$openai_direct_config_ok" "$openai_secret_ok" "$ok" "$SECRET_FILE" "$OPENCLAW_CONFIG" "$POLICY_FILE" "$WEAVE_PLUGIN_SOURCE" "$LOCAL_WEAVE_PROJECT" "$SKIP_OPENAI_DIRECT" "$FORCE_PLUGIN_INSTALL" <<'PY'
 import json
 import sys
 
@@ -478,6 +481,7 @@ keys = [
     "weave_plugin_source",
     "local_weave_project",
     "skip_openai_direct",
+    "force_plugin_install",
 ]
 payload = dict(zip(keys, sys.argv[1:]))
 for key in [
@@ -496,8 +500,9 @@ for key in [
     "openai_secret_ok",
     "ok",
     "skip_openai_direct",
+    "force_plugin_install",
 ]:
-    payload[key] = payload[key] == "true"
+    payload[key] = str(payload[key]).lower() in {"1", "true", "yes", "on"}
 payload["secret_value_in_report"] = False
 payload["openai_secret_value_in_report"] = False
 payload["weave_agent_name"] = "nejumi-taiwan-openclaw"

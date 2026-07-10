@@ -1,0 +1,22 @@
+preset:
+  name: openrouter-inference
+  description: OpenRouter inference egress for Nejumi Taiwan NeMoClaw agentic runs
+network_policies:
+  openrouter-inference:
+    name: openrouter-inference
+    endpoints:
+      - host: openrouter.ai
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow:
+              method: GET
+              path: /**
+          - allow:
+              method: POST
+              path: /**
+    binaries:
+      - path: /usr/local/bin/openclaw
+      - path: /usr/local/bin/node
+      - path: /usr/bin/node

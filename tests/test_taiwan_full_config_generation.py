@@ -8,12 +8,12 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 TOOLS_DIR = ROOT / "scripts" / "tools"
 OPENAI_CANARY_MANIFEST = ROOT / "configs" / "taiwan_openai_canary_models.yaml"
+FULL_EVAL_MANIFEST = ROOT / "configs" / "taiwan_full_eval_models.yaml"
 BASE_TAIWAN_CONFIG = ROOT / "configs" / "base_config_taiwan.yaml"
 if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
 from prepare_taiwan_full_eval_configs import (
-    DEFAULT_MANIFEST,
     DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH,
     build_override,
     generate_configs,
@@ -107,17 +107,32 @@ def test_agentic_phase_runs_only_agentic_generation(tmp_path):
     assert cfg.run.aggregate_taiwan is False
     assert cfg.run.bfcl is False
     assert cfg.run.mtbench is False
+    assert cfg.provider_rate_limit.enabled is True
+    assert cfg.provider_rate_limit.key == "llm:gpt-4_1-mini-openai-direct-canary"
+    assert cfg.provider_rate_limit.min_request_interval_sec == 1.0
+    assert cfg.provider_rate_limit.request_jitter_sec == 0.25
     assert cfg.agentic_math.run_openclaw is True
     assert cfg.swebench_pro.run_openclaw is True
     assert cfg.agentic_math.results_dir is None
     assert cfg.swebench_pro.patch_path is None
+    assert cfg.agentic_math.limit == 50
+    assert cfg.agentic_math.num_workers == 8
+    assert cfg.agentic_math.task_start_min_interval_seconds == 5.0
     assert cfg.agentic_math.max_input_tokens == 500_000
     assert cfg.agentic_math.max_tool_calls == 40
     assert cfg.agentic_math.max_agent_turns == 40
+    assert cfg.agentic_math.max_tool_wall_seconds == 120
     assert cfg.swebench_pro.subset == "leaderboard_compact_80"
+    assert cfg.swebench_pro.openclaw_num_workers == 8
+    assert cfg.swebench_pro.openclaw_task_start_min_interval_seconds == 15.0
     assert cfg.swebench_pro.max_input_tokens == 1_000_000
     assert cfg.swebench_pro.max_tool_calls == 40
     assert cfg.swebench_pro.max_agent_turns == 40
+    assert cfg.swebench_pro.max_tool_wall_seconds == 300
+    assert cfg.bfcl.num_threads == 4
+    assert cfg.bfcl.provider_min_request_interval_sec == 2.0
+    assert cfg.bfcl.provider_request_jitter_sec == 0.5
+    assert cfg.bfcl.consecutive_failure_fail_fast == 5
 
 
 def test_agentic_math_nemoclaw_cli_override_is_agentic_math_only(tmp_path):
@@ -246,6 +261,7 @@ def test_canary_generates_openai_direct_only(tmp_path):
     assert cfg.model.pretrained_model_name_or_path == "gpt-4.1-mini-2025-04-14"
     assert cfg.agentic_math.openclaw_model == "openai-direct/gpt-4.1-mini-2025-04-14"
     assert cfg.swebench_pro.openclaw_model == "openai-direct/gpt-4.1-mini-2025-04-14"
+    assert cfg.agentic_math.limit == 50
     assert cfg.swebench_pro.subset == "leaderboard_compact_80"
 
 
@@ -274,10 +290,43 @@ def test_openai_direct_canary_manifest_generates_openai_configs(tmp_path):
     assert resolved.hle.judge.params.reasoning.effort == "medium"
     assert resolved.hallulens_zh_tw.judge.model == "gpt-5.5-2026-04-23"
     assert resolved.hallulens_zh_tw.judge.params.reasoning.effort == "low"
+    assert resolved.agentic_math.limit == 50
     assert resolved.agentic_math.max_tool_calls == 40
     assert resolved.agentic_math.max_agent_turns == 40
+    assert resolved.agentic_math.max_tool_wall_seconds == 120
     assert resolved.swebench_pro.max_tool_calls == 40
     assert resolved.swebench_pro.max_agent_turns == 40
+    assert resolved.swebench_pro.max_tool_wall_seconds == 300
+
+
+def test_default_glm_manifest_generates_math50_swe40(tmp_path):
+    args = _args(tmp_path, "full", manifest=FULL_EVAL_MANIFEST)
+    args.model = ["glm-5_2-openrouter-reasoning"]
+
+    [config_path] = generate_configs(args)
+    cfg = OmegaConf.load(config_path)
+
+    assert config_path.name == "config-taiwan-full-glm-5_2-openrouter-reasoning.yaml"
+    assert cfg.agentic_math.limit == 50
+    assert cfg.swebench_pro.subset == "leaderboard_compact_40"
+    assert cfg.agentic_math.max_tool_calls == 40
+    assert cfg.agentic_math.max_agent_turns == 40
+    assert cfg.agentic_math.max_tool_wall_seconds == 120
+    assert cfg.swebench_pro.max_tool_calls == 40
+    assert cfg.swebench_pro.max_agent_turns == 40
+    assert cfg.swebench_pro.max_tool_wall_seconds == 300
+
+
+def test_twbias_stays_excluded_from_generated_full_configs(tmp_path):
+    args = _args(tmp_path, "full", manifest=OPENAI_CANARY_MANIFEST)
+    args.model = None
+    args.canary = True
+
+    [config_path] = generate_configs(args)
+    cfg = OmegaConf.load(config_path)
+
+    assert cfg.run.twbias is False
+    assert "taiwan_aggregate" not in cfg
 
 
 def test_default_selection_skips_final_only_models():

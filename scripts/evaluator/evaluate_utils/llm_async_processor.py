@@ -11,6 +11,9 @@ import openai
 import pydantic_core
 
 from config_singleton import WandbConfigSingleton
+from evaluator.evaluate_utils.provider_rate_limiter import (
+    get_provider_request_rate_limiter,
+)
 from llm_inference_adapter import LLMResponse
 
 # Cohere例外をインポート（存在する場合）
@@ -22,6 +25,20 @@ except ImportError:
 
 
 MAX_TRIES = 50  # リトライ回数を50回に削減（100回は多すぎる）
+MAX_TIME = 1800  # デフォルトは従来挙動を維持する
+RETRYABLE_EXCEPTIONS = tuple(filter(None, [
+    # OpenAI例外
+    openai.APIConnectionError, openai.APITimeoutError, openai.RateLimitError,
+    openai.InternalServerError,
+    # Cohere例外（利用可能な場合）
+    getattr(cohere, 'TooManyRequestsError', None) if COHERE_AVAILABLE else None,
+    getattr(cohere, 'APIError', None) if COHERE_AVAILABLE else None,
+    getattr(cohere, 'APITimeoutError', None) if COHERE_AVAILABLE else None,
+    # その他の例外
+    pydantic_core.ValidationError, json.JSONDecodeError,
+    # 一般的なタイムアウト例外
+    TimeoutError, ConnectionError
+]))
 
 Messages: TypeAlias = List[dict[str, str]]
 Inputs: TypeAlias = List[Tuple[Messages, dict[str, Any]]]
@@ -40,6 +57,31 @@ def error_handler(func: callable) -> callable:
     return wrapper
 
 
+def _select_config_value(cfg: Any, path: str, default: Any = None) -> Any:
+    try:
+        from omegaconf import OmegaConf
+
+        value = OmegaConf.select(cfg, path, default=default)
+        return default if value is None else value
+    except Exception:
+        current = cfg
+        for part in path.split("."):
+            if isinstance(current, dict):
+                current = current.get(part, default)
+            else:
+                current = getattr(current, part, default)
+            if current is default:
+                return default
+        return current
+
+
+def _nonnegative_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        return default
+
+
 class LLMAsyncProcessor:
     """
     LLMAsyncProcessorクラスは、指定されたLLM（大規模言語モデル）を使用して非同期にメッセージを処理するためのユーティリティクラスです。
@@ -52,6 +94,9 @@ class LLMAsyncProcessor:
         batch_size: Optional[int] = None,
         inference_interval: Optional[float] = None,
         soft_fail_on_error: Optional[bool] = None,
+        backoff_max_time: Optional[float] = None,
+        backoff_max_tries: Optional[int] = None,
+        provider_rate_limit_enabled: Optional[bool] = None,
     ):
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config
@@ -68,32 +113,56 @@ class LLMAsyncProcessor:
         except Exception:
             default_soft = False
         self.soft_fail_on_error = default_soft if soft_fail_on_error is None else bool(soft_fail_on_error)
+        self.backoff_max_time = MAX_TIME if backoff_max_time is None else backoff_max_time
+        self.backoff_max_tries = MAX_TRIES if backoff_max_tries is None else backoff_max_tries
+        resolved_provider_rate_limit_enabled = (
+            bool(_select_config_value(cfg, "provider_rate_limit.enabled", default=False))
+            if provider_rate_limit_enabled is None
+            else bool(provider_rate_limit_enabled)
+        )
+        provider_min_interval_sec = _nonnegative_float(
+            _select_config_value(cfg, "provider_rate_limit.min_request_interval_sec", default=0.0)
+        )
+        provider_jitter_sec = _nonnegative_float(
+            _select_config_value(cfg, "provider_rate_limit.request_jitter_sec", default=0.0)
+        )
+        provider_rate_limit_key = str(
+            _select_config_value(
+                cfg,
+                "provider_rate_limit.key",
+                default=f"llm:{getattr(llm, 'model', 'default')}",
+            )
+        )
+        self.provider_request_limiter = (
+            get_provider_request_rate_limiter(
+                provider_rate_limit_key,
+                min_interval_sec=provider_min_interval_sec,
+                jitter_sec=provider_jitter_sec,
+            )
+            if resolved_provider_rate_limit_enabled
+            and (provider_min_interval_sec > 0.0 or provider_jitter_sec > 0.0)
+            else None
+        )
+        self._ainvoke_with_backoff = backoff.on_exception(
+            backoff.expo,
+            RETRYABLE_EXCEPTIONS,
+            max_tries=self.backoff_max_tries,
+            max_time=self.backoff_max_time,
+            jitter=backoff.full_jitter,
+        )(self._ainvoke_impl)
+
+    async def _ainvoke(self, messages: Messages, **kwargs) -> Any:
+        """非同期でLLMを呼び出す統一メソッド（インスタンス別backoff適用）"""
+        return await self._ainvoke_with_backoff(messages, **kwargs)
 
     @error_handler
-    @backoff.on_exception(
-        backoff.expo, 
-        tuple(filter(None, [
-            # OpenAI例外
-            openai.APIConnectionError, openai.APITimeoutError, openai.RateLimitError, 
-            openai.InternalServerError, 
-            # Cohere例外（利用可能な場合）
-            getattr(cohere, 'TooManyRequestsError', None) if COHERE_AVAILABLE else None,
-            getattr(cohere, 'APIError', None) if COHERE_AVAILABLE else None,
-            getattr(cohere, 'APITimeoutError', None) if COHERE_AVAILABLE else None,
-            # その他の例外
-            pydantic_core.ValidationError, json.JSONDecodeError,
-            # 一般的なタイムアウト例外
-            TimeoutError, ConnectionError
-        ])),
-        max_tries=MAX_TRIES,
-        max_time=1800,  # 最大30分でタイムアウト
-        jitter=backoff.full_jitter
-    )
-    async def _ainvoke(self, messages: Messages, **kwargs) -> Any:
+    async def _ainvoke_impl(self, messages: Messages, **kwargs) -> Any:
         """非同期でLLMを呼び出す統一メソッド"""
         await asyncio.sleep(self.inference_interval)
         try:
             async with self.semaphore:
+                if self.provider_request_limiter is not None:
+                    await self.provider_request_limiter.wait_async()
                 return await self.llm.ainvoke(messages, **kwargs)
         except openai.PermissionDeniedError as e:
             # コンテンツポリシー違反は即座に失敗させる（リトライしない）

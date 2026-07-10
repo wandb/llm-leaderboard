@@ -637,6 +637,20 @@ NeMoClaw can be used for Agentic Math after the sandbox is configured:
 scripts/setup/install_agentic_math_sandbox_deps.sh --sandbox nejumi-taiwan --check-only
 scripts/setup/install_agentic_math_sandbox_deps.sh --sandbox nejumi-taiwan
 
+# If the sandbox cannot reach PyPI/apt, download CPython 3.13 wheels on the host
+# and install them into the NeMoClaw container without network access.
+python3 -m pip download \
+  --dest temp/wheelhouse_cp313_math \
+  --only-binary=:all: \
+  --python-version 313 \
+  --implementation cp \
+  --abi cp313 \
+  --platform manylinux_2_28_x86_64 \
+  numpy scipy sympy mpmath
+scripts/setup/install_agentic_math_sandbox_deps.sh \
+  --sandbox nejumi-taiwan \
+  --wheelhouse temp/wheelhouse_cp313_math
+
 uv run python scripts/tools/run_agentic_math_openclaw.py \
   --dataset-jsonl data/taiwan/agentic_math_olymmath_hard_zh_tw/subsets/smoke.jsonl \
   --output-dir outputs/nemoclaw_agentic_math_smoke \
@@ -645,9 +659,10 @@ uv run python scripts/tools/run_agentic_math_openclaw.py \
   --nemoclaw-sandbox nejumi-taiwan
 ```
 
-The Agentic Math sandbox must provide `numpy`, `scipy`, and `sympy`. The math
-benchmark allows Python as a local non-interactive tool, and missing scientific
-packages cause extra tool retries, lower answer quality, and unnecessary cost.
+The Agentic Math sandbox must provide `numpy`, `scipy`, `sympy`, and `mpmath`.
+The math benchmark allows Python as a local non-interactive tool, and missing
+scientific packages cause extra tool retries, lower answer quality, and
+unnecessary cost.
 The setup script verifies the imports and installs them inside the selected
 NeMoClaw sandbox when needed.
 

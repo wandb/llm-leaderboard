@@ -145,7 +145,13 @@ plugin.handlers.diagnostic({
   callId: "call-1",
   model: "local-model",
   provider: "local",
-}, trusted);
+}, trusted, {
+  modelContent: {
+    systemPrompt: ` + "`${marker}_PRIVATE_SYSTEM`" + `,
+    inputMessages: [{role: "user", content: ` + "`${marker}_PRIVATE_INPUT`" + `}],
+    outputMessages: [],
+  },
+});
 plugin.handlers.hook.llm_input?.({
   runId: "run-1",
   systemPrompt: "system",
@@ -161,7 +167,12 @@ plugin.handlers.diagnostic({
   type: "model.call.completed",
   runId: "run-1",
   callId: "call-1",
-}, trusted);
+}, trusted, {
+  modelContent: {
+    inputMessages: [{role: "user", content: ` + "`${marker}_PRIVATE_INPUT_FINAL`" + `}],
+    outputMessages: [{role: "assistant", content: ` + "`${marker}_PRIVATE_OUTPUT`" + `}],
+  },
+});
 plugin.handlers.hook.before_tool_call?.({
   toolCallId: "tool-1",
   toolName: "exec",
@@ -183,7 +194,12 @@ plugin.handlers.diagnostic({
   runId: "run-1",
   toolCallId: "tool-1",
   toolName: "exec",
-}, trusted);
+}, trusted, {
+  toolContent: {
+    toolInput: {cmd: ` + "`${marker}_PRIVATE_TOOL_ARGS`" + `},
+    toolOutput: ` + "`${marker}_PRIVATE_TOOL_RESULT`" + `,
+  },
+});
 plugin.handlers.diagnostic({
   type: "run.completed",
   runId: "run-1",
@@ -205,12 +221,18 @@ const result = {
   has_output: text.includes(` + "`${marker}_OUTPUT`" + `),
   has_tool_args: text.includes(` + "`${marker}_TOOL_ARGS`" + `),
   has_tool_result: text.includes(` + "`${marker}_TOOL_RESULT`" + `),
+  has_private_input: text.includes(` + "`${marker}_PRIVATE_INPUT`" + `),
+  has_private_output: text.includes(` + "`${marker}_PRIVATE_OUTPUT`" + `),
+  has_private_tool_args: text.includes(` + "`${marker}_PRIVATE_TOOL_ARGS`" + `),
+  has_private_tool_result: text.includes(` + "`${marker}_PRIVATE_TOOL_RESULT`" + `),
 };
 result.ok = result.bytes > 0
   && result.has_input
   && result.has_output
-  && result.has_tool_args
-  && result.has_tool_result;
+  && (result.has_tool_args || result.has_private_tool_args)
+  && (result.has_tool_result || result.has_private_tool_result)
+  && result.has_private_input
+  && result.has_private_output;
 console.log(JSON.stringify(result));
 `;
 }

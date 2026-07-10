@@ -19,6 +19,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -39,6 +40,7 @@ WEAVE_SIDECAR_SCRIPT = REPO_ROOT / "scripts" / "tools" / "log_openclaw_result_to
 DEFAULT_NATIVE_WEAVE_AGENT_NAME = "nejumi-taiwan-openclaw"
 DEFAULT_DIAGNOSTIC_WEAVE_AGENT_NAME = "nejumi-taiwan-sidecar-diagnostic"
 DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH = Path("/sandbox/.openclaw/openclaw.json")
+DEFAULT_NEMOCLAW_PATCHED_OPENCLAW_BIN_DIR = "/sandbox/.npm-global/bin"
 SANDBOX_OPENCLAW_ENV_PASSTHROUGH = ("OPENCLAW_GATEWAY_URL",)
 AGENTS_API_BASE_URL = "https://trace.wandb.ai"
 AGENTS_QUERY_ENDPOINT = "/agents/query"
@@ -47,6 +49,7 @@ AGENTS_TRACES_CHAT_ENDPOINT = "/agents/traces/chat"
 AGENTS_DIAGNOSTIC_SCHEMA_VERSION = 1
 SANDBOX_LIVE_SESSION_SCAN_TIMEOUT = 10
 SANDBOX_LIVE_SESSION_POLL_SECONDS = 1.0
+BUDGET_GUARD_BLOCK_MARKER = "NEJUMI_BUDGET_GUARD_BLOCKED"
 SANDBOX_LIVE_SESSION_SCAN_SCRIPT = r"""
 import json
 import sys
@@ -133,8 +136,39 @@ def forbidden_live_tool_policy_violations(message):
         if name_norm == "process" or name_norm.startswith("process_"):
             violations.append({"type": "forbidden_process_tool", "toolName": name, "source": source})
         if name_norm == "exec" and arguments.get("pty") is True:
-            violations.append({"type": "forbidden_interactive_exec_pty", "toolName": name, "source": source})
+                violations.append({"type": "forbidden_interactive_exec_pty", "toolName": name, "source": source})
     return violations
+
+
+def live_provider_timeout_error(message):
+    if not isinstance(message, dict):
+        return None
+    text = "\n".join(
+        str(message.get(key) or "")
+        for key in ("errorMessage", "errorCode", "errorBody")
+    )
+    if not text.strip():
+        return None
+    timeout_patterns = [
+        "upstream idle timeout",
+        "llm request timed out",
+        "gateway timeout",
+        "etimedout",
+        "timeout exceeded",
+        "timed out",
+    ]
+    is_timeout = any(pattern in text.lower() for pattern in timeout_patterns)
+    error_code = str(message.get("errorCode") or "")
+    if error_code in {"408", "504"}:
+        is_timeout = True
+    if not is_timeout:
+        return None
+    return {
+        "type": "provider_timeout",
+        "errorCode": error_code or None,
+        "errorMessage": str(message.get("errorMessage") or "")[:500],
+        "errorBody": str(message.get("errorBody") or "")[:1000],
+    }
 
 
 def text_from_value(value):
@@ -184,8 +218,11 @@ for raw_dir in sys.argv[2:]:
             continue
         estimated_input_tokens = 0
         agent_turn_count = 0
+        executed_tool_results = 0
+        blocked_tool_results = 0
         policy_violations = []
         budget_guard_blocks = []
+        provider_timeouts = []
         for line_index, raw in enumerate(lines):
             if BUDGET_GUARD_BLOCK_MARKER in raw:
                 budget_guard_blocks.append(
@@ -202,21 +239,41 @@ for raw_dir in sys.argv[2:]:
             if not isinstance(message, dict):
                 continue
             estimated_input_tokens += estimated_tokens(text_from_value(message.get("content")))
-            if message.get("role") == "assistant":
+            role = message.get("role")
+            if role == "assistant":
                 agent_turn_count += 1
                 tool_calls += tool_call_count(message)
                 policy_violations.extend(forbidden_live_tool_policy_violations(message))
+                provider_timeout = live_provider_timeout_error(message)
+                if provider_timeout is not None:
+                    provider_timeout["line_index"] = line_index
+                    provider_timeouts.append(provider_timeout)
+            elif role in {"toolResult", "tool"}:
+                tool_result_text = "\n".join(
+                    [
+                        text_from_value(message.get("content")),
+                        text_from_value(message.get("details")),
+                    ]
+                )
+                if BUDGET_GUARD_BLOCK_MARKER in tool_result_text:
+                    blocked_tool_results += 1
+                else:
+                    executed_tool_results += 1
         rows.append(
             {
                 "path": str(path),
                 "mtime": stat.st_mtime,
                 "tool_call_count": tool_calls,
+                "blocked_tool_call_count": blocked_tool_results,
+                "executed_tool_call_count": executed_tool_results,
                 "estimated_input_tokens": estimated_input_tokens,
                 "agent_turn_count": agent_turn_count,
                 "live_tool_policy_violation_count": len(policy_violations),
                 "live_tool_policy_violations": policy_violations[:10],
                 "budget_guard_block_count": len(budget_guard_blocks),
                 "budget_guard_blocks": budget_guard_blocks[:10],
+                "live_provider_timeout_count": len(provider_timeouts),
+                "live_provider_timeouts": provider_timeouts[:10],
             }
         )
 rows.sort(
@@ -235,6 +292,22 @@ FINAL_ANSWER_MARKERS = (
     "FINAL ANSWER",
     "Final answer",
     "CANARY_RESULT",
+)
+TOOL_CALL_TYPE_MARKERS = {
+    "toolCall",
+    "tool_call",
+    "toolUse",
+    "tool_use",
+    "function_call",
+}
+TOOL_CALL_KEYS = (
+    "tool_call",
+    "tool_calls",
+    "toolCalls",
+    "toolCall",
+    "toolUse",
+    "tool_use",
+    "function_call",
 )
 
 
@@ -673,7 +746,12 @@ def build_openclaw_command(args: argparse.Namespace, message_text: str, openclaw
         shell_parts.append(shlex.quote(str(part)))
         if part == "--message":
             replace_next_message = True
+    patched_openclaw_bin_dir = str(
+        getattr(args, "nemoclaw_patched_openclaw_bin_dir", None)
+        or DEFAULT_NEMOCLAW_PATCHED_OPENCLAW_BIN_DIR
+    )
     shell_command = (
+        f"export PATH={shlex.quote(patched_openclaw_bin_dir)}:$PATH; "
         'OPENCLAW_MESSAGE="$(printf %s "$OPENCLAW_MESSAGE_B64" | base64 -d)"; '
         "exec "
         + " ".join(shell_parts)
@@ -831,8 +909,91 @@ def session_budget_guard_blocks(path: Path) -> list[dict[str, Any]]:
         return blocks
     for line_index, raw in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines()):
         if marker in raw:
-            blocks.append({"line_index": line_index, "marker": marker})
+            blocks.append(
+                {
+                    "source": "session",
+                    "line_index": line_index,
+                    "marker": marker,
+                    "kind": budget_guard_block_kind(raw),
+                    "text": raw[:1000],
+                }
+            )
     return blocks
+
+
+def budget_guard_block_kind(text: str) -> str:
+    if "agent_turn_limit_exceeded" in text:
+        return "agent_turn"
+    if "tool_call_limit_exceeded" in text:
+        return "tool_call"
+    if "cumulative_input_tokens_limit_exceeded" in text:
+        return "cumulative_input_tokens"
+    if "cumulative_output_tokens_limit_exceeded" in text:
+        return "cumulative_output_tokens"
+    if "missing_actual_input_tokens" in text:
+        return "missing_actual_input_tokens"
+    if "missing_actual_output_tokens" in text:
+        return "missing_actual_output_tokens"
+    if "missing_actual_token_usage" in text:
+        return "missing_actual_token_usage"
+    return "unknown"
+
+
+def budget_guard_block_fields(text: str) -> dict[str, Any]:
+    fields: dict[str, Any] = {}
+    for match in re.finditer(r"\b([A-Za-z][A-Za-z0-9_]*)=([^\s]+)", text or ""):
+        key = match.group(1)
+        value = match.group(2)
+        if key in {"observed", "limit", "observedCalls"} and re.fullmatch(r"-?\d+", value):
+            fields[key] = int(value)
+        else:
+            fields[key] = value
+    return fields
+
+
+def stdio_budget_guard_blocks(sidecar: dict[str, Any]) -> list[dict[str, Any]]:
+    marker = BUDGET_GUARD_BLOCK_MARKER
+    blocks: list[dict[str, Any]] = []
+    for stream_name in ("stdout", "stderr"):
+        stream_text = str(sidecar.get(stream_name) or "")
+        for line_index, line in enumerate(stream_text.splitlines()):
+            if marker not in line:
+                continue
+            blocks.append(
+                {
+                    "source": stream_name,
+                    "line_index": line_index,
+                    "marker": marker,
+                    "kind": budget_guard_block_kind(line),
+                    "text": line[:1000],
+                }
+            )
+    return blocks
+
+
+def is_budget_guard_blocked_tool_result(event: dict[str, Any]) -> bool:
+    if event.get("type") != "tool_result":
+        return False
+    text = "\n".join(
+        [
+            _jsonish_text(event.get("content")),
+            _jsonish_text(event.get("details")),
+        ]
+    )
+    return "NEJUMI_BUDGET_GUARD_BLOCKED" in text
+
+
+def tool_result_execution_counts(tool_events: list[dict[str, Any]]) -> tuple[int, int]:
+    executed = 0
+    blocked = 0
+    for event in tool_events:
+        if event.get("type") != "tool_result":
+            continue
+        if is_budget_guard_blocked_tool_result(event):
+            blocked += 1
+        else:
+            executed += 1
+    return executed, blocked
 
 
 def session_budget_observation(path: Path) -> dict[str, Any]:
@@ -841,9 +1002,13 @@ def session_budget_observation(path: Path) -> dict[str, Any]:
     timeline_events = extract_timeline_events(sidecar)
     role_counts = session_message_role_counts(path)
     budget_guard_blocks = session_budget_guard_blocks(path)
+    tool_call_count = sum(1 for event in tool_events if event.get("type") == "tool_call")
+    executed_tool_call_count, blocked_tool_call_count = tool_result_execution_counts(tool_events)
     return {
         "source": "host",
-        "tool_call_count": sum(1 for event in tool_events if event.get("type") == "tool_call"),
+        "tool_call_count": tool_call_count,
+        "blocked_tool_call_count": blocked_tool_call_count,
+        "executed_tool_call_count": executed_tool_call_count,
         "estimated_input_tokens": estimate_session_input_tokens_from_timeline(timeline_events),
         "agent_turn_count": role_counts["assistant"],
         "session_file": str(path),
@@ -929,6 +1094,7 @@ def live_tool_budget_status(
     max_input_tokens = int(getattr(args, "max_input_tokens", 0) or 0)
     max_tool_calls = int(getattr(args, "max_tool_calls", 0) or 0)
     max_agent_turns = int(getattr(args, "max_agent_turns", 0) or 0)
+    max_tool_wall_seconds = int(getattr(args, "max_tool_wall_seconds", 0) or 0)
     session_dirs = [str(path) for path in configured_live_session_dirs(args)]
     sandbox_session_dirs = configured_live_sandbox_session_dirs(args)
     budget_enabled = max_tool_calls > 0 or max_input_tokens > 0 or max_agent_turns > 0
@@ -939,6 +1105,8 @@ def live_tool_budget_status(
     if sandbox_scan.get("ok") is True:
         for session in sandbox_scan.get("sessions", []):
             count = session.get("tool_call_count")
+            executed_count = session.get("executed_tool_call_count")
+            blocked_count = session.get("blocked_tool_call_count")
             estimated_input_tokens = session.get("estimated_input_tokens")
             agent_turn_count = session.get("agent_turn_count")
             path = session.get("path")
@@ -946,11 +1114,29 @@ def live_tool_budget_status(
             live_policy_violations = session.get("live_tool_policy_violations")
             budget_guard_block_count = session.get("budget_guard_block_count")
             budget_guard_blocks = session.get("budget_guard_blocks")
+            live_provider_timeout_count = session.get("live_provider_timeout_count")
+            live_provider_timeouts = session.get("live_provider_timeouts")
             if isinstance(count, (int, float)) and isinstance(path, str) and path:
+                blocked_count_int = (
+                    int(blocked_count)
+                    if isinstance(blocked_count, (int, float))
+                    else (
+                        int(budget_guard_block_count)
+                        if isinstance(budget_guard_block_count, (int, float))
+                        else 0
+                    )
+                )
+                executed_count_int = (
+                    int(executed_count)
+                    if isinstance(executed_count, (int, float))
+                    else max(0, int(count) - blocked_count_int)
+                )
                 observations.append(
                     {
                         "source": "nemoclaw_sandbox",
                         "tool_call_count": int(count),
+                        "blocked_tool_call_count": blocked_count_int,
+                        "executed_tool_call_count": executed_count_int,
                         "estimated_input_tokens": (
                             int(estimated_input_tokens)
                             if isinstance(estimated_input_tokens, (int, float))
@@ -982,11 +1168,21 @@ def live_tool_budget_status(
                             if isinstance(budget_guard_blocks, list)
                             else []
                         ),
+                        "live_provider_timeout_count": (
+                            int(live_provider_timeout_count)
+                            if isinstance(live_provider_timeout_count, (int, float))
+                            else 0
+                        ),
+                        "live_provider_timeouts": (
+                            live_provider_timeouts
+                            if isinstance(live_provider_timeouts, list)
+                            else []
+                        ),
                     }
                 )
     tool_observations = sorted(
         observations,
-        key=lambda item: int(item.get("tool_call_count") or 0),
+        key=lambda item: int(item.get("executed_tool_call_count") or item.get("tool_call_count") or 0),
         reverse=True,
     )
     input_observations = sorted(
@@ -1014,7 +1210,19 @@ def live_tool_budget_status(
         reverse=True,
     )
     best_budget_guard = budget_guard_observations[0] if budget_guard_observations else {}
+    provider_timeout_observations = sorted(
+        observations,
+        key=lambda item: int(item.get("live_provider_timeout_count") or 0),
+        reverse=True,
+    )
+    best_provider_timeout = provider_timeout_observations[0] if provider_timeout_observations else {}
     best_count = int(best_tool.get("tool_call_count") or 0) if best_tool else None
+    best_executed_count = (
+        int(best_tool.get("executed_tool_call_count") or 0) if best_tool else None
+    )
+    best_blocked_count = (
+        int(best_tool.get("blocked_tool_call_count") or 0) if best_tool else None
+    )
     best_input_tokens = (
         int(best_input.get("estimated_input_tokens") or 0) if best_input else None
     )
@@ -1022,7 +1230,10 @@ def live_tool_budget_status(
         int(best_turn.get("agent_turn_count") or 0) if best_turn else None
     )
     tool_exceeded = bool(
-        max_tool_calls > 0 and best_tool and best_count is not None and best_count > max_tool_calls
+        max_tool_calls > 0
+        and best_tool
+        and best_executed_count is not None
+        and best_executed_count > max_tool_calls
     )
     input_exceeded = bool(
         max_input_tokens > 0
@@ -1036,6 +1247,12 @@ def live_tool_budget_status(
         and best_turn_count is not None
         and best_turn_count > max_agent_turns
     )
+    turn_limit_reached = bool(
+        max_agent_turns > 0
+        and best_turn
+        and best_turn_count is not None
+        and best_turn_count >= max_agent_turns
+    )
     policy_violation_count = (
         int(best_policy.get("live_tool_policy_violation_count") or 0) if best_policy else 0
     )
@@ -1045,7 +1262,16 @@ def live_tool_budget_status(
         if best_budget_guard
         else 0
     )
-    budget_guard_exceeded = budget_guard_block_count > 0
+    provider_timeout_count = (
+        int(best_provider_timeout.get("live_provider_timeout_count") or 0)
+        if best_provider_timeout
+        else 0
+    )
+    provider_timeouts = (
+        best_provider_timeout.get("live_provider_timeouts", [])
+        if best_provider_timeout
+        else []
+    )
     exceeded_limits = []
     if input_exceeded:
         exceeded_limits.append("max_input_tokens_exceeded")
@@ -1055,13 +1281,25 @@ def live_tool_budget_status(
         exceeded_limits.append("max_agent_turns_exceeded")
     if policy_exceeded:
         exceeded_limits.append("live_tool_policy_violation")
+    budget_guard_exceeded = budget_guard_block_count > 0
     if budget_guard_exceeded:
         exceeded_limits.append("budget_guard_blocked")
+    provider_timeout_exceeded = provider_timeout_count > 0
+    if provider_timeout_exceeded:
+        exceeded_limits.append("live_provider_timeout")
+    interrupt_limits = list(exceeded_limits)
+    if turn_limit_reached and "max_agent_turns_exceeded" not in interrupt_limits:
+        interrupt_limits.append("max_agent_turns_reached")
     reason = None
     if len(exceeded_limits) == 1:
         reason = exceeded_limits[0]
     elif len(exceeded_limits) > 1:
         reason = "runtime_budget_exceeded"
+    interrupt_reason = None
+    if len(interrupt_limits) == 1:
+        interrupt_reason = interrupt_limits[0]
+    elif len(interrupt_limits) > 1:
+        interrupt_reason = "runtime_budget_interrupted"
     return {
         "enabled": budget_enabled,
         "max_input_tokens": max_input_tokens or None,
@@ -1069,6 +1307,8 @@ def live_tool_budget_status(
         "max_agent_turns": max_agent_turns or None,
         "estimated_input_tokens": best_input_tokens,
         "tool_call_count": best_count,
+        "executed_tool_call_count": best_executed_count,
+        "blocked_tool_call_count": best_blocked_count,
         "agent_turn_count": best_turn_count,
         "session_file": best_tool.get("session_file") if best_tool else None,
         "session_source": best_tool.get("source") if best_tool else None,
@@ -1088,21 +1328,37 @@ def live_tool_budget_status(
         "budget_guard_blocks": best_budget_guard.get("budget_guard_blocks", [])
         if best_budget_guard
         else [],
+        "live_provider_timeout_count": provider_timeout_count,
+        "live_provider_timeouts": provider_timeouts if isinstance(provider_timeouts, list) else [],
         "session_dirs": session_dirs,
         "sandbox_session_dirs": sandbox_session_dirs,
         "sandbox_scan": sandbox_scan,
         "exceeded": bool(exceeded_limits),
         "exceeded_limits": exceeded_limits,
         "reason": reason,
+        "turn_limit_reached": turn_limit_reached,
+        "interrupt": bool(interrupt_limits),
+        "interrupt_limits": interrupt_limits,
+        "interrupt_reason": interrupt_reason,
     }
 
 
 def terminate_process(process: subprocess.Popen[str], grace_seconds: float = 10.0) -> tuple[str, str]:
-    process.terminate()
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    except OSError:
+        process.terminate()
     try:
         return process.communicate(timeout=grace_seconds)
     except subprocess.TimeoutExpired:
-        process.kill()
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        except OSError:
+            process.kill()
         return process.communicate()
 
 
@@ -1119,6 +1375,7 @@ def run_openclaw_command_with_live_budget(
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        start_new_session=True,
     )
     last_status: dict[str, Any] = live_tool_budget_status(args, started_at, env)
     poll_seconds = (
@@ -1139,18 +1396,26 @@ def run_openclaw_command_with_live_budget(
             )
         except subprocess.TimeoutExpired:
             last_status = live_tool_budget_status(args, started_at, env)
-            if not last_status.get("exceeded"):
+            if not last_status.get("interrupt"):
                 continue
             stdout, stderr = terminate_process(process)
-            reason_name = last_status.get("reason") or "runtime_budget_exceeded"
+            reason_name = (
+                last_status.get("interrupt_reason")
+                or last_status.get("reason")
+                or "runtime_budget_interrupted"
+            )
             reason = (
-                "Live runtime budget exceeded: "
+                "Live OpenClaw interrupt: "
                 f"estimated_input_tokens={last_status.get('estimated_input_tokens')} "
                 f"max_input_tokens={last_status.get('max_input_tokens')} "
                 f"tool_call_count={last_status.get('tool_call_count')} "
+                f"executed_tool_call_count={last_status.get('executed_tool_call_count')} "
+                f"blocked_tool_call_count={last_status.get('blocked_tool_call_count')} "
                 f"max_tool_calls={last_status.get('max_tool_calls')} "
                 f"agent_turn_count={last_status.get('agent_turn_count')} "
-                f"max_agent_turns={last_status.get('max_agent_turns')}"
+                f"max_agent_turns={last_status.get('max_agent_turns')} "
+                f"provider_timeout_count={last_status.get('live_provider_timeout_count')} "
+                f"provider_timeouts={json.dumps(last_status.get('live_provider_timeouts') or [], ensure_ascii=False)[:2000]}"
             )
             stderr = (stderr or "") + "\n" + reason
             return (
@@ -1233,6 +1498,7 @@ def run_agent(args: argparse.Namespace) -> None:
         if live_runtime_budget.get("session_file"):
             sidecar["live_session_file"] = live_runtime_budget.get("session_file")
     sidecar["stdout_json"] = parse_last_json_line(result.stdout) if result.stdout.strip() else None
+    sidecar["gateway_transport"] = gateway_transport_status(sidecar, args)
 
     if getattr(args, "nemoclaw_sandbox", None) and not args.dry_run and env_for_session_copy is not None:
         sidecar["nemoclaw_session_copy"] = copy_nemoclaw_session_file(
@@ -1267,6 +1533,10 @@ def run_agent(args: argparse.Namespace) -> None:
     if violations:
         print(json.dumps({"tool_policy_violations": violations}, ensure_ascii=False, indent=2), file=sys.stderr)
         raise SystemExit("Tool policy violation")
+    gateway_transport = sidecar.get("gateway_transport")
+    if isinstance(gateway_transport, dict) and gateway_transport.get("ok") is False:
+        print(json.dumps({"gateway_transport": gateway_transport}, ensure_ascii=False, indent=2), file=sys.stderr)
+        raise SystemExit("OpenClaw Gateway transport violation")
     runtime_budget = sidecar.get("runtime_budget")
     if isinstance(runtime_budget, dict) and runtime_budget.get("violations"):
         print(json.dumps({"runtime_budget": runtime_budget}, ensure_ascii=False, indent=2), file=sys.stderr)
@@ -1314,6 +1584,39 @@ def extract_openclaw_meta(sidecar: dict[str, Any]) -> dict[str, Any]:
                 merged.update(result_meta)
             return merged
     return {}
+
+
+def gateway_transport_status(sidecar: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
+    gateway_required = not bool(getattr(args, "local", True))
+    meta = extract_openclaw_meta(sidecar)
+    transport = meta.get("transport")
+    fallback_from = meta.get("fallbackFrom")
+    stderr = str(sidecar.get("stderr") or "")
+    fallback_marker = "EMBEDDED FALLBACK" in stderr
+    pairing_marker = "pairing required" in stderr.lower()
+    violation = gateway_required and (
+        transport == "embedded"
+        or fallback_from == "gateway"
+        or fallback_marker
+    )
+    reasons: list[str] = []
+    if transport == "embedded":
+        reasons.append("embedded_transport")
+    if fallback_from == "gateway":
+        reasons.append("fallback_from_gateway")
+    if fallback_marker:
+        reasons.append("embedded_fallback_stderr")
+    if pairing_marker:
+        reasons.append("pairing_required_stderr")
+    return {
+        "ok": not violation,
+        "gateway_required": gateway_required,
+        "transport": transport,
+        "fallbackFrom": fallback_from,
+        "stderr_embedded_fallback": fallback_marker,
+        "stderr_pairing_required": pairing_marker,
+        "reasons": reasons,
+    }
 
 
 def extract_agent_meta(sidecar: dict[str, Any]) -> dict[str, Any]:
@@ -1550,9 +1853,21 @@ def enrich_sidecar_with_tool_events(sidecar: dict[str, Any]) -> dict[str, Any]:
         if isinstance(session_file, str) and session_file
         else {"assistant": 0, "user": 0, "tool": 0}
     )
+    budget_guard_blocks = (
+        session_budget_guard_blocks(Path(session_file).expanduser())
+        if isinstance(session_file, str) and session_file
+        else []
+    )
+    budget_guard_blocks = [*budget_guard_blocks, *stdio_budget_guard_blocks(sidecar)]
+    tool_call_count = sum(1 for event in tool_events if event.get("type") == "tool_call")
+    executed_tool_call_count, blocked_tool_call_count = tool_result_execution_counts(tool_events)
     sidecar["tool_events"] = tool_events
     sidecar["timeline_events"] = timeline_events
-    sidecar["tool_call_count"] = sum(1 for event in tool_events if event.get("type") == "tool_call")
+    sidecar["tool_call_count"] = tool_call_count
+    sidecar["blocked_tool_call_count"] = blocked_tool_call_count
+    sidecar["executed_tool_call_count"] = executed_tool_call_count
+    sidecar["budget_guard_block_count"] = len(budget_guard_blocks)
+    sidecar["budget_guard_blocks"] = budget_guard_blocks[:10]
     sidecar["agent_turn_count"] = role_counts["assistant"]
     sidecar["tool_error_count"] = sum(
         1 for event in tool_events if event.get("type") == "tool_result" and event.get("isError")
@@ -1601,6 +1916,7 @@ def conversation_order_status(timeline_events: list[dict[str, Any]]) -> dict[str
     first_final_answer_index: int | None = None
     seen_tool_calls: set[str] = set()
     issues: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
 
     for fallback_index, event in enumerate(timeline_events):
         if not isinstance(event, dict):
@@ -1664,7 +1980,7 @@ def conversation_order_status(timeline_events: list[dict[str, Any]]) -> dict[str
         and last_tool_call_index is not None
         and last_tool_call_index > first_final_answer_index
     ):
-        issues.append(
+        warnings.append(
             {
                 "type": "tool_after_final_answer",
                 "first_final_answer_index": first_final_answer_index,
@@ -1688,6 +2004,7 @@ def conversation_order_status(timeline_events: list[dict[str, Any]]) -> dict[str
         "last_tool_call_index": last_tool_call_index,
         "first_final_answer_index": first_final_answer_index,
         "issues": issues,
+        "warnings": warnings,
     }
 
 
@@ -1701,18 +2018,59 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
     tool-call count crosses a configured cap.
     """
     max_input_tokens = int(getattr(args, "max_input_tokens", 0) or 0)
+    max_cumulative_input_tokens = int(getattr(args, "max_cumulative_input_tokens", 0) or 0)
+    max_cumulative_output_tokens = int(getattr(args, "max_cumulative_output_tokens", 0) or 0)
+    require_actual_token_usage = bool(getattr(args, "require_actual_token_usage", False))
     max_tool_calls = int(getattr(args, "max_tool_calls", 0) or 0)
     max_agent_turns = int(getattr(args, "max_agent_turns", 0) or 0)
+    max_tool_wall_seconds = int(getattr(args, "max_tool_wall_seconds", 0) or 0)
     agent_meta = extract_agent_meta(sidecar)
     usage = agent_meta.get("usage") if isinstance(agent_meta.get("usage"), dict) else {}
     input_tokens = usage.get("input")
     input_tokens = int(input_tokens) if isinstance(input_tokens, (int, float)) else None
+    normalized_usage = normalize_usage(agent_meta)
+    actual_input_tokens = None
+    actual_output_tokens = None
+    if normalized_usage:
+        raw_input = normalized_usage.get("inputTokens")
+        raw_output = normalized_usage.get("outputTokens")
+        cache_read = normalized_usage.get("cacheReadInputTokens") or 0
+        cache_write = normalized_usage.get("cacheCreationInputTokens") or 0
+        total = normalized_usage.get("totalTokens")
+        if isinstance(raw_input, int):
+            actual_input_tokens = raw_input + int(cache_read or 0) + int(cache_write or 0)
+        if isinstance(raw_output, int):
+            actual_output_tokens = raw_output
+        if actual_input_tokens is None and isinstance(total, int) and isinstance(actual_output_tokens, int):
+            actual_input_tokens = max(0, total - actual_output_tokens)
+        if actual_output_tokens is None and isinstance(total, int) and isinstance(actual_input_tokens, int):
+            actual_output_tokens = max(0, total - actual_input_tokens)
     tool_call_count = sidecar.get("tool_call_count")
     tool_call_count = int(tool_call_count) if isinstance(tool_call_count, (int, float)) else None
+    blocked_tool_call_count = sidecar.get("blocked_tool_call_count")
+    blocked_tool_call_count = (
+        int(blocked_tool_call_count)
+        if isinstance(blocked_tool_call_count, (int, float))
+        else 0
+    )
+    raw_executed_tool_call_count = sidecar.get("executed_tool_call_count")
+    has_sidecar_executed_tool_count = isinstance(raw_executed_tool_call_count, (int, float))
+    executed_tool_call_count = raw_executed_tool_call_count
+    executed_tool_call_count = (
+        int(executed_tool_call_count)
+        if isinstance(executed_tool_call_count, (int, float))
+        else (
+            max(0, tool_call_count - blocked_tool_call_count)
+            if tool_call_count is not None
+            else None
+        )
+    )
     agent_turn_count = sidecar.get("agent_turn_count")
     agent_turn_count = int(agent_turn_count) if isinstance(agent_turn_count, (int, float)) else None
     live_budget = sidecar.get("live_runtime_budget")
     live_tool_call_count = None
+    live_executed_tool_call_count = None
+    live_blocked_tool_call_count = 0
     live_agent_turn_count = None
     live_tool_exceeded = False
     live_estimated_input_tokens = None
@@ -1724,10 +2082,29 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
     live_budget_guard_exceeded = False
     live_budget_guard_block_count = 0
     live_budget_guard_blocks: list[Any] = []
+    sidecar_budget_guard_blocks = (
+        sidecar.get("budget_guard_blocks")
+        if isinstance(sidecar.get("budget_guard_blocks"), list)
+        else []
+    )
+    sidecar_agent_turn_guard_blocked = any(
+        isinstance(block, dict)
+        and (
+            block.get("kind") == "agent_turn"
+            or "agent_turn_limit_exceeded" in str(block.get("text") or "")
+        )
+        for block in sidecar_budget_guard_blocks
+    )
     if isinstance(live_budget, dict):
         live_count = live_budget.get("tool_call_count")
         if isinstance(live_count, (int, float)):
             live_tool_call_count = int(live_count)
+        live_executed_count = live_budget.get("executed_tool_call_count")
+        if isinstance(live_executed_count, (int, float)):
+            live_executed_tool_call_count = int(live_executed_count)
+        live_blocked_count = live_budget.get("blocked_tool_call_count")
+        if isinstance(live_blocked_count, (int, float)):
+            live_blocked_tool_call_count = int(live_blocked_count)
         live_turns = live_budget.get("agent_turn_count")
         if isinstance(live_turns, (int, float)):
             live_agent_turn_count = int(live_turns)
@@ -1747,7 +2124,8 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
         )
         live_turn_exceeded = (
             "max_agent_turns_exceeded" in exceeded_limit_set
-            or reason == "max_agent_turns_exceeded"
+            or "max_agent_turns_reached" in exceeded_limit_set
+            or reason in {"max_agent_turns_exceeded", "max_agent_turns_reached"}
         )
         live_policy_exceeded = "live_tool_policy_violation" in exceeded_limit_set or reason == "live_tool_policy_violation"
         live_policy_count = live_budget.get("live_tool_policy_violation_count")
@@ -1763,11 +2141,35 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
         live_budget_guard_rows = live_budget.get("budget_guard_blocks")
         if isinstance(live_budget_guard_rows, list):
             live_budget_guard_blocks = live_budget_guard_rows
+    if sidecar_budget_guard_blocks:
+        live_budget_guard_exceeded = True
+        live_budget_guard_block_count = max(
+            live_budget_guard_block_count,
+            len(sidecar_budget_guard_blocks),
+        )
+        if live_budget_guard_blocks:
+            seen_blocks = {_jsonish_text(block) for block in live_budget_guard_blocks}
+            for block in sidecar_budget_guard_blocks:
+                block_key = _jsonish_text(block)
+                if block_key not in seen_blocks:
+                    live_budget_guard_blocks.append(block)
+                    seen_blocks.add(block_key)
+        else:
+            live_budget_guard_blocks = list(sidecar_budget_guard_blocks)
     if live_tool_call_count is not None:
         if tool_call_count is None:
             tool_call_count = live_tool_call_count
         else:
             tool_call_count = max(tool_call_count, live_tool_call_count)
+    if live_blocked_tool_call_count:
+        blocked_tool_call_count = max(blocked_tool_call_count, live_blocked_tool_call_count)
+    if live_executed_tool_call_count is not None:
+        if executed_tool_call_count is None:
+            executed_tool_call_count = live_executed_tool_call_count
+        elif not has_sidecar_executed_tool_count:
+            executed_tool_call_count = max(executed_tool_call_count, live_executed_tool_call_count)
+    elif tool_call_count is not None:
+        executed_tool_call_count = max(0, tool_call_count - blocked_tool_call_count)
     if live_agent_turn_count is not None:
         if agent_turn_count is None:
             agent_turn_count = live_agent_turn_count
@@ -1791,26 +2193,121 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
                 ),
             }
         )
+    if require_actual_token_usage and not normalized_usage:
+        violations.append(
+            {
+                "type": "missing_actual_token_usage",
+                "observed": None,
+                "limit": "required",
+                "source": "provider_usage",
+            }
+        )
+    if max_cumulative_input_tokens > 0:
+        if actual_input_tokens is None:
+            violations.append(
+                {
+                    "type": "missing_actual_input_tokens",
+                    "observed": None,
+                    "limit": max_cumulative_input_tokens,
+                    "source": "provider_usage",
+                }
+            )
+        elif actual_input_tokens > max_cumulative_input_tokens:
+            violations.append(
+                {
+                    "type": "max_cumulative_input_tokens_exceeded",
+                    "observed": actual_input_tokens,
+                    "limit": max_cumulative_input_tokens,
+                    "source": "provider_usage",
+                }
+            )
+    if max_cumulative_output_tokens > 0:
+        if actual_output_tokens is None:
+            violations.append(
+                {
+                    "type": "missing_actual_output_tokens",
+                    "observed": None,
+                    "limit": max_cumulative_output_tokens,
+                    "source": "provider_usage",
+                }
+            )
+        elif actual_output_tokens > max_cumulative_output_tokens:
+            violations.append(
+                {
+                    "type": "max_cumulative_output_tokens_exceeded",
+                    "observed": actual_output_tokens,
+                    "limit": max_cumulative_output_tokens,
+                    "source": "provider_usage",
+                }
+            )
     if max_tool_calls > 0 and (
-        (tool_call_count is not None and tool_call_count > max_tool_calls) or live_tool_exceeded
+        (executed_tool_call_count is not None and executed_tool_call_count > max_tool_calls)
+        or live_tool_exceeded
     ):
         violations.append(
             {
                 "type": "max_tool_calls_exceeded",
-                "observed": tool_call_count,
+                "observed": executed_tool_call_count,
                 "limit": max_tool_calls,
                 "source": "live_runtime_budget" if live_tool_exceeded else "openclaw_session_jsonl",
             }
         )
     if max_agent_turns > 0 and (
-        (agent_turn_count is not None and agent_turn_count > max_agent_turns) or live_turn_exceeded
+        (agent_turn_count is not None and agent_turn_count > max_agent_turns)
+        or live_turn_exceeded
+        or sidecar_agent_turn_guard_blocked
     ):
         violations.append(
             {
                 "type": "max_agent_turns_exceeded",
-                "observed": agent_turn_count,
+                "observed": (
+                    max_agent_turns + 1
+                    if sidecar_agent_turn_guard_blocked and (
+                        agent_turn_count is None or agent_turn_count <= max_agent_turns
+                    )
+                    else agent_turn_count
+                ),
                 "limit": max_agent_turns,
-                "source": "live_runtime_budget" if live_turn_exceeded else "openclaw_session_jsonl",
+                "source": (
+                    "openclaw_runtime_patch"
+                    if sidecar_agent_turn_guard_blocked
+                    else "live_runtime_budget"
+                    if live_turn_exceeded
+                    else "openclaw_session_jsonl"
+                ),
+            }
+        )
+    for block in live_budget_guard_blocks:
+        if not isinstance(block, dict):
+            continue
+        kind = str(block.get("kind") or "")
+        if kind not in {
+            "cumulative_input_tokens",
+            "cumulative_output_tokens",
+            "missing_actual_token_usage",
+            "missing_actual_input_tokens",
+            "missing_actual_output_tokens",
+        }:
+            continue
+        fields = budget_guard_block_fields(str(block.get("text") or ""))
+        if kind == "cumulative_input_tokens":
+            violation_type = "max_cumulative_input_tokens_exceeded"
+        elif kind == "cumulative_output_tokens":
+            violation_type = "max_cumulative_output_tokens_exceeded"
+        else:
+            violation_type = kind
+        violation_limit = fields.get("limit")
+        if violation_type == "missing_actual_token_usage":
+            violation_limit = "required"
+        if any(item.get("type") == violation_type and item.get("source") == "openclaw_runtime_patch" for item in violations):
+            continue
+        violations.append(
+            {
+                "type": violation_type,
+                "observed": fields.get("observed"),
+                "limit": violation_limit,
+                "source": "openclaw_runtime_patch",
+                "block": block,
             }
         )
     if live_policy_exceeded:
@@ -1823,29 +2320,41 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
                 "violations": live_policy_violations,
             }
         )
-    if live_budget_guard_exceeded:
-        violations.append(
-            {
-                "type": "budget_guard_blocked",
-                "observed": live_budget_guard_block_count,
-                "limit": 0,
-                "source": "openclaw_before_tool_call_or_before_agent_run",
-                "blocks": live_budget_guard_blocks,
-            }
-        )
     return {
         "ok": not violations,
-        "enforced": bool(max_input_tokens > 0 or max_tool_calls > 0 or max_agent_turns > 0),
+        "enforced": bool(
+            max_input_tokens > 0
+            or max_cumulative_input_tokens > 0
+            or max_cumulative_output_tokens > 0
+            or require_actual_token_usage
+            or max_tool_calls > 0
+            or max_agent_turns > 0
+            or max_tool_wall_seconds > 0
+        ),
         "limits": {
             "max_input_tokens": max_input_tokens or None,
+            "max_cumulative_input_tokens": max_cumulative_input_tokens or None,
+            "max_cumulative_output_tokens": max_cumulative_output_tokens or None,
+            "require_actual_token_usage": require_actual_token_usage,
             "max_tool_calls": max_tool_calls or None,
             "max_agent_turns": max_agent_turns or None,
+            "max_tool_wall_seconds": max_tool_wall_seconds or None,
         },
         "observed": {
             "input_tokens": input_tokens,
+            "actual_cumulative_input_tokens": actual_input_tokens,
+            "actual_cumulative_output_tokens": actual_output_tokens,
+            "actual_usage": normalized_usage,
             "estimated_input_tokens": live_estimated_input_tokens,
             "tool_call_count": tool_call_count,
+            "executed_tool_call_count": executed_tool_call_count,
+            "blocked_tool_call_count": blocked_tool_call_count,
             "agent_turn_count": agent_turn_count,
+        },
+        "budget_guard": {
+            "blocked": bool(live_budget_guard_exceeded or blocked_tool_call_count),
+            "block_count": max(blocked_tool_call_count, live_budget_guard_block_count),
+            "blocks": live_budget_guard_blocks,
         },
         "live": live_budget if isinstance(live_budget, dict) else {},
         "violations": violations,
@@ -2418,7 +2927,22 @@ def _chat_is_tool_call(message: dict[str, Any]) -> bool:
     return isinstance(message.get("tool_call"), dict)
 
 
+def _contains_tool_call(value: Any) -> bool:
+    if isinstance(value, list):
+        return any(_contains_tool_call(item) for item in value)
+    if not isinstance(value, dict):
+        return False
+    type_value = value.get("type")
+    if isinstance(type_value, str) and type_value in TOOL_CALL_TYPE_MARKERS:
+        return True
+    if any(value.get(key) for key in TOOL_CALL_KEYS):
+        return True
+    return any(_contains_tool_call(item) for item in value.values())
+
+
 def _chat_is_final_answer(message: dict[str, Any]) -> bool:
+    if _chat_is_tool_call(message) or _contains_tool_call(message.get("assistant_message")):
+        return False
     assistant_text = _chat_assistant_text(message)
     return any(marker in assistant_text for marker in FINAL_ANSWER_MARKERS)
 
@@ -2447,6 +2971,8 @@ def _span_output_text(span: dict[str, Any]) -> str:
 
 def _is_final_answer_span(span: dict[str, Any]) -> bool:
     if span.get("operation_name") not in {"chat", "invoke_agent"}:
+        return False
+    if _contains_tool_call(span.get("output_messages")):
         return False
     output_text = _span_output_text(span)
     return any(marker in output_text for marker in FINAL_ANSWER_MARKERS)
@@ -2622,6 +3148,7 @@ def build_agents_trace_order_health(
         "trace_user_message_order_ok": True,
         "trace_final_answer_order_ok": True,
         "order_issues": [],
+        "order_warnings": [],
         "first_message_started_at": _span_time_label(message_spans, "started_at", minimum=True),
         "first_input_message_started_at": _span_time_label(
             message_spans_with_input,
@@ -2636,6 +3163,7 @@ def build_agents_trace_order_health(
         "chat_final_answer_message_count": len(chat_final_answer_messages),
     }
     order_issues = health["order_issues"]
+    order_warnings = health["order_warnings"]
     if timestamp_issues:
         if message_spans and tool_spans:
             health["trace_order_ok"] = False
@@ -2682,10 +3210,43 @@ def build_agents_trace_order_health(
             or not tool_start_records
             or last_tool_start >= first_final_answer_boundary
         ):
-            health["trace_final_answer_order_ok"] = False
-            order_issues.append("tool_started_after_or_at_final_answer_end")
+            order_warnings.append("tool_started_after_or_at_final_answer_end")
 
     return health
+
+
+def agents_conversation_matches(
+    span: dict[str, Any],
+    *,
+    conversation_id: str | None,
+    conversation_id_contains: str | None,
+) -> bool:
+    value = str(span.get("conversation_id") or "")
+    if conversation_id and value != conversation_id:
+        return False
+    if conversation_id_contains and conversation_id_contains not in value:
+        return False
+    return True
+
+
+def agents_span_matches(
+    span: dict[str, Any],
+    *,
+    agent_name: str | None,
+    conversation_id: str | None,
+    conversation_id_contains: str | None,
+) -> bool:
+    if not agents_conversation_matches(
+        span,
+        conversation_id=conversation_id,
+        conversation_id_contains=conversation_id_contains,
+    ):
+        return False
+    if not agent_name or span.get("agent_name") == agent_name:
+        return True
+    return span.get("agent_name") in {"", None} and bool(
+        conversation_id or conversation_id_contains
+    )
 
 
 def build_agents_check_summary(
@@ -2708,14 +3269,11 @@ def build_agents_check_summary(
         span
         for span in spans_list
         if isinstance(span, dict)
-        and (not agent_name or span.get("agent_name") == agent_name)
-        and (not conversation_id or span.get("conversation_id") == conversation_id)
-        and (
-            not conversation_id_contains
-            or (
-                isinstance(span.get("conversation_id"), str)
-                and conversation_id_contains in span.get("conversation_id")
-            )
+        and agents_span_matches(
+            span,
+            agent_name=agent_name,
+            conversation_id=conversation_id,
+            conversation_id_contains=conversation_id_contains,
         )
     ]
     latest_spans_api_order = [summarize_agent_span(span) for span in raw_spans[:limit]]
@@ -2772,6 +3330,11 @@ def build_agents_check_summary(
         "trace_order_ok": trace_order_health["trace_order_ok"],
         "trace_user_message_order_ok": trace_order_health["trace_user_message_order_ok"],
         "trace_final_answer_order_ok": trace_order_health["trace_final_answer_order_ok"],
+        "trace_order_warnings": trace_order_health.get("order_warnings", []),
+        "trace_final_answer_after_tool_warning": (
+            "tool_started_after_or_at_final_answer_end"
+            in trace_order_health.get("order_warnings", [])
+        ),
     }
     if trace_chat_payload is not None:
         content_capture_health.update(
@@ -2857,6 +3420,9 @@ def check_agents(args: argparse.Namespace) -> None:
         "offset": 0,
     }
     spans_payload = dict(agents_payload)
+    if args.conversation_id or args.conversation_id_contains:
+        spans_payload["filters"] = {}
+        span_limit = max(span_limit, args.limit * 8, 400)
     spans_payload["limit"] = span_limit
     agents = agents_api_post(env, AGENTS_QUERY_ENDPOINT, agents_payload)
     spans = agents_api_post(env, AGENTS_SPANS_QUERY_ENDPOINT, spans_payload)
@@ -2864,14 +3430,11 @@ def check_agents(args: argparse.Namespace) -> None:
         span
         for span in (spans.get("spans", []) if isinstance(spans.get("spans"), list) else [])
         if isinstance(span, dict)
-        and (not args.agent_name or span.get("agent_name") == args.agent_name)
-        and (not args.conversation_id or span.get("conversation_id") == args.conversation_id)
-        and (
-            not args.conversation_id_contains
-            or (
-                isinstance(span.get("conversation_id"), str)
-                and args.conversation_id_contains in span.get("conversation_id")
-            )
+        and agents_span_matches(
+            span,
+            agent_name=args.agent_name,
+            conversation_id=args.conversation_id,
+            conversation_id_contains=args.conversation_id_contains,
         )
     ]
     latest_trace_id = _latest_trace_id(raw_spans)
@@ -2984,6 +3547,14 @@ def build_parser() -> argparse.ArgumentParser:
         default="/sandbox",
         help="Working directory inside the NeMoClaw sandbox for sandbox exec.",
     )
+    run_parser.add_argument(
+        "--nemoclaw-patched-openclaw-bin-dir",
+        default=DEFAULT_NEMOCLAW_PATCHED_OPENCLAW_BIN_DIR,
+        help=(
+            "Sandbox-local bin directory containing the patched OpenClaw copy. "
+            "Prepended to PATH for NeMoClaw runs."
+        ),
+    )
     run_parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
     run_parser.add_argument("--agent", default="main")
     run_parser.add_argument("--profile")
@@ -2995,7 +3566,34 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-input-tokens",
         type=int,
         default=0,
-        help="Harness-side post-run input token budget. 0 disables the budget.",
+        help=(
+            "Per-call/context input-token cap used by older configs and by "
+            "the live estimate fallback. 0 disables this legacy budget."
+        ),
+    )
+    run_parser.add_argument(
+        "--max-cumulative-input-tokens",
+        type=int,
+        default=0,
+        help=(
+            "Problem-level cumulative provider input-token budget based on "
+            "actual model-call usage. 0 disables this exact budget."
+        ),
+    )
+    run_parser.add_argument(
+        "--max-cumulative-output-tokens",
+        type=int,
+        default=0,
+        help=(
+            "Problem-level cumulative provider output-token budget based on "
+            "actual model-call usage. 0 disables this exact budget."
+        ),
+    )
+    run_parser.add_argument(
+        "--require-actual-token-usage",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Fail if OpenClaw/model calls do not expose actual token usage.",
     )
     run_parser.add_argument(
         "--max-tool-calls",
@@ -3008,6 +3606,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="Harness-side live session JSONL assistant-turn budget. 0 disables the budget.",
+    )
+    run_parser.add_argument(
+        "--max-tool-wall-seconds",
+        type=int,
+        default=0,
+        help=(
+            "Configured hard wall-clock cap for each exec tool call. Enforcement "
+            "is applied by OpenClaw tools.exec.timeoutSec plus the Nejumi runtime "
+            "patch that clamps model-supplied exec timeout values."
+        ),
     )
     run_parser.add_argument(
         "--live-session-dir",

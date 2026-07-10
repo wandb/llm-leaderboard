@@ -274,6 +274,8 @@ def complete_taiwan_full_summary():
         "taiwan_unit_scores_table": {"_type": "table-file", "nrows": 14},
         "taiwan_glp_radar_table": {"_type": "table-file", "nrows": 8},
         "taiwan_alt_radar_table": {"_type": "table-file", "nrows": 6},
+        "bfcl_timeout_count": 0,
+        "bfcl_inference_error_count": 0,
     }
 
 
@@ -813,6 +815,26 @@ def test_verify_taiwan_full_completion_rejects_missing_required_table():
     assert any(
         check["name"] == "taxonomy_table"
         and check["unit_id"] == "agentic_swe"
+        and not check["ok"]
+        for check in result["checks"]
+    )
+
+
+def test_verify_taiwan_full_completion_rejects_bfcl_timeout_count():
+    module = load_module()
+    summary = complete_taiwan_full_summary()
+    summary["bfcl_timeout_count"] = 1
+    run = FakeRun(summary=summary)
+
+    result = module.verify_full_taiwan_run(
+        run,
+        taxonomy_path=REPO_ROOT / "taxonomies" / "nejumi45_taiwan.yaml",
+    )
+
+    assert result["ok"] is False
+    assert any(
+        check["name"] == "bfcl_runtime_error_metric"
+        and check.get("metric") == "bfcl_timeout_count"
         and not check["ok"]
         for check in result["checks"]
     )

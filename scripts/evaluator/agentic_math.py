@@ -17,6 +17,7 @@ DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 DEFAULT_MAX_INPUT_TOKENS = 500_000
 DEFAULT_MAX_TOOL_CALLS = 40
 DEFAULT_MAX_AGENT_TURNS = 40
+DEFAULT_MAX_TOOL_WALL_SECONDS = 120
 AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "nemoclaw_session_audit_ok",
     "nemoclaw_session_audit",
@@ -75,12 +76,28 @@ def _run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         bufsize=1,
+        start_new_session=True,
     )
     stdout_parts: list[str] = []
     assert proc.stdout is not None
-    for line in proc.stdout:
-        print(line, end="", flush=True)
-        stdout_parts.append(line)
+    while True:
+        try:
+            line = proc.stdout.readline()
+        except KeyboardInterrupt:
+            if proc.poll() is None:
+                print(
+                    "Received KeyboardInterrupt while Agentic Math runner is still active; "
+                    "continuing to wait for the isolated child process.",
+                    flush=True,
+                )
+                continue
+            raise
+        if line:
+            print(line, end="", flush=True)
+            stdout_parts.append(line)
+            continue
+        if proc.poll() is not None:
+            break
     returncode = proc.wait()
     stdout = "".join(stdout_parts)
     if returncode != 0:
@@ -131,13 +148,31 @@ def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
         str(_cfg_get(cfg.agentic_math, "openclaw_max_attempts", 3)),
         "--openclaw-retry-base-seconds",
         str(_cfg_get(cfg.agentic_math, "openclaw_retry_base_seconds", 15)),
+        "--num-workers",
+        str(_cfg_get(cfg.agentic_math, "num_workers", 1)),
+        "--task-start-min-interval-seconds",
+        str(_cfg_get(cfg.agentic_math, "task_start_min_interval_seconds", 0.0)),
         "--max-input-tokens",
         str(_cfg_get(cfg.agentic_math, "max_input_tokens", DEFAULT_MAX_INPUT_TOKENS)),
+        "--max-cumulative-input-tokens",
+        str(
+            _cfg_get(
+                cfg.agentic_math,
+                "max_cumulative_input_tokens",
+                _cfg_get(cfg.agentic_math, "max_input_tokens", DEFAULT_MAX_INPUT_TOKENS),
+            )
+        ),
+        "--max-cumulative-output-tokens",
+        str(_cfg_get(cfg.agentic_math, "max_cumulative_output_tokens", 0)),
         "--max-tool-calls",
         str(_cfg_get(cfg.agentic_math, "max_tool_calls", DEFAULT_MAX_TOOL_CALLS)),
         "--max-agent-turns",
         str(_cfg_get(cfg.agentic_math, "max_agent_turns", DEFAULT_MAX_AGENT_TURNS)),
+        "--max-tool-wall-seconds",
+        str(_cfg_get(cfg.agentic_math, "max_tool_wall_seconds", DEFAULT_MAX_TOOL_WALL_SECONDS)),
     ]
+    if bool(_cfg_get(cfg.agentic_math, "require_actual_token_usage", False)):
+        command.append("--require-actual-token-usage")
     profile = _cfg_get(cfg.agentic_math, "profile")
     if profile:
         command.extend(["--profile", str(profile)])
@@ -290,6 +325,7 @@ def _make_result_artifact(
     max_input_tokens: int,
     max_tool_calls: int,
     max_agent_turns: int,
+    max_tool_wall_seconds: int,
     nemoclaw_sandbox: str,
 ) -> wandb.Artifact:
     artifact = wandb.Artifact(
@@ -306,6 +342,7 @@ def _make_result_artifact(
             "max_input_tokens": max_input_tokens,
             "max_tool_calls": max_tool_calls,
             "max_agent_turns": max_agent_turns,
+            "max_tool_wall_seconds": max_tool_wall_seconds,
             "nemoclaw_sandbox": nemoclaw_sandbox,
         },
     )
@@ -336,6 +373,9 @@ def _log_summary(
     max_agent_turns = int(
         _cfg_get(cfg.agentic_math, "max_agent_turns", DEFAULT_MAX_AGENT_TURNS) or 0
     )
+    max_tool_wall_seconds = int(
+        _cfg_get(cfg.agentic_math, "max_tool_wall_seconds", DEFAULT_MAX_TOOL_WALL_SECONDS) or 0
+    )
     nemoclaw_sandbox = str(_cfg_get(cfg.agentic_math, "nemoclaw_sandbox", "") or "")
     leaderboard = pd.DataFrame(
         [
@@ -361,6 +401,7 @@ def _log_summary(
             "agentic_math/max_input_tokens": max_input_tokens,
             "agentic_math/max_tool_calls": max_tool_calls,
             "agentic_math/max_agent_turns": max_agent_turns,
+            "agentic_math/max_tool_wall_seconds": max_tool_wall_seconds,
             "agentic_math/runtime_budget_exceeded_instances": int(
                 summary.get("runtime_budget_exceeded_instances") or 0
             ),
@@ -390,6 +431,7 @@ def _log_summary(
             max_input_tokens=max_input_tokens,
             max_tool_calls=max_tool_calls,
             max_agent_turns=max_agent_turns,
+            max_tool_wall_seconds=max_tool_wall_seconds,
             nemoclaw_sandbox=nemoclaw_sandbox,
         ),
         aliases=["latest", "production"],

@@ -354,6 +354,16 @@ def test_external_action_approval_record_rejects_paid_budget_below_floor(tmp_pat
     )
 
 
+def test_request_model_aliases_include_direct_provider_remainder():
+    module = load_module()
+
+    assert module.request_model_aliases("openrouter-direct/z-ai/glm-5.2") == [
+        "openrouter-direct/z-ai/glm-5.2",
+        "z-ai/glm-5.2",
+        "glm-5.2",
+    ]
+
+
 def test_verify_command_uses_sidecar_conversation_or_task_id(tmp_path):
     module = load_module()
     args = make_args(
@@ -383,7 +393,7 @@ def test_verify_command_uses_sidecar_conversation_or_task_id(tmp_path):
 
     fallback = module.build_verify_command(args, paths, tmp_path / "verify.json")
     assert "--conversation-id-contains" in fallback
-    assert paths.task_id in fallback
+    assert paths.task_id.lower() in fallback
     assert fallback.count("--require-text") == 3
     assert "TEST_CANARY_001" in fallback
     assert "CANARY_RESULT TEST_CANARY_001 91" in fallback
@@ -404,7 +414,36 @@ def test_verify_command_uses_sidecar_conversation_or_task_id(tmp_path):
 
     diagnostic_fallback = module.build_agents_diagnostic_command(args, paths)
     assert "--conversation-id-contains" in diagnostic_fallback
-    assert paths.task_id in diagnostic_fallback
+    assert paths.task_id.lower() in diagnostic_fallback
+
+
+def test_extract_conversation_id_prefers_openclaw_session_key(tmp_path):
+    module = load_module()
+    sidecar = tmp_path / "openclaw_result.json"
+    sidecar.write_text(
+        json.dumps(
+            {
+                "stdout_json": {
+                    "result": {
+                        "meta": {
+                            "agentMeta": {
+                                "sessionId": "uuid-session-id",
+                            },
+                            "systemPromptReport": {
+                                "sessionKey": "agent:main:weave_agents_content_canary_test",
+                            },
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        module.extract_conversation_id(sidecar)
+        == "agent:main:weave_agents_content_canary_test"
+    )
 
 
 def test_run_command_routes_through_nemoclaw_when_sandbox_is_set(tmp_path):

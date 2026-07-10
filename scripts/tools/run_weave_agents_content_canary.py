@@ -560,6 +560,9 @@ def request_model_aliases(model_id: str | None) -> list[str]:
     if value.startswith("openai-direct/"):
         aliases.append(value.removeprefix("openai-direct/"))
     if "/" in value:
+        provider, remainder = value.split("/", 1)
+        if provider.endswith("-direct") and remainder:
+            aliases.append(remainder)
         aliases.append(value.rsplit("/", 1)[-1])
     return list(dict.fromkeys(alias for alias in aliases if alias))
 
@@ -585,6 +588,23 @@ def _sidecar_get_agent_meta(sidecar: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def _sidecar_find_session_key(value: Any) -> str | None:
+    if isinstance(value, dict):
+        session_key = value.get("sessionKey")
+        if isinstance(session_key, str) and session_key.strip():
+            return session_key.strip()
+        for nested in value.values():
+            found = _sidecar_find_session_key(nested)
+            if found:
+                return found
+    if isinstance(value, list):
+        for nested in value:
+            found = _sidecar_find_session_key(nested)
+            if found:
+                return found
+    return None
+
+
 def extract_conversation_id(sidecar_path: Path) -> str | None:
     if not sidecar_path.exists():
         return None
@@ -592,8 +612,11 @@ def extract_conversation_id(sidecar_path: Path) -> str | None:
         sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
+    session_key = _sidecar_find_session_key(sidecar)
+    if session_key:
+        return session_key.lower()
     agent_meta = _sidecar_get_agent_meta(sidecar)
-    for key in ("sessionId", "sessionKey", "conversationId"):
+    for key in ("sessionKey", "conversationId", "sessionId"):
         value = agent_meta.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
@@ -630,7 +653,7 @@ def build_verify_command(
     if conversation_id:
         command.extend(["--conversation-id", conversation_id])
     else:
-        command.extend(["--conversation-id-contains", paths.task_id])
+        command.extend(["--conversation-id-contains", paths.task_id.lower()])
     if not args.no_require_tool:
         command.extend(["--require-tool-span", "--require-tool-content"])
     if not args.no_require_usage:
@@ -668,7 +691,7 @@ def build_agents_diagnostic_command(
     if conversation_id:
         command.extend(["--conversation-id", conversation_id])
     else:
-        command.extend(["--conversation-id-contains", paths.task_id])
+        command.extend(["--conversation-id-contains", paths.task_id.lower()])
     return command
 
 

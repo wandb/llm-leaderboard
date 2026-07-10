@@ -1,5 +1,68 @@
+import { createHash } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 const PLUGIN_ID = "nejumi-budget-guard";
+const TRUSTED_TOOL_POLICY_ID = "budget-guard";
 const GLOBAL_KEY = Symbol.for("nejumi.openclaw.budgetGuard.v1");
+
+const CONFIG_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    enabled: {
+      type: "boolean",
+      default: true,
+    },
+    maxToolCalls: {
+      type: "integer",
+      minimum: 0,
+      default: 0,
+    },
+    maxAgentTurns: {
+      type: "integer",
+      minimum: 0,
+      default: 0,
+    },
+    maxCumulativeInputTokens: {
+      type: "integer",
+      minimum: 0,
+      default: 0,
+    },
+    maxCumulativeOutputTokens: {
+      type: "integer",
+      minimum: 0,
+      default: 0,
+    },
+    requireActualTokenUsage: {
+      type: "boolean",
+      default: false,
+    },
+    agentIds: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+      default: [],
+    },
+    sessionKeyPrefixes: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+      default: [],
+    },
+    blockReasonPrefix: {
+      type: "string",
+      default: "NEJUMI_BUDGET_GUARD_BLOCKED",
+    },
+  },
+};
+
+function definePluginEntry(definition) {
+  return definition;
+}
 
 function sharedState() {
   const root = globalThis;
@@ -36,6 +99,10 @@ function asStringArray(value) {
   return value.map((item) => String(item)).filter((item) => item.length > 0);
 }
 
+function asString(value) {
+  return typeof value === "string" ? value : "";
+}
+
 function normalizeConfig(config) {
   const raw = config && typeof config === "object" ? config : {};
   return {
@@ -45,7 +112,56 @@ function normalizeConfig(config) {
     agentIds: asStringArray(raw.agentIds),
     sessionKeyPrefixes: asStringArray(raw.sessionKeyPrefixes),
     blockReasonPrefix: String(raw.blockReasonPrefix || "NEJUMI_BUDGET_GUARD_BLOCKED"),
+    stateRoot: asString(raw.stateRoot),
+    auditFile: asString(raw.auditFile),
   };
+}
+
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function getPath(root, segments) {
+  let current = root;
+  for (const segment of segments) {
+    if (!isRecord(current) || !(segment in current)) {
+      return undefined;
+    }
+    current = current[segment];
+  }
+  return current;
+}
+
+function hasBudgetKeys(value) {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    "enabled" in value ||
+    "maxToolCalls" in value ||
+    "maxAgentTurns" in value ||
+    "maxCumulativeInputTokens" in value ||
+    "maxCumulativeOutputTokens" in value ||
+    "requireActualTokenUsage" in value ||
+    "agentIds" in value ||
+    "sessionKeyPrefixes" in value ||
+    "blockReasonPrefix" in value ||
+    "stateRoot" in value ||
+    "auditFile" in value
+  );
+}
+
+function extractBudgetConfig(value) {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  if (hasBudgetKeys(value)) {
+    return value;
+  }
+  if (isRecord(value.config) && hasBudgetKeys(value.config)) {
+    return value.config;
+  }
+  return undefined;
 }
 
 function contextValue(event, ctx, key) {
@@ -85,17 +201,34 @@ function scoped(config, event, ctx) {
     return false;
   }
   const currentAgentId = agentId(event, ctx);
-  if (config.agentIds.length > 0 && !config.agentIds.includes(currentAgentId)) {
+  const hasAgentFilter = config.agentIds.length > 0;
+  const agentMatches = currentAgentId && config.agentIds.includes(currentAgentId);
+  if (hasAgentFilter && currentAgentId && !agentMatches) {
     return false;
   }
   const currentSessionKey = sessionKey(event, ctx);
+  const hasSessionFilter = config.sessionKeyPrefixes.length > 0;
+  const currentSessionKeyLower = currentSessionKey.toLowerCase();
+  const sessionMatches =
+    currentSessionKey &&
+    config.sessionKeyPrefixes.some((prefix) => {
+      const normalizedPrefix = prefix.toLowerCase();
+      return (
+        currentSessionKeyLower.startsWith(normalizedPrefix) ||
+        currentSessionKeyLower.includes(`:${normalizedPrefix}:`)
+      );
+    });
   if (
-    config.sessionKeyPrefixes.length > 0 &&
-    !config.sessionKeyPrefixes.some((prefix) => currentSessionKey.startsWith(prefix))
+    hasSessionFilter &&
+    currentSessionKey &&
+    !sessionMatches
   ) {
     return false;
   }
-  return true;
+  if (!hasAgentFilter && !hasSessionFilter) {
+    return true;
+  }
+  return Boolean(agentMatches || sessionMatches);
 }
 
 function runState(key) {
@@ -107,10 +240,169 @@ function runState(key) {
       agentTurns: 0,
       seenToolCallIds: new Set(),
       blocked: false,
+      blockedKind: "",
+      blockedObserved: 0,
+      blockedLimit: 0,
     };
     state.runs.set(key, value);
   }
   return value;
+}
+
+function initialRunState() {
+  return {
+    toolCalls: 0,
+    agentTurns: 0,
+    seenToolCallIds: new Set(),
+    blocked: false,
+    blockedKind: "",
+    blockedObserved: 0,
+    blockedLimit: 0,
+  };
+}
+
+function normalizeRunState(raw) {
+  if (!isRecord(raw)) {
+    return initialRunState();
+  }
+  return {
+    toolCalls: asPositiveInteger(raw.toolCalls),
+    agentTurns: asPositiveInteger(raw.agentTurns),
+    seenToolCallIds: new Set(asStringArray(raw.seenToolCallIds)),
+    blocked: raw.blocked === true,
+    blockedKind: asString(raw.blockedKind),
+    blockedObserved: asPositiveInteger(raw.blockedObserved),
+    blockedLimit: asPositiveInteger(raw.blockedLimit),
+  };
+}
+
+function serializeRunState(value) {
+  return {
+    toolCalls: asPositiveInteger(value.toolCalls),
+    agentTurns: asPositiveInteger(value.agentTurns),
+    seenToolCallIds: Array.from(value.seenToolCallIds || []),
+    blocked: value.blocked === true,
+    blockedKind: asString(value.blockedKind),
+    blockedObserved: asPositiveInteger(value.blockedObserved),
+    blockedLimit: asPositiveInteger(value.blockedLimit),
+  };
+}
+
+function defaultOpenClawHome() {
+  if (process.env.OPENCLAW_HOME) {
+    return process.env.OPENCLAW_HOME;
+  }
+  const home = os.homedir();
+  if (home) {
+    return path.join(home, ".openclaw");
+  }
+  return path.join(os.tmpdir(), "openclaw");
+}
+
+function defaultOpenClawConfigPath() {
+  return path.join(defaultOpenClawHome(), "openclaw.json");
+}
+
+function readLiveBudgetConfig() {
+  const configPath = process.env.OPENCLAW_CONFIG_PATH || defaultOpenClawConfigPath();
+  try {
+    const raw = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    return getPath(raw, ["plugins", "entries", PLUGIN_ID, "config"]);
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveStateRoot(config) {
+  return (
+    config.stateRoot ||
+    process.env.OPENCLAW_NEJUMI_BUDGET_GUARD_STATE_DIR ||
+    path.join(defaultOpenClawHome(), "state", PLUGIN_ID)
+  );
+}
+
+function runStatePath(config, key) {
+  const digest = createHash("sha256").update(String(key)).digest("hex").slice(0, 32);
+  return path.join(resolveStateRoot(config), `${digest}.json`);
+}
+
+function readPersistentRunState(filePath) {
+  try {
+    return normalizeRunState(JSON.parse(fs.readFileSync(filePath, "utf8")));
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      return initialRunState();
+    }
+    throw error;
+  }
+}
+
+function writePersistentRunState(filePath, state) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
+  fs.writeFileSync(tmpPath, `${JSON.stringify(serializeRunState(state))}\n`, "utf8");
+  fs.renameSync(tmpPath, filePath);
+}
+
+function removePersistentRunState(config, key) {
+  try {
+    fs.rmSync(runStatePath(config, key), { force: true });
+  } catch {
+    // Best effort cleanup only.
+  }
+}
+
+function waitForLock() {
+  const buffer = new SharedArrayBuffer(4);
+  const view = new Int32Array(buffer);
+  Atomics.wait(view, 0, 0, 10);
+}
+
+function withPersistentRunState(config, key, mutate) {
+  const filePath = runStatePath(config, key);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const lockPath = `${filePath}.lock`;
+  const started = Date.now();
+  let locked = false;
+  while (!locked) {
+    try {
+      fs.mkdirSync(lockPath);
+      locked = true;
+    } catch (error) {
+      if (!error || error.code !== "EEXIST") {
+        throw error;
+      }
+      try {
+        const stat = fs.statSync(lockPath);
+        if (Date.now() - stat.mtimeMs > 5000) {
+          fs.rmSync(lockPath, { recursive: true, force: true });
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      if (Date.now() - started > 750) {
+        throw new Error(`timed out waiting for ${PLUGIN_ID} state lock`);
+      }
+      waitForLock();
+    }
+  }
+  try {
+    const state = readPersistentRunState(filePath);
+    const result = mutate(state);
+    writePersistentRunState(filePath, state);
+    return result;
+  } finally {
+    fs.rmSync(lockPath, { recursive: true, force: true });
+  }
+}
+
+function mutateRunState(config, key, mutate) {
+  if (resolveStateRoot(config)) {
+    return withPersistentRunState(config, key, mutate);
+  }
+  const state = runState(key);
+  return mutate(state);
 }
 
 function toolCallId(event, ctx) {
@@ -144,65 +436,209 @@ function blockResult(config, kind, observed, limit, event, ctx) {
   };
 }
 
-function pluginConfig(api, event) {
-  const eventConfig =
-    event && typeof event === "object" && event.context && typeof event.context === "object"
-      ? event.context.pluginConfig
-      : undefined;
-  return normalizeConfig(eventConfig || api.pluginConfig || {});
+function agentRunBlockResult(config, kind, observed, limit, event, ctx) {
+  const reason = blockResult(config, kind, observed, limit, event, ctx).blockReason;
+  return {
+    outcome: "block",
+    reason,
+    message: reason,
+    category: "budget_limit",
+    metadata: {
+      kind,
+      observed,
+      limit,
+      agentId: agentId(event, ctx) || "",
+      sessionKey: sessionKey(event, ctx) || "",
+    },
+  };
 }
 
-export default {
+function writeAudit(config, phase, event, ctx, details) {
+  const auditFile =
+    config.auditFile ||
+    process.env.OPENCLAW_NEJUMI_BUDGET_GUARD_AUDIT_FILE ||
+    path.join(resolveStateRoot(config), "audit.jsonl");
+  if (!auditFile) {
+    return;
+  }
+  const row = {
+    ts: new Date().toISOString(),
+    phase,
+    agentId: agentId(event, ctx) || "",
+    sessionKey: sessionKey(event, ctx) || "",
+    runKey: runKey(event, ctx),
+    toolName: toolName(event) || "",
+    toolCallId: toolCallId(event, ctx) || "",
+    maxToolCalls: config.maxToolCalls,
+    maxAgentTurns: config.maxAgentTurns,
+    scoped: scoped(config, event, ctx),
+    ...details,
+  };
+  fs.mkdirSync(path.dirname(auditFile), { recursive: true });
+  fs.appendFileSync(auditFile, `${JSON.stringify(row)}\n`, "utf8");
+}
+
+function pluginConfig(api, event, ctx) {
+  const candidates = [
+    getPath(event, ["context", "pluginConfig"]),
+    getPath(event, ["pluginConfig"]),
+    getPath(ctx, ["pluginConfig"]),
+    getPath(ctx, ["config", "plugins", "entries", PLUGIN_ID, "config"]),
+    getPath(ctx, ["config", "plugins", "entries", PLUGIN_ID]),
+    readLiveBudgetConfig(),
+    api.pluginConfig,
+    getPath(api, ["config", "plugins", "entries", PLUGIN_ID, "config"]),
+    getPath(api, ["config", "plugins", "entries", PLUGIN_ID]),
+  ];
+  for (const candidate of candidates) {
+    const extracted = extractBudgetConfig(candidate);
+    if (extracted) {
+      return normalizeConfig(extracted);
+    }
+  }
+  return normalizeConfig({});
+}
+
+function handleBeforeToolCall(api, event, ctx, phase) {
+  const config = pluginConfig(api, event, ctx);
+  const inScope = scoped(config, event, ctx);
+  if (!inScope || config.maxToolCalls <= 0) {
+    if (config.maxToolCalls > 0 || config.maxAgentTurns > 0) {
+      writeAudit(config, `${phase}_skip`, event, ctx, { inScope });
+    }
+    return undefined;
+  }
+  return mutateRunState(config, runKey(event, ctx), (state) => {
+    const id = toolCallId(event, ctx);
+    if (id && state.seenToolCallIds.has(id)) {
+      writeAudit(config, `${phase}_seen`, event, ctx, {
+        state: serializeRunState(state),
+      });
+      return undefined;
+    }
+    const nextToolCall = state.toolCalls + 1;
+    if (nextToolCall > config.maxToolCalls) {
+      state.blocked = true;
+      state.blockedKind = "tool_call";
+      state.blockedObserved = nextToolCall;
+      state.blockedLimit = config.maxToolCalls;
+      const result = blockResult(config, "tool_call", nextToolCall, config.maxToolCalls, event, ctx);
+      writeAudit(config, `${phase}_block`, event, ctx, {
+        result,
+        state: serializeRunState(state),
+      });
+      return result;
+    }
+    state.toolCalls = nextToolCall;
+    if (id) {
+      state.seenToolCallIds.add(id);
+    }
+    writeAudit(config, `${phase}_allow`, event, ctx, {
+      observed: nextToolCall,
+      state: serializeRunState(state),
+    });
+    return undefined;
+  });
+}
+
+function handleBeforeAgentReplyAudit(api, event, ctx) {
+  const config = pluginConfig(api, event, ctx);
+  const inScope = scoped(config, event, ctx);
+  if (config.maxAgentTurns > 0 || config.maxToolCalls > 0) {
+    writeAudit(config, inScope ? "before_agent_reply_seen" : "before_agent_reply_skip", event, ctx, {
+      inScope,
+      cleanedBodyLength: String(event?.cleanedBody || "").length,
+    });
+  }
+  return undefined;
+}
+
+export default definePluginEntry({
   id: PLUGIN_ID,
   name: "Nejumi Budget Guard",
-  description: "Blocks OpenClaw agent runs before tool or model-turn budgets are exceeded.",
+  description: "Blocks OpenClaw tool calls before execution and audits agent-turn hook coverage for Nejumi budgets.",
+  configSchema: CONFIG_SCHEMA,
   register(api) {
+    if (typeof api.registerTrustedToolPolicy === "function") {
+      api.registerTrustedToolPolicy({
+        id: TRUSTED_TOOL_POLICY_ID,
+        description: "Blocks Nejumi benchmark tool calls before the configured per-session budget is exceeded.",
+        evaluate: async (event, ctx) => handleBeforeToolCall(api, event, ctx, "trusted_tool_policy"),
+      });
+    }
+
     api.on(
       "before_agent_run",
       async (event, ctx) => {
-        const config = pluginConfig(api, event);
-        if (!scoped(config, event, ctx) || config.maxAgentTurns <= 0) {
-          return;
-        }
-        const state = runState(runKey(event, ctx));
-        const nextAgentTurn = state.agentTurns + 1;
-        if (nextAgentTurn > config.maxAgentTurns) {
-          state.blocked = true;
-          return blockResult(config, "agent_turn", nextAgentTurn, config.maxAgentTurns, event, ctx);
-        }
-        state.agentTurns = nextAgentTurn;
+	        const config = pluginConfig(api, event, ctx);
+	        const inScope = scoped(config, event, ctx);
+	        if (!inScope || (config.maxAgentTurns <= 0 && config.maxToolCalls <= 0)) {
+	          if (config.maxAgentTurns > 0 || config.maxToolCalls > 0) {
+	            writeAudit(config, "before_agent_run_skip", event, ctx, { inScope });
+	          }
+	          return;
+	        }
+        return mutateRunState(config, runKey(event, ctx), (state) => {
+          if (state.blocked) {
+            const result = agentRunBlockResult(
+              config,
+              state.blockedKind || "budget",
+              state.blockedObserved || 1,
+              state.blockedLimit || 0,
+              event,
+              ctx,
+            );
+            writeAudit(config, "before_agent_run_blocked_previous", event, ctx, {
+              result,
+              state: serializeRunState(state),
+            });
+            return result;
+          }
+          if (config.maxAgentTurns <= 0) {
+            writeAudit(config, "before_agent_run_allow", event, ctx, {
+              state: serializeRunState(state),
+            });
+            return;
+          }
+          const nextAgentTurn = state.agentTurns + 1;
+          if (nextAgentTurn > config.maxAgentTurns) {
+            state.blocked = true;
+            state.blockedKind = "agent_turn";
+            state.blockedObserved = nextAgentTurn;
+            state.blockedLimit = config.maxAgentTurns;
+            const result = agentRunBlockResult(config, "agent_turn", nextAgentTurn, config.maxAgentTurns, event, ctx);
+            writeAudit(config, "before_agent_run_block", event, ctx, {
+              result,
+              state: serializeRunState(state),
+            });
+            return result;
+          }
+          state.agentTurns = nextAgentTurn;
+          writeAudit(config, "before_agent_run_allow", event, ctx, {
+            observed: nextAgentTurn,
+            state: serializeRunState(state),
+          });
+        });
       },
       { priority: 10000, timeoutMs: 1000 },
     );
 
     api.on(
       "before_tool_call",
-      async (event, ctx) => {
-        const config = pluginConfig(api, event);
-        if (!scoped(config, event, ctx) || config.maxToolCalls <= 0) {
-          return;
-        }
-        const state = runState(runKey(event, ctx));
-        const id = toolCallId(event, ctx);
-        if (id && state.seenToolCallIds.has(id)) {
-          return;
-        }
-        const nextToolCall = state.toolCalls + 1;
-        if (nextToolCall > config.maxToolCalls) {
-          state.blocked = true;
-          return blockResult(config, "tool_call", nextToolCall, config.maxToolCalls, event, ctx);
-        }
-        state.toolCalls = nextToolCall;
-        if (id) {
-          state.seenToolCallIds.add(id);
-        }
-      },
+      async (event, ctx) => handleBeforeToolCall(api, event, ctx, "before_tool_call"),
+      { priority: 10000, timeoutMs: 1000 },
+    );
+
+    api.on(
+      "before_agent_reply",
+      async (event, ctx) => handleBeforeAgentReplyAudit(api, event, ctx),
       { priority: 10000, timeoutMs: 1000 },
     );
 
     api.on("session_end", (event, ctx) => {
       const key = runKey(event, ctx);
       sharedState().runs.delete(key);
+      removePersistentRunState(pluginConfig(api, event, ctx), key);
     });
   },
-};
+});

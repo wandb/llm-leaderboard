@@ -28,6 +28,16 @@ def load_gate_contract_module():
     return module
 
 
+def test_request_model_aliases_include_direct_provider_remainder():
+    module = load_module()
+
+    assert module.request_model_aliases("openrouter-direct/z-ai/glm-5.2") == [
+        "openrouter-direct/z-ai/glm-5.2",
+        "z-ai/glm-5.2",
+        "glm-5.2",
+    ]
+
+
 def write_plan(tmp_path, *, will_call_paid_model_api=False, task_id="weave_agents_content_canary_TEST"):
     plan_dir = tmp_path / "plans"
     plan_dir.mkdir(parents=True)

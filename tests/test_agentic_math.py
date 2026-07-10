@@ -3,6 +3,7 @@ import importlib.util
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -61,6 +62,49 @@ def test_extract_answer_accepts_symbolic_answer_line():
     assert module.extract_answer(text) == "\\frac{\\sqrt{51}}{6}"
 
 
+def test_extract_text_from_openclaw_accepts_gateway_result_payloads():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    sidecar = {
+        "stdout_json": {
+            "status": "ok",
+            "result": {
+                "payloads": [
+                    {
+                        "text": "The answer follows from the blocked-budget probe.\n\nANSWER: 333"
+                    }
+                ],
+                "meta": {
+                    "finalAssistantVisibleText": "ANSWER: 111",
+                },
+            },
+        }
+    }
+
+    text = module.extract_text_from_openclaw(sidecar)
+
+    assert text.endswith("ANSWER: 333")
+    assert module.extract_answer(text) == "333"
+
+
+def test_extract_text_from_openclaw_accepts_gateway_result_meta_fallback():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    sidecar = {
+        "stdout_json": {
+            "status": "ok",
+            "result": {
+                "meta": {
+                    "finalAssistantVisibleText": "No payloads were emitted.\n\nANSWER: 222",
+                },
+            },
+        }
+    }
+
+    text = module.extract_text_from_openclaw(sidecar)
+
+    assert text.endswith("ANSWER: 222")
+    assert module.extract_answer(text) == "222"
+
+
 def test_math_equivalence_accepts_latex_radicals_and_fractions():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
     score = module.answers_equivalent("241+44sqrt(30)", "241 + 44\\sqrt{30}")
@@ -113,6 +157,46 @@ def test_openclaw_error_record_marks_incorrect(tmp_path):
     assert record["cache_key"] == cache_key
 
 
+def test_openclaw_error_record_marks_hard_conversation_order_violation_disqualified(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    sidecar_path = tmp_path / "openclaw_result.json"
+    sidecar_path.write_text(
+        json.dumps(
+            {
+                "returncode": 0,
+                "stderr": "Conversation order violation",
+                "conversation_order": {
+                    "ok": False,
+                    "issues": [{"type": "tool_before_or_at_first_user_message"}],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    row = {"task_id": "task_1", "answer": "42", "question": "q"}
+    completed = subprocess.CompletedProcess(
+        ["cmd"],
+        1,
+        stdout=str(sidecar_path),
+        stderr="Conversation order violation",
+    )
+    cache_key = {
+        "runner_version": module.RUNNER_VERSION,
+        "task_id": "task_1",
+        "prompt_hash": "abc",
+        "model": "model",
+        "thinking": "high",
+        "answer_format": "math_expression",
+    }
+
+    record = module.build_openclaw_error_record(row, completed, sidecar_path, cache_key)
+
+    assert record["correct"] is False
+    assert record["scoring_method"] == "openclaw_error"
+    assert record["conversation_order_ok"] is False
+    assert record["openclaw_disqualified_reason"] == "conversation_order_violation"
+
+
 def test_transient_openclaw_failure_detects_provider_timeout():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
     completed = subprocess.CompletedProcess(
@@ -123,6 +207,51 @@ def test_transient_openclaw_failure_detects_provider_timeout():
     )
 
     assert module.is_transient_openclaw_failure(completed, None)
+
+
+def test_outer_openclaw_timeout_is_scoreable_time_up_not_retry():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    completed = subprocess.CompletedProcess(
+        ["cmd"],
+        124,
+        stdout="",
+        stderr="Command timed out after 960 seconds",
+    )
+
+    assert module.is_outer_openclaw_timeout(completed, None)
+    assert not module.is_transient_openclaw_failure(completed, None)
+    assert module.non_scoreable_openclaw_failure_reason(completed, None) is None
+
+
+def test_returncode_zero_provider_timeout_sidecar_is_transient():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    completed = subprocess.CompletedProcess(["cmd"], 0, stdout="", stderr="")
+    sidecar = {
+        "returncode": 0,
+        "stderr": "(node:123) [UNDICI-EHPA] Warning: proxy warning",
+        "stdout_json": {
+            "status": "timeout",
+            "timeoutPhase": "provider",
+            "result": {
+                "payloads": [
+                    {
+                        "text": (
+                            "LLM request failed.\n\n"
+                            "Request timed out before a response was generated."
+                        )
+                    }
+                ]
+            },
+        },
+        "runtime_budget": {"ok": True, "violations": []},
+        "tool_policy_ok": True,
+        "tool_policy_violations": [],
+    }
+
+    assert module.is_transient_openclaw_failure(completed, sidecar)
+    assert "Request timed out before a response was generated" in module.sidecar_error_text(
+        sidecar, ""
+    )
 
 
 def test_transient_openclaw_failure_detects_provider_sse_rate_limit():
@@ -143,6 +272,41 @@ def test_transient_openclaw_failure_detects_provider_sse_rate_limit():
     }
 
     assert module.is_transient_openclaw_failure(completed, sidecar)
+
+
+def test_runtime_budget_openclaw_failure_is_not_transient():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    completed = subprocess.CompletedProcess(
+        ["cmd"],
+        125,
+        stdout="",
+        stderr="Live runtime budget exceeded: reason=timeout rawError=terminated",
+    )
+    sidecar = {
+        "runtime_budget": {
+            "ok": False,
+            "violations": [{"type": "budget_guard_blocked", "source": "live_runtime_budget"}],
+        },
+        "tool_policy_ok": True,
+        "tool_policy_violations": [],
+    }
+
+    assert not module.is_transient_openclaw_failure(completed, sidecar)
+
+
+def test_provider_timeout_interrupt_is_transient():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    completed = subprocess.CompletedProcess(
+        ["cmd"],
+        125,
+        stdout="",
+        stderr=(
+            'Live OpenClaw interrupt: provider_timeout_count=1 '
+            'provider_timeouts=[{"errorCode":"504","errorMessage":"Upstream idle timeout exceeded"}]'
+        ),
+    )
+
+    assert module.is_transient_openclaw_failure(completed, None)
 
 
 def test_cached_transient_openclaw_error_is_not_reusable():
@@ -274,7 +438,7 @@ def test_non_scoreable_openclaw_failure_detects_configuration_and_quota_errors()
         stdout="",
         stderr="Conversation order violation",
     )
-    assert module.non_scoreable_openclaw_failure_reason(order, None) == "conversation_order_violation"
+    assert module.non_scoreable_openclaw_failure_reason(order, None) is None
 
     session_audit = subprocess.CompletedProcess(
         ["cmd"],
@@ -420,6 +584,67 @@ def test_agentic_math_session_prefix_expands_wandb_placeholder(monkeypatch):
     assert module.resolve_session_prefix(args) == "math/twcanary-run-2"
 
 
+def test_agentic_math_openclaw_context_tokens_updates_existing_model_entry():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    config = {
+        "models": {
+            "providers": {
+                "openai-direct": {
+                    "models": [
+                        {
+                            "id": "gpt-4.1-mini-2025-04-14",
+                            "contextWindow": 1_047_576,
+                        }
+                    ]
+                }
+            }
+        }
+    }
+    args = SimpleNamespace(
+        model="openai-direct/gpt-4.1-mini-2025-04-14",
+        max_input_tokens=500_000,
+    )
+
+    result = module.configure_openclaw_context_tokens(config, args)
+
+    assert result == {
+        "provider": "openai-direct",
+        "model": "gpt-4.1-mini-2025-04-14",
+        "contextTokens": 500_000,
+    }
+    [entry] = config["models"]["providers"]["openai-direct"]["models"]
+    assert entry["contextTokens"] == 500_000
+
+
+def test_agentic_math_openclaw_context_tokens_keeps_stricter_existing_cap():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    config = {
+        "models": {
+            "providers": {
+                "openai-direct": {
+                    "models": [
+                        {
+                            "id": "gpt-4.1-mini-2025-04-14",
+                            "contextWindow": 1_047_576,
+                            "contextTokens": 200_000,
+                        }
+                    ]
+                }
+            }
+        }
+    }
+    args = SimpleNamespace(
+        model="openai-direct/gpt-4.1-mini-2025-04-14",
+        max_input_tokens=500_000,
+    )
+
+    result = module.configure_openclaw_context_tokens(config, args)
+
+    assert result["contextTokens"] == 200_000
+    [entry] = config["models"]["providers"]["openai-direct"]["models"]
+    assert entry["contextTokens"] == 200_000
+
+
 def test_agentic_math_run_passes_wandb_scoped_session_key(tmp_path, monkeypatch):
     monkeypatch.setenv("WANDB_RUN_ID", "twcanary-run-3")
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
@@ -517,6 +742,105 @@ def test_agentic_math_run_passes_wandb_scoped_session_key(tmp_path, monkeypatch)
     assert record["cache_key"]["max_input_tokens"] == 12345
     assert record["cache_key"]["max_tool_calls"] == 7
     assert record["cache_key"]["max_agent_turns"] == 8
+
+
+def test_agentic_math_returncode_zero_provider_timeout_is_disqualified(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    row = {
+        "task_id": "math_1",
+        "answer": "2",
+        "question": "1+1?",
+        "subject": "algebra",
+        "answer_format": "math_expression",
+    }
+
+    def fake_run_command(command, cwd=None, timeout=None, check=True):
+        output_dir = Path(command[command.index("--output-dir") + 1])
+        prompt_text = Path(command[command.index("--prompt-file") + 1]).read_text(encoding="utf-8")
+        sidecar_path = module.task_sidecar_path(output_dir, row["task_id"])
+        sidecar_path.parent.mkdir(parents=True, exist_ok=True)
+        sidecar_path.write_text(
+            json.dumps(
+                {
+                    "returncode": 0,
+                    "metadata": {
+                        "task_id": row["task_id"],
+                        "prompt_hash": module.sha256_text(prompt_text),
+                        "model_id": command[command.index("--model") + 1],
+                        "openclaw_config_source": command[command.index("--openclaw-config-source") + 1],
+                    },
+                    "stderr": "(node:123) [UNDICI-EHPA] Warning: proxy warning",
+                    "stdout_json": {
+                        "status": "timeout",
+                        "timeoutPhase": "provider",
+                        "stopReason": "rpc",
+                        "result": {
+                            "payloads": [
+                                {
+                                    "text": (
+                                        "LLM request failed.\n\n"
+                                        "Request timed out before a response was generated."
+                                    )
+                                }
+                            ],
+                            "meta": {"agentMeta": {"usage": {"totalTokens": 123}}},
+                        },
+                    },
+                    "tool_policy_ok": True,
+                    "tool_policy_violations": [],
+                    "runtime_budget": {"ok": True, "violations": []},
+                    "tool_call_count": 4,
+                    "tool_error_count": 1,
+                    "conversation_order": {"ok": True},
+                    "weave_sidecar": {"ok": True},
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, stdout=str(sidecar_path), stderr="")
+
+    monkeypatch.setattr(module, "run_command", fake_run_command)
+    args = type(
+        "Args",
+        (),
+        {
+            "agent": "main",
+            "allow_failed_preflight": False,
+            "deny_argument_pattern": None,
+            "deny_tool": None,
+            "dry_run": False,
+            "fail_fast": False,
+            "model": "openai-direct/example-model",
+            "nemoclaw_sandbox": None,
+            "no_local": False,
+            "openclaw_max_attempts": 1,
+            "openclaw_retry_base_seconds": 0,
+            "openclaw_timeout": 30,
+            "max_input_tokens": 12345,
+            "max_tool_calls": 7,
+            "max_agent_turns": 8,
+            "max_tool_wall_seconds": 60,
+            "profile": None,
+            "redo": False,
+            "session_prefix": None,
+            "thinking": "high",
+            "use_task_agent": False,
+            "weave_sidecar": False,
+            "weave_sidecar_strict": False,
+        },
+    )()
+
+    record = module.run_openclaw_for_task(row, tmp_path / "task", args)
+
+    assert record["correct"] is False
+    assert record["scoring_method"] == "openclaw_error"
+    assert record["openclaw_disqualified_reason"] == "provider_transient_exhausted"
+    assert record["openclaw_returncode"] == 0
+    assert "Request timed out before a response was generated" in record["scoring_error"]
+    failures = (tmp_path / "task" / "openclaw_transient_failures.jsonl").read_text(
+        encoding="utf-8"
+    )
+    assert '"exhausted": true' in failures
 
 
 def test_agentic_math_fresh_success_rejects_sidecar_config_source_mismatch(tmp_path, monkeypatch):
@@ -930,6 +1254,33 @@ def test_scored_record_preserves_nemoclaw_session_audit(tmp_path):
     assert record["nemoclaw_session_audit"]["copied_session_file"].endswith("nemoclaw_session.jsonl")
 
 
+def test_scored_record_credits_answer_with_conversation_order_warning(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    sidecar_path = tmp_path / "openclaw_result.json"
+    sidecar = {
+        "returncode": 0,
+        "stdout_json": {"finalAssistantVisibleText": "ANSWER: \\boxed{2}"},
+        "conversation_order": {
+            "ok": True,
+            "issues": [],
+            "warnings": [{"type": "tool_after_final_answer"}],
+        },
+    }
+
+    record = module.build_scored_record_from_sidecar(
+        {"task_id": "task_1", "answer": "2"},
+        sidecar_path,
+        sidecar,
+        {"prompt_hash": "prompt-hash"},
+        {"openclaw_attempt_number": 1},
+    )
+
+    assert record["predicted_answer"] == "2"
+    assert record["correct"] is True
+    assert record["conversation_order_ok"] is True
+    assert record["openclaw_disqualified_reason"] == ""
+
+
 def test_weave_sidecar_failure_is_observability_failure_not_model_error():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
     assert module.is_weave_sidecar_failure({"returncode": 0, "weave_sidecar": {"ok": False}})
@@ -996,17 +1347,23 @@ def test_build_prompt_includes_python_tool_guidance():
             "problem_index": 1,
             "subject": "代數",
             "question": "求 1+1.",
-        }
+        },
+        max_tool_wall_seconds=45,
     )
 
     assert "## Python Tool Guidance" in prompt
     assert "sympy" in prompt
     assert "Do not rely on unbounded brute force" in prompt
+    assert "wall-clock limit of 45 seconds" in prompt
+    assert "Do not run broad random searches" in prompt
+    assert "If a computation times out" in prompt
     assert "local shell/Python execution" in prompt
     assert "Do not start an interactive shell" in prompt
     assert "Never call `exec` with `pty=true`" in prompt
     assert "python3 - <<" in prompt
     assert "Do not use web search" in prompt
+    assert "call the tool before writing any `ANSWER:` line" in prompt
+    assert "Do not write provisional" in prompt
 
 
 def test_task_openclaw_config_includes_tool_deny_policy(tmp_path):
@@ -1023,6 +1380,7 @@ def test_task_openclaw_config_includes_tool_deny_policy(tmp_path):
             "task_agent_prefix": "tw-math",
             "openclaw_tool_profile": "coding",
             "deny_tool": ["web_search"],
+            "max_tool_wall_seconds": 45,
         },
     )()
     task_dir = tmp_path / "task"
@@ -1039,6 +1397,7 @@ def test_task_openclaw_config_includes_tool_deny_policy(tmp_path):
     [agent_entry] = [entry for entry in config["agents"]["list"] if entry["id"] == agent_id]
     assert agent_entry["tools"]["profile"] == "coding"
     assert agent_entry["tools"]["deny"] == ["web_search"]
+    assert config["tools"]["exec"]["timeoutSec"] == 45
     assert config["tools"]["toolSearch"] is False
     assert config["tools"]["web"]["fetch"]["enabled"] is False
     assert "browser" not in config["tools"]
@@ -1069,6 +1428,10 @@ def test_task_openclaw_config_supports_nemoclaw_task_workspace(tmp_path, monkeyp
         (),
         {
             "agent": "main",
+            "model": "openai-direct/gpt-4.1-mini-2025-04-14",
+            "max_input_tokens": 12345,
+            "max_agent_turns": 8,
+            "max_tool_wall_seconds": 90,
             "use_task_agent": True,
             "no_local": False,
             "nemoclaw_sandbox": "nejumi-taiwan",
@@ -1097,12 +1460,28 @@ def test_task_openclaw_config_supports_nemoclaw_task_workspace(tmp_path, monkeyp
     [agent_entry] = [entry for entry in writes["config"]["agents"]["list"] if entry["id"] == agent_id]
     assert agent_entry["workspace"].startswith("/sandbox/tasks/agentic_math/task-")
     assert agent_entry["agentDir"].endswith("/openclaw_agent_state")
+    assert agent_entry["contextTokens"] == 12345
+    assert writes["config"]["tools"]["exec"]["timeoutSec"] == 90
+    assert agent_entry["runRetries"] == {
+        "base": 8,
+        "perProfile": 0,
+        "min": 8,
+        "max": 8,
+    }
     assert writes["config"]["tools"]["toolSearch"] is False
     assert writes["config"]["tools"]["web"]["fetch"]["enabled"] is False
     assert "browser" not in writes["config"]["tools"]
     metadata = json.loads((task_dir / "openclaw_task_agent.json").read_text(encoding="utf-8"))
     assert metadata["nemoclaw_sandbox"] == "nejumi-taiwan"
     assert metadata["config_path"] == str(config_path)
+    assert metadata["context_cap"]["contextTokens"] == 12345
+    assert metadata["exec_timeout"] == {"timeoutSec": 90}
+    assert metadata["run_retries"] == {
+        "base": 8,
+        "perProfile": 0,
+        "min": 8,
+        "max": 8,
+    }
 
 
 def test_task_openclaw_config_registers_nemoclaw_gateway_agent_when_no_local(tmp_path, monkeypatch):
@@ -1128,6 +1507,10 @@ def test_task_openclaw_config_registers_nemoclaw_gateway_agent_when_no_local(tmp
             "agent": "main",
             "dry_run": False,
             "model": "openai-direct/gpt-4.1-mini-2025-04-14",
+            "max_input_tokens": 50000,
+            "max_tool_calls": 40,
+            "max_agent_turns": 40,
+            "max_tool_wall_seconds": 75,
             "use_task_agent": True,
             "no_local": True,
             "nemoclaw_sandbox": "nejumi-taiwan",
@@ -1158,6 +1541,11 @@ def test_task_openclaw_config_registers_nemoclaw_gateway_agent_when_no_local(tmp
     script_b64 = command[1].split("=", 1)[1]
     script = module.base64.b64decode(script_b64).decode("utf-8")
     assert "openclaw agents add" in script
+    assert 'entry["contextTokens"] = context_cap["contextTokens"]' in script
+    assert 'entry["runRetries"] = turn_run_retries' in script
+    assert 'exec_config["timeoutSec"] = max_tool_wall_seconds' in script
+    assert "min(existing_timeout, max_tool_wall_seconds)" not in script
+    assert 'target["contextTokens"]' not in script
     assert command[2:5] == [
         "bash",
         "-lc",
@@ -1166,14 +1554,34 @@ def test_task_openclaw_config_registers_nemoclaw_gateway_agent_when_no_local(tmp
     assert command[5] == "register-task-agent"
     assert command[6] == agent_id
     assert command[9] == "openai-direct/gpt-4.1-mini-2025-04-14"
+    budget = json.loads(command[13])
+    assert budget["max_input_tokens"] == 50000
+    assert budget["max_tool_wall_seconds"] == 75
+    assert budget["max_tool_calls"] == 40
+    assert budget["max_agent_turns"] == 40
+    assert budget["max_cumulative_input_tokens"] == 50000
+    assert budget["max_cumulative_output_tokens"] == 0
+    assert budget["require_actual_token_usage"] is False
     metadata = json.loads((task_dir / "openclaw_task_agent.json").read_text(encoding="utf-8"))
     assert metadata["config_path"] == "/sandbox/.openclaw/openclaw.json"
+    assert metadata["exec_timeout"] == {"timeoutSec": 75}
     assert metadata["gateway_registered"]["ok"] is True
     assert (
         module.task_live_sandbox_session_dir({"task_id": "math/task 1"}, args, agent_id)
         == f"/sandbox/.openclaw/agents/{agent_id}/sessions"
     )
     module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS.clear()
+
+
+def test_configure_openclaw_exec_timeout_overrides_short_template_default():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    config = {"tools": {"exec": {"timeoutSec": 10}}}
+    args = type("Args", (), {"max_tool_wall_seconds": 120})()
+
+    metadata = module.configure_openclaw_exec_timeout(config, args)
+
+    assert metadata == {"timeoutSec": 120}
+    assert config["tools"]["exec"]["timeoutSec"] == 120
 
 
 def test_task_python_sitecustomize_is_written_for_nemoclaw(tmp_path, monkeypatch):
@@ -1205,6 +1613,46 @@ def test_task_python_sitecustomize_is_written_for_nemoclaw(tmp_path, monkeypatch
     assert any(path.endswith("/sitecustomize.py") and path != "/sandbox/sitecustomize.py" for path in paths)
     assert all("/tmp/.local/lib" in write["text"] for write in writes)
     assert all("sys.path.insert" in write["text"] for write in writes)
+
+
+def test_nemoclaw_gateway_cleanup_uses_short_bounded_timeouts(monkeypatch, capsys):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    calls = []
+
+    def fake_unregister(args, agent_id, *, timeout=60):
+        calls.append((agent_id, timeout))
+        return {"ok": True, "agent_id": agent_id}
+
+    monkeypatch.setattr(module, "unregister_nemoclaw_gateway_task_agent", fake_unregister)
+    module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS[:] = [(SimpleNamespace(), "agent-a")]
+
+    module.cleanup_registered_nemoclaw_gateway_agents()
+
+    assert calls == [("agent-a", module.NEMOCLAW_GATEWAY_CLEANUP_PER_AGENT_TIMEOUT_SEC)]
+    assert module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS == []
+    assert capsys.readouterr().err == ""
+
+
+def test_nemoclaw_gateway_cleanup_skips_remaining_after_total_budget(monkeypatch, capsys):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    calls = []
+
+    def fake_unregister(args, agent_id, *, timeout=60):
+        calls.append((agent_id, timeout))
+        return {"ok": True, "agent_id": agent_id}
+
+    monkeypatch.setattr(module, "unregister_nemoclaw_gateway_task_agent", fake_unregister)
+    monkeypatch.setattr(module, "NEMOCLAW_GATEWAY_CLEANUP_TOTAL_TIMEOUT_SEC", 0.0)
+    module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS[:] = [
+        (SimpleNamespace(), "agent-a"),
+        (SimpleNamespace(), "agent-b"),
+    ]
+
+    module.cleanup_registered_nemoclaw_gateway_agents()
+
+    assert calls == []
+    assert module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS == []
+    assert "skipped 2 NeMoClaw task-agent cleanup calls" in capsys.readouterr().err
 
 
 def test_task_python_sitecustomize_is_written_for_local_workspace(tmp_path):

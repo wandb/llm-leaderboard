@@ -43,6 +43,22 @@ def get_default_config() -> Dict[str, Any]:
         "run_ids": False,  # テストエントリーIDを実行するかどうか
         "samples_per_category": 30,  # 各カテゴリから取得するサンプル数
         "artifacts_path": None,  # WandB Artifactのパス
+        "request_timeout_sec": 300,  # 1 provider request timeout
+        "request_max_retries": 1,  # OpenAI-compatible SDK retries per provider request
+        "provider_min_request_interval_sec": 0.0,  # Shared provider request pacing
+        "provider_request_jitter_sec": 0.0,
+        "provider_rate_limit_key": None,
+        "backoff_max_time_sec": 90,  # BFCL-specific LLMAsyncProcessor retry wall time
+        "backoff_max_tries": 4,  # BFCL-specific LLMAsyncProcessor retry attempts
+        "case_timeout_sec": 600,  # 1 BFCL test case timeout
+        "case_timeout_retries": 1,  # Retry transient single-turn hangs before scoring as timeout
+        "progress_poll_sec": 5,  # Timeout watchdog polling interval
+        "retry_failed_cases": True,  # Resume should retry timeout/error rows instead of accepting them as done
+        "watchdog_interval_sec": 30,  # Human-readable in-flight status interval
+        "stall_fail_fast_sec": 900,  # Abort if early BFCL progress is too slow
+        "stall_fail_fast_min_completed": 5,
+        "consecutive_timeout_fail_fast": 5,
+        "consecutive_failure_fail_fast": 5,
     }
 
 
@@ -54,6 +70,19 @@ def merge_config(default_config: Dict[str, Any], config: Dict[str, Any]) -> Dict
             if value is not None:  # Noneの場合はデフォルト値を使用
                 merged[key] = value
     return merged
+
+
+def normalize_wandb_table_text(value: Any) -> str:
+    """Return a stable text cell for W&B tables when BFCL emits nested data."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    except TypeError:
+        return str(value)
+
 
 @weave.op(call_display_name=lambda _: "[BFCL] " + WandbConfigSingleton.get_instance().config.wandb.run_name)
 def evaluate():
@@ -79,6 +108,14 @@ def evaluate():
         bfcl_cfg['samples_per_category'] = 2
     
     # 結果保存用のディレクトリを作成
+    repo_root = Path(__file__).resolve().parents[2]
+    for path_key in ("result_dir", "score_dir"):
+        if bfcl_cfg.get(path_key) is not None:
+            path_value = Path(str(bfcl_cfg[path_key]))
+            if not path_value.is_absolute():
+                path_value = (repo_root / path_value).resolve()
+            bfcl_cfg[path_key] = path_value
+
     result_path = bfcl_cfg['result_dir']
     os.makedirs(result_path, exist_ok=True)
 
@@ -109,6 +146,22 @@ def evaluate():
         run_ids=bfcl_cfg['run_ids'],
         samples_per_category=bfcl_cfg['samples_per_category'],
         artifacts_path=artifact_dir,
+        request_timeout_sec=bfcl_cfg['request_timeout_sec'],
+        request_max_retries=bfcl_cfg['request_max_retries'],
+        provider_min_request_interval_sec=bfcl_cfg['provider_min_request_interval_sec'],
+        provider_request_jitter_sec=bfcl_cfg['provider_request_jitter_sec'],
+        provider_rate_limit_key=bfcl_cfg['provider_rate_limit_key'],
+        backoff_max_time_sec=bfcl_cfg['backoff_max_time_sec'],
+        backoff_max_tries=bfcl_cfg['backoff_max_tries'],
+        case_timeout_sec=bfcl_cfg['case_timeout_sec'],
+        case_timeout_retries=bfcl_cfg['case_timeout_retries'],
+        progress_poll_sec=bfcl_cfg['progress_poll_sec'],
+        retry_failed_cases=bfcl_cfg['retry_failed_cases'],
+        watchdog_interval_sec=bfcl_cfg['watchdog_interval_sec'],
+        stall_fail_fast_sec=bfcl_cfg['stall_fail_fast_sec'],
+        stall_fail_fast_min_completed=bfcl_cfg['stall_fail_fast_min_completed'],
+        consecutive_timeout_fail_fast=bfcl_cfg['consecutive_timeout_fail_fast'],
+        consecutive_failure_fail_fast=bfcl_cfg['consecutive_failure_fail_fast'],
     )
     
 
@@ -138,7 +191,6 @@ def evaluate():
     overall_df.drop(columns=existing_columns_to_drop, inplace=True)
     overall_df.rename(columns={'Model': 'BFCL Model Name'}, inplace=True)
     overall_df["model_name"] = cfg.model.pretrained_model_name_or_path
-    table_metric = wandb.Table(dataframe=overall_df)
 
     # Radar chart Table 
     radar_data = []
@@ -202,6 +254,29 @@ def evaluate():
                         }
         except Exception as e:
             print(f"Warning: Could not read result file {result_file}: {e}")
+
+    def result_has_timeout(raw_entry):
+        return bool(raw_entry.get("timeout")) or raw_entry.get("error") == "bfcl_case_timeout"
+
+    def result_has_inference_error(raw_entry):
+        if result_has_timeout(raw_entry):
+            return True
+        if raw_entry.get("error"):
+            return True
+        result = raw_entry.get("result")
+        return isinstance(result, str) and result.startswith("Error during inference:")
+
+    timeout_count = sum(
+        1 for value in result_data_map.values()
+        if result_has_timeout(value.get("raw_data", {}))
+    )
+    inference_error_count = sum(
+        1 for value in result_data_map.values()
+        if result_has_inference_error(value.get("raw_data", {}))
+    )
+    overall_df["timeout_count"] = timeout_count
+    overall_df["inference_error_count"] = inference_error_count
+    table_metric = wandb.Table(dataframe=overall_df)
     
     # Process score files first (these have detailed evaluation results)
     for json_file in score_files:
@@ -266,7 +341,8 @@ def evaluate():
                     # Handle different field names used by different evaluation functions
                     output_raw = entry.get('model_result_raw', entry.get('model_result', ''))
                     possible_answer_raw = entry.get('possible_answer', '')
-                    reasoning_content = result_data_map.get(entry_id, {}).get('reasoning_content', '')
+                    raw_result_entry = result_data_map.get(entry_id, {}).get('raw_data', {})
+                    reasoning_content = raw_result_entry.get('reasoning_content', '')
                     
                     # Helper function to get max value from potentially nested arrays
                     def get_max_token_count(token_data):
@@ -291,17 +367,20 @@ def evaluate():
                         'id': entry_id,
                         'category': test_category,
                         'prompt': prompt_text,
-                        'output': str(output_raw),
+                        'output': normalize_wandb_table_text(output_raw),
                         'accuracy': entry.get('success', 0),  # Use success field (1=success, 0=failure)
-                        'possible_answer': str(possible_answer_raw),
-                        'reasoning_content': reasoning_content,
+                        'possible_answer': normalize_wandb_table_text(possible_answer_raw),
+                        'reasoning_content': normalize_wandb_table_text(reasoning_content),
                         'input_token_count': get_max_token_count(entry.get('input_token_count', 0)),
                         'output_token_count': get_max_token_count(entry.get('output_token_count', 0)),
+                        'timeout': bool(entry.get('timeout')) or result_has_timeout(raw_result_entry),
                     }   
                     
                     # Add error information only if it exists
                     if entry.get('error') is not None:
-                        result_entry['error'] = str(entry.get('error', ''))
+                        result_entry['error'] = normalize_wandb_table_text(entry.get('error', ''))
+                    elif raw_result_entry.get('error') is not None:
+                        result_entry['error'] = normalize_wandb_table_text(raw_result_entry.get('error', ''))
                     
                     results.append(result_entry)
     
@@ -335,19 +414,23 @@ def evaluate():
             # Get model output from result file
             output_raw = result_entry_data.get('model_result', '')
             reasoning_content = result_entry_data.get('reasoning_content', '')
+            is_error = result_has_inference_error(result_entry_data)
             
             result_entry = {
                 'model': bfcl_cfg['model_name'],
                 'id': entry_id,
                 'category': test_category,
                 'prompt': prompt_text,
-                'output': str(output_raw),
-                'reasoning_content': reasoning_content,
-                'accuracy': 1,  # Assume success if only in result file (might need adjustment)
+                'output': normalize_wandb_table_text(output_raw),
+                'reasoning_content': normalize_wandb_table_text(reasoning_content),
+                'accuracy': 0 if is_error else 1,
                 'possible_answer': '',  # Not available in result files
                 'input_token_count': result_entry_data.get('input_token_count', 0),
                 'output_token_count': result_entry_data.get('output_token_count', 0),
+                'timeout': result_has_timeout(result_entry_data),
             }
+            if result_entry_data.get('error') is not None:
+                result_entry['error'] = normalize_wandb_table_text(result_entry_data.get('error', ''))
             
             results.append(result_entry)
             
@@ -358,6 +441,8 @@ def evaluate():
             "bfcl_output_table": table_log,
             "bfcl_leaderboard_table": table_metric,
             "bfcl_radar_table": table_radar,
+            "bfcl_timeout_count": timeout_count,
+            "bfcl_inference_error_count": inference_error_count,
         })
 
     print("BFCLの評価が正常に完了しました！")

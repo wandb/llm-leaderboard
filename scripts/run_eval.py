@@ -5,6 +5,7 @@ if os.environ.get("NEJUMI_MAIN_STARTED") == "1":
 os.environ["NEJUMI_MAIN_STARTED"] = "1"
 
 import json
+import signal
 import time
 from pathlib import Path
 from argparse import ArgumentParser
@@ -14,6 +15,20 @@ import importlib
 import importlib.util
 
 from utils import paginate_choices
+
+
+def load_local_dotenv() -> None:
+    """Load repo-local .env without overriding explicit process env values."""
+    if os.environ.get("NEJUMI_DISABLE_DOTENV") == "1":
+        return
+    dotenv_path = Path.cwd() / ".env"
+    if not dotenv_path.exists():
+        return
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    load_dotenv(dotenv_path=dotenv_path, override=False)
 
 
 class LazyEvaluatorModule:
@@ -189,6 +204,144 @@ def summarize_token_validation(cfg, enabled_benchmarks):
     }
 
 
+def summarize_runtime_validation(cfg, enabled_benchmarks):
+    errors = []
+    warnings = []
+    credential_checks = []
+
+    def env_is_present(name: str | None) -> bool:
+        if not name:
+            return False
+        value = os.environ.get(name)
+        if value is None:
+            return False
+        return value.strip() not in {"", "EMPTY", "empty", "NONE", "none", "null", "NULL"}
+
+    def require_any_env(label: str, env_names: list[str]) -> None:
+        env_names = [name for name in env_names if name]
+        present = [name for name in env_names if env_is_present(name)]
+        credential_checks.append(
+            {
+                "label": label,
+                "required_any_of": env_names,
+                "present_envs": present,
+                "ok": bool(present),
+            }
+        )
+        if not present:
+            errors.append(
+                f"Missing credential for {label}. Set one of: {', '.join(env_names)}. "
+                "The evaluation is blocked before W&B/model execution to avoid invalid paid runs."
+            )
+
+    def configured_api_key_env() -> str | None:
+        return (
+            OmegaConf.select(cfg, "api_key_env", default=None)
+            or OmegaConf.select(cfg, "openai_compatible.api_key_env", default=None)
+        )
+
+    def require_answer_model_credentials() -> None:
+        api = str(OmegaConf.select(cfg, "api", default=""))
+        custom_env = configured_api_key_env()
+        if custom_env:
+            require_any_env(f"answer model API key env {custom_env}", [str(custom_env)])
+            return
+
+        if api in {"openai", "openai_chat", "openai_responses"}:
+            require_any_env("answer model OpenAI API", ["OPENAI_API_KEY"])
+        elif api in {"xai", "xai_responses"}:
+            require_any_env("answer model xAI API", ["XAI_API_KEY"])
+        elif api == "deepseek":
+            require_any_env("answer model DeepSeek API", ["DEEPSEEK_API_KEY", "OPENAI_COMPATIBLE_API_KEY"])
+        elif api == "google":
+            require_any_env("answer model Google API", ["GOOGLE_API_KEY"])
+        elif api == "anthropic":
+            require_any_env("answer model Anthropic API", ["ANTHROPIC_API_KEY"])
+        elif api == "mistral":
+            require_any_env("answer model Mistral API", ["MISTRAL_API_KEY"])
+        elif api == "cohere":
+            require_any_env("answer model Cohere API", ["COHERE_API_KEY"])
+        elif api == "upstage":
+            require_any_env("answer model Upstage API", ["UPSTAGE_API_KEY"])
+        elif api == "azure-openai":
+            require_any_env("answer model Azure OpenAI endpoint", ["AZURE_OPENAI_ENDPOINT"])
+            require_any_env("answer model Azure OpenAI API", ["AZURE_OPENAI_API_KEY"])
+        elif api == "openai-compatible":
+            base_url = str(OmegaConf.select(cfg, "base_url", default="")).lower()
+            if "openrouter.ai" in base_url:
+                override_env = os.environ.get("NEJUMI_OPENROUTER_API_KEY_ENV")
+                require_any_env(
+                    "answer model OpenRouter API",
+                    [override_env] if override_env else ["OPENROUTER_API_KEY", "OPENAI_COMPATIBLE_API_KEY"],
+                )
+            elif "api.x.ai" in base_url:
+                require_any_env("answer model xAI-compatible API", ["XAI_API_KEY", "OPENAI_COMPATIBLE_API_KEY"])
+            elif any(host in base_url for host in ["localhost", "127.0.0.1", "0.0.0.0", "vllm"]):
+                return
+            else:
+                require_any_env("answer model OpenAI-compatible API", ["OPENAI_COMPATIBLE_API_KEY", "VLLM_API_KEY"])
+
+    def require_judge_credentials() -> None:
+        judge_paths = {
+            "mtbench": "mtbench.judge.model",
+            "hle": "hle.judge.model",
+            "hallulens": "hallulens.judge.model",
+            "hallulens_zh_tw": "hallulens_zh_tw.judge.model",
+            "toxicity": "toxicity.judge.model",
+        }
+        for benchmark, model_path in judge_paths.items():
+            if benchmark not in enabled_benchmarks:
+                continue
+            model = str(OmegaConf.select(cfg, model_path, default="")).strip()
+            if not model:
+                continue
+            label = f"{benchmark} judge model {model}"
+            forced_provider = os.environ.get("NEJUMI_JUDGE_PROVIDER", "").strip().lower()
+            if model.startswith("openrouter/") or forced_provider == "openrouter":
+                override_env = os.environ.get("NEJUMI_OPENROUTER_API_KEY_ENV")
+                require_any_env(
+                    label,
+                    [override_env] if override_env else ["OPENROUTER_API_KEY", "OPENAI_COMPATIBLE_API_KEY"],
+                )
+            elif model.startswith("deepseek/") or forced_provider == "deepseek":
+                require_any_env(label, ["DEEPSEEK_API_KEY", "OPENAI_COMPATIBLE_API_KEY"])
+            elif model.startswith("xai/") or forced_provider == "xai":
+                require_any_env(label, ["XAI_API_KEY", "OPENAI_COMPATIBLE_API_KEY"])
+            elif os.environ.get("OPENAI_API_TYPE", "openai") == "azure":
+                require_any_env(f"{label} Azure OpenAI endpoint", ["AZURE_OPENAI_ENDPOINT"])
+                require_any_env(label, ["AZURE_OPENAI_API_KEY"])
+            else:
+                require_any_env(label, ["OPENAI_API_KEY"])
+
+    require_answer_model_credentials()
+    require_judge_credentials()
+
+    if "twbias" in enabled_benchmarks:
+        backend = str(OmegaConf.select(cfg, "twbias.backend", default="hf_perplexity"))
+        api = str(OmegaConf.select(cfg, "api", default=""))
+        model_path = OmegaConf.select(cfg, "twbias.model_path", default=None)
+        if backend != "hf_perplexity":
+            errors.append(f"TWBias backend {backend!r} is not supported by scripts/evaluator/twbias.py.")
+        elif api not in {"vllm", "vllm-docker", "vllm-local"} and not model_path:
+            errors.append(
+                "TWBias hf_perplexity requires direct HF/local model access. "
+                f"api={api!r} with twbias.model_path unset would fail before scoring. "
+                "Disable run.twbias or use a local/HF model config for TWBias internal tests."
+            )
+        if not bool(OmegaConf.select(cfg, "twbias.allow_unknown_license", default=False)):
+            warnings.append(
+                "TWBias source license is recorded as unknown in the prepared manifest; "
+                "set twbias.allow_unknown_license=true only for internal verification."
+            )
+
+    return {
+        "ok": not errors,
+        "errors": errors,
+        "warnings": warnings,
+        "credential_checks": credential_checks,
+    }
+
+
 def print_token_validation_summary(validation_summary):
     print("\n" + "=" * 80)
     print("🔍 GLOBAL TOKEN ALLOCATION VALIDATION")
@@ -209,7 +362,12 @@ def print_token_validation_summary(validation_summary):
 def build_preflight_payload(custom_cfg_path, base_cfg_path, cfg, enabled_benchmarks):
     validation_summary = summarize_token_validation(cfg, enabled_benchmarks)
     dispatch_validation = dispatch_validation_from_config(cfg)
-    ok = bool(validation_summary["ok"]) and bool(dispatch_validation["ok"])
+    runtime_validation = summarize_runtime_validation(cfg, enabled_benchmarks)
+    ok = (
+        bool(validation_summary["ok"])
+        and bool(dispatch_validation["ok"])
+        and bool(runtime_validation["ok"])
+    )
     return {
         "schema_version": 1,
         "generated_at": time.time(),
@@ -233,6 +391,7 @@ def build_preflight_payload(custom_cfg_path, base_cfg_path, cfg, enabled_benchma
         "will_start_inference_engine": False,
         "will_run_evaluators": False,
         "token_validation": validation_summary,
+        "runtime_validation": runtime_validation,
     }
 
 # Set config path
@@ -256,6 +415,7 @@ parser.add_argument(
     help="Optional JSON output path for --preflight.",
 )
 args = parser.parse_args()
+load_local_dotenv()
 
 if args.select_config:
     choices = sorted([p.name for p in config_dir.iterdir() if p.suffix == ".yaml"])
@@ -293,6 +453,7 @@ cfg_dict = OmegaConf.to_container(custom_cfg, resolve=True)
 assert isinstance(cfg_dict, dict), "instance.config must be a DictConfig"
 enabled_benchmarks = enabled_benchmarks_from_config(custom_cfg)
 dispatch_validation = dispatch_validation_from_config(custom_cfg)
+runtime_validation = summarize_runtime_validation(custom_cfg, enabled_benchmarks)
 
 if args.preflight:
     payload = build_preflight_payload(
@@ -308,6 +469,10 @@ if args.preflight:
     print(f"  model: {payload['model']}")
     print(f"  enabled_benchmarks: {', '.join(enabled_benchmarks) if enabled_benchmarks else '(none)'}")
     print("  W&B/Weave/model/evaluator execution: skipped")
+    if payload["runtime_validation"]["errors"]:
+        print("  runtime_errors:")
+        for error in payload["runtime_validation"]["errors"]:
+            print(f"    - {error}")
 
     if args.preflight_json:
         preflight_json_path = Path(args.preflight_json)
@@ -327,11 +492,18 @@ if not dispatch_validation["ok"]:
         + ". Add an evaluator dispatch or mark the flag as auxiliary before running."
     )
 
+if not runtime_validation["ok"]:
+    raise SystemExit(
+        "Runtime validation failed before W&B/model execution:\n"
+        + "\n".join(f"- {error}" for error in runtime_validation["errors"])
+    )
+
 import wandb
 import weave
 from blend_run import blend_run
 from config_singleton import WandbConfigSingleton
 from docker_vllm_manager import stop_vllm_container_if_needed, start_vllm_container_if_needed
+from eval_output_scoping import apply_run_scoped_outputs
 from llm_inference_adapter import get_llm_inference_engine
 from vllm_server import shutdown_vllm_server
 
@@ -357,6 +529,7 @@ else:
 
 """Safeguard W&B init in multi-run environments"""
 wandb_run = os.environ.get("WANDB_RUN_ID")
+allow_wandb_resume = os.environ.get("NEJUMI_ALLOW_WANDB_RESUME") == "1"
 try:
     if os.environ.get("NEJUMI_WANDB_INIT_DONE") == "1":
         print("W&B already initialized; reusing existing run context.")
@@ -369,11 +542,23 @@ try:
             name=cfg_dict["wandb"]["run_name"],
             config=cfg_dict,
             job_type="evaluation",
-            resume="allow" if wandb_run else None,
+            id=wandb_run if wandb_run else None,
+            resume=("allow" if allow_wandb_resume else "never") if wandb_run else None,
             settings=wandb.Settings(init_timeout=300),
         )
         if run is not None and getattr(run, "id", None):
             os.environ["WANDB_RUN_ID"] = str(run.id)
+            cfg_dict, output_scoping = apply_run_scoped_outputs(
+                cfg_dict,
+                run_id=str(run.id),
+            )
+            if output_scoping.get("applied"):
+                run.config.update(cfg_dict, allow_val_change=True)
+                print(
+                    "Run-scoped output root: "
+                    f"{output_scoping['run_root']} "
+                    f"(wandb_run_id={output_scoping['run_id']})"
+                )
         os.environ["NEJUMI_WANDB_INIT_DONE"] = "1"
 except Exception as e:
     raise SystemExit(
@@ -383,6 +568,28 @@ except Exception as e:
         "Check your WANDB_API_KEY / login state and verify the target entity/project."
     ) from e
 
+_wandb_run_finished = False
+
+
+def _finish_wandb_run(exit_code: int = 0) -> None:
+    global _wandb_run_finished
+    if run and not _wandb_run_finished:
+        _wandb_run_finished = True
+        run.finish(exit_code=exit_code)
+
+
+def _finish_wandb_run_on_signal(signum, frame) -> None:
+    print(
+        f"Received signal {signum}; finishing W&B run before exit.",
+        flush=True,
+    )
+    _finish_wandb_run(exit_code=128 + int(signum))
+    raise SystemExit(128 + int(signum))
+
+
+signal.signal(signal.SIGINT, _finish_wandb_run_on_signal)
+signal.signal(signal.SIGTERM, _finish_wandb_run_on_signal)
+
 # Initialize Weave separately so Weave failures don't disable W&B
 if run:
     try:
@@ -391,7 +598,7 @@ if run:
         print(f"Warning: Failed to initialize Weave: {e}")
         print("Continuing without Weave...")
 
-WandbConfigSingleton.initialize(run, llm=None)
+WandbConfigSingleton.initialize(run, llm=None, config_override=cfg_dict)
 cfg = WandbConfigSingleton.get_instance().config
 
 # Save configuration as artifact
@@ -412,14 +619,14 @@ try:
         if response not in ['y', 'yes']:
             print("Evaluation aborted by user.")
             if run:
-                run.finish()
+                _finish_wandb_run(exit_code=1)
             exit(1)
     elif validation_summary["has_warnings"]:
         response = "y" if args.yes else input("\nContinue? (Y/n): ").strip().lower()
         if response in ['n', 'no']:
             print("Evaluation aborted by user.")
             if run:
-                run.finish()
+                _finish_wandb_run(exit_code=1)
             exit(1)
 except Exception as e:
     print(f"⚠️  Token validation failed: {e}")
@@ -632,4 +839,4 @@ if cfg.api in ["vllm", "vllm-docker"]:
 
 # Finish
 if run:
-    run.finish()
+    _finish_wandb_run(exit_code=0)

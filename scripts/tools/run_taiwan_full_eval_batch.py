@@ -995,6 +995,68 @@ def build_budget_approval_alignment_record(
     return record
 
 
+def build_wandb_resume_policy_record(args: argparse.Namespace) -> dict:
+    allow_requested = bool(getattr(args, "allow_wandb_resume", False))
+    config_path = getattr(args, "wandb_resume_config_json", None)
+    record = {
+        "allow_wandb_resume": allow_requested,
+        "resume_config_json": str(config_path) if config_path else "",
+        "valid": not allow_requested,
+        "status": "resume_disabled" if not allow_requested else "resume_config_required",
+        "errors": [],
+        "expected": {
+            "allow_wandb_resume": True,
+            "wandb_run_id_prefix": str(getattr(args, "wandb_run_id_prefix", "") or ""),
+            "phase": str(getattr(args, "phase", "") or ""),
+            "explicit_user_instruction": True,
+        },
+        "observed": {},
+    }
+    if not allow_requested:
+        return record
+    if not config_path:
+        record["errors"].append(
+            "--allow-wandb-resume requires --wandb-resume-config-json"
+        )
+        return record
+
+    payload, error = load_json_object(config_path)
+    if payload is None:
+        record["errors"].append(error or "resume config JSON could not be read")
+        return record
+    record["observed"] = {
+        "allow_wandb_resume": payload.get("allow_wandb_resume"),
+        "wandb_run_id_prefix": payload.get("wandb_run_id_prefix"),
+        "phase": payload.get("phase"),
+        "explicit_user_instruction": payload.get("explicit_user_instruction"),
+        "purpose": payload.get("purpose"),
+    }
+    if payload.get("allow_wandb_resume") is not True:
+        record["errors"].append(
+            "wandb resume config must set allow_wandb_resume=true"
+        )
+    expected_prefix = str(getattr(args, "wandb_run_id_prefix", "") or "")
+    if payload.get("wandb_run_id_prefix") != expected_prefix:
+        record["errors"].append(
+            "wandb resume config wandb_run_id_prefix must match "
+            "--wandb-run-id-prefix"
+        )
+    expected_phase = str(getattr(args, "phase", "") or "")
+    if payload.get("phase") != expected_phase:
+        record["errors"].append(
+            "wandb resume config phase must match --phase"
+        )
+    if payload.get("explicit_user_instruction") is not True:
+        record["errors"].append(
+            "wandb resume config must set explicit_user_instruction=true"
+        )
+    if not nonempty_string(payload.get("purpose")):
+        record["errors"].append("wandb resume config must include a non-empty purpose")
+    record["valid"] = not record["errors"]
+    record["status"] = "valid" if record["valid"] else "invalid"
+    return record
+
+
 def build_weave_content_canary_gate_record(
     *,
     gate_path: Path | None,
@@ -1515,7 +1577,26 @@ def parse_args() -> argparse.Namespace:
         "--wandb-run-id-prefix",
         help=(
             "Set WANDB_RUN_ID to '<prefix>-<model-slug>' for each model. "
-            "Use the same prefix across phases to append all benchmark tables to one W&B run."
+            "Use a fresh prefix for each paid run unless --allow-wandb-resume is "
+            "explicitly requested."
+        ),
+    )
+    parser.add_argument(
+        "--allow-wandb-resume",
+        action="store_true",
+        help=(
+            "Explicitly allow W&B run resume for the supplied --wandb-run-id-prefix. "
+            "By default, the batch runner sets WANDB_RESUME=never so stale/crashed "
+            "runs are not silently reused."
+        ),
+    )
+    parser.add_argument(
+        "--wandb-resume-config-json",
+        type=Path,
+        help=(
+            "Required with --allow-wandb-resume. JSON must explicitly bind the "
+            "resume request to the phase, W&B run id prefix, purpose, and user "
+            "instruction acknowledgement."
         ),
     )
     parser.add_argument(
@@ -1683,6 +1764,7 @@ def main() -> None:
         external_action_approval=external_action_approval,
         required_before_paid_execution=will_call_paid_model_api,
     )
+    wandb_resume_policy = build_wandb_resume_policy_record(args)
     run_eval_preflights = build_run_eval_preflight_records(
         configs,
         phase=args.phase,
@@ -1706,6 +1788,8 @@ def main() -> None:
         "agentic_production_evidence_guard": agentic_production_evidence_guard,
         "nemoclaw_agentic_config_guard": nemoclaw_agentic_config_guard,
         "wandb_run_id_prefix": args.wandb_run_id_prefix or "",
+        "allow_wandb_resume": bool(args.allow_wandb_resume),
+        "wandb_resume_policy": wandb_resume_policy,
         "verify_wandb_completion": bool(args.verify_wandb_completion),
         "wandb_verify_benchmarks": args.wandb_verify_benchmark
         or default_wandb_verify_benchmarks(args.phase),
@@ -1722,6 +1806,7 @@ def main() -> None:
         "pre_run_budget_estimate": pre_run_budget_estimate,
         "external_action_approval": external_action_approval,
         "budget_approval_alignment": budget_approval_alignment,
+        "wandb_resume_policy": wandb_resume_policy,
         "created_at": time.time(),
     }
     args.output_root.mkdir(parents=True, exist_ok=True)
@@ -1748,6 +1833,8 @@ def main() -> None:
         "agentic_production_evidence_guard": agentic_production_evidence_guard,
         "nemoclaw_agentic_config_guard": nemoclaw_agentic_config_guard,
         "wandb_run_id_prefix": args.wandb_run_id_prefix or "",
+        "allow_wandb_resume": bool(args.allow_wandb_resume),
+        "wandb_resume_policy": wandb_resume_policy,
         "verify_wandb_completion": bool(args.verify_wandb_completion),
         "wandb_verify_benchmarks": args.wandb_verify_benchmark
         or default_wandb_verify_benchmarks(args.phase),
@@ -1809,6 +1896,17 @@ def main() -> None:
                     "pre_run_budget_estimate.estimated_total_usd.high",
                     "external_action_approval paid_api.approved_budget_usd",
                     "approved_budget_usd >= estimated_total_usd.high",
+                ],
+            },
+            "wandb_resume_policy": {
+                "default": "resume disabled",
+                "required_when_allow_wandb_resume": True,
+                "required_fields": [
+                    "allow_wandb_resume=true",
+                    "wandb_run_id_prefix matches --wandb-run-id-prefix",
+                    "phase matches --phase",
+                    "explicit_user_instruction=true",
+                    "purpose is non-empty",
                 ],
             },
             "actual_cost_estimate": "required after execution",
@@ -1980,6 +2078,15 @@ def main() -> None:
             + "; ".join(str(item) for item in budget_approval_alignment["errors"])
         )
 
+    if args.allow_wandb_resume and not wandb_resume_policy.get("valid"):
+        review_record["status"] = "wandb_resume_policy_failed"
+        review_record["blocking_reason"] = wandb_resume_policy
+        write_json(review_path, review_record)
+        raise SystemExit(
+            "W&B resume requires an explicit resume config and user instruction: "
+            + "; ".join(str(item) for item in wandb_resume_policy["errors"])
+        )
+
     if not weave_content_canary_gate["blocking_ok"]:
         review_record["status"] = "weave_content_canary_gate_failed"
         review_record["blocking_reason"] = weave_content_canary_gate
@@ -2033,7 +2140,12 @@ def main() -> None:
         run_env = env.copy()
         if args.wandb_run_id_prefix:
             run_env["WANDB_RUN_ID"] = f"{args.wandb_run_id_prefix}-{slug}"
-            run_env["WANDB_RESUME"] = "allow"
+            if args.allow_wandb_resume:
+                run_env["WANDB_RESUME"] = "allow"
+                run_env["NEJUMI_ALLOW_WANDB_RESUME"] = "1"
+            else:
+                run_env["WANDB_RESUME"] = "never"
+                run_env.pop("NEJUMI_ALLOW_WANDB_RESUME", None)
         if review_record["started_at"] is None:
             review_record["started_at"] = started_at
         review_record["status"] = "running"

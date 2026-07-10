@@ -485,6 +485,25 @@ def _resolve_http_timeout_from_cfg(cfg, primary_key: str = "openai") -> httpx.Ti
     return httpx.Timeout(connect=connect, read=read, write=write, pool=pool)
 
 
+def _coerce_request_timeout(value):
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return value
+
+
+def _coerce_request_max_retries(value):
+    if value is None:
+        return None
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0, value)
+
+
 class BaseLLMClient(ABC):
     def invoke(self, messages: List[Dict[str, str]], max_tokens: Optional[int] = None, **kwargs) -> LLMResponse:
         """同期版のinvoke（後方互換性のため）"""
@@ -738,6 +757,10 @@ class OpenAIClient:
     def invoke(self, messages, max_tokens=None, **kwargs):
         """同期版のinvoke（後方互換性のため）"""
         all_kwargs = {**self.kwargs, **kwargs}
+        request_timeout = _coerce_request_timeout(all_kwargs.pop("timeout", None))
+        request_max_retries = _coerce_request_max_retries(
+            all_kwargs.pop("request_max_retries", None)
+        )
         mapped_params = map_common_params(all_kwargs, self.param_mapping)
         filtered_params = filter_params(mapped_params, self.allowed_params)
         
@@ -749,6 +772,8 @@ class OpenAIClient:
         
         if max_tokens:
             params["max_tokens"] = max_tokens
+        if request_timeout is not None:
+            params["timeout"] = request_timeout
         
         # extra_bodyを直接渡す（OpenRouterのprovider、reasoningなどに対応）
         if "extra_body" in all_kwargs:
@@ -775,7 +800,10 @@ class OpenAIClient:
                 params["extra_body"]["reasoning"] = {"exclude": True}
         
         try:
-            response = self.client.chat.completions.create(**params)
+            client = self.client
+            if request_max_retries is not None:
+                client = client.with_options(max_retries=request_max_retries)
+            response = client.chat.completions.create(**params)
         except openai.BadRequestError as e:
             # DashScopeのコンテンツフィルタリングエラーに対する処理
             if "data_inspection_failed" in str(e) or "inappropriate content" in str(e).lower():
@@ -823,6 +851,10 @@ class OpenAIClient:
     async def ainvoke(self, messages, max_tokens=None, **kwargs):
         """非同期版のinvoke"""
         all_kwargs = {**self.kwargs, **kwargs}
+        request_timeout = _coerce_request_timeout(all_kwargs.pop("timeout", None))
+        request_max_retries = _coerce_request_max_retries(
+            all_kwargs.pop("request_max_retries", None)
+        )
         mapped_params = map_common_params(all_kwargs, self.param_mapping)
         filtered_params = filter_params(mapped_params, self.allowed_params)
         
@@ -851,6 +883,8 @@ class OpenAIClient:
         
         if max_tokens:
             params["max_tokens"] = max_tokens
+        if request_timeout is not None:
+            params["timeout"] = request_timeout
         
         # extra_bodyを直接渡す（OpenRouterのprovider、reasoningなどに対応）
         if "extra_body" in all_kwargs:
@@ -884,12 +918,15 @@ class OpenAIClient:
             params["response_format"] = _response_format_to_param(manual_response_format)
 
         try:
+            async_client = self.async_client
+            if request_max_retries is not None:
+                async_client = async_client.with_options(max_retries=request_max_retries)
             # Structured output
             if "response_format" in params and manual_response_format is None:
-                response: OpenAIChatCompletion = await self.async_client.beta.chat.completions.parse(**params)
+                response: OpenAIChatCompletion = await async_client.beta.chat.completions.parse(**params)
                 parsed_output = response.choices[0].message.parsed
             else:
-                response: OpenAIChatCompletion = await self.async_client.chat.completions.create(**params)
+                response: OpenAIChatCompletion = await async_client.chat.completions.create(**params)
                 parsed_output = None
         except openai.BadRequestError as e:
             # DashScopeのコンテンツフィルタリングエラーに対する処理
@@ -919,10 +956,10 @@ class OpenAIClient:
                     )
                     params["max_tokens"] = shrinked_completion_tokens
                     if "response_format" in params and manual_response_format is None:
-                        response: OpenAIChatCompletion = await self.async_client.beta.chat.completions.parse(**params)
+                        response: OpenAIChatCompletion = await async_client.beta.chat.completions.parse(**params)
                         parsed_output = response.choices[0].message.parsed
                     else:
-                        response: OpenAIChatCompletion = await self.async_client.chat.completions.create(**params)
+                        response: OpenAIChatCompletion = await async_client.chat.completions.create(**params)
                         parsed_output = None
                 else:
                     # promptでトークン数を使い切っている場合はエラー

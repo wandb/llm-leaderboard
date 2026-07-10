@@ -12,6 +12,12 @@ Materialize the upstream GitHub data locally:
 python3 scripts/data_uploader/prepare_twbias.py --output-dir data/taiwan
 ```
 
+Internal artifact upload:
+
+```bash
+python3 scripts/data_uploader/prepare_twbias.py --output-dir data/taiwan --upload --alias internal
+```
+
 The upstream repository did not include a LICENSE file when this integration was
 implemented. For that reason, the prepared manifest records `license: unknown`,
 and the evaluator refuses to run unless `twbias.allow_unknown_license=true` is

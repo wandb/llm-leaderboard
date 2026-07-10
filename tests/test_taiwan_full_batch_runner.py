@@ -1745,6 +1745,42 @@ def test_agentic_production_evidence_guard_rejects_wrong_nemoclaw_openclaw_confi
     )
 
 
+def test_wandb_resume_policy_requires_explicit_matching_config(tmp_path):
+    module = load_module()
+    args = SimpleNamespace(
+        allow_wandb_resume=True,
+        wandb_resume_config_json=None,
+        wandb_run_id_prefix="twcanary-test",
+        phase="agentic",
+    )
+
+    missing = module.build_wandb_resume_policy_record(args)
+
+    assert missing["valid"] is False
+    assert "--allow-wandb-resume requires --wandb-resume-config-json" in missing["errors"]
+
+    resume_config = tmp_path / "resume.json"
+    resume_config.write_text(
+        json.dumps(
+            {
+                "allow_wandb_resume": True,
+                "wandb_run_id_prefix": "twcanary-test",
+                "phase": "agentic",
+                "explicit_user_instruction": True,
+                "purpose": "operator requested append-only resume for a reviewed run",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    args.wandb_resume_config_json = resume_config
+
+    valid = module.build_wandb_resume_policy_record(args)
+
+    assert valid["valid"] is True
+    assert valid["status"] == "valid"
+
+
 def test_paid_run_executes_run_eval_preflight_before_run_eval(tmp_path, monkeypatch):
     module = load_module()
     manifest = tmp_path / "models.yaml"
@@ -1776,9 +1812,11 @@ def test_paid_run_executes_run_eval_preflight_before_run_eval(tmp_path, monkeypa
         output_root / "content_canary.gate.json"
     )
     calls: list[list[str]] = []
+    envs: list[dict[str, str]] = []
 
     def fake_stream_run(command, log_path, env):
         calls.append(command)
+        envs.append(dict(env))
         if "--preflight" in command:
             output_path = Path(command[command.index("--preflight-json") + 1])
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1862,6 +1900,10 @@ def test_paid_run_executes_run_eval_preflight_before_run_eval(tmp_path, monkeypa
     assert len(calls) == 2
     assert "--preflight" in calls[0]
     assert "--preflight" not in calls[1]
+    assert envs[0]["WANDB_RESUME"] == "never"
+    assert envs[1]["WANDB_RESUME"] == "never"
+    assert "NEJUMI_ALLOW_WANDB_RESUME" not in envs[0]
+    assert "NEJUMI_ALLOW_WANDB_RESUME" not in envs[1]
     review = json.loads(
         (output_root / "canary_agentic_paid_run_review.json").read_text(
             encoding="utf-8"

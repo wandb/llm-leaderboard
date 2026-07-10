@@ -47,14 +47,15 @@ agentic_math:
   max_tool_calls: 40
   max_agent_turns: 40
   verify_weave_agents: true
-  weave_agents_entity: 'llm-leaderboard'
-  weave_agents_project: 'tc-leaderboard'
-  weave_agents_agent_name: 'nejumi-taiwan-openclaw'
+  weave_agents_entity: llm-leaderboard
+  weave_agents_project: tc-leaderboard
+  weave_agents_agent_name: nejumi-taiwan-openclaw
   weave_agents_limit: 50
   weave_agents_verification_timeout: 120
   weave_agents_poll_seconds: 5
   dry_run: false
   run_openclaw: true
+  redo: true
   results_dir: null
   no_local: true
   weave_sidecar: false
@@ -89,6 +90,7 @@ swebench_pro:
   openclaw_retry_base_seconds: 15
   dry_run: false
   run_openclaw: true
+  redo: true
   patch_path: null
   evaluate: true
   no_local: true
@@ -99,9 +101,9 @@ swebench_pro:
   max_tool_calls: 40
   max_agent_turns: 40
   verify_weave_agents: true
-  weave_agents_entity: 'llm-leaderboard'
-  weave_agents_project: 'tc-leaderboard'
-  weave_agents_agent_name: 'nejumi-taiwan-openclaw'
+  weave_agents_entity: llm-leaderboard
+  weave_agents_project: tc-leaderboard
+  weave_agents_agent_name: nejumi-taiwan-openclaw
   weave_agents_limit: 50
   weave_agents_verification_timeout: 120
   weave_agents_poll_seconds: 5

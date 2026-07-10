@@ -7,6 +7,9 @@ models:
     reasoning_effort: null
     agentic_thinking: high
     swe_thinking: high
+    math_limit: 50
+    math_openclaw_timeout: 900
+    swe_subset: "leaderboard_compact_40"
     canary: true
     notes: "Preferred one-model full canary before multi-model expansion."
 

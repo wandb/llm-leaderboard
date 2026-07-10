@@ -76,6 +76,49 @@ def test_extract_openclaw_text_prefers_meta_visible_text():
     assert module.extract_assistant_text(sidecar) == "visible answer"
 
 
+def test_gateway_transport_status_rejects_embedded_fallback_when_gateway_required():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    sidecar = {
+        "stdout_json": {
+            "meta": {
+                "transport": "embedded",
+                "fallbackFrom": "gateway",
+            }
+        },
+        "stderr": "EMBEDDED FALLBACK: Gateway agent failed; running embedded agent",
+    }
+
+    status = module.gateway_transport_status(sidecar, Namespace(local=False))
+
+    assert status["ok"] is False
+    assert status["gateway_required"] is True
+    assert status["transport"] == "embedded"
+    assert status["fallbackFrom"] == "gateway"
+    assert set(status["reasons"]) >= {
+        "embedded_transport",
+        "fallback_from_gateway",
+        "embedded_fallback_stderr",
+    }
+
+
+def test_gateway_transport_status_allows_embedded_when_local_requested():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    sidecar = {
+        "stdout_json": {
+            "meta": {
+                "transport": "embedded",
+                "fallbackFrom": "gateway",
+            }
+        },
+        "stderr": "EMBEDDED FALLBACK: Gateway agent failed; running embedded agent",
+    }
+
+    status = module.gateway_transport_status(sidecar, Namespace(local=True))
+
+    assert status["ok"] is True
+    assert status["gateway_required"] is False
+
+
 def test_metadata_header_records_openclaw_config_source():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     args = Namespace(
@@ -693,29 +736,36 @@ def test_live_tool_budget_status_detects_agent_session_overage(tmp_path, monkeyp
     session_dir = tmp_path / "openclaw-state" / "agents" / "agent-a" / "sessions"
     session_dir.mkdir(parents=True)
     session = session_dir / "session-1.jsonl"
-    session.write_text(
-        "\n".join(
-            json.dumps(
-                {
-                    "message": {
-                        "role": "assistant",
-                        "timestamp": index,
-                        "content": [
-                            {
-                                "type": "toolCall",
-                                "id": f"call_{index}",
-                                "name": "exec",
-                                "arguments": {"cmd": "true"},
-                            }
-                        ],
-                    }
+    rows = []
+    for index in range(2):
+        rows.append(
+            {
+                "message": {
+                    "role": "assistant",
+                    "timestamp": index,
+                    "content": [
+                        {
+                            "type": "toolCall",
+                            "id": f"call_{index}",
+                            "name": "exec",
+                            "arguments": {"cmd": "true"},
+                        }
+                    ],
                 }
-            )
-            for index in range(2)
+            }
         )
-        + "\n",
-        encoding="utf-8",
-    )
+        rows.append(
+            {
+                "message": {
+                    "role": "toolResult",
+                    "timestamp": index,
+                    "toolCallId": f"call_{index}",
+                    "toolName": "exec",
+                    "content": [{"type": "text", "text": "ok"}],
+                }
+            }
+        )
+    session.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
     args = Namespace(agent="agent-a", profile=None, max_tool_calls=1)
 
     status = module.live_tool_budget_status(args, time.time() - 1)
@@ -723,6 +773,7 @@ def test_live_tool_budget_status_detects_agent_session_overage(tmp_path, monkeyp
     assert status["enabled"] is True
     assert status["exceeded"] is True
     assert status["tool_call_count"] == 2
+    assert status["executed_tool_call_count"] == 2
     assert status["session_file"] == str(session)
 
 
@@ -732,29 +783,36 @@ def test_live_tool_budget_status_checks_explicit_session_dir(tmp_path, monkeypat
     session_dir = tmp_path / "task-agent" / "sessions"
     session_dir.mkdir(parents=True)
     session = session_dir / "session-1.jsonl"
-    session.write_text(
-        "\n".join(
-            json.dumps(
-                {
-                    "message": {
-                        "role": "assistant",
-                        "timestamp": index,
-                        "content": [
-                            {
-                                "type": "toolCall",
-                                "id": f"call_{index}",
-                                "name": "exec",
-                                "arguments": {"cmd": "true"},
-                            }
-                        ],
-                    }
+    rows = []
+    for index in range(3):
+        rows.append(
+            {
+                "message": {
+                    "role": "assistant",
+                    "timestamp": index,
+                    "content": [
+                        {
+                            "type": "toolCall",
+                            "id": f"call_{index}",
+                            "name": "exec",
+                            "arguments": {"cmd": "true"},
+                        }
+                    ],
                 }
-            )
-            for index in range(3)
+            }
         )
-        + "\n",
-        encoding="utf-8",
-    )
+        rows.append(
+            {
+                "message": {
+                    "role": "toolResult",
+                    "timestamp": index,
+                    "toolCallId": f"call_{index}",
+                    "toolName": "exec",
+                    "content": [{"type": "text", "text": "ok"}],
+                }
+            }
+        )
+    session.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
     args = Namespace(
         agent="agent-a",
         profile=None,
@@ -767,8 +825,91 @@ def test_live_tool_budget_status_checks_explicit_session_dir(tmp_path, monkeypat
     assert status["enabled"] is True
     assert status["exceeded"] is True
     assert status["tool_call_count"] == 3
+    assert status["executed_tool_call_count"] == 3
     assert status["session_file"] == str(session)
     assert str(session_dir) in status["session_dirs"]
+
+
+def test_live_tool_budget_status_does_not_count_budget_guard_block_as_executed(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path / "empty-openclaw-state"))
+    session_dir = tmp_path / "task-agent" / "sessions"
+    session_dir.mkdir(parents=True)
+    session = session_dir / "session-1.jsonl"
+    rows = [
+        {
+            "message": {
+                "role": "assistant",
+                "timestamp": 1,
+                "content": [
+                    {
+                        "type": "toolCall",
+                        "id": "call_1",
+                        "name": "read",
+                        "arguments": {"path": "a.go"},
+                    }
+                ],
+            }
+        },
+        {
+            "message": {
+                "role": "toolResult",
+                "timestamp": 2,
+                "toolCallId": "call_1",
+                "toolName": "read",
+                "content": [{"type": "text", "text": "file body"}],
+            }
+        },
+        {
+            "message": {
+                "role": "assistant",
+                "timestamp": 3,
+                "content": [
+                    {
+                        "type": "toolCall",
+                        "id": "call_2",
+                        "name": "edit",
+                        "arguments": {"path": "a.go", "edits": []},
+                    }
+                ],
+            }
+        },
+        {
+            "message": {
+                "role": "toolResult",
+                "timestamp": 4,
+                "toolCallId": "call_2",
+                "toolName": "edit",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "NEJUMI_BUDGET_GUARD_BLOCKED tool_call_limit_exceeded observed=2 limit=1",
+                    }
+                ],
+            }
+        },
+    ]
+    session.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+    args = Namespace(
+        agent="agent-a",
+        profile=None,
+        max_tool_calls=1,
+        live_session_dir=[session_dir],
+    )
+
+    status = module.live_tool_budget_status(args, time.time() - 1)
+
+    assert status["enabled"] is True
+    assert status["exceeded"] is True
+    assert status["interrupt"] is True
+    assert status["reason"] == "budget_guard_blocked"
+    assert status["interrupt_reason"] == "budget_guard_blocked"
+    assert status["exceeded_limits"] == ["budget_guard_blocked"]
+    assert status["interrupt_limits"] == ["budget_guard_blocked"]
+    assert status["tool_call_count"] == 2
+    assert status["executed_tool_call_count"] == 1
+    assert status["blocked_tool_call_count"] == 1
+    assert status["budget_guard_block_count"] == 1
 
 
 def test_live_tool_budget_status_detects_estimated_input_token_overage(tmp_path, monkeypatch):
@@ -831,6 +972,35 @@ def test_live_tool_budget_status_detects_agent_turn_overage(tmp_path, monkeypatc
     assert status["turn_session_file"] == str(session)
 
 
+def test_live_tool_budget_status_interrupts_at_agent_turn_limit(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path / "empty-openclaw-state"))
+    session_dir = tmp_path / "task-agent" / "sessions"
+    session_dir.mkdir(parents=True)
+    session = session_dir / "session-1.jsonl"
+    session.write_text(
+        json.dumps({"message": {"role": "assistant", "timestamp": 1, "content": "tool call"}}) + "\n",
+        encoding="utf-8",
+    )
+    args = Namespace(
+        agent="agent-a",
+        profile=None,
+        max_input_tokens=0,
+        max_tool_calls=0,
+        max_agent_turns=1,
+        live_session_dir=[session_dir],
+    )
+
+    status = module.live_tool_budget_status(args, time.time() - 1)
+
+    assert status["enabled"] is True
+    assert status["exceeded"] is False
+    assert status["interrupt"] is True
+    assert status["turn_limit_reached"] is True
+    assert status["interrupt_reason"] == "max_agent_turns_reached"
+    assert status["interrupt_limits"] == ["max_agent_turns_reached"]
+
+
 def test_live_tool_budget_status_checks_nemoclaw_sandbox_session_dir(monkeypatch, tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path / "empty-openclaw-state"))
@@ -885,6 +1055,62 @@ def test_live_tool_budget_status_checks_nemoclaw_sandbox_session_dir(monkeypatch
     assert "/sandbox/tasks/math/openclaw_agent_state/sessions" in captured["command"]
     assert "/sandbox/.openclaw/agents/agent-a/sessions" in captured["command"]
     assert captured["env"] == {"PATH": "/bin"}
+
+
+def test_live_tool_budget_status_interrupts_for_provider_timeout(monkeypatch, tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path / "empty-openclaw-state"))
+
+    def fake_run(command, text, capture_output, check, env):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                {
+                    "ok": True,
+                    "sessions": [
+                        {
+                            "path": "/sandbox/tasks/math/sessions/session-1.jsonl",
+                            "mtime": 123.0,
+                            "tool_call_count": 1,
+                            "executed_tool_call_count": 1,
+                            "live_provider_timeout_count": 1,
+                            "live_provider_timeouts": [
+                                {
+                                    "type": "provider_timeout",
+                                    "errorCode": "504",
+                                    "errorMessage": "Upstream idle timeout exceeded",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+            + "\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    args = Namespace(
+        agent="agent-a",
+        profile=None,
+        max_tool_calls=40,
+        live_session_dir=[],
+        live_sandbox_session_dir=["/sandbox/tasks/math/sessions"],
+        nemoclaw_bin="nemoclaw",
+        nemoclaw_sandbox="nejumi-taiwan",
+    )
+
+    status = module.live_tool_budget_status(args, time.time() - 1, env={"PATH": "/bin"})
+
+    assert status["enabled"] is True
+    assert status["exceeded"] is True
+    assert status["interrupt"] is True
+    assert status["reason"] == "live_provider_timeout"
+    assert status["interrupt_reason"] == "live_provider_timeout"
+    assert status["exceeded_limits"] == ["live_provider_timeout"]
+    assert status["live_provider_timeout_count"] == 1
+    assert status["live_provider_timeouts"][0]["errorCode"] == "504"
 
 
 def test_live_tool_budget_status_interrupts_for_interactive_exec_policy(monkeypatch, tmp_path):
@@ -968,6 +1194,35 @@ def test_runtime_budget_status_uses_live_nemoclaw_tool_overage():
     ]
 
 
+def test_runtime_budget_status_separates_budget_guard_blocks_from_executed_tools():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    sidecar = {
+        "tool_call_count": 7,
+        "blocked_tool_call_count": 6,
+        "executed_tool_call_count": 1,
+        "live_runtime_budget": {
+            "enabled": True,
+            "exceeded": False,
+            "tool_call_count": 7,
+            "blocked_tool_call_count": 6,
+            "executed_tool_call_count": 1,
+            "budget_guard_block_count": 6,
+            "budget_guard_blocks": [{"line_index": 10}],
+        },
+    }
+    args = Namespace(max_input_tokens=0, max_tool_calls=1, max_agent_turns=40)
+
+    status = module.runtime_budget_status(sidecar, args)
+
+    assert status["ok"] is True
+    assert status["observed"]["tool_call_count"] == 7
+    assert status["observed"]["executed_tool_call_count"] == 1
+    assert status["observed"]["blocked_tool_call_count"] == 6
+    assert status["budget_guard"]["blocked"] is True
+    assert status["budget_guard"]["block_count"] == 6
+    assert status["violations"] == []
+
+
 def test_runtime_budget_status_uses_live_input_and_turn_overages():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     sidecar = {
@@ -992,6 +1247,178 @@ def test_runtime_budget_status_uses_live_input_and_turn_overages():
         "max_input_tokens_exceeded",
         "max_agent_turns_exceeded",
     }
+
+
+def test_runtime_budget_status_treats_turn_limit_interrupt_as_budget_cutoff():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    sidecar = {
+        "agent_turn_count": 1,
+        "live_runtime_budget": {
+            "agent_turn_count": 1,
+            "exceeded_limits": ["max_agent_turns_reached"],
+            "reason": "max_agent_turns_reached",
+            "interrupted": True,
+        },
+    }
+    args = Namespace(max_input_tokens=0, max_tool_calls=0, max_agent_turns=1)
+
+    status = module.runtime_budget_status(sidecar, args)
+
+    assert status["ok"] is False
+    assert status["violations"] == [
+        {
+            "type": "max_agent_turns_exceeded",
+            "observed": 1,
+            "limit": 1,
+            "source": "live_runtime_budget",
+        }
+    ]
+
+
+def test_runtime_budget_status_treats_stdio_turn_guard_block_as_budget_cutoff():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    sidecar = {
+        "agent_turn_count": 1,
+        "budget_guard_blocks": [
+            {
+                "source": "stderr",
+                "kind": "agent_turn",
+                "text": (
+                    "NEJUMI_BUDGET_GUARD_BLOCKED agent_turn_limit_exceeded "
+                    "observed=2 limit=1"
+                ),
+            }
+        ],
+    }
+    args = Namespace(max_input_tokens=0, max_tool_calls=0, max_agent_turns=1)
+
+    status = module.runtime_budget_status(sidecar, args)
+
+    assert status["ok"] is False
+    assert status["budget_guard"]["blocked"] is True
+    assert status["budget_guard"]["block_count"] == 1
+    assert status["violations"] == [
+        {
+            "type": "max_agent_turns_exceeded",
+            "observed": 2,
+            "limit": 1,
+            "source": "openclaw_runtime_patch",
+        }
+    ]
+
+
+def test_runtime_budget_status_treats_cumulative_token_guard_block_as_budget_cutoff():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    sidecar = {
+        "budget_guard_blocks": [
+            {
+                "source": "stderr",
+                "kind": "cumulative_input_tokens",
+                "text": (
+                    "NEJUMI_BUDGET_GUARD_BLOCKED cumulative_input_tokens_limit_exceeded "
+                    "callId=run:model:2 observed=853232 limit=500000 observedCalls=2"
+                ),
+            }
+        ],
+    }
+    args = Namespace(
+        max_input_tokens=0,
+        max_cumulative_input_tokens=500000,
+        max_cumulative_output_tokens=0,
+        require_actual_token_usage=True,
+        max_tool_calls=0,
+        max_agent_turns=40,
+    )
+
+    status = module.runtime_budget_status(sidecar, args)
+
+    assert status["ok"] is False
+    assert status["budget_guard"]["blocked"] is True
+    assert status["violations"] == [
+        {
+            "type": "missing_actual_token_usage",
+            "observed": None,
+            "limit": "required",
+            "source": "provider_usage",
+        },
+        {
+            "type": "missing_actual_input_tokens",
+            "observed": None,
+            "limit": 500000,
+            "source": "provider_usage",
+        },
+        {
+            "type": "max_cumulative_input_tokens_exceeded",
+            "observed": 853232,
+            "limit": 500000,
+            "source": "openclaw_runtime_patch",
+            "block": sidecar["budget_guard_blocks"][0],
+        },
+    ]
+
+
+def test_runtime_budget_status_treats_missing_actual_usage_guard_block_as_cutoff_even_with_final_usage():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    sidecar = {
+        "tool_call_count": 1,
+        "blocked_tool_call_count": 0,
+        "executed_tool_call_count": 1,
+        "stdout_json": {
+            "result": {
+                "meta": {
+                    "agentMeta": {
+                        "usage": {
+                            "input": 10165,
+                            "output": 34,
+                            "cacheRead": 0,
+                            "cacheWrite": 0,
+                            "totalTokens": 10199,
+                        }
+                    }
+                }
+            }
+        },
+        "live_runtime_budget": {
+            "enabled": True,
+            "exceeded": False,
+            "budget_guard_block_count": 1,
+            "budget_guard_blocks": [{"line_index": 7, "marker": "NEJUMI_BUDGET_GUARD_BLOCKED"}],
+        },
+        "budget_guard_blocks": [
+            {
+                "source": "session",
+                "line_index": 7,
+                "kind": "missing_actual_token_usage",
+                "text": (
+                    "NEJUMI_BUDGET_GUARD_BLOCKED missing_actual_token_usage "
+                    "callId=run:model:1 observedCalls=1"
+                ),
+            }
+        ],
+    }
+    args = Namespace(
+        max_input_tokens=0,
+        max_cumulative_input_tokens=100000,
+        max_cumulative_output_tokens=100000,
+        require_actual_token_usage=True,
+        max_tool_calls=5,
+        max_agent_turns=5,
+    )
+
+    status = module.runtime_budget_status(sidecar, args)
+
+    assert status["ok"] is False
+    assert status["observed"]["blocked_tool_call_count"] == 0
+    assert status["budget_guard"]["blocked"] is True
+    assert status["violations"] == [
+        {
+            "type": "missing_actual_token_usage",
+            "observed": None,
+            "limit": "required",
+            "source": "openclaw_runtime_patch",
+            "block": sidecar["budget_guard_blocks"][0],
+        }
+    ]
 
 
 def test_extract_timeline_events_preserves_openclaw_session_order(tmp_path):
@@ -1181,6 +1608,22 @@ def test_conversation_order_status_does_not_treat_zh_answer_word_as_final():
     assert status["first_final_answer_index"] == 4
 
 
+def test_conversation_order_status_does_not_treat_boxed_scratch_as_final():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    events = [
+        {"type": "user_message", "timelineIndex": 0, "content": "problem"},
+        {"type": "assistant_message", "timelineIndex": 1, "content": "途中式で \\boxed{x+1} を置く。"},
+        {"type": "tool_call", "timelineIndex": 2, "toolCallId": "call_1", "toolName": "exec"},
+        {"type": "tool_result", "timelineIndex": 3, "toolCallId": "call_1", "toolName": "exec"},
+        {"type": "assistant_message", "timelineIndex": 4, "content": "ANSWER: \\boxed{9}"},
+    ]
+
+    status = module.conversation_order_status(events)
+
+    assert status["ok"] is True
+    assert status["first_final_answer_index"] == 4
+
+
 def test_conversation_order_status_rejects_tool_before_problem():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     events = [
@@ -1195,7 +1638,7 @@ def test_conversation_order_status_rejects_tool_before_problem():
     assert any(issue["type"] == "tool_before_or_at_first_user_message" for issue in status["issues"])
 
 
-def test_conversation_order_status_rejects_tool_after_final_answer():
+def test_conversation_order_status_warns_tool_after_final_answer():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     events = [
         {"type": "user_message", "timelineIndex": 0, "content": "problem"},
@@ -1205,8 +1648,9 @@ def test_conversation_order_status_rejects_tool_after_final_answer():
 
     status = module.conversation_order_status(events)
 
-    assert status["ok"] is False
-    assert any(issue["type"] == "tool_after_final_answer" for issue in status["issues"])
+    assert status["ok"] is True
+    assert status["issues"] == []
+    assert any(warning["type"] == "tool_after_final_answer" for warning in status["warnings"])
 
 
 def test_build_agents_check_summary_reports_timestamp_and_order_health():
@@ -1498,6 +1942,40 @@ def test_build_agents_check_summary_filters_by_conversation_scope():
     assert summary["latest_trace_spans_chronological"][0]["span_id"] == "span-canary"
 
 
+def test_build_agents_check_summary_accepts_blank_agent_name_when_conversation_matches():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    conversation_id = "agent:dynamic-task:run:agentic-math:task-1"
+    spans = {
+        "spans": [
+            {
+                "started_at": "2026-06-29T00:00:00Z",
+                "ended_at": "2026-06-29T00:00:01Z",
+                "operation_name": "chat",
+                "agent_name": "",
+                "trace_id": "trace-dynamic",
+                "span_id": "span-dynamic",
+                "conversation_id": conversation_id,
+                "input_messages": [{"role": "user", "content": "problem"}],
+            }
+        ]
+    }
+
+    summary = module.build_agents_check_summary(
+        {"agents": [], "total_count": 0},
+        spans,
+        entity="llm-leaderboard",
+        project="tc-leaderboard",
+        agent_name="nejumi-taiwan-openclaw",
+        limit=10,
+        span_limit=40,
+        conversation_id_contains=conversation_id,
+    )
+
+    assert summary["latest_trace_id"] == "trace-dynamic"
+    assert summary["query_source"]["matching_span_count"] == 1
+    assert summary["latest_trace_spans_chronological"][0]["span_id"] == "span-dynamic"
+
+
 def test_build_agents_check_summary_flags_tool_before_visible_input():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     agents = {"agents": [{"agent_name": "nejumi-taiwan-openclaw"}], "total_count": 1}
@@ -1541,7 +2019,7 @@ def test_build_agents_check_summary_flags_tool_before_visible_input():
     assert "tool_started_before_or_at_visible_user_input" in order["order_issues"]
 
 
-def test_build_agents_check_summary_flags_tool_after_final_answer_end():
+def test_build_agents_check_summary_warns_tool_after_final_answer_end():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     agents = {"agents": [{"agent_name": "nejumi-taiwan-openclaw"}], "total_count": 1}
     spans = {
@@ -1588,10 +2066,66 @@ def test_build_agents_check_summary_flags_tool_after_final_answer_end():
 
     order = summary["trace_order_health"]
     assert order["trace_user_message_order_ok"] is True
-    assert order["trace_final_answer_order_ok"] is False
-    assert "tool_started_after_or_at_final_answer_end" in order["order_issues"]
+    assert order["trace_final_answer_order_ok"] is True
+    assert "tool_started_after_or_at_final_answer_end" in order["order_warnings"]
+    assert "tool_started_after_or_at_final_answer_end" not in order["order_issues"]
     assert order["first_final_answer_ended_at"] == "2026-06-29T00:00:03Z"
     assert order["last_tool_started_at"] == "2026-06-29T00:00:04Z"
+
+
+def test_build_agents_check_summary_ignores_tool_use_output_as_final_answer():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    agents = {"agents": [{"agent_name": "nejumi-taiwan-openclaw"}], "total_count": 1}
+    spans = {
+        "spans": [
+            {
+                "started_at": "2026-06-29T00:00:00Z",
+                "ended_at": "2026-06-29T00:00:01Z",
+                "operation_name": "chat",
+                "agent_name": "nejumi-taiwan-openclaw",
+                "trace_id": "trace-tool-use-answer-marker",
+                "span_id": "span-user",
+                "input_messages": [{"role": "user", "content": "problem"}],
+                "output_messages": [
+                    {
+                        "role": "assistant",
+                        "content": "ANSWER: \\boxed{11} と見えるが、まだ検算する。",
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {"name": "exec", "arguments": "{}"},
+                            }
+                        ],
+                    }
+                ],
+            },
+            {
+                "started_at": "2026-06-29T00:00:02Z",
+                "ended_at": "2026-06-29T00:00:03Z",
+                "operation_name": "execute_tool",
+                "agent_name": "nejumi-taiwan-openclaw",
+                "trace_id": "trace-tool-use-answer-marker",
+                "span_id": "span-tool",
+                "tool_call_arguments": {"cmd": "python3 check.py"},
+                "tool_call_result": "ok",
+            },
+        ]
+    }
+
+    summary = module.build_agents_check_summary(
+        agents,
+        spans,
+        entity="llm-leaderboard",
+        project="tc-leaderboard",
+        agent_name="nejumi-taiwan-openclaw",
+        limit=10,
+    )
+
+    order = summary["trace_order_health"]
+    assert order["final_answer_span_count"] == 0
+    assert order["trace_final_answer_order_ok"] is True
+    assert "tool_started_after_or_at_final_answer_end" not in order["order_issues"]
 
 
 def test_build_agents_check_summary_flags_invalid_timestamps():
@@ -1793,6 +2327,7 @@ def test_build_openclaw_command_defaults_sandbox_visible_config_path_for_nemocla
         "OPENCLAW_MESSAGE_B64=aGVsbG8=",
     ]
     assert command[13:15] == ["bash", "-c"]
+    assert "export PATH=/sandbox/.npm-global/bin:$PATH;" in command[15]
     assert "openclaw agent" in command[15]
     assert '--message "$OPENCLAW_MESSAGE"' in command[15]
     assert "hello" not in command
@@ -1830,6 +2365,7 @@ def test_build_openclaw_command_passes_sandbox_visible_config_path_for_nemoclaw(
         "OPENCLAW_MESSAGE_B64=aGVsbG8=",
     ]
     assert command[13:15] == ["bash", "-c"]
+    assert "export PATH=/sandbox/.npm-global/bin:$PATH;" in command[15]
     assert "openclaw agent" in command[15]
 
 

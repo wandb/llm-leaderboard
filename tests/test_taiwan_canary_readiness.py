@@ -196,6 +196,67 @@ exit 1
     assert '"npm_yarn"' in allowlist_check.detail
 
 
+def test_nemoclaw_required_readiness_accepts_detailed_status_when_json_summary_fails(tmp_path):
+    module = load_module()
+    nemoclaw = tmp_path / "nemoclaw"
+    openshell = tmp_path / "openshell"
+    nemoclaw.write_text(
+        """#!/usr/bin/env sh
+if [ "$1" = "--version" ]; then
+  echo "nemoclaw 0.0.test"
+  exit 0
+fi
+if [ "$1" = "status" ] && [ "$2" = "--json" ]; then
+  echo '{"gatewayHealth":{"healthy":false,"state":"connected_other"}}' >&2
+  exit 1
+fi
+if [ "$1" = "sandbox" ] && [ "$2" = "status" ]; then
+  cat <<'TEXT'
+Sandbox: nejumi-taiwan
+Policy:
+  network_policies:
+    openclaw_gateway_dialback:
+      name: openclaw_gateway_dialback
+    wandb-weave:
+      name: wandb-weave
+TEXT
+  exit 0
+fi
+if [ "$1" = "sandbox" ] && [ "$2" = "exec" ]; then
+  echo "openclaw 2026.6.10"
+  exit 0
+fi
+echo "unexpected $*" >&2
+exit 1
+""",
+        encoding="utf-8",
+    )
+    openshell.write_text("#!/usr/bin/env sh\necho openshell 0.0.test\n", encoding="utf-8")
+    nemoclaw.chmod(0o755)
+    openshell.chmod(0o755)
+    env = {
+        "PATH": str(tmp_path) + os.pathsep + os.environ.get("PATH", ""),
+        **{key: value for key, value in os.environ.items() if key.startswith("HOME")},
+    }
+
+    checks = module.check_nemoclaw(
+        env,
+        nemoclaw_bin="nemoclaw",
+        sandbox="nejumi-taiwan",
+        require=True,
+    )
+
+    assert all(check.ok for check in checks)
+    policy_check = next(
+        check
+        for check in checks
+        if check.name == "NeMoClaw sandbox runtime policy is introspectable: nejumi-taiwan"
+    )
+    assert '"sandbox_status_ok": true' in policy_check.detail
+    assert '"status_json_ok": false' in policy_check.detail
+    assert '"openclaw_gateway_dialback"' in policy_check.detail
+
+
 def test_nemoclaw_required_readiness_fails_unknown_runtime_network_policy(tmp_path):
     module = load_module()
     nemoclaw = tmp_path / "nemoclaw"
@@ -800,13 +861,13 @@ model:
 agentic_math:
   openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14
   deny_tool: [code_execution, process, process_*, web_search, web_fetch, browser, browser_*]
-  deny_argument_pattern: ['https?://', '\\b(curl|wget)\\b', '\\b(requests|urllib|httpx)\\.']
+  deny_argument_pattern: ['https?://', '\\b(curl|wget)\\b', '\\b(?:python(?:3)?\\s+-m\\s+)?pip(?:3)?\\s+install\\b', '\\b(requests|urllib|httpx)\\.']
   nemoclaw_sandbox: nejumi-taiwan
   use_task_agent: true
 swebench_pro:
   openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14
   deny_tool: [code_execution, process, process_*, web_search, web_fetch, browser, browser_*]
-  deny_argument_pattern: ['https?://', '\\b(curl|wget)\\b', '\\b(requests|urllib|httpx)\\.']
+  deny_argument_pattern: ['https?://', '\\b(curl|wget)\\b', '\\b(?:python(?:3)?\\s+-m\\s+)?pip(?:3)?\\s+install\\b', '\\b(requests|urllib|httpx)\\.']
   nemoclaw_sandbox: nejumi-taiwan
   nemoclaw_checkout_transfer_mode: copy
 """,
@@ -858,13 +919,13 @@ model:
 agentic_math:
   openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14
   deny_tool: [code_execution, process, process_*, exec, web_search, web_fetch, browser, browser_*]
-  deny_argument_pattern: ['https?://', '\\b(curl|wget)\\b', '\\b(requests|urllib|httpx)\\.']
+  deny_argument_pattern: ['https?://', '\\b(curl|wget)\\b', '\\b(?:python(?:3)?\\s+-m\\s+)?pip(?:3)?\\s+install\\b', '\\b(requests|urllib|httpx)\\.']
   nemoclaw_sandbox: nejumi-taiwan
   use_task_agent: true
 swebench_pro:
   openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14
   deny_tool: [code_execution, process, process_*, '*exec*', web_search, web_fetch, browser, browser_*]
-  deny_argument_pattern: ['https?://', '\\b(curl|wget)\\b', '\\b(requests|urllib|httpx)\\.']
+  deny_argument_pattern: ['https?://', '\\b(curl|wget)\\b', '\\b(?:python(?:3)?\\s+-m\\s+)?pip(?:3)?\\s+install\\b', '\\b(requests|urllib|httpx)\\.']
   nemoclaw_sandbox: nejumi-taiwan
   nemoclaw_checkout_transfer_mode: copy
 """,

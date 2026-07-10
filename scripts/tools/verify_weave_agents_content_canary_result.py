@@ -217,6 +217,12 @@ def _conversation_scope_values(verifier: dict[str, Any]) -> list[str]:
     return values
 
 
+def _contains_task_id(value: Any, expected_task_id: str | None) -> bool:
+    if not expected_task_id or not isinstance(value, str):
+        return False
+    return expected_task_id.lower() in value.lower()
+
+
 def query_source_validation_issues(
     verifier: dict[str, Any],
     *,
@@ -248,7 +254,8 @@ def query_source_validation_issues(
             issues.append(f"query_source.{key} must be an integer >= 1")
 
     if expected_task_id and not any(
-        expected_task_id in value for value in _conversation_scope_values(verifier)
+        _contains_task_id(value, expected_task_id)
+        for value in _conversation_scope_values(verifier)
     ):
         issues.append(
             "query_source or required_evidence must scope the query to the canary task_id "
@@ -301,9 +308,7 @@ def latest_trace_span_validation_issues(
                 f"latest_trace_spans_chronological[{index}].trace_id must match latest_trace_id"
             )
         conversation_id = span.get("conversation_id")
-        if expected_task_id and (
-            not isinstance(conversation_id, str) or expected_task_id not in conversation_id
-        ):
+        if expected_task_id and not _contains_task_id(conversation_id, expected_task_id):
             issues.append(
                 f"latest_trace_spans_chronological[{index}].conversation_id must contain "
                 f"{expected_task_id!r}"
@@ -323,6 +328,9 @@ def request_model_aliases(model_id: str | None) -> list[str]:
     if value.startswith("openai-direct/"):
         aliases.append(value.removeprefix("openai-direct/"))
     if "/" in value:
+        provider, remainder = value.split("/", 1)
+        if provider.endswith("-direct") and remainder:
+            aliases.append(remainder)
         aliases.append(value.rsplit("/", 1)[-1])
     return list(dict.fromkeys(alias for alias in aliases if alias))
 
@@ -691,7 +699,7 @@ def agents_diagnostic_validation_issues(
             issues.append(f"query_source.{key} must be an integer >= 1")
 
     if expected_task_id and not any(
-        expected_task_id in value
+        _contains_task_id(value, expected_task_id)
         for value in (
             str(query_source.get("conversation_id") or ""),
             str(query_source.get("conversation_id_contains") or ""),

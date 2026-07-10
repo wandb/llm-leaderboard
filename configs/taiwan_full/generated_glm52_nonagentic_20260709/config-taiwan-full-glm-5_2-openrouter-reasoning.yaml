@@ -1,0 +1,204 @@
+wandb:
+  run_name: 'taiwan/full/z-ai/glm-5.2: openrouter-reasoning'
+api: openai-compatible
+base_url: https://openrouter.ai/api/v1
+batch_size: 4
+inference_interval: 1
+model:
+  pretrained_model_name_or_path: z-ai/glm-5.2
+  bfcl_model_id: OpenRouter-FC
+  base_model: unknown
+  size_category: api
+  size: null
+  release_date: 6/16/2026
+generator:
+  temperature: null
+  top_p: null
+  parallel_tool_calls: true
+  max_tokens: 32768
+  extra_body:
+    reasoning:
+      enabled: true
+    provider:
+      allow_fallbacks: false
+jaster:
+  override_max_tokens: 32768
+jbbq:
+  generator_config:
+    max_tokens: 32768
+toxicity:
+  generator_config:
+    max_tokens: 32768
+    temperature: null
+    top_p: null
+jtruthfulqa:
+  generator_config:
+    max_tokens: 32768
+swebench:
+  max_tokens: 32768
+mtbench:
+  max_new_token: 32768
+  generator_config:
+    max_tokens: 32768
+    temperature: null
+    top_p: null
+  temperature_override:
+    writing: null
+    roleplay: null
+    extraction: null
+    math: null
+    coding: null
+    reasoning: null
+    stem: null
+    humanities: null
+bfcl:
+  generator_config:
+    max_tokens: 32768
+    temperature: null
+    top_p: null
+  allow_overwrite: false
+hallulens:
+  generator_config:
+    max_tokens: 32768
+    temperature: null
+    top_p: null
+hle:
+  max_completion_tokens: 32768
+  generator_config:
+    max_tokens: 32768
+arc_agi:
+  max_output_tokens: 32768
+m_ifeval:
+  generator_config:
+    max_tokens: 32768
+openai:
+  http_timeout:
+    connect: 10.0
+    read: 1800.0
+    write: 300.0
+    pool: 30.0
+testmode: false
+run:
+  agentic_math: false
+  bfcl: true
+  swebench: false
+  swebench_pro: false
+  mtbench: true
+  jbbq: false
+  toxicity: false
+  jtruthfulqa: false
+  hle: true
+  hallulens: false
+  hallulens_zh_tw: true
+  arc_agi: true
+  m_ifeval: false
+  ifeval_zh_tw: true
+  ts_bench: true
+  twbias: false
+  tceval_v2: true
+  script_adherence: true
+  jaster: true
+  jmmlu_robustness: false
+  tmmluplus_robustness: true
+  aggregate: false
+  aggregate_taiwan: false
+agentic_math:
+  subset: leaderboard
+  limit: null
+  output_dir: outputs/taiwan_full_eval_glm52_20260709/agentic_math/glm-5_2-openrouter-reasoning
+  prefix: taiwan-math-glm-5_2-openrouter-reasoning
+  task_agent_prefix: tw-math-glm-5_2-openrouter-reasoning
+  openclaw_model: openrouter-direct/z-ai/glm-5.2
+  thinking: high
+  openclaw_timeout: 900
+  openclaw_max_attempts: 3
+  openclaw_retry_base_seconds: 15
+  max_input_tokens: 500000
+  max_cumulative_input_tokens: 500000
+  max_cumulative_output_tokens: 500000
+  require_actual_token_usage: true
+  max_tool_calls: 40
+  max_agent_turns: 40
+  verify_weave_agents: true
+  weave_agents_entity: llm-leaderboard
+  weave_agents_project: tc-leaderboard
+  weave_agents_agent_name: nejumi-taiwan-openclaw
+  weave_agents_limit: 50
+  weave_agents_verification_timeout: 120
+  weave_agents_poll_seconds: 5
+  dry_run: false
+  run_openclaw: true
+  redo: false
+  results_dir: null
+  no_local: true
+  weave_sidecar: false
+  weave_sidecar_strict: false
+  openclaw_tool_profile: coding
+  deny_tool:
+  - code_execution
+  - process
+  - process_*
+  - web_search
+  - web_fetch
+  - browser
+  - browser_*
+  deny_argument_pattern:
+  - https?://
+  - \b(curl|wget)\b
+  - \b(?:python(?:3)?\s+-m\s+)?pip(?:3)?\s+install\b
+  - \b(requests|urllib|httpx)\.
+  nemoclaw_sandbox: nejumi-taiwan
+  nemoclaw_bin: nemoclaw
+  nemoclaw_workdir: /sandbox
+  use_task_agent: true
+  nemoclaw_openclaw_config_path: /sandbox/.openclaw/openclaw.json
+swebench_pro:
+  subset: leaderboard_compact_40
+  output_dir: outputs/taiwan_full_eval_glm52_20260709/swebench_pro/glm-5_2-openrouter-reasoning
+  checkout_root: outputs/taiwan_full_eval_glm52_20260709/swebench_pro_checkouts/glm-5_2-openrouter-reasoning
+  prefix: taiwan-swe-glm-5_2-openrouter-reasoning
+  task_agent_prefix: tw-swe-glm-5_2-openrouter-reasoning
+  openclaw_model: openrouter-direct/z-ai/glm-5.2
+  thinking: high
+  openclaw_timeout: 3600
+  openclaw_max_attempts: 3
+  openclaw_retry_base_seconds: 15
+  dry_run: false
+  run_openclaw: true
+  redo: false
+  patch_path: null
+  evaluate: true
+  no_local: true
+  weave_sidecar: false
+  weave_sidecar_strict: false
+  openclaw_tool_profile: coding
+  max_input_tokens: 1000000
+  max_cumulative_input_tokens: 1000000
+  max_cumulative_output_tokens: 1000000
+  require_actual_token_usage: true
+  max_tool_calls: 40
+  max_agent_turns: 40
+  verify_weave_agents: true
+  weave_agents_entity: llm-leaderboard
+  weave_agents_project: tc-leaderboard
+  weave_agents_agent_name: nejumi-taiwan-openclaw
+  weave_agents_limit: 50
+  weave_agents_verification_timeout: 120
+  weave_agents_poll_seconds: 5
+  deny_tool:
+  - code_execution
+  - process
+  - process_*
+  - web_search
+  - web_fetch
+  - browser
+  - browser_*
+  deny_argument_pattern:
+  - https?://
+  - \b(curl|wget)\b
+  - \b(?:python(?:3)?\s+-m\s+)?pip(?:3)?\s+install\b
+  - \b(requests|urllib|httpx)\.
+  nemoclaw_sandbox: nejumi-taiwan
+  nemoclaw_bin: nemoclaw
+  nemoclaw_checkout_transfer_mode: copy
+  nemoclaw_openclaw_config_path: /sandbox/.openclaw/openclaw.json

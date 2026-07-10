@@ -1,0 +1,36 @@
+wandb:
+  run_name: 'taiwan/full/openai/gpt-4.1-mini: production-spec-one-model'
+api: openai_responses
+batch_size: 32
+model:
+  pretrained_model_name_or_path: gpt-4.1-mini-2025-04-14
+  bfcl_model_id: gpt-4.1-mini-2025-04-14-FC
+  base_model: unknown
+  size_category: api
+  size: null
+  release_date: 4/14/2025
+testmode: false
+run:
+  agentic_math: false
+  bfcl: false
+  swebench: false
+  swebench_pro: false
+  mtbench: false
+  jbbq: false
+  toxicity: false
+  jtruthfulqa: false
+  hle: false
+  hallulens: false
+  hallulens_zh_tw: false
+  arc_agi: false
+  m_ifeval: false
+  ifeval_zh_tw: false
+  ts_bench: false
+  twbias: false
+  tceval_v2: false
+  script_adherence: false
+  jaster: true
+  jmmlu_robustness: false
+  tmmluplus_robustness: true
+  aggregate: false
+  aggregate_taiwan: false

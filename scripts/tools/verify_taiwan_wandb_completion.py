@@ -183,6 +183,8 @@ AGGREGATE_TABLES = (
     "taiwan_glp_radar_table",
     "taiwan_alt_radar_table",
 )
+BFCL_TIMEOUT_METRIC = "bfcl_timeout_count"
+BFCL_INFERENCE_ERROR_METRIC = "bfcl_inference_error_count"
 
 
 def load_env_file(env: dict[str, str], path: Path | None) -> tuple[dict[str, str], bool]:
@@ -1393,6 +1395,7 @@ def _observed_full_evidence(checks: list[dict[str, Any]]) -> dict[str, Any]:
         "taxonomy_tables": [],
         "aggregate_tables": [],
         "skipped_pending_units": [],
+        "bfcl_runtime_error_metrics": {},
     }
     for check in checks:
         name = check.get("name")
@@ -1423,6 +1426,12 @@ def _observed_full_evidence(checks: list[dict[str, Any]]) -> dict[str, Any]:
                     "display_name": check.get("display_name"),
                 }
             )
+        elif name == "bfcl_runtime_error_metric":
+            observed["bfcl_runtime_error_metrics"][check.get("metric")] = {
+                "ok": bool(check.get("ok")),
+                "value": check.get("value"),
+                "expected": check.get("expected"),
+            }
     return observed
 
 
@@ -1791,6 +1800,41 @@ def verify_full_taiwan_run(
     if require_aggregate:
         for table_name in AGGREGATE_TABLES:
             checks.append(_table_check(summary, table_name, name="aggregate_table"))
+
+    for metric_name in (BFCL_TIMEOUT_METRIC, BFCL_INFERENCE_ERROR_METRIC):
+        raw_value = _metric(summary, metric_name)
+        try:
+            value = int(raw_value)
+        except (TypeError, ValueError):
+            value = None
+        if value is None:
+            checks.append(
+                _fail_check(
+                    "bfcl_runtime_error_metric",
+                    f"missing or invalid {metric_name}",
+                    metric=metric_name,
+                    value=raw_value,
+                )
+            )
+        elif value != 0:
+            checks.append(
+                _fail_check(
+                    "bfcl_runtime_error_metric",
+                    f"{metric_name} must be 0 for release-grade full completion",
+                    metric=metric_name,
+                    value=value,
+                    expected=0,
+                )
+            )
+        else:
+            checks.append(
+                _ok_check(
+                    "bfcl_runtime_error_metric",
+                    f"{metric_name} is 0",
+                    metric=metric_name,
+                    value=value,
+                )
+            )
 
     ok = all(check["ok"] for check in checks)
     result = {

@@ -108,6 +108,7 @@ def materialize(args: argparse.Namespace) -> Path:
 
 
 def upload_artifact(args: argparse.Namespace, artifact_root: Path) -> None:
+    aliases = args.alias or ["internal"]
     run = wandb.init(
         entity=args.entity,
         project=args.project,
@@ -125,7 +126,7 @@ def upload_artifact(args: argparse.Namespace, artifact_root: Path) -> None:
         },
     )
     artifact.add_dir(str(artifact_root), name=args.dataset_dir_name)
-    run.log_artifact(artifact, aliases=["production"])
+    run.log_artifact(artifact, aliases=aliases)
     run.finish()
 
 
@@ -137,6 +138,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--artifact-name", default=DEFAULT_ARTIFACT_NAME)
     parser.add_argument("--entity", default="llm-leaderboard")
     parser.add_argument("--project", default="tc-leaderboard")
+    parser.add_argument(
+        "--alias",
+        action="append",
+        default=None,
+        help=(
+            "W&B artifact alias to attach. Defaults to internal because the "
+            "upstream license is unknown; repeat for multiple aliases."
+        ),
+    )
     parser.add_argument("--upload", action="store_true")
     return parser
 

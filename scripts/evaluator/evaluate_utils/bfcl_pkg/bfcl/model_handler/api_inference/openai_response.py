@@ -22,6 +22,9 @@ from openai import OpenAI, RateLimitError
 from openai.types.responses import Response
 from config_singleton import WandbConfigSingleton
 from omegaconf import OmegaConf
+from evaluator.evaluate_utils.provider_rate_limiter import (
+    get_provider_request_rate_limiter,
+)
 
 class OpenAIResponsesHandler(BaseHandler):
     _ALLOWED_RESPONSES_PARAMS = {
@@ -71,6 +74,27 @@ class OpenAIResponsesHandler(BaseHandler):
                     "inject_bfcl_fc_system_prompt", False
                 )
             )
+            provider_min_interval_sec = float(
+                OmegaConf.select(cfg, "bfcl.provider_min_request_interval_sec", default=0)
+                or 0
+            )
+            provider_jitter_sec = float(
+                OmegaConf.select(cfg, "bfcl.provider_request_jitter_sec", default=0)
+                or 0
+            )
+            provider_key = str(
+                OmegaConf.select(
+                    cfg,
+                    "bfcl.provider_rate_limit_key",
+                    default=f"bfcl:{self.model_name_huggingface}",
+                )
+            )
+            self.provider_request_limiter = get_provider_request_rate_limiter(
+                provider_key,
+                min_interval_sec=provider_min_interval_sec,
+                jitter_sec=provider_jitter_sec,
+            )
+            self.request_timeout_seconds = self._resolve_request_timeout_seconds(cfg)
             # Remove max_tokens to manage it separately if needed
             self.max_tokens = self.generator_config.pop("max_tokens", None)
             if llm is None:
@@ -119,7 +143,9 @@ class OpenAIResponsesHandler(BaseHandler):
             self.max_tokens = None
             self.request_config = {}
             self.reasoning_param = None
+            self.request_timeout_seconds = 300
             self.inject_bfcl_fc_system_prompt = False
+            self.provider_request_limiter = get_provider_request_rate_limiter("bfcl:default")
         # Prefer an externally provided Responses client (e.g., OpenAIResponsesClient)
         # If provided and it exposes an AsyncOpenAI via `async_client`, use that; otherwise, fall back to default OpenAI client
         if llm is not None and hasattr(llm, "async_client") and hasattr(llm.async_client, "responses"):
@@ -127,10 +153,27 @@ class OpenAIResponsesHandler(BaseHandler):
             self._delegate_model_to_client = True
             self._client_is_async = True
         else:
-            self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            self.client = OpenAI(
+                api_key=os.getenv("OPENAI_API_KEY"),
+                timeout=self.request_timeout_seconds,
+                max_retries=0,
+            )
             self._delegate_model_to_client = False
             self._client_is_async = False
         self.use_encrypted_reasoning = use_encrypted_reasoning
+
+    @staticmethod
+    def _resolve_request_timeout_seconds(cfg) -> float:
+        bfcl_timeout = OmegaConf.select(cfg, "bfcl.request_timeout_sec", default=None)
+        if bfcl_timeout is not None:
+            return float(bfcl_timeout)
+        openai_read_timeout = OmegaConf.select(cfg, "openai.http_timeout.read", default=None)
+        if openai_read_timeout is not None:
+            return float(openai_read_timeout)
+        network_read_timeout = OmegaConf.select(cfg, "network.http_timeout.read", default=None)
+        if network_read_timeout is not None:
+            return float(network_read_timeout)
+        return 300.0
 
     def _supports_temperature(self) -> bool:
         """Responses APIでtemperatureが許可されるモデルかどうかを判定する。
@@ -181,6 +224,9 @@ class OpenAIResponsesHandler(BaseHandler):
         if tools:
             kwargs["tools"] = tools
 
+        if self.request_timeout_seconds is not None:
+            kwargs["timeout"] = float(self.request_timeout_seconds)
+
         return kwargs
 
     def _serialize_response_items_for_history(self, api_response: Response) -> list[dict]:
@@ -217,6 +263,7 @@ class OpenAIResponsesHandler(BaseHandler):
     @retry_with_backoff(error_type=RateLimitError)
     def generate_with_backoff(self, **kwargs):
         start_time = time.time()
+        self.provider_request_limiter.wait()
         result = self.client.responses.create(**kwargs)
         # Support both sync and async OpenAI clients transparently
         if inspect.isawaitable(result):

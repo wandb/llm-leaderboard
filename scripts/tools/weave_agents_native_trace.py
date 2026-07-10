@@ -66,6 +66,9 @@ def model_aliases(model: str | None) -> list[str]:
     aliases = [raw]
     if "/" in raw:
         aliases.append(raw.rsplit("/", 1)[-1])
+        provider, remainder = raw.split("/", 1)
+        if provider.endswith("-direct") and "/" in remainder:
+            aliases.append(remainder)
     return list(dict.fromkeys(aliases))
 
 

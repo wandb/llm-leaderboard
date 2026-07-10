@@ -12,8 +12,11 @@ models:
     reasoning_effort: null
     agentic_thinking: "off"
     swe_thinking: "off"
-    swe_subset: "leaderboard_compact_80"
+    math_limit: 50
+    swe_subset: "leaderboard_compact_40"
     swe_max_tool_calls: 40
     swe_max_agent_turns: 40
+    agentic_math_redo: true
+    swebench_pro_redo: true
     canary: true
     notes: "OpenAI-direct one-model production-spec full run. Evaluation settings, including judges, must inherit the release configuration unchanged."

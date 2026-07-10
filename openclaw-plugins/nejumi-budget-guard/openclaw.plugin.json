@@ -2,7 +2,12 @@
   "id": "nejumi-budget-guard",
   "name": "Nejumi Budget Guard",
   "version": "0.1.0",
-  "description": "Blocks OpenClaw agent runs before tool or model-turn budgets are exceeded.",
+  "description": "Blocks OpenClaw tool calls before execution and audits agent-turn hook coverage for Nejumi budgets.",
+  "contracts": {
+    "trustedToolPolicies": [
+      "budget-guard"
+    ]
+  },
   "activation": {
     "onStartup": true
   },
@@ -23,6 +28,20 @@
         "type": "integer",
         "minimum": 0,
         "default": 0
+      },
+      "maxCumulativeInputTokens": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 0
+      },
+      "maxCumulativeOutputTokens": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 0
+      },
+      "requireActualTokenUsage": {
+        "type": "boolean",
+        "default": false
       },
       "agentIds": {
         "type": "array",

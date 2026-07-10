@@ -198,7 +198,7 @@ install_weave_plugin() {
     return 0
   fi
   log "Installing weave-openclaw plugin"
-  openclaw plugins install weave-openclaw
+  openclaw plugins install weave-openclaw --force
 }
 
 install_provider_plugins() {
@@ -246,6 +246,7 @@ repair_weave_otel_dependencies() {
   )
   patch_weave_genai_provider "$project_dir"
   patch_weave_openclaw_content_hooks "$project_dir"
+  patch_weave_openclaw_private_content_and_flush "$project_dir"
   verify_weave_genai_exporter_local "$project_dir"
   verify_weave_openclaw_plugin_content "$project_dir"
 }
@@ -361,7 +362,11 @@ if "Nejumi patch: correlate diagnostic chat spans" not in chat_text:
     if old not in chat_text:
         raise SystemExit(f"Could not find diagnostic chat start block in {chat_path}")
     chat_text = chat_text.replace(old, new)
-if "Nejumi patch: defer chat span closure until run completion" not in chat_text:
+if (
+    "Nejumi patch: defer chat span closure until run completion" not in chat_text
+    and "captured by llm_output is flushed before the span ends" not in chat_text
+    and "onChatFinalize(event, status, errorType, privateData = {})" not in chat_text
+):
     old = """        onChatFinalize(event, status, errorType) {
             finalizeChatSpan(deps, event.runId, event.callId, status, errorType);
         },
@@ -500,6 +505,633 @@ if patched:
     print("patched weave-openclaw content hooks:", ", ".join(patched))
 else:
     print("weave-openclaw content hooks already patched")
+PY
+}
+
+patch_weave_openclaw_private_content_and_flush() {
+  local project_dir="$1"
+  python3 - "$project_dir" <<'PY'
+import sys
+from pathlib import Path
+
+project_dir = Path(sys.argv[1])
+plugin_dir = project_dir / "node_modules" / "weave-openclaw"
+if not plugin_dir.exists():
+    raise SystemExit(f"weave-openclaw package not found under {project_dir}")
+
+patched: list[str] = []
+
+
+def write_if_changed(path: Path, text: str, original: str) -> None:
+    if text == original:
+        return
+    path.write_text(text, encoding="utf-8")
+    patched.append(str(path))
+
+
+def replace_once(text: str, old: str, new: str, label: str) -> str:
+    if old in text:
+        return text.replace(old, new, 1)
+    if new in text:
+        return text
+    raise SystemExit(f"Could not find expected block for {label}")
+
+
+chat_path = plugin_dir / "dist" / "src" / "handlers" / "diagnostic" / "chat.js"
+chat_text = chat_path.read_text(encoding="utf-8")
+original_chat = chat_text
+if "recordModelContent(deps, llm, privateData?.modelContent" not in chat_text:
+    chat_text = chat_text.replace("onChatStart(event) {", "onChatStart(event, privateData = {}) {", 1)
+    chat_text = replace_once(
+        chat_text,
+        """            const llm = runIsolated(() => turn.startLLM({
+                model: event.model,
+                providerName: event.provider,
+            }));
+            // Default ok; a call with no model.call.completed/error before run.completed closes ok.
+""",
+        """            const llm = runIsolated(() => turn.startLLM({
+                model: event.model,
+                providerName: event.provider,
+            }));
+            if (llm.span?.updateName && event.model)
+                llm.span.updateName(`chat ${event.model}`);
+            recordModelContent(deps, llm, privateData?.modelContent, { input: true, output: false });
+            // Default ok; a call with no model.call.completed/error before run.completed closes ok.
+""",
+        f"{chat_path}: private model start content",
+    )
+if "onChatFinalize(event, status, errorType, privateData = {})" not in chat_text:
+    chat_text = replace_once(
+        chat_text,
+        """        onChatFinalize(_event, _status, _errorType) {
+            // Nejumi patch: OpenClaw 2026.6 emits llm_output after model.call.completed.
+            // Defer closing chat spans to the run.completed backstop so content/usage
+            // captured by llm_output is flushed before the span ends.
+        },
+""",
+        """        onChatFinalize(event, status, errorType, privateData = {}) {
+            const handle = deps.registries.calls.get(event.callId);
+            if (handle) {
+                recordModelContent(deps, handle.llm, privateData?.modelContent, { input: true, output: true });
+                handle.status = status;
+                handle.errorType = errorType;
+            }
+            // Nejumi patch: OpenClaw 2026.6 emits llm_output after model.call.completed.
+            // Keep the chat span open until run.completed so typed llm_output hooks
+            // can attach provider usage and final assistant text before export.
+        },
+""",
+        f"{chat_path}: private model finalize content",
+    )
+if "function recordModelContent" not in chat_text:
+    chat_text = replace_once(
+        chat_text,
+        """}
+//# sourceMappingURL=chat.js.map""",
+        """}
+function setJsonAttr(span, key, value) {
+    if (!span?.setAttribute || value === undefined)
+        return;
+    try {
+        span.setAttribute(key, JSON.stringify(value));
+    }
+    catch {}
+}
+function recordModelContent(deps, llm, modelContent, opts) {
+    if (!deps.getResolved()?.captureContent || !modelContent)
+        return;
+    const record = {};
+    if (opts.input) {
+        const input = normalizeMessages(modelContent.inputMessages);
+        if (typeof modelContent.systemPrompt === "string" && modelContent.systemPrompt.trim()) {
+            input.unshift({ role: "system", content: modelContent.systemPrompt });
+        }
+        if (input.length)
+            record.inputMessages = input;
+    }
+    if (opts.output) {
+        const output = normalizeMessages(modelContent.outputMessages);
+        if (output.length)
+            record.outputMessages = output;
+    }
+    if (Object.keys(record).length) {
+        llm.record(record);
+        if (record.inputMessages)
+            setJsonAttr(llm.span, "gen_ai.input.messages", record.inputMessages);
+        if (record.outputMessages)
+            setJsonAttr(llm.span, "gen_ai.output.messages", record.outputMessages);
+    }
+}
+function normalizeMessages(value) {
+    if (!Array.isArray(value))
+        return [];
+    return value.map(normalizeMessage).filter(Boolean);
+}
+function normalizeMessage(message) {
+    if (typeof message === "string")
+        return { role: "user", content: message };
+    if (!message || typeof message !== "object")
+        return undefined;
+    const rawRole = typeof message.role === "string" ? message.role : "user";
+    const role = rawRole === "toolResult" ? "tool" : ["system", "user", "assistant", "tool"].includes(rawRole) ? rawRole : "user";
+    const out = { role };
+    const contentText = contentToText(message.content);
+    const parts = contentToParts(message.content);
+    if (contentText)
+        out.content = contentText;
+    if (parts.length)
+        out.parts = parts;
+    if (typeof message.toolCallId === "string")
+        out.toolCallId = message.toolCallId;
+    if (typeof message.toolName === "string")
+        out.toolName = message.toolName;
+    return out.content || out.parts || out.toolCallId ? out : { role, content: "" };
+}
+function contentToText(content) {
+    if (typeof content === "string")
+        return content;
+    if (!Array.isArray(content))
+        return undefined;
+    const text = content
+        .filter((part) => part && typeof part === "object" && part.type === "text" && typeof part.text === "string")
+        .map((part) => part.text)
+        .join("");
+    return text || undefined;
+}
+function contentToParts(content) {
+    if (typeof content === "string")
+        return content ? [{ type: "text", content }] : [];
+    if (!Array.isArray(content))
+        return [];
+    const parts = [];
+    for (const part of content) {
+        if (!part || typeof part !== "object")
+            continue;
+        if (part.type === "text" && typeof part.text === "string") {
+            parts.push({ type: "text", content: part.text });
+        }
+        else if (part.type === "toolCall") {
+            parts.push({
+                type: "tool_call",
+                toolCallId: String(part.id ?? ""),
+                toolName: String(part.name ?? "unknown"),
+                arguments: safeJsonString(part.arguments ?? part.partialJson),
+            });
+        }
+        else if (part.type === "toolResult") {
+            parts.push({
+                type: "tool_result",
+                toolCallId: String(part.toolCallId ?? ""),
+                result: safeJsonString(part.result ?? part.text ?? part.content),
+            });
+        }
+    }
+    return parts;
+}
+function safeJsonString(value) {
+    if (value === undefined)
+        return undefined;
+    if (typeof value === "string")
+        return value;
+    try {
+        return JSON.stringify(value);
+    }
+    catch {
+        return String(value);
+    }
+}
+//# sourceMappingURL=chat.js.map""",
+        f"{chat_path}: private model helpers",
+    )
+write_if_changed(chat_path, chat_text, original_chat)
+
+llm_state_path = plugin_dir / "dist" / "src" / "handlers" / "llm-state.js"
+llm_state_text = llm_state_path.read_text(encoding="utf-8")
+original_llm_state = llm_state_text
+if "Nejumi patch: mirror messages and usage onto OTEL attributes" not in llm_state_text:
+    llm_state_text = replace_once(
+        llm_state_text,
+        """import { totalPromptTokens } from "./util.js";
+// Close this chat span at model.call.completed/error (not run end) so its input
+""",
+        """import { totalPromptTokens } from "./util.js";
+function setJsonAttr(span, key, value) {
+    if (!span?.setAttribute || value === undefined)
+        return;
+    try {
+        span.setAttribute(key, JSON.stringify(value));
+    }
+    catch {}
+}
+function setIntAttr(span, key, value) {
+    if (!span?.setAttribute || typeof value !== "number" || !Number.isFinite(value) || value < 0)
+        return;
+    span.setAttribute(key, Math.trunc(value));
+}
+// Nejumi patch: mirror messages and usage onto OTEL attributes.
+// Close this chat span at model.call.completed/error (not run end) so its input
+""",
+        f"{llm_state_path}: attribute helpers",
+    )
+    llm_state_text = replace_once(
+        llm_state_text,
+        """    for (const callId of callIds ?? [])
+        closeChatSpan(deps, callId, "ok", undefined);
+}
+""",
+        """    for (const callId of callIds ?? []) {
+        const handle = deps.registries.calls.get(callId);
+        closeChatSpan(deps, callId, handle?.status ?? "ok", handle?.errorType);
+    }
+}
+""",
+        f"{llm_state_path}: preserve terminal status",
+    )
+    llm_state_text = replace_once(
+        llm_state_text,
+        """    if (shaped.input.length || shaped.output.length || usage) {
+        handle.llm.record({
+            inputMessages: shaped.input,
+            outputMessages: shaped.output,
+            ...(usage ? { usage } : {}),
+        });
+    }
+    handle.llm.end(status === "error"
+""",
+        """    if (shaped.input.length || shaped.output.length || usage) {
+        handle.llm.record({
+            inputMessages: shaped.input,
+            outputMessages: shaped.output,
+            ...(usage ? { usage } : {}),
+        });
+    }
+    setJsonAttr(handle.llm.span, "gen_ai.input.messages", handle.llm.inputMessages);
+    setJsonAttr(handle.llm.span, "gen_ai.output.messages", handle.llm.outputMessages);
+    setIntAttr(handle.llm.span, "gen_ai.usage.input_tokens", handle.llm.usage?.inputTokens);
+    setIntAttr(handle.llm.span, "gen_ai.usage.output_tokens", handle.llm.usage?.outputTokens);
+    setIntAttr(handle.llm.span, "gen_ai.usage.total_tokens", handle.llm.usage?.totalTokens);
+    setIntAttr(handle.llm.span, "gen_ai.usage.cache_read.input_tokens", handle.llm.usage?.cacheReadInputTokens);
+    setIntAttr(handle.llm.span, "gen_ai.usage.cache_creation.input_tokens", handle.llm.usage?.cacheCreationInputTokens);
+    handle.llm.end(status === "error"
+""",
+        f"{llm_state_path}: OTEL attributes",
+    )
+    llm_state_text = llm_state_text.replace(
+        'out.input.push({ role: "system", content: capture.input.systemPrompt });',
+        'out.input.push(textMessage("system", capture.input.systemPrompt));',
+    )
+    llm_state_text = llm_state_text.replace("out.input.push(m);", "out.input.push(normalizeMessageForOtel(m));")
+    llm_state_text = llm_state_text.replace(
+        'out.input.push({ role: "user", content: capture.input.prompt });',
+        'out.input.push(textMessage("user", capture.input.prompt));',
+    )
+    llm_state_text = llm_state_text.replace(
+        'out.output.push({ role: "assistant", content: capture.text });',
+        'out.output.push(textMessage("assistant", capture.text));',
+    )
+    llm_state_text = replace_once(
+        llm_state_text,
+        """    return out;
+}
+function toUsage(raw) {
+""",
+        """    return out;
+}
+function textMessage(role, content) {
+    const text = typeof content === "string" ? content : String(content ?? "");
+    return { role, content: text, parts: text ? [{ type: "text", content: text }] : [] };
+}
+function normalizeMessageForOtel(message) {
+    const role = typeof message.role === "string" ? message.role : "user";
+    if (typeof message.content === "string")
+        return textMessage(role, message.content);
+    return message;
+}
+function toUsage(raw) {
+""",
+        f"{llm_state_path}: OTEL message shaping",
+    )
+if "existingInputMessages" not in llm_state_text:
+    llm_state_text = replace_once(
+        llm_state_text,
+        """    if (shaped.input.length || shaped.output.length || usage) {
+        handle.llm.record({
+            inputMessages: shaped.input,
+            outputMessages: shaped.output,
+            ...(usage ? { usage } : {}),
+        });
+    }
+    setJsonAttr(handle.llm.span, "gen_ai.input.messages", handle.llm.inputMessages);
+""",
+        """    const existingInputMessages = Array.isArray(handle.llm.inputMessages) ? handle.llm.inputMessages : [];
+    const existingOutputMessages = Array.isArray(handle.llm.outputMessages) ? handle.llm.outputMessages : [];
+    if (shaped.input.length || shaped.output.length || usage) {
+        handle.llm.record({
+            inputMessages: [...existingInputMessages, ...shaped.input],
+            outputMessages: [...existingOutputMessages, ...shaped.output],
+            ...(usage ? { usage } : {}),
+        });
+    }
+    setJsonAttr(handle.llm.span, "gen_ai.input.messages", handle.llm.inputMessages);
+""",
+        f"{llm_state_path}: merge private and typed model content",
+    )
+write_if_changed(llm_state_path, llm_state_text, original_llm_state)
+
+tool_path = plugin_dir / "dist" / "src" / "handlers" / "diagnostic" / "tool.js"
+tool_text = tool_path.read_text(encoding="utf-8")
+original_tool = tool_text
+if "Nejumi patch: record private diagnostic tool content" not in tool_text:
+    tool_text = replace_once(
+        tool_text,
+        "export function createToolDiagnosticHandlers(deps) {",
+        "// Nejumi patch: record private diagnostic tool content.\nexport function createToolDiagnosticHandlers(deps) {",
+        f"{tool_path}: private tool marker",
+    )
+    tool_text = replace_once(
+        tool_text,
+        """            const captured = lookupToolCall(deps.hookState, event.toolCallId).args;
+            const args = resolved.captureContent
+                ? safeJson(captured?.params ?? event.paramsSummary)
+                : undefined;
+            const tool = runIsolated(() => turn.startTool({
+                name: event.toolName ?? captured?.toolName ?? "unknown",
+                toolCallId: event.toolCallId,
+                args,
+            }));
+            deps.registries.tools.set(event.toolCallId, tool);
+        },
+        onToolFinalize(event, status, errorType) {
+""",
+        """            const captured = lookupToolCall(deps.hookState, event.toolCallId).args;
+            const toolName = event.toolName ?? captured?.toolName ?? "unknown";
+            const args = resolved.captureContent
+                ? safeJson(captured?.params ?? event.paramsSummary)
+                : undefined;
+            const tool = runIsolated(() => turn.startTool({
+                name: toolName,
+                toolCallId: event.toolCallId,
+                args,
+            }));
+            if (tool.span?.updateName)
+                tool.span.updateName(`execute_tool ${toolName}`);
+            deps.registries.tools.set(event.toolCallId, tool);
+        },
+        onToolFinalize(event, status, errorType, privateData = {}) {
+""",
+        f"{tool_path}: private tool start/finalize",
+    )
+    tool_text = replace_once(
+        tool_text,
+        "            finalizeTool(deps, event.toolCallId);\n",
+        "            finalizeTool(deps, event.toolCallId, { toolContent: privateData?.toolContent });\n",
+        f"{tool_path}: private tool content dispatch",
+    )
+    tool_text = replace_once(
+        tool_text,
+        """    const captured = lookupToolCall(deps.hookState, toolCallId).result;
+    if (!opts.force && captured === undefined)
+        return; // after_tool_call not in yet
+    if (deps.getResolved()?.captureContent) {
+        const result = safeJson(captured?.result);
+        if (result !== undefined)
+            tool.result = result;
+    }
+""",
+        """    const lookup = lookupToolCall(deps.hookState, toolCallId);
+    const captured = lookup.result;
+    const toolContent = opts.toolContent;
+    if (!opts.force && captured === undefined && toolContent === undefined)
+        return; // after_tool_call/privateData not in yet
+    if (deps.getResolved()?.captureContent) {
+        const args = safeJson(toolContent?.toolInput ?? lookup.args?.params);
+        if (args !== undefined && tool.span?.setAttribute)
+            tool.span.setAttribute("gen_ai.tool.call.arguments", args);
+        const result = safeJson(toolContent?.toolOutput ?? captured?.result);
+        if (result !== undefined) {
+            if (tool.span?.setAttribute)
+                tool.span.setAttribute("gen_ai.tool.call.result", result);
+            tool.result = result;
+        }
+    }
+""",
+        f"{tool_path}: private tool attributes",
+    )
+write_if_changed(tool_path, tool_text, original_tool)
+
+plugin_path = plugin_dir / "dist" / "src" / "plugin.js"
+plugin_text = plugin_path.read_text(encoding="utf-8")
+original_plugin = plugin_text
+if "Nejumi patch: expose explicit OTel flush" not in plugin_text:
+    plugin_text = replace_once(
+        plugin_text,
+        """    const service = {
+        id: "weave",
+""",
+        """    async function flush(reason, ctx) {
+        try {
+            await flushOTel();
+        }
+        catch (err) {
+            const targetLogger = ctx?.logger ?? logger;
+            targetLogger?.warn?.(`weave: flushOTel failed during ${reason}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+    }
+    // Nejumi patch: expose explicit OTel flush for short-lived OpenClaw agent commands.
+    const service = {
+        id: "weave",
+""",
+        f"{plugin_path}: explicit flush helper",
+    )
+    plugin_text = replace_once(
+        plugin_text,
+        """        async stop(ctx) {
+            lifecycle = "stopped";
+            try {
+                await flushOTel();
+            }
+            catch (err) {
+                ctx.logger.warn(`weave: flushOTel failed during stop: ${err instanceof Error ? err.message : String(err)}`);
+            }
+            resetTransientState();
+        },
+""",
+        """        async stop(ctx) {
+            lifecycle = "stopped";
+            await flush("stop", ctx);
+            resetTransientState();
+        },
+""",
+        f"{plugin_path}: service.stop flush",
+    )
+if "diagnostic(event, meta, privateData = {})" not in plugin_text:
+    plugin_text = replace_once(
+        plugin_text,
+        "diagnostic(event, meta) {",
+        "diagnostic(event, meta, privateData = {}) {",
+        f"{plugin_path}: private diagnostic signature",
+    )
+    for old, new in {
+        "return onChatStart(event);": "return onChatStart(event, privateData);",
+        'return onChatFinalize(event, "ok", undefined);': 'return onChatFinalize(event, "ok", undefined, privateData);',
+        'return onChatFinalize(event, "error", event.errorCategory);': 'return onChatFinalize(event, "error", event.errorCategory, privateData);',
+        'return onToolFinalize(event, "ok", undefined);': 'return onToolFinalize(event, "ok", undefined, privateData);',
+        'return onToolFinalize(event, "error", event.errorCategory);': 'return onToolFinalize(event, "error", event.errorCategory, privateData);',
+        'return onToolFinalize(event, "error", "blocked");': 'return onToolFinalize(event, "error", "blocked", privateData);',
+    }.items():
+        plugin_text = replace_once(plugin_text, old, new, f"{plugin_path}: {old}")
+if "return { service, registries, getStatus, flush, handlers };" not in plugin_text:
+    plugin_text = replace_once(
+        plugin_text,
+        "    return { service, registries, getStatus, handlers };\n",
+        "    return { service, registries, getStatus, flush, handlers };\n",
+        f"{plugin_path}: return flush",
+    )
+write_if_changed(plugin_path, plugin_text, original_plugin)
+
+index_path = plugin_dir / "dist" / "index.js"
+index_text = index_path.read_text(encoding="utf-8")
+original_index = index_text
+if "Nejumi patch: prefer trusted OpenClaw diagnostic subscription" not in index_text:
+    index_text = replace_once(
+        index_text,
+        """import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+import { onInternalDiagnosticEvent } from "openclaw/plugin-sdk/diagnostic-runtime";
+""",
+        """import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+import { onInternalDiagnosticEvent } from "openclaw/plugin-sdk/diagnostic-runtime";
+""",
+        f"{index_path}: trusted diagnostic imports",
+    )
+    index_text = replace_once(
+        index_text,
+        """const PLUGIN_GLOBAL_KEY = Symbol.for("weave-openclaw.plugin");
+const DIAGNOSTIC_SUBSCRIBED_KEY = Symbol.for("weave-openclaw.diagnosticSubscribed");
+function getOrCreateSharedPlugin(pluginConfig) {
+""",
+        """const PLUGIN_GLOBAL_KEY = Symbol.for("weave-openclaw.plugin");
+const DIAGNOSTIC_SUBSCRIBED_KEY = Symbol.for("weave-openclaw.diagnosticSubscribed");
+// Nejumi patch: prefer trusted OpenClaw diagnostic subscription so private
+// model/tool content reaches W&B Agents traces. File names are build-hashed,
+// so resolve the OpenClaw package at runtime instead of hard-coding a path.
+const onTrustedInternalDiagnosticEvent = resolveTrustedInternalDiagnosticEvent();
+function candidateOpenClawDistDirs() {
+    const dirs = [];
+    try {
+        const require = createRequire(import.meta.url);
+        dirs.push(path.join(path.dirname(require.resolve("openclaw/package.json")), "dist"));
+    }
+    catch {}
+    const stateDir = process.env.OPENCLAW_STATE_DIR || path.join(os.homedir(), ".openclaw");
+    const npmDir = path.join(stateDir, "npm");
+    try {
+        for (const entry of fs.readdirSync(npmDir, { withFileTypes: true })) {
+            if (entry.isDirectory() && entry.name.startsWith("openclaw-"))
+                dirs.push(path.join(npmDir, entry.name, "node_modules", "openclaw", "dist"));
+        }
+    }
+    catch {}
+    dirs.push(path.resolve(path.dirname(process.execPath), "..", "lib", "node_modules", "openclaw", "dist"));
+    return [...new Set(dirs)].filter((dir) => fs.existsSync(dir));
+}
+function resolveTrustedInternalDiagnosticEvent() {
+    const require = createRequire(import.meta.url);
+    for (const dir of candidateOpenClawDistDirs()) {
+        let files = [];
+        try {
+            files = fs.readdirSync(dir).filter((name) => /^diagnostic-events-.*\\.js$/.test(name)).sort().reverse();
+        }
+        catch {
+            continue;
+        }
+        for (const file of files) {
+            try {
+                const mod = require(path.join(dir, file));
+                const trusted = mod.onTrustedInternalDiagnosticEvent ?? mod.h;
+                if (typeof trusted === "function")
+                    return trusted;
+            }
+            catch {}
+        }
+    }
+    return (handler) => onInternalDiagnosticEvent((event, meta) => handler(event, meta, {}));
+}
+function getOrCreateSharedPlugin(pluginConfig) {
+""",
+        f"{index_path}: trusted diagnostic resolver",
+    )
+    index_text = replace_once(
+        index_text,
+        "        onInternalDiagnosticEvent(plugin.handlers.diagnostic);\n",
+        "        onTrustedInternalDiagnosticEvent((event, meta, privateData) => plugin.handlers.diagnostic(event, meta, privateData));\n",
+        f"{index_path}: trusted diagnostic subscription",
+    )
+if "await resolveTrustedInternalDiagnosticEvent" in index_text:
+    index_text = index_text.replace(
+        "const onTrustedInternalDiagnosticEvent = await resolveTrustedInternalDiagnosticEvent();",
+        "const onTrustedInternalDiagnosticEvent = resolveTrustedInternalDiagnosticEvent();",
+    )
+    index_text = index_text.replace(
+        "async function resolveTrustedInternalDiagnosticEvent() {\n    for (const dir of candidateOpenClawDistDirs()) {",
+        "function resolveTrustedInternalDiagnosticEvent() {\n    const require = createRequire(import.meta.url);\n    for (const dir of candidateOpenClawDistDirs()) {",
+    )
+    index_text = index_text.replace(
+        "const mod = await import(pathToFileURL(path.join(dir, file)).href);",
+        "const mod = require(path.join(dir, file));",
+    )
+if 'plugin.flush?.("agent_end"' not in index_text:
+    index_text = replace_once(
+        index_text,
+        """        api.on("session_start", (event, ctx) => hooks.session_start?.(event, ctx));
+        api.on("session_end", (event, ctx) => hooks.session_end?.(event, ctx));
+""",
+        """        api.on("session_start", (event, ctx) => hooks.session_start?.(event, ctx));
+        api.on("session_end", async (event, ctx) => {
+            const result = await hooks.session_end?.(event, ctx);
+            await plugin.flush?.("session_end", ctx);
+            return result;
+        });
+""",
+        f"{index_path}: session_end flush",
+    )
+    index_text = replace_once(
+        index_text,
+        """        api.on("agent_end", (event, ctx) => hooks.agent_end?.(event, ctx));
+        api.on("message_received", (event, ctx) => hooks.message_received?.(event, ctx));
+""",
+        """        api.on("agent_end", async (event, ctx) => {
+            const result = await hooks.agent_end?.(event, ctx);
+            await plugin.flush?.("agent_end", ctx);
+            return result;
+        });
+        api.on("message_received", (event, ctx) => hooks.message_received?.(event, ctx));
+""",
+        f"{index_path}: agent_end flush",
+    )
+write_if_changed(index_path, index_text, original_index)
+
+for path, needle in (
+    (chat_path, "recordModelContent(deps, llm, privateData?.modelContent"),
+    (llm_state_path, 'setJsonAttr(handle.llm.span, "gen_ai.input.messages"'),
+    (tool_path, "toolContent?.toolOutput ?? captured?.result"),
+    (plugin_path, "async function flush(reason, ctx)"),
+    (plugin_path, "return { service, registries, getStatus, flush, handlers };"),
+    (index_path, "resolveTrustedInternalDiagnosticEvent"),
+    (index_path, 'plugin.flush?.("agent_end"'),
+):
+    if needle not in path.read_text(encoding="utf-8"):
+        raise SystemExit(f"Missing expected private-content/flush patch in {path}: {needle}")
+
+if patched:
+    print("patched weave-openclaw private content/flush:", ", ".join(patched))
+else:
+    print("weave-openclaw private content/flush already patched")
 PY
 }
 

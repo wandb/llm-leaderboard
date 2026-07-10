@@ -203,6 +203,7 @@ def test_verify_weave_agents_accepts_contentful_ordered_trace():
         "trace_output_tokens": 3,
         "required_text_count": 0,
         "request_model_count": 1,
+        "trace_final_answer_after_tool_warning": False,
     }
 
 
@@ -326,7 +327,7 @@ def test_verify_weave_agents_rejects_tool_without_visible_user_input():
     )
 
 
-def test_verify_weave_agents_rejects_tool_after_final_answer_message():
+def test_verify_weave_agents_warns_tool_after_final_answer_message():
     module = load_module()
     payload = spans_payload(output_content="ANSWER: 1")
     payload["spans"][0]["ended_at"] = "2026-06-27T00:00:01.500000"
@@ -341,10 +342,122 @@ def test_verify_weave_agents_rejects_tool_after_final_answer_message():
         require_tool_span=True,
     )
 
-    assert result["ok"] is False
+    assert result["ok"] is True
     assert any(
-        check["name"] == "trace_final_answer_order" and not check["ok"]
+        check["name"] == "trace_final_answer_order"
+        and check["ok"]
+        and check.get("tool_after_final_answer_warning") is True
         for check in result["checks"]
+    )
+
+
+def test_verify_weave_agents_does_not_treat_boxed_scratch_as_final_answer():
+    module = load_module()
+
+    result = module.verify_agents_payload(
+        agents_payload(),
+        spans_payload(output_content="途中式として \\boxed{x+1} を検討する。まだ検算する。"),
+        entity="llm-leaderboard",
+        project="tc-leaderboard",
+        agent_name="nejumi-taiwan-openclaw",
+        require_content=True,
+        require_tool_span=True,
+    )
+
+    assert result["ok"] is True
+    health = result["content_capture_health"]
+    assert health["final_answer_span_count"] == 0
+    assert any(
+        check["name"] == "trace_final_answer_order" and check["ok"]
+        for check in result["checks"]
+    )
+
+
+def test_verify_weave_agents_does_not_treat_tool_use_message_as_final_answer():
+    module = load_module()
+    payload = spans_payload(output_content="working")
+    payload["spans"][0]["output_messages"] = [
+        {
+            "role": "assistant",
+            "content": "ANSWER: \\boxed{11} と見えるが、まだexecで検算する。",
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "exec", "arguments": "{\"cmd\":\"python3 check.py\"}"},
+                }
+            ],
+        }
+    ]
+
+    result = module.verify_agents_payload(
+        agents_payload(),
+        payload,
+        entity="llm-leaderboard",
+        project="tc-leaderboard",
+        agent_name="nejumi-taiwan-openclaw",
+        require_content=True,
+        require_tool_span=True,
+    )
+
+    assert result["ok"] is True
+    assert result["content_capture_health"]["final_answer_span_count"] == 0
+    assert any(
+        check["name"] == "trace_final_answer_order" and check["ok"]
+        for check in result["checks"]
+    )
+
+
+def test_verify_weave_agents_does_not_treat_chat_tool_use_message_as_final_answer():
+    module = load_module()
+    chat_payload = trace_chat_payload()
+    chat_payload["messages"] = [
+        {
+            "type": "user_message",
+            "started_at": "2026-06-27T00:00:01.000000",
+            "user_message": {"text": "problem"},
+        },
+        {
+            "type": "assistant_message",
+            "started_at": "2026-06-27T00:00:01.500000",
+            "assistant_message": {
+                "text": "ANSWER: \\boxed{11} と見えるが、toolUse中なので最終回答ではない。",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "exec", "arguments": "{}"},
+                    }
+                ],
+            },
+        },
+        {
+            "type": "tool_call",
+            "started_at": "2026-06-27T00:00:02.000000",
+            "tool_call": {
+                "tool_name": "exec",
+                "tool_arguments": "{}",
+                "tool_result": "ok",
+            },
+        },
+    ]
+
+    result = module.verify_agents_payload(
+        agents_payload(),
+        spans_payload(output_content="working"),
+        trace_chat_payload=chat_payload,
+        entity="llm-leaderboard",
+        project="tc-leaderboard",
+        agent_name="nejumi-taiwan-openclaw",
+        require_content=True,
+        require_tool_span=True,
+    )
+
+    assert result["ok"] is True
+    assert result["content_capture_health"]["final_answer_span_count"] == 0
+    assert any(
+        message["has_assistant_message"] and not message["is_final_answer"]
+        for message in result["latest_trace_chat_messages_chronological"]
     )
 
 
@@ -431,6 +544,85 @@ def test_verify_weave_agents_filters_conversation_id_contains():
 
     assert result["ok"] is False
     assert any(check["name"] == "spans_present" and not check["ok"] for check in result["checks"])
+
+
+def test_verify_weave_agents_accepts_dynamic_agent_blank_name_when_conversation_matches():
+    module = load_module()
+    payload = spans_payload(conversation_id="agent:dynamic-agent:run:agentic-math:task-1")
+    for span in payload["spans"]:
+        span["agent_name"] = ""
+
+    result = module.verify_agents_payload(
+        {"agents": [], "total_count": 0},
+        payload,
+        entity="llm-leaderboard",
+        project="tc-leaderboard",
+        agent_name="nejumi-taiwan-openclaw",
+        conversation_id_contains="agent:dynamic-agent:run:agentic-math:task-1",
+        require_content=True,
+        require_tool_span=True,
+        require_tool_content=True,
+        require_usage=True,
+    )
+
+    assert result["ok"] is True
+    assert result["query_source"]["matching_span_count"] == 2
+    assert any(
+        check["name"] == "agent_present"
+        and check["ok"]
+        and check.get("agent_name_missing_on_spans") is True
+        for check in result["checks"]
+    )
+
+
+def test_verify_weave_agents_rejects_dynamic_agent_tool_only_conversation():
+    module = load_module()
+    conversation_id = "agent:dynamic-agent:run:agentic-math:task-1"
+    payload = {
+        "spans": [
+            {
+                "agent_name": "",
+                "trace_id": "trace-tool-only",
+                "span_id": "tool-1",
+                "parent_span_id": "root",
+                "conversation_id": conversation_id,
+                "operation_name": "execute_tool",
+                "span_name": "execute_tool exec",
+                "request_model": "",
+                "tool_name": "exec",
+                "started_at": "2026-06-27T00:00:02.000000",
+                "ended_at": "2026-06-27T00:00:02.500000",
+                "tool_call_arguments": {"command": "python3 check.py"},
+                "tool_call_result": "ok",
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "error_type": "",
+            }
+        ]
+    }
+
+    result = module.verify_agents_payload(
+        {"agents": [], "total_count": 0},
+        payload,
+        entity="llm-leaderboard",
+        project="tc-leaderboard",
+        agent_name="nejumi-taiwan-openclaw",
+        conversation_id_contains=conversation_id,
+        require_content=True,
+        require_tool_span=True,
+        require_tool_content=True,
+    )
+
+    assert result["ok"] is False
+    assert any(check["name"] == "spans_present" and check["ok"] for check in result["checks"])
+    assert any(
+        check["name"] == "input_message_capture" and not check["ok"]
+        for check in result["checks"]
+    )
+    assert any(
+        check["name"] == "trace_user_message_order" and not check["ok"]
+        for check in result["checks"]
+    )
 
 
 def test_verify_weave_agents_chooses_latest_trace_by_span_time_not_api_order():
