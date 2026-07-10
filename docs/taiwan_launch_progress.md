@@ -1,3 +1,12 @@
+### 2026-07-10 GLM-5.2 SWE-Bench Pro 16-row fixed-runner validation
+- Fresh no-resume SWE-only run `vsvb414w` completed on 2026-07-10 JST. W&B URL: `https://wandb.ai/llm-leaderboard/tc-leaderboard/runs/vsvb414w`; config `configs/taiwan_partial/config-glm52-swe16-20260710T215251.yaml`; log `outputs/taiwan_partial_eval_glm52_swe16_20260710T215251/logs/run_eval_swe16.log`; output root `outputs/taiwan_partial_eval/swebench_pro/glm-5_2-openrouter-reasoning_20260710T215251`.
+- Scope was exactly `swebench_pro` with `leaderboard_compact_40`, `--limit 16`, GLM-5.2 via OpenRouter, NeMoClaw dynamic task-agent path, native Weave Agents verification, sidecar disabled, `openclaw_num_workers=8`, `openclaw_task_start_min_interval_seconds=15.0`, `max_tool_calls=40`, `max_agent_turns=40`, `max_input_tokens=1000000`, cumulative provider-token caps `1000000/1000000`, and `max_tool_wall_seconds=300`.
+- Queue-robustness fix was validated. Native Weave Agents verifier failures occurred on two instances and were recorded as per-instance `weave_agents_ok=false` evidence instead of aborting the parallel queue. All 16 patch records were written and `run_eval.py` exited with status `0`.
+- Official SWE-Bench Pro evaluation result: `total_instances=16`, `resolved_instances=2`, `unresolved_instances=14`, `pass_at_1=0.125`. Resolved ids were `instance_navidrome__navidrome-8e640bb8580affb7e0ea6225c0bbe240186b6b08` and `instance_qutebrowser__qutebrowser-5e0d6dc1483cb3336ea0e3dcbd4fe4aa00fc1742-v5149fcda2a9a6fe1d35dfed1bade1444a11ef271`.
+- Local patch-record summary: returncodes `{'143': 10, '0': 4, '124': 2}`; disqualification reasons `{'runtime_budget_exceeded': 10, 'tool_policy_violation': 2, 'time_up': 2, '': 2}`; empty patches `14/16`; missing patch records `0`.
+- W&B summary confirmed `state=finished`, `agentic_swe/pass_at_1=0.125`, `agentic_swe/resolved_instances=2`, `agentic_swe/total_instances=16`, `agentic_swe/weave_agents_passed_patches=12`, `agentic_swe/weave_agents_failed_patches=2`, `agentic_swe/weave_agents_required_patches=14`, `agentic_swe/nemoclaw_session_audit_passed_patches=14`, and `agentic_swe/nemoclaw_session_audit_failed_patches=0`.
+- This is valid evidence that the fixed SWE runner no longer aborts the whole queue on a single trace-verification failure. It is not release-grade SWE evidence because two required Weave Agents checks failed and GLM-5.2 produced many budget/time/tool-policy failures under the current 16-row slice. Total wall time was `5165.1s` (`86.1min`), so full Compact40 timing remains dominated by long-tail SWE tasks.
+
 ### 2026-07-10 GLM-5.2 Agentic partial run: verifier-failure queue abort found
 - Fresh no-resume partial run `b79u8lch` was stopped on 2026-07-10 JST after confirming it was running stale/old code. W&B URL: `https://wandb.ai/llm-leaderboard/tc-leaderboard/runs/b79u8lch`; config `configs/taiwan_partial/config-glm52-agentic-math16-swe16-20260710T182345.yaml`; log `outputs/taiwan_partial_eval_glm52_agentic16_20260710T182345/logs/run_eval_agentic16.log`; scope was exactly `agentic_math` 16 rows and `swebench_pro` 16 rows, BFCL excluded. No local `run_eval.py`, `run_swebench_pro_openclaw.py`, `openclaw agent`, or run-specific NeMoClaw/openshell process remains. W&B API still reported `running` immediately after local stop, so treat the run as stale and not evidence.
 - NeMoClaw Gateway restart after bulk task-agent registration is intentional and correct. It runs after registering all task agents and before starting paid worker tasks, so the Gateway sees dynamic task-agent IDs and avoids `unknown agent id`.
@@ -50,7 +59,7 @@
 
 # Taiwan Leaderboard Launch Progress
 
-Last updated: 2026-07-10 JST
+Last updated: 2026-07-10 23:25 JST
 
 ## Current Decision
 
