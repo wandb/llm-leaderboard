@@ -433,7 +433,7 @@ def run_nemoclaw_text_command(
     workdir: str = "/sandbox",
 ) -> subprocess.CompletedProcess[str]:
     full_command = [
-        args.nemoclaw_bin,
+        getattr(args, "nemoclaw_bin", "nemoclaw"),
         "sandbox",
         "exec",
         args.nemoclaw_sandbox,
@@ -516,7 +516,7 @@ def repair_nemoclaw_openclaw_permissions_locked(
         "stat -c '%a %u %g %n' \"$config_dir\" \"$config_path\" \"$hash_path\" 2>/dev/null || true"
     )
     full_command = [
-        args.nemoclaw_bin,
+        getattr(args, "nemoclaw_bin", "nemoclaw"),
         "sandbox",
         "exec",
         args.nemoclaw_sandbox,
@@ -743,6 +743,23 @@ budget_guard = plugin_entries.setdefault("nejumi-budget-guard", {})
 if not isinstance(budget_guard, dict):
     raise SystemExit("OpenClaw config field plugins.entries.nejumi-budget-guard must be an object")
 budget_guard["enabled"] = True
+existing_budget_config = budget_guard.get("config") if isinstance(budget_guard.get("config"), dict) else {}
+existing_agent_ids = [
+    str(item)
+    for item in existing_budget_config.get("agentIds", [])
+    if isinstance(item, str) and item
+]
+if agent_id not in existing_agent_ids:
+    existing_agent_ids.append(agent_id)
+existing_session_key_prefixes = [
+    str(item)
+    for item in existing_budget_config.get("sessionKeyPrefixes", [])
+    if isinstance(item, str) and item
+]
+for prefix in session_key_prefixes:
+    if prefix and prefix not in existing_session_key_prefixes:
+        existing_session_key_prefixes.append(prefix)
+
 budget_guard["config"] = {
     "enabled": True,
     "maxToolCalls": max_tool_calls,
@@ -750,8 +767,8 @@ budget_guard["config"] = {
     "maxCumulativeInputTokens": max_cumulative_input_tokens,
     "maxCumulativeOutputTokens": max_cumulative_output_tokens,
     "requireActualTokenUsage": require_actual_token_usage,
-    "agentIds": [agent_id],
-    "sessionKeyPrefixes": session_key_prefixes,
+    "agentIds": existing_agent_ids,
+    "sessionKeyPrefixes": existing_session_key_prefixes,
     "blockReasonPrefix": "NEJUMI_BUDGET_GUARD_BLOCKED",
 }
 budget_guard["hooks"] = {
@@ -1847,16 +1864,33 @@ def write_task_openclaw_config(
     host_config_path.parent.mkdir(parents=True, exist_ok=True)
 
     if uses_nemoclaw_gateway_task_agent(args):
+        canonical_config_path = str(
+            getattr(args, "nemoclaw_openclaw_config_path", NEMOCLAW_OPENCLAW_CONFIG_PATH)
+        )
+        task_agent_path = task_dir / "openclaw_task_agent.json"
+        if task_agent_path.exists() and not bool(getattr(args, "redo", False)):
+            try:
+                existing = json.loads(task_agent_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                existing = {}
+            if (
+                isinstance(existing, dict)
+                and existing.get("agent_id") == agent_id
+                and existing.get("workspace") == workspace
+                and existing.get("agent_dir") == str(sandbox_agent_dir)
+                and existing.get("config_path") == canonical_config_path
+                and isinstance(existing.get("gateway_registered"), dict)
+                and existing["gateway_registered"].get("ok") is True
+            ):
+                return agent_id, None
+
         registration = register_nemoclaw_gateway_task_agent(
             args,
             agent_id=agent_id,
             workspace=workspace,
             agent_dir=str(sandbox_agent_dir),
         )
-        canonical_config_path = str(
-            getattr(args, "nemoclaw_openclaw_config_path", NEMOCLAW_OPENCLAW_CONFIG_PATH)
-        )
-        (task_dir / "openclaw_task_agent.json").write_text(
+        task_agent_path.write_text(
             json.dumps(
                 {
                     "agent_id": agent_id,
@@ -2683,6 +2717,28 @@ def main() -> None:
         )
         return index, patch_record
 
+    def pre_register_task_agents() -> None:
+        if (
+            not uses_nemoclaw_gateway_task_agent(args)
+            or bool(getattr(args, "dry_run", False))
+            or bool(getattr(args, "skip_agent", False))
+        ):
+            return
+        print(
+            "Pre-registering NeMoClaw Gateway task agents before parallel SWE-Bench Pro execution.",
+            flush=True,
+        )
+        for index, row in enumerate(rows, start=1):
+            instance_id = str(row["instance_id"])
+            task_dir = args.output_dir / safe_id(instance_id)
+            task_dir.mkdir(parents=True, exist_ok=True)
+            checkout_dir = prepare_checkout(row, args.checkout_root, reset=not args.no_reset)
+            write_task_openclaw_config(row, checkout_dir, task_dir, args)
+            print(
+                f"[{index}/{len(rows)}] Pre-registered SWE-Bench Pro task agent: {instance_id}",
+                flush=True,
+            )
+
     openclaw_num_workers = max(1, int(getattr(args, "openclaw_num_workers", 1) or 1))
     task_start_limiter = TaskStartLimiter(
         float(getattr(args, "openclaw_task_start_min_interval_seconds", 0.0) or 0.0)
@@ -2700,6 +2756,7 @@ def main() -> None:
             patches_by_index[completed_index] = patch_record
             write_outputs(args.output_dir, ordered_patches(), rows, args)
     else:
+        pre_register_task_agents()
         executor = ThreadPoolExecutor(max_workers=openclaw_num_workers)
         try:
             future_to_task = {
