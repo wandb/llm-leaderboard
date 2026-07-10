@@ -1840,23 +1840,48 @@ def verify_weave_agents_for_attempt(
         )
     tool_count = int(sidecar.get("tool_call_count") or 0)
     verifier_json = task_dir / "weave_agents_verifications" / f"{safe_id(conversation_key)}.json"
-    return verify_native_weave_agents_trace(
-        entity=str(getattr(args, "weave_agents_entity", "") or env_default_entity()),
-        project=str(getattr(args, "weave_agents_project", "") or env_default_project()),
-        agent_name=str(
-            getattr(args, "weave_agents_agent_name", "") or DEFAULT_WEAVE_AGENTS_AGENT_NAME
-        ),
-        conversation_id_contains=conversation_key,
-        verifier_json=verifier_json,
-        env_file=Path(getattr(args, "weave_agents_env_file", DEFAULT_WEAVE_AGENTS_ENV_FILE)),
-        expected_model=str(getattr(args, "model", "") or ""),
-        required_texts=[f"task_id: {row['task_id']}"],
-        require_tool_trace=tool_count > 0,
-        require_usage=True,
-        limit=int(getattr(args, "weave_agents_limit", 50) or 50),
-        timeout_seconds=float(getattr(args, "weave_agents_verification_timeout", 120.0) or 0),
-        poll_seconds=float(getattr(args, "weave_agents_poll_seconds", 5.0) or 5.0),
+    entity = str(getattr(args, "weave_agents_entity", "") or env_default_entity())
+    project = str(getattr(args, "weave_agents_project", "") or env_default_project())
+    agent_name = str(
+        getattr(args, "weave_agents_agent_name", "") or DEFAULT_WEAVE_AGENTS_AGENT_NAME
     )
+    try:
+        return verify_native_weave_agents_trace(
+            entity=entity,
+            project=project,
+            agent_name=agent_name,
+            conversation_id_contains=conversation_key,
+            verifier_json=verifier_json,
+            env_file=Path(getattr(args, "weave_agents_env_file", DEFAULT_WEAVE_AGENTS_ENV_FILE)),
+            expected_model=str(getattr(args, "model", "") or ""),
+            required_texts=[f"task_id: {row['task_id']}"],
+            require_tool_trace=tool_count > 0,
+            require_usage=True,
+            limit=int(getattr(args, "weave_agents_limit", 50) or 50),
+            timeout_seconds=float(getattr(args, "weave_agents_verification_timeout", 120.0) or 0),
+            poll_seconds=float(getattr(args, "weave_agents_poll_seconds", 5.0) or 5.0),
+        )
+    except Exception as exc:
+        error = str(exc)
+        print(
+            "Native weave-openclaw Agents trace verification failed for "
+            f"{row['task_id']}; recording per-instance evidence failure and continuing: "
+            f"{error}",
+            file=sys.stderr,
+            flush=True,
+        )
+        evidence = empty_weave_agents_evidence(
+            required=True,
+            entity=entity,
+            project=project,
+            agent_name=agent_name,
+            conversation_id=conversation_key,
+            conversation_id_contains=conversation_key,
+            verifier_json=str(verifier_json),
+            error=error,
+        )
+        evidence["weave_agents_ok"] = False
+        return evidence
 
 
 def sidecar_nemoclaw_session_audit_matches_cache(sidecar: dict[str, Any], cache_key: dict[str, Any]) -> bool:

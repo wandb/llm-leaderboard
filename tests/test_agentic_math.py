@@ -44,6 +44,46 @@ def test_agentic_math_main_rejects_weave_sidecar_before_dataset_read(tmp_path, m
         module.main()
 
 
+def test_agentic_math_weave_agents_verifier_failure_is_per_instance_evidence(
+    tmp_path, monkeypatch
+):
+    module = load_script_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+
+    def raise_verifier_failure(**kwargs):
+        raise RuntimeError("trace content was incomplete")
+
+    monkeypatch.setattr(module, "verify_native_weave_agents_trace", raise_verifier_failure)
+    args = SimpleNamespace(
+        verify_weave_agents=True,
+        dry_run=False,
+        weave_agents_entity="llm-leaderboard",
+        weave_agents_project="tc-leaderboard",
+        weave_agents_agent_name="nejumi-taiwan-openclaw",
+        weave_agents_env_file=tmp_path / ".env",
+        weave_agents_limit=50,
+        weave_agents_verification_timeout=0,
+        weave_agents_poll_seconds=1,
+        model="openrouter-direct/z-ai/glm-5.2",
+    )
+
+    evidence = module.verify_weave_agents_for_attempt(
+        {"task_id": "olymmath_hard_1_zh"},
+        tmp_path,
+        args,
+        session_key="run:math:olymmath_hard_1_zh:attempt-1",
+        agent_id="tw-math-test-agent",
+        sidecar={"tool_call_count": 2},
+    )
+
+    assert evidence["weave_agents_required"] is True
+    assert evidence["weave_agents_ok"] is False
+    assert "trace content was incomplete" in evidence["weave_agents_error"]
+    assert "agent:tw-math-test-agent:run:math:olymmath_hard_1_zh:attempt-1" in evidence[
+        "weave_agents_conversation_id"
+    ]
+    assert evidence["weave_agents_verifier_json"].endswith(".json")
+
+
 def test_extract_answer_prefers_answer_line():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
     text = "I checked 12 cases.\nANSWER: 070\n"
