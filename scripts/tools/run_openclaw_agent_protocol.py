@@ -722,6 +722,15 @@ def build_openclaw_agent_args(
 
 
 def build_openclaw_command(args: argparse.Namespace, message_text: str, openclaw_bin: str | None = None) -> list[str]:
+    return build_openclaw_command_with_message_source(args, message_text, openclaw_bin)
+
+
+def build_openclaw_command_with_message_source(
+    args: argparse.Namespace,
+    message_text: str,
+    openclaw_bin: str | None = None,
+    sandbox_message_path: str | None = None,
+) -> list[str]:
     openclaw_command = build_openclaw_agent_args(args, message_text, openclaw_bin)
     if not getattr(args, "nemoclaw_sandbox", None):
         return openclaw_command
@@ -750,10 +759,14 @@ def build_openclaw_command(args: argparse.Namespace, message_text: str, openclaw
         getattr(args, "nemoclaw_patched_openclaw_bin_dir", None)
         or DEFAULT_NEMOCLAW_PATCHED_OPENCLAW_BIN_DIR
     )
+    if sandbox_message_path:
+        message_loader = 'OPENCLAW_MESSAGE="$(cat "$OPENCLAW_MESSAGE_FILE")"; '
+    else:
+        message_loader = 'OPENCLAW_MESSAGE="$(printf %s "$OPENCLAW_MESSAGE_B64" | base64 -d)"; '
     shell_command = (
         f"export PATH={shlex.quote(patched_openclaw_bin_dir)}:$PATH; "
-        'OPENCLAW_MESSAGE="$(printf %s "$OPENCLAW_MESSAGE_B64" | base64 -d)"; '
-        "exec "
+        + message_loader
+        + "exec "
         + " ".join(shell_parts)
     )
     config_path = effective_openclaw_config_path(args)
@@ -764,15 +777,61 @@ def build_openclaw_command(args: argparse.Namespace, message_text: str, openclaw
         value = os.environ.get(key)
         if value and "\n" not in value and "\r" not in value:
             command.append(f"{key}={value}")
-    command.extend(
-        [
-            f"OPENCLAW_MESSAGE_B64={message_b64}",
-            "bash",
-            "-c",
-            shell_command,
-        ]
-    )
+    if sandbox_message_path:
+        command.append(f"OPENCLAW_MESSAGE_FILE={sandbox_message_path}")
+    else:
+        command.append(f"OPENCLAW_MESSAGE_B64={message_b64}")
+    command.extend(["bash", "-c", shell_command])
     return command
+
+
+def write_nemoclaw_message_file(
+    args: argparse.Namespace,
+    message_text: str,
+    env: dict[str, str] | None,
+) -> str:
+    message_hash = sha256_text(message_text)[:24]
+    sandbox_path = f"/tmp/nejumi-openclaw-messages/{args.benchmark_id}-{args.task_id}-{message_hash}.md"
+    script = (
+        "import sys; "
+        "from pathlib import Path; "
+        "path = Path(sys.argv[1]); "
+        "path.parent.mkdir(parents=True, exist_ok=True); "
+        "path.write_text(sys.stdin.read(), encoding='utf-8')"
+    )
+    command = [
+        args.nemoclaw_bin,
+        "sandbox",
+        "exec",
+        args.nemoclaw_sandbox,
+        "--workdir",
+        "/sandbox",
+        "--no-tty",
+        "--timeout",
+        "60",
+        "--",
+        "python3",
+        "-c",
+        script,
+        sandbox_path,
+    ]
+    result = subprocess.run(
+        command,
+        input=message_text,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "Failed to write OpenClaw message into NeMoClaw sandbox\n"
+            f"cmd: {' '.join(shlex.quote(str(part)) for part in command)}\n"
+            f"returncode: {result.returncode}\n"
+            f"stdout:\n{result.stdout}\n"
+            f"stderr:\n{result.stderr}"
+        )
+    return sandbox_path
 
 
 def effective_openclaw_config_path(args: argparse.Namespace) -> Path | None:
@@ -1456,28 +1515,37 @@ def run_agent(args: argparse.Namespace) -> None:
     message_file = output_dir / "message.md"
     message_file.write_text(message_text, encoding="utf-8")
 
+    env, _, _ = prepare_env(args.env_file, args.openclaw_bin)
+    env_for_session_copy: dict[str, str] | None = env
+    if args.openclaw_config_path and not getattr(args, "nemoclaw_sandbox", None):
+        env["OPENCLAW_CONFIG_PATH"] = str(args.openclaw_config_path.resolve())
+
     openclaw_bin = None if getattr(args, "nemoclaw_sandbox", None) else status.get("openclaw_path")
-    command = build_openclaw_command(args, message_text, openclaw_bin)
+    sandbox_message_path = None
+    if getattr(args, "nemoclaw_sandbox", None) and not args.dry_run:
+        sandbox_message_path = write_nemoclaw_message_file(args, message_text, env)
+    command = build_openclaw_command_with_message_source(
+        args,
+        message_text,
+        openclaw_bin,
+        sandbox_message_path=sandbox_message_path,
+    )
     sidecar = {
         "metadata": metadata,
         "preflight": status,
         "command": command,
         "cwd": str(args.cwd.resolve()),
         "openclaw_config_path": str(args.openclaw_config_path.resolve()) if args.openclaw_config_path else None,
+        "sandbox_message_path": sandbox_message_path,
         "tool_policy": policy,
         "started_at": time.time(),
         "dry_run": args.dry_run,
     }
 
     live_runtime_budget: dict[str, Any] = {}
-    env_for_session_copy: dict[str, str] | None = None
     if args.dry_run:
         result = subprocess.CompletedProcess(command, 0, stdout="", stderr="")
     else:
-        env, _, _ = prepare_env(args.env_file, args.openclaw_bin)
-        env_for_session_copy = env
-        if args.openclaw_config_path and not getattr(args, "nemoclaw_sandbox", None):
-            env["OPENCLAW_CONFIG_PATH"] = str(args.openclaw_config_path.resolve())
         result, live_runtime_budget = run_openclaw_command_with_live_budget(
             command,
             args,

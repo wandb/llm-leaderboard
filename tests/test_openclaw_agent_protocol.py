@@ -2396,3 +2396,38 @@ def test_build_openclaw_command_passes_gateway_url_into_nemoclaw_sandbox(monkeyp
     assert command.index("OPENCLAW_GATEWAY_URL=ws://127.0.0.1:18791") < command.index(
         "OPENCLAW_MESSAGE_B64=aGVsbG8="
     )
+
+
+def test_build_openclaw_command_uses_sandbox_message_file_when_provided(monkeypatch):
+    monkeypatch.delenv("OPENCLAW_GATEWAY_URL", raising=False)
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    args = Namespace(
+        openclaw_bin="openclaw",
+        nemoclaw_bin="nemoclaw",
+        nemoclaw_sandbox="nejumi-taiwan",
+        nemoclaw_workdir="/sandbox",
+        profile=None,
+        agent="main",
+        session_key="bench:task",
+        benchmark_id="agentic_swe",
+        task_id="big-task",
+        timeout=120,
+        local=False,
+        model="openai-direct/gpt-4.1-mini-2025-04-14",
+        thinking="off",
+        openclaw_config_path=None,
+    )
+
+    command = module.build_openclaw_command_with_message_source(
+        args,
+        "x" * 40000,
+        None,
+        sandbox_message_path="/tmp/nejumi-openclaw-messages/big-task.md",
+    )
+
+    assert "OPENCLAW_MESSAGE_FILE=/tmp/nejumi-openclaw-messages/big-task.md" in command
+    assert not any(part.startswith("OPENCLAW_MESSAGE_B64=") for part in command)
+    shell = command[-1]
+    assert 'OPENCLAW_MESSAGE="$(cat "$OPENCLAW_MESSAGE_FILE")"' in shell
+    assert '--message "$OPENCLAW_MESSAGE"' in shell
+    assert not any("x" * 1000 in part for part in command)
