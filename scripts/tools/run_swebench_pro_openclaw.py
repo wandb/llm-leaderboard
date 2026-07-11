@@ -71,7 +71,7 @@ DEFAULT_DENIED_TOOLS = [
 DEFAULT_DENIED_ARGUMENT_PATTERNS = [
     r"https?://",
     r"\b(curl|wget)\b",
-    r"\b(?:python(?:3)?\s+-m\s+)?pip(?:3)?\s+install\b",
+    r"\b(?:python(?:3)?\s+-m\s+)?pip(?:3)?\s+install\b(?![^\n;&|]*(?:\s(?:-e|--editable)\s+['\"]?(?:\.|/sandbox/checkouts/|file:)|\s['\"]?(?:\.|/sandbox/checkouts/|file:)))",
     r"\b(requests|urllib|httpx)\.",
 ]
 
@@ -1621,7 +1621,9 @@ def build_prompt(row: dict[str, Any], max_tool_wall_seconds: int | None = DEFAUL
             "Run the relevant local tests when practical after making changes.",
             f"Each shell execution has a wall-clock limit of {wall_limit_text}.",
             "Keep commands targeted: prefer `rg`, focused file reads, selected tests, and small verification commands.",
-            "Do not run broad repository-wide builds, package installs, servers, notebooks, or background jobs unless required by the issue.",
+            "Do not run broad repository-wide builds, servers, notebooks, or background jobs unless required by the issue.",
+            "Local repository installs such as `pip install -e .` are allowed when needed to run tests.",
+            "Do not install packages from PyPI, git URLs, HTTP(S) URLs, or any other external source.",
             "If a command times out, narrow the command or continue with static reasoning from the repository.",
         ]
     )
@@ -1634,6 +1636,7 @@ def build_prompt(row: dict[str, Any], max_tool_wall_seconds: int | None = DEFAUL
             "Keep the change minimal and avoid unrelated formatting or dependency churn.",
             "Use local shell execution in the target checkout; do not use remote code interpreter tools.",
             "Do not use web search, browser, HTTP, or any external internet lookup.",
+            "If an install command is needed, use only local paths from this checkout, for example `pip install -e .`; do not fetch dependencies from the internet.",
             "Do not write `FINAL ANSWER`, `ANSWER:`, or any equivalent final-answer marker before all tool use is complete.",
             "Do not include a final-answer marker in the same assistant turn as a tool call.",
         ]

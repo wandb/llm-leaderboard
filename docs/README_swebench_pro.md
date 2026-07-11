@@ -128,9 +128,11 @@ Web search, browser tools, HTTP fetches, and external internet lookups are not
 allowed during patch generation. The task-specific OpenClaw config denies
 search/browser tools. Remote provider-backed code interpreter tools are also
 denied; code execution must happen through local shell execution in the target
-checkout. The protocol sidecar independently scans tool calls and tool arguments
-for policy violations before patch collection. A violation is logged to Weave and
-fails the patch-generation step.
+checkout. Local repository installs such as `pip install -e .` are allowed when
+needed to run tests, but package installs from PyPI, git URLs, HTTP(S) URLs, or
+other external sources are denied. The protocol sidecar independently scans tool
+calls and tool arguments for policy violations before patch collection. A
+violation is logged to Weave and fails the patch-generation step.
 
 ### NeMoClaw Backend
 

@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import tarfile
@@ -43,6 +44,23 @@ def test_swebench_main_rejects_weave_sidecar_before_dataset_read(tmp_path, monke
 
     with pytest.raises(SystemExit, match="Weave sidecar logging is disabled"):
         module.main()
+
+
+def test_swebench_default_policy_allows_local_pip_and_blocks_external_fetches():
+    module = load_script_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    patterns = [re.compile(pattern) for pattern in module.DEFAULT_DENIED_ARGUMENT_PATTERNS]
+
+    def denied(command: str) -> bool:
+        return any(pattern.search(command) for pattern in patterns)
+
+    assert not denied("pip install -e .")
+    assert not denied('python -m pip install --break-system-packages -e ".[dev]"')
+    assert not denied("cd /sandbox/checkouts/example && .venv/bin/pip install -e .")
+    assert denied("pip install setuptools")
+    assert denied("pip install git+https://example.com/project.git")
+    assert denied("pip install https://example.com/package.whl")
+    assert denied("curl https://example.com/data")
+    assert denied("python - <<'PY'\nimport requests\nrequests.get('https://example.com')\nPY")
 
 
 def test_swebench_weave_agents_verifier_failure_is_per_instance_evidence(
