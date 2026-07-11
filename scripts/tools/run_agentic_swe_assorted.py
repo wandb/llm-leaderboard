@@ -147,8 +147,34 @@ def selected_rows(rows: list[dict[str, Any]], limit: int | None) -> list[dict[st
     return rows[: max(0, int(limit))]
 
 
+def interleave_row_groups(groups: list[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    selected = []
+    max_len = max((len(group) for group in groups), default=0)
+    for index in range(max_len):
+        for group in groups:
+            if index < len(group):
+                selected.append(group[index])
+    return selected
+
+
+def selected_low_middle_rows(rows: list[dict[str, Any]], args: argparse.Namespace) -> list[dict[str, Any]]:
+    if getattr(args, "low_limit", None) is None and getattr(args, "middle_limit", None) is None:
+        return selected_rows(rows, args.low_middle_limit)
+
+    low_limit = max(0, int(getattr(args, "low_limit", 0) or 0))
+    middle_limit = max(0, int(getattr(args, "middle_limit", 0) or 0))
+    low_rows = [row for row in rows if str(row.get("agentic_swe_tier")) == "low"]
+    middle_rows = [row for row in rows if str(row.get("agentic_swe_tier")) == "middle"]
+    return interleave_row_groups(
+        [
+            selected_rows(low_rows, low_limit),
+            selected_rows(middle_rows, middle_limit),
+        ]
+    )
+
+
 def prepare_low_middle_inputs(args: argparse.Namespace) -> tuple[Path, Path, list[dict[str, Any]]]:
-    rows = selected_rows(read_jsonl(args.low_middle_jsonl), args.low_middle_limit)
+    rows = selected_low_middle_rows(read_jsonl(args.low_middle_jsonl), args)
     jsonl_path = args.output_dir / "inputs" / "low_middle_selected.jsonl"
     ids_path = args.output_dir / "inputs" / "low_middle_selected_instance_ids.json"
     write_jsonl(jsonl_path, rows)
@@ -732,6 +758,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--low-middle-jsonl", type=Path, default=DEFAULT_LOW_MIDDLE_JSONL)
     parser.add_argument("--low-middle-instance-ids-json", type=Path, default=DEFAULT_LOW_MIDDLE_IDS)
     parser.add_argument("--low-middle-limit", type=int)
+    parser.add_argument("--low-limit", type=int)
+    parser.add_argument("--middle-limit", type=int)
     parser.add_argument("--deepswe-metadata-jsonl", type=Path, default=DEFAULT_DEEPSWE_META)
     parser.add_argument("--deepswe-task-names-file", type=Path, default=DEFAULT_DEEPSWE_TASK_NAMES)
     parser.add_argument("--deepswe-tasks-root", type=Path, default=REPO_ROOT / "external" / "deep-swe" / "tasks")

@@ -50,6 +50,42 @@ def test_agentic_swe_assorted_keeps_tier_and_source_fields():
     assert row["resolved"] is True
 
 
+def test_agentic_swe_assorted_low_middle_limit_keeps_legacy_order():
+    module = load_module(SCRIPT)
+    rows = [
+        {"instance_id": "low-1", "agentic_swe_tier": "low"},
+        {"instance_id": "low-2", "agentic_swe_tier": "low"},
+        {"instance_id": "middle-1", "agentic_swe_tier": "middle"},
+    ]
+    args = SimpleNamespace(low_middle_limit=2, low_limit=None, middle_limit=None)
+
+    selected = module.selected_low_middle_rows(rows, args)
+
+    assert [row["instance_id"] for row in selected] == ["low-1", "low-2"]
+
+
+def test_agentic_swe_assorted_can_select_balanced_low_middle_subset():
+    module = load_module(SCRIPT)
+    rows = [
+        {"instance_id": "low-1", "agentic_swe_tier": "low"},
+        {"instance_id": "low-2", "agentic_swe_tier": "low"},
+        {"instance_id": "low-3", "agentic_swe_tier": "low"},
+        {"instance_id": "middle-1", "agentic_swe_tier": "middle"},
+        {"instance_id": "middle-2", "agentic_swe_tier": "middle"},
+        {"instance_id": "middle-3", "agentic_swe_tier": "middle"},
+    ]
+    args = SimpleNamespace(low_middle_limit=None, low_limit=2, middle_limit=2)
+
+    selected = module.selected_low_middle_rows(rows, args)
+
+    assert [row["instance_id"] for row in selected] == [
+        "low-1",
+        "middle-1",
+        "low-2",
+        "middle-2",
+    ]
+
+
 def test_agentic_swe_assorted_summary_groups_by_tier_and_source():
     module = load_module(SCRIPT)
     args = SimpleNamespace(
