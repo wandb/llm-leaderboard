@@ -50,6 +50,13 @@ def test_agentic_swe_assorted_keeps_tier_and_source_fields():
     assert row["resolved"] is True
 
 
+def test_agentic_swe_assorted_defaults_to_v2_low_middle_subset():
+    module = load_module(SCRIPT)
+
+    assert module.DEFAULT_LOW_MIDDLE_JSONL.name == "low_middle_v2_72.jsonl"
+    assert module.DEFAULT_LOW_MIDDLE_IDS.name == "low_middle_v2_72_instance_ids.json"
+
+
 def test_agentic_swe_assorted_low_middle_limit_keeps_legacy_order():
     module = load_module(SCRIPT)
     rows = [

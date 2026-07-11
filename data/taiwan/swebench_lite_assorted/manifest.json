@@ -5,7 +5,31 @@
   "source_config": "default",
   "source_split": "test",
   "source_count": 300,
-  "selection_method": "Static-only SWE-bench Lite slicing. Low is selected from the lower difficulty band; Middle is selected near the middle difficulty band. Difficulty uses gold patch files/hunks/changed lines, test patch size, issue length, and F2P/P2P test counts. No model outcomes are used.",
+  "selection_method": "Legacy low_36/middle_36 use static-only SWE-bench Lite slicing. V2 low_v2_36/middle_v2_36 add public SWE-bench Lite per-instance resolution rates from SWE-bench/experiments as a difficulty prior and local GLM-5.2 pilot signals only to remove cost-risk outliers. Public outcomes are used for subset calibration, not scoring.",
+  "selection_versions": {
+    "legacy_static": {
+      "subsets": [
+        "low_36",
+        "middle_36",
+        "low_middle_72"
+      ],
+      "method": "Static-only lower/middle difficulty bands using gold patch files/hunks/changed lines, test patch size, issue length, and F2P/P2P counts."
+    },
+    "v2_public_lite_prior_glm52_pilot_20260712": {
+      "subsets": [
+        "low_v2_36",
+        "middle_v2_36",
+        "low_middle_v2_72"
+      ],
+      "public_results_cache": "source/swebench_lite_public_results.json",
+      "public_submission_count": 84,
+      "pilot_summary_path": "source/glm52_lm12m12_20260712_pilot_summary.json",
+      "pilot_total_instances": 24,
+      "low_rule": "public_lite_resolve_rate>=0.65, public_lite_seen_count>=20, static_percentile<=0.85, no local GLM-5.2 pilot unresolved/cost-risk signal",
+      "middle_rule": "0.25<=public_lite_resolve_rate<=0.72, public_lite_seen_count>=20, static_percentile<=0.95, no local GLM-5.2 pilot cost-risk signal",
+      "repo_cap": 6
+    }
+  },
   "subsets": {
     "low_36": {
       "count": 36,
@@ -62,6 +86,59 @@
       "fail_to_pass_count_mean": 1.3333333333333333,
       "pass_to_pass_count_mean": 47.27777777777778
     },
+    "low_v2_36": {
+      "count": 36,
+      "jsonl_path": "subsets/low_v2_36.jsonl",
+      "csv_path": "subsets/low_v2_36.csv",
+      "instance_ids_path": "subsets/low_v2_36_instance_ids.json",
+      "repo_distribution": {
+        "django/django": 6,
+        "sympy/sympy": 6,
+        "pytest-dev/pytest": 5,
+        "mwaskom/seaborn": 2,
+        "sphinx-doc/sphinx": 3,
+        "matplotlib/matplotlib": 3,
+        "pydata/xarray": 1,
+        "scikit-learn/scikit-learn": 6,
+        "astropy/astropy": 2,
+        "psf/requests": 2
+      },
+      "static_difficulty": {
+        "min": 9.080691,
+        "mean": 12.454055694444445,
+        "max": 17.286275
+      },
+      "gold_patch_changed_lines_mean": 5.888888888888889,
+      "gold_patch_files_mean": 1.0,
+      "fail_to_pass_count_mean": 1.8055555555555556,
+      "pass_to_pass_count_mean": 52.083333333333336
+    },
+    "middle_v2_36": {
+      "count": 36,
+      "jsonl_path": "subsets/middle_v2_36.jsonl",
+      "csv_path": "subsets/middle_v2_36.csv",
+      "instance_ids_path": "subsets/middle_v2_36_instance_ids.json",
+      "repo_distribution": {
+        "sympy/sympy": 6,
+        "sphinx-doc/sphinx": 3,
+        "django/django": 6,
+        "pylint-dev/pylint": 5,
+        "pytest-dev/pytest": 3,
+        "scikit-learn/scikit-learn": 6,
+        "matplotlib/matplotlib": 5,
+        "astropy/astropy": 1,
+        "psf/requests": 1
+      },
+      "static_difficulty": {
+        "min": 9.252591,
+        "mean": 13.804876888888892,
+        "max": 22.182735
+      },
+      "gold_patch_changed_lines_mean": 8.444444444444445,
+      "gold_patch_files_mean": 1.0,
+      "fail_to_pass_count_mean": 1.8611111111111112,
+      "pass_to_pass_count_mean": 66.44444444444444
+    },
     "low_middle_72": {
       "count": 72,
       "jsonl_path": "subsets/low_middle_72.jsonl",
@@ -90,13 +167,42 @@
       "gold_patch_files_mean": 1.0,
       "fail_to_pass_count_mean": 1.625,
       "pass_to_pass_count_mean": 33.916666666666664
+    },
+    "low_middle_v2_72": {
+      "count": 72,
+      "jsonl_path": "subsets/low_middle_v2_72.jsonl",
+      "csv_path": "subsets/low_middle_v2_72.csv",
+      "instance_ids_path": "subsets/low_middle_v2_72_instance_ids.json",
+      "repo_distribution": {
+        "django/django": 12,
+        "sympy/sympy": 12,
+        "pytest-dev/pytest": 8,
+        "mwaskom/seaborn": 2,
+        "sphinx-doc/sphinx": 6,
+        "matplotlib/matplotlib": 8,
+        "pydata/xarray": 1,
+        "scikit-learn/scikit-learn": 12,
+        "astropy/astropy": 3,
+        "psf/requests": 3,
+        "pylint-dev/pylint": 5
+      },
+      "static_difficulty": {
+        "min": 9.080691,
+        "mean": 13.129466291666667,
+        "max": 22.182735
+      },
+      "gold_patch_changed_lines_mean": 7.166666666666667,
+      "gold_patch_files_mean": 1.0,
+      "fail_to_pass_count_mean": 1.8333333333333333,
+      "pass_to_pass_count_mean": 59.263888888888886
     }
   },
   "assorted_80_plan": {
     "low": 36,
     "middle": 36,
     "high": 8,
-    "low_middle_jsonl_path": "subsets/low_middle_72.jsonl",
+    "low_middle_jsonl_path": "subsets/low_middle_v2_72.jsonl",
+    "legacy_low_middle_jsonl_path": "subsets/low_middle_72.jsonl",
     "high_subset": "data/taiwan/deepswe/subsets/essential_8.jsonl"
   }
 }

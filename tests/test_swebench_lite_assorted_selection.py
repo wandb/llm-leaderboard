@@ -28,11 +28,15 @@ def test_swebench_lite_low_middle_subsets_are_manifested():
     assert manifest["subsets"]["low_36"]["count"] == 36
     assert manifest["subsets"]["middle_36"]["count"] == 36
     assert manifest["subsets"]["low_middle_72"]["count"] == 72
+    assert manifest["subsets"]["low_v2_36"]["count"] == 36
+    assert manifest["subsets"]["middle_v2_36"]["count"] == 36
+    assert manifest["subsets"]["low_middle_v2_72"]["count"] == 72
     assert manifest["assorted_80_plan"] == {
         "low": 36,
         "middle": 36,
         "high": 8,
-        "low_middle_jsonl_path": "subsets/low_middle_72.jsonl",
+        "low_middle_jsonl_path": "subsets/low_middle_v2_72.jsonl",
+        "legacy_low_middle_jsonl_path": "subsets/low_middle_72.jsonl",
         "high_subset": "data/taiwan/deepswe/subsets/essential_8.jsonl",
     }
 
@@ -57,9 +61,12 @@ def test_swebench_lite_low_middle_rows_have_source_and_runner_fields():
         "selected_test_files_to_run",
         "static_difficulty_score",
         "static_difficulty_percentile",
+        "public_lite_seen_count",
+        "public_lite_resolved_count",
+        "public_lite_resolve_rate",
     }
 
-    rows = _read_jsonl(ASSORTED_DIR / "subsets" / "low_middle_72.jsonl")
+    rows = _read_jsonl(ASSORTED_DIR / "subsets" / "low_middle_v2_72.jsonl")
 
     assert len(rows) == 72
     assert all(required_fields <= row.keys() for row in rows)
@@ -68,6 +75,8 @@ def test_swebench_lite_low_middle_rows_have_source_and_runner_fields():
     assert all(row["source_dataset"] == "princeton-nlp/SWE-bench_Lite" for row in rows)
     assert all(row["source_instance_id"] == row["instance_id"] for row in rows)
     assert {row["agentic_swe_tier"] for row in rows} == {"low", "middle"}
+    assert {row["source_subset"] for row in rows} == {"low_v2_36", "middle_v2_36"}
+    assert all(row["public_lite_seen_count"] >= 20 for row in rows)
 
 
 def test_swebench_lite_low_middle_difficulty_and_overlap():
@@ -85,3 +94,24 @@ def test_swebench_lite_low_middle_difficulty_and_overlap():
     assert low_mean < middle_mean
     assert max(Counter(row["repo"] for row in low).values()) <= 6
     assert max(Counter(row["repo"] for row in middle).values()) <= 6
+
+
+def test_swebench_lite_v2_uses_public_prior_and_excludes_pilot_cost_risk():
+    low = _read_jsonl(ASSORTED_DIR / "subsets" / "low_v2_36.jsonl")
+    middle = _read_jsonl(ASSORTED_DIR / "subsets" / "middle_v2_36.jsonl")
+
+    low_ids = {row["instance_id"] for row in low}
+    middle_ids = {row["instance_id"] for row in middle}
+    low_rates = [row["public_lite_resolve_rate"] for row in low]
+    middle_rates = [row["public_lite_resolve_rate"] for row in middle]
+
+    assert len(low_ids) == 36
+    assert len(middle_ids) == 36
+    assert low_ids.isdisjoint(middle_ids)
+    assert min(low_rates) >= 0.65
+    assert max(middle_rates) <= 0.72
+    assert sum(low_rates) / len(low_rates) > sum(middle_rates) / len(middle_rates)
+    assert max(Counter(row["repo"] for row in low).values()) <= 6
+    assert max(Counter(row["repo"] for row in middle).values()) <= 6
+    assert not any(row.get("pilot_glm52_lm12m12_runtime_budget_exceeded") for row in low)
+    assert not any(row.get("pilot_glm52_lm12m12_runtime_budget_exceeded") for row in middle)

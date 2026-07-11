@@ -21,7 +21,12 @@ LITE_EVAL_RUNNER = REPO_ROOT / "scripts" / "tools" / "evaluate_swebench_lite_pat
 DEEPSWE_RUNNER = REPO_ROOT / "scripts" / "tools" / "run_deepswe_openclaw.py"
 
 DEFAULT_LOW_MIDDLE_JSONL = (
-    REPO_ROOT / "data" / "taiwan" / "swebench_lite_assorted" / "subsets" / "low_middle_72.jsonl"
+    REPO_ROOT
+    / "data"
+    / "taiwan"
+    / "swebench_lite_assorted"
+    / "subsets"
+    / "low_middle_v2_72.jsonl"
 )
 DEFAULT_LOW_MIDDLE_IDS = (
     REPO_ROOT
@@ -29,7 +34,7 @@ DEFAULT_LOW_MIDDLE_IDS = (
     / "taiwan"
     / "swebench_lite_assorted"
     / "subsets"
-    / "low_middle_72_instance_ids.json"
+    / "low_middle_v2_72_instance_ids.json"
 )
 DEFAULT_DEEPSWE_META = REPO_ROOT / "data" / "taiwan" / "deepswe" / "subsets" / "essential_8.jsonl"
 DEFAULT_DEEPSWE_TASK_NAMES = (

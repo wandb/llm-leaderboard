@@ -1,0 +1,271 @@
+{
+  "run_label": "glm52_lm12m12_20260712",
+  "source_output_table": "/home/yuya/taiwan-lb/llm-leaderboard/outputs/agentic_swe_assorted_runs/glm52_lm12m12_20260712_002247/output_table.jsonl",
+  "total_instances": 24,
+  "instances": {
+    "django__django-13447": {
+      "resolved": true,
+      "patch_empty": false,
+      "openclaw_disqualified_reason": "",
+      "runtime_budget_exceeded": false,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 23,
+      "openclaw_tool_error_count": 4,
+      "weave_agents_ok": true
+    },
+    "sympy__sympy-21055": {
+      "resolved": true,
+      "patch_empty": false,
+      "openclaw_disqualified_reason": "",
+      "runtime_budget_exceeded": false,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 24,
+      "openclaw_tool_error_count": 3,
+      "weave_agents_ok": true
+    },
+    "django__django-12908": {
+      "resolved": false,
+      "patch_empty": true,
+      "openclaw_disqualified_reason": "runtime_budget_exceeded",
+      "runtime_budget_exceeded": true,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 41,
+      "openclaw_tool_error_count": 1,
+      "weave_agents_ok": false
+    },
+    "django__django-12453": {
+      "resolved": true,
+      "patch_empty": false,
+      "openclaw_disqualified_reason": "",
+      "runtime_budget_exceeded": false,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 24,
+      "openclaw_tool_error_count": 3,
+      "weave_agents_ok": true
+    },
+    "django__django-15851": {
+      "resolved": true,
+      "patch_empty": false,
+      "openclaw_disqualified_reason": "",
+      "runtime_budget_exceeded": false,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 18,
+      "openclaw_tool_error_count": 2,
+      "weave_agents_ok": true
+    },
+    "django__django-11910": {
+      "resolved": false,
+      "patch_empty": true,
+      "openclaw_disqualified_reason": "provider_transient_exhausted",
+      "runtime_budget_exceeded": false,
+      "provider_transient_exhausted": true,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 33,
+      "openclaw_tool_error_count": 5,
+      "weave_agents_ok": true
+    },
+    "django__django-11049": {
+      "resolved": true,
+      "patch_empty": false,
+      "openclaw_disqualified_reason": "",
+      "runtime_budget_exceeded": false,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 19,
+      "openclaw_tool_error_count": 3,
+      "weave_agents_ok": true
+    },
+    "django__django-14752": {
+      "resolved": true,
+      "patch_empty": false,
+      "openclaw_disqualified_reason": "",
+      "runtime_budget_exceeded": false,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 22,
+      "openclaw_tool_error_count": 2,
+      "weave_agents_ok": true
+    },
+    "django__django-16046": {
+      "resolved": false,
+      "patch_empty": false,
+      "openclaw_disqualified_reason": "",
+      "runtime_budget_exceeded": false,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 25,
+      "openclaw_tool_error_count": 8,
+      "weave_agents_ok": true
+    },
+    "pytest-dev__pytest-5692": {
+      "resolved": true,
+      "patch_empty": false,
+      "openclaw_disqualified_reason": "",
+      "runtime_budget_exceeded": false,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 26,
+      "openclaw_tool_error_count": 4,
+      "weave_agents_ok": true
+    },
+    "sympy__sympy-21627": {
+      "resolved": false,
+      "patch_empty": true,
+      "openclaw_disqualified_reason": "runtime_budget_exceeded",
+      "runtime_budget_exceeded": true,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 40,
+      "openclaw_tool_error_count": 3,
+      "weave_agents_ok": true
+    },
+    "sympy__sympy-23191": {
+      "resolved": false,
+      "patch_empty": false,
+      "openclaw_disqualified_reason": "",
+      "runtime_budget_exceeded": false,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 21,
+      "openclaw_tool_error_count": 1,
+      "weave_agents_ok": true
+    },
+    "django__django-13230": {
+      "resolved": true,
+      "patch_empty": false,
+      "openclaw_disqualified_reason": "",
+      "runtime_budget_exceeded": false,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 18,
+      "openclaw_tool_error_count": 4,
+      "weave_agents_ok": true
+    },
+    "psf__requests-863": {
+      "resolved": false,
+      "patch_empty": true,
+      "openclaw_disqualified_reason": "tool_policy_violation",
+      "runtime_budget_exceeded": false,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": true,
+      "openclaw_tool_call_count": 14,
+      "openclaw_tool_error_count": 1,
+      "weave_agents_ok": true
+    },
+    "sympy__sympy-24102": {
+      "resolved": false,
+      "patch_empty": false,
+      "openclaw_disqualified_reason": "",
+      "runtime_budget_exceeded": false,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 17,
+      "openclaw_tool_error_count": 1,
+      "weave_agents_ok": true
+    },
+    "matplotlib__matplotlib-25498": {
+      "resolved": false,
+      "patch_empty": true,
+      "openclaw_disqualified_reason": "runtime_budget_exceeded",
+      "runtime_budget_exceeded": true,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 41,
+      "openclaw_tool_error_count": 6,
+      "weave_agents_ok": true
+    },
+    "sympy__sympy-18621": {
+      "resolved": true,
+      "patch_empty": false,
+      "openclaw_disqualified_reason": "",
+      "runtime_budget_exceeded": false,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 38,
+      "openclaw_tool_error_count": 6,
+      "weave_agents_ok": true
+    },
+    "django__django-11039": {
+      "resolved": true,
+      "patch_empty": false,
+      "openclaw_disqualified_reason": "",
+      "runtime_budget_exceeded": false,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 29,
+      "openclaw_tool_error_count": 5,
+      "weave_agents_ok": true
+    },
+    "sympy__sympy-22714": {
+      "resolved": false,
+      "patch_empty": true,
+      "openclaw_disqualified_reason": "runtime_budget_exceeded",
+      "runtime_budget_exceeded": true,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 41,
+      "openclaw_tool_error_count": 4,
+      "weave_agents_ok": true
+    },
+    "django__django-15213": {
+      "resolved": false,
+      "patch_empty": true,
+      "openclaw_disqualified_reason": "runtime_budget_exceeded",
+      "runtime_budget_exceeded": true,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 41,
+      "openclaw_tool_error_count": 3,
+      "weave_agents_ok": true
+    },
+    "sympy__sympy-20212": {
+      "resolved": false,
+      "patch_empty": true,
+      "openclaw_disqualified_reason": "runtime_budget_exceeded",
+      "runtime_budget_exceeded": true,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 41,
+      "openclaw_tool_error_count": 7,
+      "weave_agents_ok": true
+    },
+    "django__django-12915": {
+      "resolved": true,
+      "patch_empty": false,
+      "openclaw_disqualified_reason": "",
+      "runtime_budget_exceeded": false,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 17,
+      "openclaw_tool_error_count": 1,
+      "weave_agents_ok": true
+    },
+    "sympy__sympy-13480": {
+      "resolved": false,
+      "patch_empty": true,
+      "openclaw_disqualified_reason": "runtime_budget_exceeded",
+      "runtime_budget_exceeded": true,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 41,
+      "openclaw_tool_error_count": 7,
+      "weave_agents_ok": true
+    },
+    "sphinx-doc__sphinx-10325": {
+      "resolved": false,
+      "patch_empty": true,
+      "openclaw_disqualified_reason": "runtime_budget_exceeded",
+      "runtime_budget_exceeded": true,
+      "provider_transient_exhausted": false,
+      "tool_policy_violation": false,
+      "openclaw_tool_call_count": 42,
+      "openclaw_tool_error_count": 4,
+      "weave_agents_ok": true
+    }
+  }
+}

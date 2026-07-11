@@ -1,0 +1,1596 @@
+{
+  "source_repo": "SWE-bench/experiments",
+  "source_branch": "main",
+  "source_split": "evaluation/lite",
+  "fetched_at": "2026-07-11T16:55:59.400389+00:00",
+  "submission_count": 84,
+  "submissions": [
+    "20231010_rag_claude2",
+    "20231010_rag_gpt35",
+    "20231010_rag_swellama13b",
+    "20231010_rag_swellama7b",
+    "20240402_rag_claude3opus",
+    "20240402_rag_gpt4",
+    "20240402_sweagent_claude3opus",
+    "20240402_sweagent_gpt4",
+    "20240509_amazon-q-developer-agent-20240430-dev",
+    "20240523_aider",
+    "20240524_opencsg_starship_gpt4",
+    "20240530_autocoderover-v20240408",
+    "20240604_CodeR",
+    "20240612_IBM_Research_Agent101",
+    "20240612_MASAI_gpt4o",
+    "20240615_appmap-navie_gpt4o",
+    "20240617_factory_code_droid",
+    "20240617_moatless_gpt4o",
+    "20240620_sweagent_claude3.5sonnet",
+    "20240621_autocoderover-v20240620",
+    "20240622_Lingma_Agent",
+    "20240623_moatless_claude35sonnet",
+    "20240627_abanteai_mentatbot_gpt4o",
+    "20240630_agentless_gpt4o",
+    "20240702_codestory_aide_mixed",
+    "20240706_sima_gpt4o",
+    "20240721_amazon-q-developer-agent-20240719-dev",
+    "20240723_marscode-agent-dev",
+    "20240725_opendevin_codeact_v1.8_claude35sonnet",
+    "20240728_sweagent_gpt4o",
+    "20240806_SuperCoder2.0",
+    "20240808_RepoGraph_gpt4o",
+    "20240811_gru",
+    "20240820_honeycomb",
+    "20240828_autose_mixed",
+    "20240829_Isoform",
+    "20240908_infant_gpt4o",
+    "20240912_marscode-agent-dev",
+    "20240925_hyperagent_lite1",
+    "20241016_IBM-SWE-1.0",
+    "20241025_OpenHands-CodeAct-2.1-sonnet-20241022",
+    "20241028_agentless-1.5_gpt4o",
+    "20241030_composio_swekit",
+    "20241111_codeshelltester_gpt4o",
+    "20241113_navie-2-gpt4o-sonnet",
+    "20241117_moatless_claude-3.5-sonnet-20241022",
+    "20241117_reproducedRG_gpt4o",
+    "20241122_devlo",
+    "20241127_globant_codefixer_agent",
+    "20241128_SWE-Fixer_Qwen2.5-7b-retriever_Qwen2.5-72b-editor_20241128",
+    "20241202_agentless-1.5_claude-3.5-sonnet-20241022",
+    "20241203_KortixAI-AgentPress-sonnet-20241022",
+    "20241207_kodu_sonnet_v1",
+    "20241208_gru",
+    "20241220_PatchKitty-0.9_claude-3.5-sonnet-20241022",
+    "20241220_blackboxai_agent_v1",
+    "20250104_codefuse-aais",
+    "20250104_patched_codes_claude-3.5-sonnet-20241022",
+    "20250111_moatless_deepseek_v3",
+    "20250113_OpenCSG-Starship-Agentic-Coder_gpt4o",
+    "20250113_OrcaLoca",
+    "20250114_Isoform",
+    "20250114_moatless_claude-3.5-sonnet-20241022",
+    "20250205_dars_agent_claude_3.5_sonnet_deepseek_r1",
+    "20250207_aegis_o3mini",
+    "20250214_agentless_lite_o3_mini",
+    "20250226_sweagent_claude-3-7-sonnet-20250219",
+    "20250306_SWE-Fixer_Qwen2.5-7b-retriever_Qwen2.5-72b-editor",
+    "20250310_codefuse-cgm",
+    "20250425_Refact_Agent",
+    "20250509_Lingxi_claude-3-5-sonnet-20241022",
+    "20250515_codartai",
+    "20250526_sweagent_claude-4-sonnet-20250514",
+    "20250528_Codev",
+    "20250609_KGCompass_deepseek-v3",
+    "20250613_ExpeRepair-v1.0",
+    "20250619_KGCompass_claude-3.5-sonnet-20241022",
+    "20250625_ExpeRepair-v1_claude-4-sonnet-20250514",
+    "20250625_SemAgent_Multi-v1_Claude3.7Sonnet_Gemini2.5Pro",
+    "20250627_agentless_MCTS-Refine-7B",
+    "20250901_entroPO_R2E_QwenCoder30BA3B",
+    "20250901_entroPO_R2E_QwenCoder30BA3B_tts",
+    "20250906_KGCompass_claude-4-sonnet-20250514",
+    "20250911_isea_claude-3.5-sonnet-20241022"
+  ],
+  "skipped_submissions": [],
+  "instances": {
+    "astropy__astropy-12907": {
+      "public_lite_seen_count": 63,
+      "public_lite_resolved_count": 44,
+      "public_lite_resolve_rate": 0.698413
+    },
+    "astropy__astropy-14182": {
+      "public_lite_seen_count": 26,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.038462
+    },
+    "astropy__astropy-14365": {
+      "public_lite_seen_count": 27,
+      "public_lite_resolved_count": 4,
+      "public_lite_resolve_rate": 0.148148
+    },
+    "astropy__astropy-14995": {
+      "public_lite_seen_count": 81,
+      "public_lite_resolved_count": 69,
+      "public_lite_resolve_rate": 0.851852
+    },
+    "astropy__astropy-6938": {
+      "public_lite_seen_count": 65,
+      "public_lite_resolved_count": 38,
+      "public_lite_resolve_rate": 0.584615
+    },
+    "astropy__astropy-7746": {
+      "public_lite_seen_count": 29,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "django__django-10914": {
+      "public_lite_seen_count": 80,
+      "public_lite_resolved_count": 71,
+      "public_lite_resolve_rate": 0.8875
+    },
+    "django__django-10924": {
+      "public_lite_seen_count": 52,
+      "public_lite_resolved_count": 27,
+      "public_lite_resolve_rate": 0.519231
+    },
+    "django__django-11001": {
+      "public_lite_seen_count": 58,
+      "public_lite_resolved_count": 40,
+      "public_lite_resolve_rate": 0.689655
+    },
+    "django__django-11019": {
+      "public_lite_seen_count": 28,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "django__django-11039": {
+      "public_lite_seen_count": 83,
+      "public_lite_resolved_count": 72,
+      "public_lite_resolve_rate": 0.86747
+    },
+    "django__django-11049": {
+      "public_lite_seen_count": 67,
+      "public_lite_resolved_count": 53,
+      "public_lite_resolve_rate": 0.791045
+    },
+    "django__django-11099": {
+      "public_lite_seen_count": 84,
+      "public_lite_resolved_count": 79,
+      "public_lite_resolve_rate": 0.940476
+    },
+    "django__django-11133": {
+      "public_lite_seen_count": 82,
+      "public_lite_resolved_count": 76,
+      "public_lite_resolve_rate": 0.926829
+    },
+    "django__django-11179": {
+      "public_lite_seen_count": 79,
+      "public_lite_resolved_count": 69,
+      "public_lite_resolve_rate": 0.873418
+    },
+    "django__django-11283": {
+      "public_lite_seen_count": 27,
+      "public_lite_resolved_count": 2,
+      "public_lite_resolve_rate": 0.074074
+    },
+    "django__django-11422": {
+      "public_lite_seen_count": 50,
+      "public_lite_resolved_count": 25,
+      "public_lite_resolve_rate": 0.5
+    },
+    "django__django-11564": {
+      "public_lite_seen_count": 25,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "django__django-11583": {
+      "public_lite_seen_count": 73,
+      "public_lite_resolved_count": 62,
+      "public_lite_resolve_rate": 0.849315
+    },
+    "django__django-11620": {
+      "public_lite_seen_count": 56,
+      "public_lite_resolved_count": 30,
+      "public_lite_resolve_rate": 0.535714
+    },
+    "django__django-11630": {
+      "public_lite_seen_count": 31,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "django__django-11742": {
+      "public_lite_seen_count": 28,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.035714
+    },
+    "django__django-11797": {
+      "public_lite_seen_count": 31,
+      "public_lite_resolved_count": 6,
+      "public_lite_resolve_rate": 0.193548
+    },
+    "django__django-11815": {
+      "public_lite_seen_count": 64,
+      "public_lite_resolved_count": 47,
+      "public_lite_resolve_rate": 0.734375
+    },
+    "django__django-11848": {
+      "public_lite_seen_count": 48,
+      "public_lite_resolved_count": 32,
+      "public_lite_resolve_rate": 0.666667
+    },
+    "django__django-11905": {
+      "public_lite_seen_count": 30,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.033333
+    },
+    "django__django-11910": {
+      "public_lite_seen_count": 32,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.03125
+    },
+    "django__django-11964": {
+      "public_lite_seen_count": 44,
+      "public_lite_resolved_count": 22,
+      "public_lite_resolve_rate": 0.5
+    },
+    "django__django-11999": {
+      "public_lite_seen_count": 73,
+      "public_lite_resolved_count": 55,
+      "public_lite_resolve_rate": 0.753425
+    },
+    "django__django-12113": {
+      "public_lite_seen_count": 33,
+      "public_lite_resolved_count": 5,
+      "public_lite_resolve_rate": 0.151515
+    },
+    "django__django-12125": {
+      "public_lite_seen_count": 45,
+      "public_lite_resolved_count": 21,
+      "public_lite_resolve_rate": 0.466667
+    },
+    "django__django-12184": {
+      "public_lite_seen_count": 64,
+      "public_lite_resolved_count": 33,
+      "public_lite_resolve_rate": 0.515625
+    },
+    "django__django-12284": {
+      "public_lite_seen_count": 55,
+      "public_lite_resolved_count": 33,
+      "public_lite_resolve_rate": 0.6
+    },
+    "django__django-12286": {
+      "public_lite_seen_count": 78,
+      "public_lite_resolved_count": 66,
+      "public_lite_resolve_rate": 0.846154
+    },
+    "django__django-12308": {
+      "public_lite_seen_count": 35,
+      "public_lite_resolved_count": 10,
+      "public_lite_resolve_rate": 0.285714
+    },
+    "django__django-12453": {
+      "public_lite_seen_count": 70,
+      "public_lite_resolved_count": 61,
+      "public_lite_resolve_rate": 0.871429
+    },
+    "django__django-12470": {
+      "public_lite_seen_count": 34,
+      "public_lite_resolved_count": 6,
+      "public_lite_resolve_rate": 0.176471
+    },
+    "django__django-12497": {
+      "public_lite_seen_count": 70,
+      "public_lite_resolved_count": 53,
+      "public_lite_resolve_rate": 0.757143
+    },
+    "django__django-12589": {
+      "public_lite_seen_count": 33,
+      "public_lite_resolved_count": 4,
+      "public_lite_resolve_rate": 0.121212
+    },
+    "django__django-12700": {
+      "public_lite_seen_count": 69,
+      "public_lite_resolved_count": 57,
+      "public_lite_resolve_rate": 0.826087
+    },
+    "django__django-12708": {
+      "public_lite_seen_count": 65,
+      "public_lite_resolved_count": 45,
+      "public_lite_resolve_rate": 0.692308
+    },
+    "django__django-12747": {
+      "public_lite_seen_count": 35,
+      "public_lite_resolved_count": 10,
+      "public_lite_resolve_rate": 0.285714
+    },
+    "django__django-12856": {
+      "public_lite_seen_count": 42,
+      "public_lite_resolved_count": 13,
+      "public_lite_resolve_rate": 0.309524
+    },
+    "django__django-12908": {
+      "public_lite_seen_count": 36,
+      "public_lite_resolved_count": 9,
+      "public_lite_resolve_rate": 0.25
+    },
+    "django__django-12915": {
+      "public_lite_seen_count": 64,
+      "public_lite_resolved_count": 44,
+      "public_lite_resolve_rate": 0.6875
+    },
+    "django__django-12983": {
+      "public_lite_seen_count": 73,
+      "public_lite_resolved_count": 64,
+      "public_lite_resolve_rate": 0.876712
+    },
+    "django__django-13028": {
+      "public_lite_seen_count": 70,
+      "public_lite_resolved_count": 48,
+      "public_lite_resolve_rate": 0.685714
+    },
+    "django__django-13033": {
+      "public_lite_seen_count": 52,
+      "public_lite_resolved_count": 25,
+      "public_lite_resolve_rate": 0.480769
+    },
+    "django__django-13158": {
+      "public_lite_seen_count": 51,
+      "public_lite_resolved_count": 32,
+      "public_lite_resolve_rate": 0.627451
+    },
+    "django__django-13220": {
+      "public_lite_seen_count": 28,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.035714
+    },
+    "django__django-13230": {
+      "public_lite_seen_count": 77,
+      "public_lite_resolved_count": 67,
+      "public_lite_resolve_rate": 0.87013
+    },
+    "django__django-13265": {
+      "public_lite_seen_count": 33,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.030303
+    },
+    "django__django-13315": {
+      "public_lite_seen_count": 55,
+      "public_lite_resolved_count": 33,
+      "public_lite_resolve_rate": 0.6
+    },
+    "django__django-13321": {
+      "public_lite_seen_count": 27,
+      "public_lite_resolved_count": 3,
+      "public_lite_resolve_rate": 0.111111
+    },
+    "django__django-13401": {
+      "public_lite_seen_count": 66,
+      "public_lite_resolved_count": 52,
+      "public_lite_resolve_rate": 0.787879
+    },
+    "django__django-13447": {
+      "public_lite_seen_count": 79,
+      "public_lite_resolved_count": 63,
+      "public_lite_resolve_rate": 0.797468
+    },
+    "django__django-13448": {
+      "public_lite_seen_count": 32,
+      "public_lite_resolved_count": 4,
+      "public_lite_resolve_rate": 0.125
+    },
+    "django__django-13551": {
+      "public_lite_seen_count": 49,
+      "public_lite_resolved_count": 25,
+      "public_lite_resolve_rate": 0.510204
+    },
+    "django__django-13590": {
+      "public_lite_seen_count": 68,
+      "public_lite_resolved_count": 57,
+      "public_lite_resolve_rate": 0.838235
+    },
+    "django__django-13658": {
+      "public_lite_seen_count": 83,
+      "public_lite_resolved_count": 78,
+      "public_lite_resolve_rate": 0.939759
+    },
+    "django__django-13660": {
+      "public_lite_seen_count": 39,
+      "public_lite_resolved_count": 13,
+      "public_lite_resolve_rate": 0.333333
+    },
+    "django__django-13710": {
+      "public_lite_seen_count": 74,
+      "public_lite_resolved_count": 63,
+      "public_lite_resolve_rate": 0.851351
+    },
+    "django__django-13757": {
+      "public_lite_seen_count": 61,
+      "public_lite_resolved_count": 35,
+      "public_lite_resolve_rate": 0.57377
+    },
+    "django__django-13768": {
+      "public_lite_seen_count": 27,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.037037
+    },
+    "django__django-13925": {
+      "public_lite_seen_count": 44,
+      "public_lite_resolved_count": 23,
+      "public_lite_resolve_rate": 0.522727
+    },
+    "django__django-13933": {
+      "public_lite_seen_count": 79,
+      "public_lite_resolved_count": 68,
+      "public_lite_resolve_rate": 0.860759
+    },
+    "django__django-13964": {
+      "public_lite_seen_count": 56,
+      "public_lite_resolved_count": 32,
+      "public_lite_resolve_rate": 0.571429
+    },
+    "django__django-14016": {
+      "public_lite_seen_count": 67,
+      "public_lite_resolved_count": 51,
+      "public_lite_resolve_rate": 0.761194
+    },
+    "django__django-14017": {
+      "public_lite_seen_count": 49,
+      "public_lite_resolved_count": 29,
+      "public_lite_resolve_rate": 0.591837
+    },
+    "django__django-14155": {
+      "public_lite_seen_count": 26,
+      "public_lite_resolved_count": 2,
+      "public_lite_resolve_rate": 0.076923
+    },
+    "django__django-14238": {
+      "public_lite_seen_count": 77,
+      "public_lite_resolved_count": 62,
+      "public_lite_resolve_rate": 0.805195
+    },
+    "django__django-14382": {
+      "public_lite_seen_count": 81,
+      "public_lite_resolved_count": 75,
+      "public_lite_resolve_rate": 0.925926
+    },
+    "django__django-14411": {
+      "public_lite_seen_count": 66,
+      "public_lite_resolved_count": 43,
+      "public_lite_resolve_rate": 0.651515
+    },
+    "django__django-14534": {
+      "public_lite_seen_count": 32,
+      "public_lite_resolved_count": 6,
+      "public_lite_resolve_rate": 0.1875
+    },
+    "django__django-14580": {
+      "public_lite_seen_count": 48,
+      "public_lite_resolved_count": 24,
+      "public_lite_resolve_rate": 0.5
+    },
+    "django__django-14608": {
+      "public_lite_seen_count": 67,
+      "public_lite_resolved_count": 51,
+      "public_lite_resolve_rate": 0.761194
+    },
+    "django__django-14667": {
+      "public_lite_seen_count": 26,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "django__django-14672": {
+      "public_lite_seen_count": 74,
+      "public_lite_resolved_count": 59,
+      "public_lite_resolve_rate": 0.797297
+    },
+    "django__django-14730": {
+      "public_lite_seen_count": 29,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "django__django-14752": {
+      "public_lite_seen_count": 82,
+      "public_lite_resolved_count": 76,
+      "public_lite_resolve_rate": 0.926829
+    },
+    "django__django-14787": {
+      "public_lite_seen_count": 73,
+      "public_lite_resolved_count": 55,
+      "public_lite_resolve_rate": 0.753425
+    },
+    "django__django-14855": {
+      "public_lite_seen_count": 83,
+      "public_lite_resolved_count": 77,
+      "public_lite_resolve_rate": 0.927711
+    },
+    "django__django-14915": {
+      "public_lite_seen_count": 80,
+      "public_lite_resolved_count": 72,
+      "public_lite_resolve_rate": 0.9
+    },
+    "django__django-14997": {
+      "public_lite_seen_count": 28,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.035714
+    },
+    "django__django-14999": {
+      "public_lite_seen_count": 54,
+      "public_lite_resolved_count": 40,
+      "public_lite_resolve_rate": 0.740741
+    },
+    "django__django-15061": {
+      "public_lite_seen_count": 36,
+      "public_lite_resolved_count": 8,
+      "public_lite_resolve_rate": 0.222222
+    },
+    "django__django-15202": {
+      "public_lite_seen_count": 30,
+      "public_lite_resolved_count": 3,
+      "public_lite_resolve_rate": 0.1
+    },
+    "django__django-15213": {
+      "public_lite_seen_count": 51,
+      "public_lite_resolved_count": 30,
+      "public_lite_resolve_rate": 0.588235
+    },
+    "django__django-15252": {
+      "public_lite_seen_count": 26,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.038462
+    },
+    "django__django-15320": {
+      "public_lite_seen_count": 31,
+      "public_lite_resolved_count": 6,
+      "public_lite_resolve_rate": 0.193548
+    },
+    "django__django-15347": {
+      "public_lite_seen_count": 78,
+      "public_lite_resolved_count": 66,
+      "public_lite_resolve_rate": 0.846154
+    },
+    "django__django-15388": {
+      "public_lite_seen_count": 31,
+      "public_lite_resolved_count": 4,
+      "public_lite_resolve_rate": 0.129032
+    },
+    "django__django-15400": {
+      "public_lite_seen_count": 46,
+      "public_lite_resolved_count": 20,
+      "public_lite_resolve_rate": 0.434783
+    },
+    "django__django-15498": {
+      "public_lite_seen_count": 52,
+      "public_lite_resolved_count": 33,
+      "public_lite_resolve_rate": 0.634615
+    },
+    "django__django-15695": {
+      "public_lite_seen_count": 29,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "django__django-15738": {
+      "public_lite_seen_count": 35,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.028571
+    },
+    "django__django-15781": {
+      "public_lite_seen_count": 34,
+      "public_lite_resolved_count": 8,
+      "public_lite_resolve_rate": 0.235294
+    },
+    "django__django-15789": {
+      "public_lite_seen_count": 76,
+      "public_lite_resolved_count": 60,
+      "public_lite_resolve_rate": 0.789474
+    },
+    "django__django-15790": {
+      "public_lite_seen_count": 66,
+      "public_lite_resolved_count": 47,
+      "public_lite_resolve_rate": 0.712121
+    },
+    "django__django-15814": {
+      "public_lite_seen_count": 69,
+      "public_lite_resolved_count": 52,
+      "public_lite_resolve_rate": 0.753623
+    },
+    "django__django-15819": {
+      "public_lite_seen_count": 31,
+      "public_lite_resolved_count": 6,
+      "public_lite_resolve_rate": 0.193548
+    },
+    "django__django-15851": {
+      "public_lite_seen_count": 79,
+      "public_lite_resolved_count": 64,
+      "public_lite_resolve_rate": 0.810127
+    },
+    "django__django-15902": {
+      "public_lite_seen_count": 56,
+      "public_lite_resolved_count": 32,
+      "public_lite_resolve_rate": 0.571429
+    },
+    "django__django-15996": {
+      "public_lite_seen_count": 30,
+      "public_lite_resolved_count": 2,
+      "public_lite_resolve_rate": 0.066667
+    },
+    "django__django-16041": {
+      "public_lite_seen_count": 78,
+      "public_lite_resolved_count": 66,
+      "public_lite_resolve_rate": 0.846154
+    },
+    "django__django-16046": {
+      "public_lite_seen_count": 70,
+      "public_lite_resolved_count": 61,
+      "public_lite_resolve_rate": 0.871429
+    },
+    "django__django-16139": {
+      "public_lite_seen_count": 80,
+      "public_lite_resolved_count": 74,
+      "public_lite_resolve_rate": 0.925
+    },
+    "django__django-16229": {
+      "public_lite_seen_count": 29,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.034483
+    },
+    "django__django-16255": {
+      "public_lite_seen_count": 84,
+      "public_lite_resolved_count": 79,
+      "public_lite_resolve_rate": 0.940476
+    },
+    "django__django-16379": {
+      "public_lite_seen_count": 80,
+      "public_lite_resolved_count": 74,
+      "public_lite_resolve_rate": 0.925
+    },
+    "django__django-16400": {
+      "public_lite_seen_count": 37,
+      "public_lite_resolved_count": 10,
+      "public_lite_resolve_rate": 0.27027
+    },
+    "django__django-16408": {
+      "public_lite_seen_count": 37,
+      "public_lite_resolved_count": 6,
+      "public_lite_resolve_rate": 0.162162
+    },
+    "django__django-16527": {
+      "public_lite_seen_count": 84,
+      "public_lite_resolved_count": 79,
+      "public_lite_resolve_rate": 0.940476
+    },
+    "django__django-16595": {
+      "public_lite_seen_count": 81,
+      "public_lite_resolved_count": 73,
+      "public_lite_resolve_rate": 0.901235
+    },
+    "django__django-16816": {
+      "public_lite_seen_count": 25,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "django__django-16820": {
+      "public_lite_seen_count": 26,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "django__django-16873": {
+      "public_lite_seen_count": 82,
+      "public_lite_resolved_count": 74,
+      "public_lite_resolve_rate": 0.902439
+    },
+    "django__django-16910": {
+      "public_lite_seen_count": 34,
+      "public_lite_resolved_count": 3,
+      "public_lite_resolve_rate": 0.088235
+    },
+    "django__django-17051": {
+      "public_lite_seen_count": 60,
+      "public_lite_resolved_count": 39,
+      "public_lite_resolve_rate": 0.65
+    },
+    "django__django-17087": {
+      "public_lite_seen_count": 61,
+      "public_lite_resolved_count": 38,
+      "public_lite_resolve_rate": 0.622951
+    },
+    "matplotlib__matplotlib-18869": {
+      "public_lite_seen_count": 32,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.03125
+    },
+    "matplotlib__matplotlib-22711": {
+      "public_lite_seen_count": 30,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.033333
+    },
+    "matplotlib__matplotlib-22835": {
+      "public_lite_seen_count": 31,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "matplotlib__matplotlib-23299": {
+      "public_lite_seen_count": 32,
+      "public_lite_resolved_count": 3,
+      "public_lite_resolve_rate": 0.09375
+    },
+    "matplotlib__matplotlib-23314": {
+      "public_lite_seen_count": 72,
+      "public_lite_resolved_count": 52,
+      "public_lite_resolve_rate": 0.722222
+    },
+    "matplotlib__matplotlib-23476": {
+      "public_lite_seen_count": 36,
+      "public_lite_resolved_count": 6,
+      "public_lite_resolve_rate": 0.166667
+    },
+    "matplotlib__matplotlib-23562": {
+      "public_lite_seen_count": 59,
+      "public_lite_resolved_count": 34,
+      "public_lite_resolve_rate": 0.576271
+    },
+    "matplotlib__matplotlib-23563": {
+      "public_lite_seen_count": 39,
+      "public_lite_resolved_count": 8,
+      "public_lite_resolve_rate": 0.205128
+    },
+    "matplotlib__matplotlib-23913": {
+      "public_lite_seen_count": 71,
+      "public_lite_resolved_count": 56,
+      "public_lite_resolve_rate": 0.788732
+    },
+    "matplotlib__matplotlib-23964": {
+      "public_lite_seen_count": 78,
+      "public_lite_resolved_count": 70,
+      "public_lite_resolve_rate": 0.897436
+    },
+    "matplotlib__matplotlib-23987": {
+      "public_lite_seen_count": 47,
+      "public_lite_resolved_count": 19,
+      "public_lite_resolve_rate": 0.404255
+    },
+    "matplotlib__matplotlib-24149": {
+      "public_lite_seen_count": 69,
+      "public_lite_resolved_count": 50,
+      "public_lite_resolve_rate": 0.724638
+    },
+    "matplotlib__matplotlib-24265": {
+      "public_lite_seen_count": 36,
+      "public_lite_resolved_count": 5,
+      "public_lite_resolve_rate": 0.138889
+    },
+    "matplotlib__matplotlib-24334": {
+      "public_lite_seen_count": 43,
+      "public_lite_resolved_count": 17,
+      "public_lite_resolve_rate": 0.395349
+    },
+    "matplotlib__matplotlib-24970": {
+      "public_lite_seen_count": 72,
+      "public_lite_resolved_count": 50,
+      "public_lite_resolve_rate": 0.694444
+    },
+    "matplotlib__matplotlib-25079": {
+      "public_lite_seen_count": 29,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.034483
+    },
+    "matplotlib__matplotlib-25311": {
+      "public_lite_seen_count": 46,
+      "public_lite_resolved_count": 18,
+      "public_lite_resolve_rate": 0.391304
+    },
+    "matplotlib__matplotlib-25332": {
+      "public_lite_seen_count": 45,
+      "public_lite_resolved_count": 18,
+      "public_lite_resolve_rate": 0.4
+    },
+    "matplotlib__matplotlib-25433": {
+      "public_lite_seen_count": 29,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.034483
+    },
+    "matplotlib__matplotlib-25442": {
+      "public_lite_seen_count": 62,
+      "public_lite_resolved_count": 36,
+      "public_lite_resolve_rate": 0.580645
+    },
+    "matplotlib__matplotlib-25498": {
+      "public_lite_seen_count": 45,
+      "public_lite_resolved_count": 14,
+      "public_lite_resolve_rate": 0.311111
+    },
+    "matplotlib__matplotlib-26011": {
+      "public_lite_seen_count": 59,
+      "public_lite_resolved_count": 32,
+      "public_lite_resolve_rate": 0.542373
+    },
+    "matplotlib__matplotlib-26020": {
+      "public_lite_seen_count": 71,
+      "public_lite_resolved_count": 49,
+      "public_lite_resolve_rate": 0.690141
+    },
+    "mwaskom__seaborn-2848": {
+      "public_lite_seen_count": 38,
+      "public_lite_resolved_count": 6,
+      "public_lite_resolve_rate": 0.157895
+    },
+    "mwaskom__seaborn-3010": {
+      "public_lite_seen_count": 82,
+      "public_lite_resolved_count": 75,
+      "public_lite_resolve_rate": 0.914634
+    },
+    "mwaskom__seaborn-3190": {
+      "public_lite_seen_count": 66,
+      "public_lite_resolved_count": 49,
+      "public_lite_resolve_rate": 0.742424
+    },
+    "mwaskom__seaborn-3407": {
+      "public_lite_seen_count": 33,
+      "public_lite_resolved_count": 5,
+      "public_lite_resolve_rate": 0.151515
+    },
+    "pallets__flask-4045": {
+      "public_lite_seen_count": 32,
+      "public_lite_resolved_count": 2,
+      "public_lite_resolve_rate": 0.0625
+    },
+    "pallets__flask-4992": {
+      "public_lite_seen_count": 31,
+      "public_lite_resolved_count": 5,
+      "public_lite_resolve_rate": 0.16129
+    },
+    "pallets__flask-5063": {
+      "public_lite_seen_count": 25,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "psf__requests-1963": {
+      "public_lite_seen_count": 50,
+      "public_lite_resolved_count": 31,
+      "public_lite_resolve_rate": 0.62
+    },
+    "psf__requests-2148": {
+      "public_lite_seen_count": 36,
+      "public_lite_resolved_count": 8,
+      "public_lite_resolve_rate": 0.222222
+    },
+    "psf__requests-2317": {
+      "public_lite_seen_count": 70,
+      "public_lite_resolved_count": 58,
+      "public_lite_resolve_rate": 0.828571
+    },
+    "psf__requests-2674": {
+      "public_lite_seen_count": 62,
+      "public_lite_resolved_count": 49,
+      "public_lite_resolve_rate": 0.790323
+    },
+    "psf__requests-3362": {
+      "public_lite_seen_count": 67,
+      "public_lite_resolved_count": 51,
+      "public_lite_resolve_rate": 0.761194
+    },
+    "psf__requests-863": {
+      "public_lite_seen_count": 67,
+      "public_lite_resolved_count": 53,
+      "public_lite_resolve_rate": 0.791045
+    },
+    "pydata__xarray-3364": {
+      "public_lite_seen_count": 30,
+      "public_lite_resolved_count": 2,
+      "public_lite_resolve_rate": 0.066667
+    },
+    "pydata__xarray-4094": {
+      "public_lite_seen_count": 41,
+      "public_lite_resolved_count": 13,
+      "public_lite_resolve_rate": 0.317073
+    },
+    "pydata__xarray-4248": {
+      "public_lite_seen_count": 28,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.035714
+    },
+    "pydata__xarray-4493": {
+      "public_lite_seen_count": 31,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "pydata__xarray-5131": {
+      "public_lite_seen_count": 79,
+      "public_lite_resolved_count": 70,
+      "public_lite_resolve_rate": 0.886076
+    },
+    "pylint-dev__pylint-5859": {
+      "public_lite_seen_count": 62,
+      "public_lite_resolved_count": 41,
+      "public_lite_resolve_rate": 0.66129
+    },
+    "pylint-dev__pylint-6506": {
+      "public_lite_seen_count": 34,
+      "public_lite_resolved_count": 13,
+      "public_lite_resolve_rate": 0.382353
+    },
+    "pylint-dev__pylint-7080": {
+      "public_lite_seen_count": 44,
+      "public_lite_resolved_count": 18,
+      "public_lite_resolve_rate": 0.409091
+    },
+    "pylint-dev__pylint-7114": {
+      "public_lite_seen_count": 53,
+      "public_lite_resolved_count": 28,
+      "public_lite_resolve_rate": 0.528302
+    },
+    "pylint-dev__pylint-7228": {
+      "public_lite_seen_count": 31,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "pylint-dev__pylint-7993": {
+      "public_lite_seen_count": 62,
+      "public_lite_resolved_count": 42,
+      "public_lite_resolve_rate": 0.677419
+    },
+    "pytest-dev__pytest-11143": {
+      "public_lite_seen_count": 80,
+      "public_lite_resolved_count": 72,
+      "public_lite_resolve_rate": 0.9
+    },
+    "pytest-dev__pytest-11148": {
+      "public_lite_seen_count": 61,
+      "public_lite_resolved_count": 23,
+      "public_lite_resolve_rate": 0.377049
+    },
+    "pytest-dev__pytest-5103": {
+      "public_lite_seen_count": 29,
+      "public_lite_resolved_count": 2,
+      "public_lite_resolve_rate": 0.068966
+    },
+    "pytest-dev__pytest-5221": {
+      "public_lite_seen_count": 29,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.034483
+    },
+    "pytest-dev__pytest-5227": {
+      "public_lite_seen_count": 80,
+      "public_lite_resolved_count": 74,
+      "public_lite_resolve_rate": 0.925
+    },
+    "pytest-dev__pytest-5413": {
+      "public_lite_seen_count": 35,
+      "public_lite_resolved_count": 5,
+      "public_lite_resolve_rate": 0.142857
+    },
+    "pytest-dev__pytest-5495": {
+      "public_lite_seen_count": 32,
+      "public_lite_resolved_count": 9,
+      "public_lite_resolve_rate": 0.28125
+    },
+    "pytest-dev__pytest-5692": {
+      "public_lite_seen_count": 62,
+      "public_lite_resolved_count": 49,
+      "public_lite_resolve_rate": 0.790323
+    },
+    "pytest-dev__pytest-6116": {
+      "public_lite_seen_count": 31,
+      "public_lite_resolved_count": 4,
+      "public_lite_resolve_rate": 0.129032
+    },
+    "pytest-dev__pytest-7168": {
+      "public_lite_seen_count": 41,
+      "public_lite_resolved_count": 14,
+      "public_lite_resolve_rate": 0.341463
+    },
+    "pytest-dev__pytest-7220": {
+      "public_lite_seen_count": 39,
+      "public_lite_resolved_count": 9,
+      "public_lite_resolve_rate": 0.230769
+    },
+    "pytest-dev__pytest-7373": {
+      "public_lite_seen_count": 80,
+      "public_lite_resolved_count": 71,
+      "public_lite_resolve_rate": 0.8875
+    },
+    "pytest-dev__pytest-7432": {
+      "public_lite_seen_count": 72,
+      "public_lite_resolved_count": 56,
+      "public_lite_resolve_rate": 0.777778
+    },
+    "pytest-dev__pytest-7490": {
+      "public_lite_seen_count": 54,
+      "public_lite_resolved_count": 30,
+      "public_lite_resolve_rate": 0.555556
+    },
+    "pytest-dev__pytest-8365": {
+      "public_lite_seen_count": 32,
+      "public_lite_resolved_count": 6,
+      "public_lite_resolve_rate": 0.1875
+    },
+    "pytest-dev__pytest-8906": {
+      "public_lite_seen_count": 32,
+      "public_lite_resolved_count": 3,
+      "public_lite_resolve_rate": 0.09375
+    },
+    "pytest-dev__pytest-9359": {
+      "public_lite_seen_count": 34,
+      "public_lite_resolved_count": 6,
+      "public_lite_resolve_rate": 0.176471
+    },
+    "scikit-learn__scikit-learn-10297": {
+      "public_lite_seen_count": 76,
+      "public_lite_resolved_count": 65,
+      "public_lite_resolve_rate": 0.855263
+    },
+    "scikit-learn__scikit-learn-10508": {
+      "public_lite_seen_count": 27,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.037037
+    },
+    "scikit-learn__scikit-learn-10949": {
+      "public_lite_seen_count": 30,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.033333
+    },
+    "scikit-learn__scikit-learn-11040": {
+      "public_lite_seen_count": 30,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "scikit-learn__scikit-learn-11281": {
+      "public_lite_seen_count": 65,
+      "public_lite_resolved_count": 43,
+      "public_lite_resolve_rate": 0.661538
+    },
+    "scikit-learn__scikit-learn-12471": {
+      "public_lite_seen_count": 73,
+      "public_lite_resolved_count": 57,
+      "public_lite_resolve_rate": 0.780822
+    },
+    "scikit-learn__scikit-learn-13142": {
+      "public_lite_seen_count": 73,
+      "public_lite_resolved_count": 49,
+      "public_lite_resolve_rate": 0.671233
+    },
+    "scikit-learn__scikit-learn-13241": {
+      "public_lite_seen_count": 70,
+      "public_lite_resolved_count": 53,
+      "public_lite_resolve_rate": 0.757143
+    },
+    "scikit-learn__scikit-learn-13439": {
+      "public_lite_seen_count": 79,
+      "public_lite_resolved_count": 68,
+      "public_lite_resolve_rate": 0.860759
+    },
+    "scikit-learn__scikit-learn-13496": {
+      "public_lite_seen_count": 80,
+      "public_lite_resolved_count": 67,
+      "public_lite_resolve_rate": 0.8375
+    },
+    "scikit-learn__scikit-learn-13497": {
+      "public_lite_seen_count": 40,
+      "public_lite_resolved_count": 17,
+      "public_lite_resolve_rate": 0.425
+    },
+    "scikit-learn__scikit-learn-13584": {
+      "public_lite_seen_count": 69,
+      "public_lite_resolved_count": 54,
+      "public_lite_resolve_rate": 0.782609
+    },
+    "scikit-learn__scikit-learn-13779": {
+      "public_lite_seen_count": 76,
+      "public_lite_resolved_count": 64,
+      "public_lite_resolve_rate": 0.842105
+    },
+    "scikit-learn__scikit-learn-14087": {
+      "public_lite_seen_count": 44,
+      "public_lite_resolved_count": 15,
+      "public_lite_resolve_rate": 0.340909
+    },
+    "scikit-learn__scikit-learn-14092": {
+      "public_lite_seen_count": 61,
+      "public_lite_resolved_count": 38,
+      "public_lite_resolve_rate": 0.622951
+    },
+    "scikit-learn__scikit-learn-14894": {
+      "public_lite_seen_count": 82,
+      "public_lite_resolved_count": 70,
+      "public_lite_resolve_rate": 0.853659
+    },
+    "scikit-learn__scikit-learn-14983": {
+      "public_lite_seen_count": 37,
+      "public_lite_resolved_count": 14,
+      "public_lite_resolve_rate": 0.378378
+    },
+    "scikit-learn__scikit-learn-15512": {
+      "public_lite_seen_count": 57,
+      "public_lite_resolved_count": 34,
+      "public_lite_resolve_rate": 0.596491
+    },
+    "scikit-learn__scikit-learn-15535": {
+      "public_lite_seen_count": 66,
+      "public_lite_resolved_count": 50,
+      "public_lite_resolve_rate": 0.757576
+    },
+    "scikit-learn__scikit-learn-25500": {
+      "public_lite_seen_count": 34,
+      "public_lite_resolved_count": 7,
+      "public_lite_resolve_rate": 0.205882
+    },
+    "scikit-learn__scikit-learn-25570": {
+      "public_lite_seen_count": 71,
+      "public_lite_resolved_count": 52,
+      "public_lite_resolve_rate": 0.732394
+    },
+    "scikit-learn__scikit-learn-25638": {
+      "public_lite_seen_count": 28,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "scikit-learn__scikit-learn-25747": {
+      "public_lite_seen_count": 39,
+      "public_lite_resolved_count": 9,
+      "public_lite_resolve_rate": 0.230769
+    },
+    "sphinx-doc__sphinx-10325": {
+      "public_lite_seen_count": 46,
+      "public_lite_resolved_count": 24,
+      "public_lite_resolve_rate": 0.521739
+    },
+    "sphinx-doc__sphinx-10451": {
+      "public_lite_seen_count": 31,
+      "public_lite_resolved_count": 4,
+      "public_lite_resolve_rate": 0.129032
+    },
+    "sphinx-doc__sphinx-11445": {
+      "public_lite_seen_count": 39,
+      "public_lite_resolved_count": 11,
+      "public_lite_resolve_rate": 0.282051
+    },
+    "sphinx-doc__sphinx-7686": {
+      "public_lite_seen_count": 30,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sphinx-doc__sphinx-7738": {
+      "public_lite_seen_count": 27,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sphinx-doc__sphinx-7975": {
+      "public_lite_seen_count": 48,
+      "public_lite_resolved_count": 24,
+      "public_lite_resolve_rate": 0.5
+    },
+    "sphinx-doc__sphinx-8273": {
+      "public_lite_seen_count": 28,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.035714
+    },
+    "sphinx-doc__sphinx-8282": {
+      "public_lite_seen_count": 27,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sphinx-doc__sphinx-8435": {
+      "public_lite_seen_count": 40,
+      "public_lite_resolved_count": 11,
+      "public_lite_resolve_rate": 0.275
+    },
+    "sphinx-doc__sphinx-8474": {
+      "public_lite_seen_count": 31,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.032258
+    },
+    "sphinx-doc__sphinx-8506": {
+      "public_lite_seen_count": 31,
+      "public_lite_resolved_count": 3,
+      "public_lite_resolve_rate": 0.096774
+    },
+    "sphinx-doc__sphinx-8595": {
+      "public_lite_seen_count": 72,
+      "public_lite_resolved_count": 56,
+      "public_lite_resolve_rate": 0.777778
+    },
+    "sphinx-doc__sphinx-8627": {
+      "public_lite_seen_count": 41,
+      "public_lite_resolved_count": 12,
+      "public_lite_resolve_rate": 0.292683
+    },
+    "sphinx-doc__sphinx-8713": {
+      "public_lite_seen_count": 72,
+      "public_lite_resolved_count": 65,
+      "public_lite_resolve_rate": 0.902778
+    },
+    "sphinx-doc__sphinx-8721": {
+      "public_lite_seen_count": 72,
+      "public_lite_resolved_count": 54,
+      "public_lite_resolve_rate": 0.75
+    },
+    "sphinx-doc__sphinx-8801": {
+      "public_lite_seen_count": 42,
+      "public_lite_resolved_count": 13,
+      "public_lite_resolve_rate": 0.309524
+    },
+    "sympy__sympy-11400": {
+      "public_lite_seen_count": 27,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sympy__sympy-11870": {
+      "public_lite_seen_count": 32,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sympy__sympy-11897": {
+      "public_lite_seen_count": 26,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.038462
+    },
+    "sympy__sympy-12171": {
+      "public_lite_seen_count": 31,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sympy__sympy-12236": {
+      "public_lite_seen_count": 29,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.034483
+    },
+    "sympy__sympy-12419": {
+      "public_lite_seen_count": 38,
+      "public_lite_resolved_count": 12,
+      "public_lite_resolve_rate": 0.315789
+    },
+    "sympy__sympy-12454": {
+      "public_lite_seen_count": 30,
+      "public_lite_resolved_count": 4,
+      "public_lite_resolve_rate": 0.133333
+    },
+    "sympy__sympy-12481": {
+      "public_lite_seen_count": 65,
+      "public_lite_resolved_count": 46,
+      "public_lite_resolve_rate": 0.707692
+    },
+    "sympy__sympy-13031": {
+      "public_lite_seen_count": 42,
+      "public_lite_resolved_count": 15,
+      "public_lite_resolve_rate": 0.357143
+    },
+    "sympy__sympy-13043": {
+      "public_lite_seen_count": 28,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.035714
+    },
+    "sympy__sympy-13146": {
+      "public_lite_seen_count": 30,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sympy__sympy-13177": {
+      "public_lite_seen_count": 30,
+      "public_lite_resolved_count": 2,
+      "public_lite_resolve_rate": 0.066667
+    },
+    "sympy__sympy-13437": {
+      "public_lite_seen_count": 27,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.037037
+    },
+    "sympy__sympy-13471": {
+      "public_lite_seen_count": 72,
+      "public_lite_resolved_count": 53,
+      "public_lite_resolve_rate": 0.736111
+    },
+    "sympy__sympy-13480": {
+      "public_lite_seen_count": 83,
+      "public_lite_resolved_count": 76,
+      "public_lite_resolve_rate": 0.915663
+    },
+    "sympy__sympy-13647": {
+      "public_lite_seen_count": 77,
+      "public_lite_resolved_count": 66,
+      "public_lite_resolve_rate": 0.857143
+    },
+    "sympy__sympy-13773": {
+      "public_lite_seen_count": 28,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.035714
+    },
+    "sympy__sympy-13895": {
+      "public_lite_seen_count": 29,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.034483
+    },
+    "sympy__sympy-13915": {
+      "public_lite_seen_count": 30,
+      "public_lite_resolved_count": 2,
+      "public_lite_resolve_rate": 0.066667
+    },
+    "sympy__sympy-13971": {
+      "public_lite_seen_count": 50,
+      "public_lite_resolved_count": 32,
+      "public_lite_resolve_rate": 0.64
+    },
+    "sympy__sympy-14024": {
+      "public_lite_seen_count": 32,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sympy__sympy-14308": {
+      "public_lite_seen_count": 25,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sympy__sympy-14317": {
+      "public_lite_seen_count": 29,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sympy__sympy-14396": {
+      "public_lite_seen_count": 37,
+      "public_lite_resolved_count": 15,
+      "public_lite_resolve_rate": 0.405405
+    },
+    "sympy__sympy-14774": {
+      "public_lite_seen_count": 81,
+      "public_lite_resolved_count": 74,
+      "public_lite_resolve_rate": 0.91358
+    },
+    "sympy__sympy-14817": {
+      "public_lite_seen_count": 42,
+      "public_lite_resolved_count": 21,
+      "public_lite_resolve_rate": 0.5
+    },
+    "sympy__sympy-15011": {
+      "public_lite_seen_count": 69,
+      "public_lite_resolved_count": 51,
+      "public_lite_resolve_rate": 0.73913
+    },
+    "sympy__sympy-15308": {
+      "public_lite_seen_count": 27,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sympy__sympy-15345": {
+      "public_lite_seen_count": 42,
+      "public_lite_resolved_count": 16,
+      "public_lite_resolve_rate": 0.380952
+    },
+    "sympy__sympy-15346": {
+      "public_lite_seen_count": 39,
+      "public_lite_resolved_count": 11,
+      "public_lite_resolve_rate": 0.282051
+    },
+    "sympy__sympy-15609": {
+      "public_lite_seen_count": 58,
+      "public_lite_resolved_count": 36,
+      "public_lite_resolve_rate": 0.62069
+    },
+    "sympy__sympy-15678": {
+      "public_lite_seen_count": 58,
+      "public_lite_resolved_count": 37,
+      "public_lite_resolve_rate": 0.637931
+    },
+    "sympy__sympy-16106": {
+      "public_lite_seen_count": 27,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sympy__sympy-16281": {
+      "public_lite_seen_count": 28,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sympy__sympy-16503": {
+      "public_lite_seen_count": 31,
+      "public_lite_resolved_count": 2,
+      "public_lite_resolve_rate": 0.064516
+    },
+    "sympy__sympy-16792": {
+      "public_lite_seen_count": 49,
+      "public_lite_resolved_count": 21,
+      "public_lite_resolve_rate": 0.428571
+    },
+    "sympy__sympy-16988": {
+      "public_lite_seen_count": 42,
+      "public_lite_resolved_count": 20,
+      "public_lite_resolve_rate": 0.47619
+    },
+    "sympy__sympy-17022": {
+      "public_lite_seen_count": 54,
+      "public_lite_resolved_count": 35,
+      "public_lite_resolve_rate": 0.648148
+    },
+    "sympy__sympy-17139": {
+      "public_lite_seen_count": 64,
+      "public_lite_resolved_count": 46,
+      "public_lite_resolve_rate": 0.71875
+    },
+    "sympy__sympy-17630": {
+      "public_lite_seen_count": 26,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sympy__sympy-17655": {
+      "public_lite_seen_count": 65,
+      "public_lite_resolved_count": 46,
+      "public_lite_resolve_rate": 0.707692
+    },
+    "sympy__sympy-18057": {
+      "public_lite_seen_count": 60,
+      "public_lite_resolved_count": 40,
+      "public_lite_resolve_rate": 0.666667
+    },
+    "sympy__sympy-18087": {
+      "public_lite_seen_count": 34,
+      "public_lite_resolved_count": 4,
+      "public_lite_resolve_rate": 0.117647
+    },
+    "sympy__sympy-18189": {
+      "public_lite_seen_count": 69,
+      "public_lite_resolved_count": 45,
+      "public_lite_resolve_rate": 0.652174
+    },
+    "sympy__sympy-18199": {
+      "public_lite_seen_count": 31,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.032258
+    },
+    "sympy__sympy-18532": {
+      "public_lite_seen_count": 67,
+      "public_lite_resolved_count": 46,
+      "public_lite_resolve_rate": 0.686567
+    },
+    "sympy__sympy-18621": {
+      "public_lite_seen_count": 70,
+      "public_lite_resolved_count": 54,
+      "public_lite_resolve_rate": 0.771429
+    },
+    "sympy__sympy-18698": {
+      "public_lite_seen_count": 28,
+      "public_lite_resolved_count": 2,
+      "public_lite_resolve_rate": 0.071429
+    },
+    "sympy__sympy-18835": {
+      "public_lite_seen_count": 29,
+      "public_lite_resolved_count": 3,
+      "public_lite_resolve_rate": 0.103448
+    },
+    "sympy__sympy-19007": {
+      "public_lite_seen_count": 28,
+      "public_lite_resolved_count": 1,
+      "public_lite_resolve_rate": 0.035714
+    },
+    "sympy__sympy-19254": {
+      "public_lite_seen_count": 28,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sympy__sympy-19487": {
+      "public_lite_seen_count": 35,
+      "public_lite_resolved_count": 8,
+      "public_lite_resolve_rate": 0.228571
+    },
+    "sympy__sympy-20049": {
+      "public_lite_seen_count": 29,
+      "public_lite_resolved_count": 4,
+      "public_lite_resolve_rate": 0.137931
+    },
+    "sympy__sympy-20154": {
+      "public_lite_seen_count": 73,
+      "public_lite_resolved_count": 56,
+      "public_lite_resolve_rate": 0.767123
+    },
+    "sympy__sympy-20212": {
+      "public_lite_seen_count": 80,
+      "public_lite_resolved_count": 67,
+      "public_lite_resolve_rate": 0.8375
+    },
+    "sympy__sympy-20322": {
+      "public_lite_seen_count": 27,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sympy__sympy-20442": {
+      "public_lite_seen_count": 51,
+      "public_lite_resolved_count": 24,
+      "public_lite_resolve_rate": 0.470588
+    },
+    "sympy__sympy-20590": {
+      "public_lite_seen_count": 51,
+      "public_lite_resolved_count": 20,
+      "public_lite_resolve_rate": 0.392157
+    },
+    "sympy__sympy-20639": {
+      "public_lite_seen_count": 28,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sympy__sympy-21055": {
+      "public_lite_seen_count": 62,
+      "public_lite_resolved_count": 38,
+      "public_lite_resolve_rate": 0.612903
+    },
+    "sympy__sympy-21171": {
+      "public_lite_seen_count": 28,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sympy__sympy-21379": {
+      "public_lite_seen_count": 42,
+      "public_lite_resolved_count": 13,
+      "public_lite_resolve_rate": 0.309524
+    },
+    "sympy__sympy-21612": {
+      "public_lite_seen_count": 32,
+      "public_lite_resolved_count": 3,
+      "public_lite_resolve_rate": 0.09375
+    },
+    "sympy__sympy-21614": {
+      "public_lite_seen_count": 64,
+      "public_lite_resolved_count": 37,
+      "public_lite_resolve_rate": 0.578125
+    },
+    "sympy__sympy-21627": {
+      "public_lite_seen_count": 36,
+      "public_lite_resolved_count": 5,
+      "public_lite_resolve_rate": 0.138889
+    },
+    "sympy__sympy-21847": {
+      "public_lite_seen_count": 81,
+      "public_lite_resolved_count": 67,
+      "public_lite_resolve_rate": 0.82716
+    },
+    "sympy__sympy-22005": {
+      "public_lite_seen_count": 45,
+      "public_lite_resolved_count": 20,
+      "public_lite_resolve_rate": 0.444444
+    },
+    "sympy__sympy-22714": {
+      "public_lite_seen_count": 75,
+      "public_lite_resolved_count": 58,
+      "public_lite_resolve_rate": 0.773333
+    },
+    "sympy__sympy-22840": {
+      "public_lite_seen_count": 35,
+      "public_lite_resolved_count": 9,
+      "public_lite_resolve_rate": 0.257143
+    },
+    "sympy__sympy-23117": {
+      "public_lite_seen_count": 78,
+      "public_lite_resolved_count": 65,
+      "public_lite_resolve_rate": 0.833333
+    },
+    "sympy__sympy-23191": {
+      "public_lite_seen_count": 31,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sympy__sympy-23262": {
+      "public_lite_seen_count": 64,
+      "public_lite_resolved_count": 43,
+      "public_lite_resolve_rate": 0.671875
+    },
+    "sympy__sympy-24066": {
+      "public_lite_seen_count": 64,
+      "public_lite_resolved_count": 45,
+      "public_lite_resolve_rate": 0.703125
+    },
+    "sympy__sympy-24102": {
+      "public_lite_seen_count": 29,
+      "public_lite_resolved_count": 0,
+      "public_lite_resolve_rate": 0.0
+    },
+    "sympy__sympy-24152": {
+      "public_lite_seen_count": 81,
+      "public_lite_resolved_count": 76,
+      "public_lite_resolve_rate": 0.938272
+    },
+    "sympy__sympy-24213": {
+      "public_lite_seen_count": 80,
+      "public_lite_resolved_count": 68,
+      "public_lite_resolve_rate": 0.85
+    },
+    "sympy__sympy-24909": {
+      "public_lite_seen_count": 33,
+      "public_lite_resolved_count": 9,
+      "public_lite_resolve_rate": 0.272727
+    }
+  }
+}
