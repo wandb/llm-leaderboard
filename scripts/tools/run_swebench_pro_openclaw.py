@@ -1522,6 +1522,10 @@ def list_text(value: Any) -> str:
     return str(value)
 
 
+def normalize_prompt_newlines(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def build_prompt(row: dict[str, Any], max_tool_wall_seconds: int | None = DEFAULT_MAX_TOOL_WALL_SECONDS) -> str:
     benchmark_name = str(row.get("benchmark_name") or "SWE-bench Pro")
     issue_categories = list_text(row.get("issue_categories"))
@@ -1590,7 +1594,7 @@ def build_prompt(row: dict[str, Any], max_tool_wall_seconds: int | None = DEFAUL
             "Do not include a final-answer marker in the same assistant turn as a tool call.",
         ]
     )
-    return "\n".join(parts) + "\n"
+    return normalize_prompt_newlines("\n".join(parts) + "\n")
 
 
 def selected_test_paths(row: dict[str, Any]) -> list[str]:

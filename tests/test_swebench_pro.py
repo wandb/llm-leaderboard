@@ -408,6 +408,23 @@ def test_openclaw_prompt_ignores_embedded_text_fields():
     assert "Do not include a final-answer marker in the same assistant turn as a tool call" in prompt
 
 
+def test_openclaw_prompt_normalizes_crlf_text_fields():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    row = sample_row()
+    row["problem_statement"] = "Line 1\r\nLine 2\rLine 3"
+    row["requirements"] = "Req 1\r\nReq 2"
+    row["interface"] = "Iface 1\rIface 2"
+
+    prompt = module.build_prompt(row, max_tool_wall_seconds=240)
+    normalized_row = sample_row()
+    normalized_row["problem_statement"] = "Line 1\nLine 2\nLine 3"
+    normalized_row["requirements"] = "Req 1\nReq 2"
+    normalized_row["interface"] = "Iface 1\nIface 2"
+
+    assert "\r" not in prompt
+    assert prompt == module.build_prompt(normalized_row, max_tool_wall_seconds=240)
+
+
 def test_swebench_sidecar_path_is_attempt_scoped(tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
     attempt_dir = tmp_path / "openclaw_attempts" / "attempt-1"
