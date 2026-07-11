@@ -1294,6 +1294,105 @@ def test_swebench_budget_disqualification_allows_nemoclaw_audit_failure(
     assert module.should_force_empty_patch(metadata)
 
 
+def test_swebench_cached_scoreable_disqualification_allows_failed_session_audit(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    cache_key = {
+        "instance_id": "example__repo-1",
+        "nemoclaw_sandbox": "nejumi-taiwan",
+        "verify_weave_agents": False,
+    }
+    task_dir = tmp_path / "task"
+    task_dir.mkdir()
+    sidecar_path = task_dir / "openclaw_result.json"
+    sidecar_path.write_text(
+        json.dumps(
+            {
+                "runtime_budget": {
+                    "observed": {
+                        "actual_usage": {
+                            "inputTokens": 100,
+                            "outputTokens": 20,
+                            "cacheReadInputTokens": 300,
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    invocation_path = task_dir / "openclaw_invocation.json"
+    invocation_path.write_text(
+        json.dumps(
+            {
+                "cache_key": cache_key,
+                "expected_openclaw_result_path": str(sidecar_path),
+            }
+        ),
+        encoding="utf-8",
+    )
+    record = {
+        "instance_id": "example__repo-1",
+        "patch": "",
+        "cache_key": cache_key,
+        "patch_capture_version": module.PATCH_CAPTURE_VERSION,
+        "openclaw_disqualified_reason": "runtime_budget_exceeded",
+        "conversation_order_ok": False,
+        "conversation_order": {"ok": False},
+        "tool_policy_ok": True,
+        "tool_policy_violations": [],
+        "nemoclaw_session_audit_ok": False,
+        "nemoclaw_session_audit": {"required": True, "ok": False},
+        "openclaw_result_path": str(sidecar_path),
+        "openclaw_invocation_path": str(invocation_path),
+        "openclaw_invocation_sha256": module.sha256_file(invocation_path),
+    }
+    (task_dir / "patch_record.json").write_text(
+        json.dumps(record, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    cached = module.load_cached_patch_record(task_dir, cache_key, "repair")
+
+    assert cached is not None
+    assert cached["openclaw_disqualified_reason"] == "runtime_budget_exceeded"
+    assert cached["openclaw_usage"] == {
+        "inputTokens": 100,
+        "outputTokens": 20,
+        "cacheReadInputTokens": 300,
+    }
+
+
+def test_swebench_sidecar_usage_reads_result_meta_and_runtime_budget():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+
+    assert module.sidecar_usage(
+        {
+            "stdout_json": {
+                "result": {
+                    "meta": {
+                        "agentMeta": {
+                            "usage": {"input": 10, "output": 2, "cacheRead": 30}
+                        }
+                    }
+                }
+            }
+        }
+    ) == {"input": 10, "output": 2, "cacheRead": 30}
+    assert module.sidecar_usage(
+        {
+            "runtime_budget": {
+                "observed": {
+                    "actual_usage": {
+                        "inputTokens": 11,
+                        "outputTokens": 3,
+                        "cacheReadInputTokens": 31,
+                    }
+                }
+            }
+        }
+    ) == {"inputTokens": 11, "outputTokens": 3, "cacheReadInputTokens": 31}
+
+
 def test_swebench_nemoclaw_copy_mode_syncs_when_checkout_not_visible(tmp_path, monkeypatch):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
     checkout_dir = tmp_path / "checkout-example"

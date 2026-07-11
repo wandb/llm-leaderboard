@@ -48,6 +48,12 @@ DEFAULT_MAX_TOOL_WALL_SECONDS = 120
 OPENCLAW_BUDGET_GUARD_PLUGIN_ID = "nejumi-budget-guard"
 OPENCLAW_BUDGET_GUARD_PLUGIN_VERSION = "0.1.0"
 OPENCLAW_BUDGET_GUARD_BLOCK_PREFIX = "NEJUMI_BUDGET_GUARD_BLOCKED"
+SCOREABLE_OPENCLAW_DISQUALIFIED_REASONS = {
+    "runtime_budget_exceeded",
+    "tool_policy_violation",
+    "conversation_order_violation",
+    "time_up",
+}
 DEFAULT_DENIED_TOOLS = [
     "code_execution",
     "web_search",
@@ -1471,13 +1477,21 @@ def non_scoreable_openclaw_failure_reason(
 
 
 def cached_result_is_reusable(record: dict[str, Any]) -> bool:
+    if record_scoreable_disqualification(record):
+        return True
     if record.get("scoring_method") != "openclaw_error":
         return True
     text = str(record.get("scoring_error") or "")
     return not any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in TRANSIENT_OPENCLAW_FAILURE_PATTERNS)
 
 
+def record_scoreable_disqualification(record: dict[str, Any]) -> bool:
+    return str(record.get("openclaw_disqualified_reason") or "") in SCOREABLE_OPENCLAW_DISQUALIFIED_REASONS
+
+
 def record_nemoclaw_session_audit_matches_cache(record: dict[str, Any], cache_key: dict[str, Any]) -> bool:
+    if record_scoreable_disqualification(record):
+        return True
     audit = record.get("nemoclaw_session_audit")
     if cache_requires_nemoclaw_session_audit(cache_key):
         return (
@@ -1505,6 +1519,8 @@ def nemoclaw_session_copy_evidence(sidecar: dict[str, Any] | None) -> dict[str, 
 
 
 def record_conversation_order_allows_reuse(record: dict[str, Any]) -> bool:
+    if record_scoreable_disqualification(record):
+        return True
     order = record.get("conversation_order")
     if record.get("conversation_order_ok") is False:
         return False
@@ -1514,6 +1530,8 @@ def record_conversation_order_allows_reuse(record: dict[str, Any]) -> bool:
 
 
 def record_tool_policy_allows_reuse(record: dict[str, Any]) -> bool:
+    if record_scoreable_disqualification(record):
+        return True
     if record.get("tool_policy_ok") is False:
         return False
     if record.get("tool_policy_violations"):
@@ -1632,6 +1650,50 @@ def recover_workspace_vanished_failure(
     }
 
 
+def sidecar_usage(sidecar: dict[str, Any]) -> dict[str, Any]:
+    stdout_json = sidecar.get("stdout_json")
+    if isinstance(stdout_json, dict):
+        for meta_parent in (stdout_json.get("result"), stdout_json):
+            if not isinstance(meta_parent, dict):
+                continue
+            usage = meta_parent.get("meta", {}).get("agentMeta", {}).get("usage", {})
+            if isinstance(usage, dict) and usage:
+                return usage
+    runtime_budget = sidecar.get("runtime_budget")
+    observed = runtime_budget.get("observed") if isinstance(runtime_budget, dict) else None
+    actual_usage = observed.get("actual_usage") if isinstance(observed, dict) else None
+    if isinstance(actual_usage, dict) and actual_usage:
+        return actual_usage
+    return {}
+
+
+def backfill_record_usage(record: dict[str, Any], record_path: Path) -> dict[str, Any]:
+    if record.get("openclaw_usage"):
+        return record
+    result_path = record.get("openclaw_result_path")
+    if not isinstance(result_path, str) or not result_path:
+        return record
+    try:
+        sidecar = json.loads(Path(result_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return record
+    if not isinstance(sidecar, dict):
+        return record
+    usage = sidecar_usage(sidecar)
+    if not usage:
+        return record
+    updated = dict(record)
+    updated["openclaw_usage"] = usage
+    try:
+        record_path.write_text(
+            json.dumps(updated, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+    return updated
+
+
 def build_openclaw_error_record(
     row: dict[str, Any],
     result: subprocess.CompletedProcess[str],
@@ -1650,13 +1712,7 @@ def build_openclaw_error_record(
     openclaw_returncode = result.returncode
     if isinstance(sidecar, dict):
         openclaw_returncode = sidecar.get("returncode", result.returncode)
-        stdout_json = sidecar.get("stdout_json")
-        if isinstance(stdout_json, dict):
-            usage = (
-                stdout_json.get("meta", {})
-                .get("agentMeta", {})
-                .get("usage", {})
-            )
+        usage = sidecar_usage(sidecar)
     runtime_budget = sidecar.get("runtime_budget", {}) if isinstance(sidecar, dict) else {}
     runtime_budget_exceeded = (
         isinstance(runtime_budget, dict) and bool(runtime_budget.get("violations"))
@@ -1744,14 +1800,7 @@ def build_scored_record_from_sidecar(
         "scoring_error": score.get("error", ""),
         "openclaw_result_path": str(sidecar_path),
         "openclaw_returncode": sidecar.get("returncode"),
-        "openclaw_usage": (
-            sidecar.get("stdout_json", {})
-            .get("meta", {})
-            .get("agentMeta", {})
-            .get("usage", {})
-            if isinstance(sidecar.get("stdout_json"), dict)
-            else {}
-        ),
+        "openclaw_usage": sidecar_usage(sidecar),
         "openclaw_tool_call_count": sidecar.get("tool_call_count", 0),
         "openclaw_tool_error_count": sidecar.get("tool_error_count", 0),
         "runtime_budget": sidecar.get("runtime_budget", {}),
@@ -2404,6 +2453,7 @@ def run_openclaw_for_task(
     if result_path.exists() and not args.redo:
         existing = json.loads(result_path.read_text(encoding="utf-8"))
         if cached_result_matches_cache(existing, cache_key):
+            existing = backfill_record_usage(existing, result_path)
             print(f"Reusing existing Agentic Math result: {row['task_id']}", flush=True)
             return existing
         print(
@@ -2573,6 +2623,7 @@ def run_openclaw_for_task(
         if result_path.exists() and not args.redo:
             existing = json.loads(result_path.read_text(encoding="utf-8"))
             if cached_result_matches_cache(existing, cache_key):
+                existing = backfill_record_usage(existing, result_path)
                 print(
                     f"OpenClaw returned {result.returncode} for {row['task_id']}, "
                     "but a matching result.json is available; reusing it.",
@@ -2968,6 +3019,26 @@ def main() -> None:
     def ordered_results() -> list[dict[str, Any]]:
         return [results_by_index[index] for index in sorted(results_by_index)]
 
+    def merge_disk_results() -> None:
+        for index, row in enumerate(rows, start=1):
+            if index in results_by_index:
+                continue
+            task_dir = args.output_dir / str(row["task_id"])
+            result_path = task_dir / "result.json"
+            if not result_path.exists():
+                continue
+            try:
+                record = json.loads(result_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            prompt_text = build_prompt(
+                row,
+                max_tool_wall_seconds=int(getattr(args, "max_tool_wall_seconds", 0) or 0),
+            )
+            cache_key = build_cache_key(row, prompt_text, args)
+            if cached_result_matches_cache(record, cache_key):
+                results_by_index[index] = backfill_record_usage(record, result_path)
+
     def run_one(index: int, row: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         task_dir = args.output_dir / str(row["task_id"])
         task_start_limiter.wait()
@@ -3012,6 +3083,7 @@ def main() -> None:
                 results_by_index[completed_index] = record
             except Exception as exc:
                 error_path = write_task_error(task_dir, row, exc)
+                merge_disk_results()
                 write_jsonl(partial_results_path, ordered_results())
                 print(
                     f"Agentic Math task failed: {row['task_id']} (details: {error_path})",
@@ -3036,6 +3108,7 @@ def main() -> None:
                     results_by_index[completed_index] = record
                 except Exception as exc:
                     error_path = write_task_error(task_dir, row, exc)
+                    merge_disk_results()
                     write_jsonl(partial_results_path, ordered_results())
                     print(
                         f"Agentic Math task failed: {row['task_id']} (details: {error_path})",

@@ -52,6 +52,12 @@ DEFAULT_MAX_TOOL_WALL_SECONDS = 300
 OPENCLAW_BUDGET_GUARD_PLUGIN_ID = "nejumi-budget-guard"
 OPENCLAW_BUDGET_GUARD_PLUGIN_VERSION = "0.1.0"
 OPENCLAW_BUDGET_GUARD_BLOCK_PREFIX = "NEJUMI_BUDGET_GUARD_BLOCKED"
+SCOREABLE_OPENCLAW_DISQUALIFIED_REASONS = {
+    "runtime_budget_exceeded",
+    "tool_policy_violation",
+    "conversation_order_violation",
+    "time_up",
+}
 OPENCLAW_RUNTIME_DIR = ".nejumi_openclaw"
 RUNTIME_EXCLUDED_PATHS = [OPENCLAW_RUNTIME_DIR]
 NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
@@ -247,7 +253,13 @@ def sidecar_nemoclaw_session_audit_matches_cache(sidecar: dict[str, Any], cache_
     return True
 
 
+def patch_record_scoreable_disqualification(record: dict[str, Any]) -> bool:
+    return str(record.get("openclaw_disqualified_reason") or "") in SCOREABLE_OPENCLAW_DISQUALIFIED_REASONS
+
+
 def patch_record_nemoclaw_session_audit_matches_cache(record: dict[str, Any], cache_key: dict[str, Any]) -> bool:
+    if patch_record_scoreable_disqualification(record):
+        return True
     audit = record.get("nemoclaw_session_audit")
     if cache_requires_nemoclaw_session_audit(cache_key):
         return (
@@ -275,6 +287,8 @@ def nemoclaw_session_copy_evidence(sidecar: dict[str, Any] | None) -> dict[str, 
 
 
 def patch_record_conversation_order_allows_reuse(record: dict[str, Any]) -> bool:
+    if patch_record_scoreable_disqualification(record):
+        return True
     order = record.get("conversation_order")
     if record.get("conversation_order_ok") is False:
         return False
@@ -284,6 +298,8 @@ def patch_record_conversation_order_allows_reuse(record: dict[str, Any]) -> bool
 
 
 def patch_record_tool_policy_allows_reuse(record: dict[str, Any]) -> bool:
+    if patch_record_scoreable_disqualification(record):
+        return True
     if record.get("tool_policy_ok") is False:
         return False
     if record.get("tool_policy_violations"):
@@ -393,6 +409,25 @@ def load_cached_patch_record(
     ):
         return None
     cached = dict(record)
+    if not cached.get("openclaw_usage"):
+        result_path = cached.get("openclaw_result_path")
+        if isinstance(result_path, str) and result_path:
+            try:
+                sidecar = json.loads(Path(result_path).read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                sidecar = None
+            if isinstance(sidecar, dict):
+                usage = sidecar_usage(sidecar)
+                if usage:
+                    cached["openclaw_usage"] = usage
+                    record["openclaw_usage"] = usage
+                    try:
+                        record_path.write_text(
+                            json.dumps(record, ensure_ascii=False, indent=2) + "\n",
+                            encoding="utf-8",
+                        )
+                    except OSError:
+                        pass
     cached["prefix"] = prefix
     return cached
 
@@ -1474,9 +1509,19 @@ def recover_workspace_vanished_failure(
 
 def sidecar_usage(sidecar: dict[str, Any]) -> dict[str, Any]:
     stdout_json = sidecar.get("stdout_json")
-    if not isinstance(stdout_json, dict):
-        return {}
-    return stdout_json.get("meta", {}).get("agentMeta", {}).get("usage", {})
+    if isinstance(stdout_json, dict):
+        for meta_parent in (stdout_json.get("result"), stdout_json):
+            if not isinstance(meta_parent, dict):
+                continue
+            usage = meta_parent.get("meta", {}).get("agentMeta", {}).get("usage", {})
+            if isinstance(usage, dict) and usage:
+                return usage
+    runtime_budget = sidecar.get("runtime_budget")
+    observed = runtime_budget.get("observed") if isinstance(runtime_budget, dict) else None
+    actual_usage = observed.get("actual_usage") if isinstance(observed, dict) else None
+    if isinstance(actual_usage, dict) and actual_usage:
+        return actual_usage
+    return {}
 
 
 def repo_url(repo: str) -> str:
@@ -2824,6 +2869,25 @@ def main() -> None:
         )
         return index, patch_record
 
+    def merge_disk_patch_records() -> None:
+        for index, row in enumerate(rows, start=1):
+            if index in patches_by_index:
+                continue
+            task_dir = args.output_dir / safe_id(str(row["instance_id"]))
+            prompt_text = build_prompt(
+                row,
+                max_tool_wall_seconds=int(getattr(args, "max_tool_wall_seconds", 0) or 0),
+            )
+            cache_key = build_cache_key(row, prompt_text, args)
+            cached_patch = load_cached_patch_record(
+                task_dir,
+                cache_key,
+                args.prefix,
+                selected_test_paths(row),
+            )
+            if cached_patch is not None:
+                patches_by_index[index] = cached_patch
+
     def pre_register_task_agents() -> None:
         if (
             not uses_nemoclaw_gateway_task_agent(args)
@@ -2876,6 +2940,7 @@ def main() -> None:
                 patches_by_index[completed_index] = patch_record
                 write_outputs(args.output_dir, ordered_patches(), rows, args)
         except Exception:
+            merge_disk_patch_records()
             write_outputs(args.output_dir, ordered_patches(), rows, args)
             executor.shutdown(wait=False, cancel_futures=True)
             raise

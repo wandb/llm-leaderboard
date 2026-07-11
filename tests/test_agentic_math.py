@@ -430,6 +430,102 @@ def test_cached_nemoclaw_result_requires_session_audit(tmp_path):
     assert module.cached_result_matches_cache(record, cache_key)
 
 
+def test_cached_math_scoreable_disqualification_allows_failed_session_audit(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    cache_key = {
+        "task_id": "task_1",
+        "prompt_hash": "prompt-hash",
+        "agent_runtime": "nemoclaw",
+        "nemoclaw_sandbox": "nejumi-taiwan",
+    }
+    sidecar_path = tmp_path / "openclaw_result.json"
+    sidecar_path.write_text(
+        json.dumps(
+            {
+                "runtime_budget": {
+                    "observed": {
+                        "actual_usage": {
+                            "inputTokens": 100,
+                            "outputTokens": 20,
+                            "cacheReadInputTokens": 300,
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    command = ["python3", "run_openclaw_agent_protocol.py", "run"]
+    invocation = {
+        "cache_key": cache_key,
+        "command": command,
+        "command_sha256": module.command_sha256(command),
+        "expected_openclaw_result_path": str(sidecar_path),
+    }
+    invocation_path = tmp_path / "openclaw_invocation.json"
+    invocation_path.write_text(json.dumps(invocation, ensure_ascii=False), encoding="utf-8")
+    record_path = tmp_path / "result.json"
+    record = {
+        "task_id": "task_1",
+        "cache_key": cache_key,
+        "correct": False,
+        "scoring_method": "openclaw_error",
+        "scoring_error": "Runtime budget exceeded",
+        "openclaw_disqualified_reason": "runtime_budget_exceeded",
+        "openclaw_result_path": str(sidecar_path),
+        "openclaw_invocation_path": str(invocation_path),
+        "openclaw_invocation_sha256": module.sha256_file(invocation_path),
+        "openclaw_command_sha256": invocation["command_sha256"],
+        "conversation_order_ok": False,
+        "conversation_order": {"ok": False},
+        "tool_policy_ok": True,
+        "tool_policy_violations": [],
+        "nemoclaw_session_audit": {"required": True, "ok": False},
+        "nemoclaw_session_audit_ok": False,
+    }
+    record_path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+
+    assert module.cached_result_matches_cache(record, cache_key)
+    cached = module.backfill_record_usage(record, record_path)
+
+    assert cached["openclaw_usage"] == {
+        "inputTokens": 100,
+        "outputTokens": 20,
+        "cacheReadInputTokens": 300,
+    }
+
+
+def test_math_sidecar_usage_reads_result_meta_and_runtime_budget():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+
+    assert module.sidecar_usage(
+        {
+            "stdout_json": {
+                "result": {
+                    "meta": {
+                        "agentMeta": {
+                            "usage": {"input": 10, "output": 2, "cacheRead": 30}
+                        }
+                    }
+                }
+            }
+        }
+    ) == {"input": 10, "output": 2, "cacheRead": 30}
+    assert module.sidecar_usage(
+        {
+            "runtime_budget": {
+                "observed": {
+                    "actual_usage": {
+                        "inputTokens": 11,
+                        "outputTokens": 3,
+                        "cacheReadInputTokens": 31,
+                    }
+                }
+            }
+        }
+    ) == {"inputTokens": 11, "outputTokens": 3, "cacheReadInputTokens": 31}
+
+
 def test_transient_openclaw_failure_ignores_tool_policy_violation():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
     completed = subprocess.CompletedProcess(

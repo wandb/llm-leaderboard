@@ -344,7 +344,14 @@ def numeric_value(value: Any) -> float:
 
 
 def usage_numbers(value: Any) -> dict[str, float]:
-    totals = {"input_tokens": 0.0, "output_tokens": 0.0, "total_tokens": 0.0, "cost_usd": 0.0}
+    totals = {
+        "input_tokens": 0.0,
+        "output_tokens": 0.0,
+        "cache_read_input_tokens": 0.0,
+        "cache_write_input_tokens": 0.0,
+        "total_tokens": 0.0,
+        "cost_usd": 0.0,
+    }
 
     def visit(item: Any, key_hint: str = "") -> None:
         if isinstance(item, dict):
@@ -361,6 +368,10 @@ def usage_numbers(value: Any) -> dict[str, float]:
         key = key_hint.replace("-", "_")
         if "cost" in key and ("usd" in key or key == "cost"):
             totals["cost_usd"] += number
+        elif "cache" in key and "read" in key:
+            totals["cache_read_input_tokens"] += number
+        elif "cache" in key and "write" in key:
+            totals["cache_write_input_tokens"] += number
         elif "input" in key or "prompt" in key:
             totals["input_tokens"] += number
         elif "output" in key or "completion" in key:
@@ -370,12 +381,17 @@ def usage_numbers(value: Any) -> dict[str, float]:
 
     visit(value)
     if not totals["total_tokens"]:
-        totals["total_tokens"] = totals["input_tokens"] + totals["output_tokens"]
+        totals["total_tokens"] = (
+            totals["input_tokens"]
+            + totals["output_tokens"]
+            + totals["cache_read_input_tokens"]
+            + totals["cache_write_input_tokens"]
+        )
     return totals
 
 
 def merge_usage(rows: list[dict[str, Any]]) -> dict[str, float]:
-    totals = {"input_tokens": 0.0, "output_tokens": 0.0, "total_tokens": 0.0, "cost_usd": 0.0}
+    totals = usage_numbers({})
     for row in rows:
         usage = usage_numbers(row.get("openclaw_usage"))
         for key, value in usage.items():

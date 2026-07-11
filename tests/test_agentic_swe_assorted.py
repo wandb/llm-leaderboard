@@ -102,3 +102,22 @@ def test_agentic_swe_assorted_summary_groups_by_tier_and_source():
     assert summary["by_source"]["SWE-bench Lite"]["total_instances"] == 1
     assert summary["total"]["usage"]["input_tokens"] == 300
     assert summary["total"]["usage"]["output_tokens"] == 150
+
+
+def test_agentic_swe_assorted_usage_tracks_cache_tokens_separately():
+    module = load_module(SCRIPT)
+
+    usage = module.usage_numbers(
+        {
+            "inputTokens": 100,
+            "outputTokens": 20,
+            "cacheReadInputTokens": 300,
+            "cacheWriteInputTokens": 40,
+        }
+    )
+
+    assert usage["input_tokens"] == 100
+    assert usage["output_tokens"] == 20
+    assert usage["cache_read_input_tokens"] == 300
+    assert usage["cache_write_input_tokens"] == 40
+    assert usage["total_tokens"] == 460
