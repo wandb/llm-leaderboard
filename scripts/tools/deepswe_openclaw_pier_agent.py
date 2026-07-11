@@ -313,9 +313,14 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
         row = self._row(task_id, task_toml, instruction)
         task_dir = self.output_root / swe_runner.safe_id(task_id)
         task_dir.mkdir(parents=True, exist_ok=True)
+        initial_checkout_transfer: dict[str, Any] | None = None
         with _RUN_LOCK:
             swe_runner.ensure_nemoclaw_openclaw_permissions(args)
-            swe_runner.ensure_nemoclaw_checkout_ready(checkout_dir, task_dir, args)
+            initial_checkout_transfer = swe_runner.ensure_nemoclaw_checkout_ready(
+                checkout_dir,
+                task_dir,
+                args,
+            )
             gateway_task_agent = swe_runner.uses_nemoclaw_gateway_task_agent(args)
             if (
                 self.verify_weave_agents
@@ -362,6 +367,7 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
             {
                 "runner_version": RUNNER_VERSION,
                 "deepswe_task_id": task_id,
+                "deepswe_initial_nemoclaw_checkout_transfer": initial_checkout_transfer,
                 "deepswe_patch_path": str(patch_path),
                 "deepswe_patch_bytes": len(patch.encode("utf-8")),
             }

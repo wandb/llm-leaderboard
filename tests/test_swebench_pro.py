@@ -155,10 +155,39 @@ def test_swebench_copy_archive_excludes_git_history(tmp_path):
     assert not any(name == "./.git" or name.startswith("./.git/") for name in names)
 
 
-def test_nemoclaw_checkout_transfer_chunk_size_is_large_repo_friendly():
+def test_nemoclaw_checkout_transfer_uses_sandbox_upload(tmp_path, monkeypatch):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    local_file = tmp_path / "checkout.tgz"
+    local_file.write_bytes(b"archive")
+    calls = []
 
-    assert module.NEMOCLAW_TRANSFER_CHUNK_BYTES >= 8 * 1024 * 1024
+    def fake_text_command(args, command, **kwargs):
+        calls.append(("text", command))
+        if command[0] == "sha256sum":
+            return subprocess.CompletedProcess(command, 0, stdout="abc123 /sandbox/tmp/checkout.tgz\n", stderr="")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    def fake_run_command(command, **kwargs):
+        calls.append(("run", command))
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(module, "sha256_file", lambda path: "abc123")
+    monkeypatch.setattr(module, "run_nemoclaw_text_command", fake_text_command)
+    monkeypatch.setattr(module, "run_command", fake_run_command)
+
+    result = module.upload_file_to_nemoclaw(
+        local_file,
+        "/sandbox/tmp/checkout.tgz",
+        SimpleNamespace(
+            nemoclaw_bin="nemoclaw",
+            nemoclaw_sandbox="nejumi-taiwan",
+            nemoclaw_checkout_transfer_timeout=600,
+        ),
+    )
+
+    assert ("run", ["nemoclaw", "sandbox", "upload", "nejumi-taiwan", str(local_file), "/sandbox/tmp/checkout.tgz"]) in calls
+    assert result["transport"] == "nemoclaw_sandbox_upload"
+    assert result["chunk_count"] is None
 
 
 def sample_row() -> dict:

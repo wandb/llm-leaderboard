@@ -61,9 +61,6 @@ SCOREABLE_OPENCLAW_DISQUALIFIED_REASONS = {
 OPENCLAW_RUNTIME_DIR = ".nejumi_openclaw"
 RUNTIME_EXCLUDED_PATHS = [OPENCLAW_RUNTIME_DIR]
 NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
-# Keep copy-mode checkout uploads coarse enough for large DeepSWE repositories.
-# A 1 GiB checkout would require ~2,000 sandbox exec calls at 512 KiB.
-NEMOCLAW_TRANSFER_CHUNK_BYTES = 16 * 1024 * 1024
 DEFAULT_DENIED_TOOLS = [
     "code_execution",
     "web_search",
@@ -1838,22 +1835,20 @@ def upload_file_to_nemoclaw(
     host_sha = sha256_file(local_path)
     run_nemoclaw_text_command(
         args,
-        ["bash", "-lc", 'mkdir -p "$(dirname "$1")" && : > "$1"', "init-upload", sandbox_path],
+        ["bash", "-lc", 'mkdir -p "$(dirname "$1")"', "init-upload", sandbox_path],
         timeout=30,
     )
-    chunk_count = 0
-    with local_path.open("rb") as f:
-        while True:
-            chunk = f.read(NEMOCLAW_TRANSFER_CHUNK_BYTES)
-            if not chunk:
-                break
-            run_nemoclaw_binary_command(
-                args,
-                ["bash", "-lc", 'cat >> "$1"', "append-upload", sandbox_path],
-                input_bytes=chunk,
-                timeout=30,
-            )
-            chunk_count += 1
+    upload_timeout = max(60, int(getattr(args, "nemoclaw_checkout_transfer_timeout", 300) or 300))
+    upload_command = [
+        getattr(args, "nemoclaw_bin", "nemoclaw"),
+        "sandbox",
+        "upload",
+        args.nemoclaw_sandbox,
+        str(local_path),
+        sandbox_path,
+    ]
+    with _NEMOCLAW_EXEC_LOCK:
+        run_command(upload_command, cwd=REPO_ROOT, timeout=upload_timeout)
     result = run_nemoclaw_text_command(args, ["sha256sum", sandbox_path], timeout=60)
     sandbox_sha = result.stdout.strip().split()[0] if result.stdout.strip() else ""
     if sandbox_sha != host_sha:
@@ -1864,8 +1859,9 @@ def upload_file_to_nemoclaw(
     return {
         "archive_bytes": local_path.stat().st_size,
         "archive_sha256": host_sha,
-        "chunk_bytes": NEMOCLAW_TRANSFER_CHUNK_BYTES,
-        "chunk_count": chunk_count,
+        "transport": "nemoclaw_sandbox_upload",
+        "chunk_bytes": None,
+        "chunk_count": None,
         "sandbox_archive": sandbox_path,
     }
 
