@@ -496,18 +496,18 @@ def usage_from_weave_agents_verifier(path_value: Any) -> dict[str, Any]:
     return {}
 
 
-def deepswe_openclaw_usage(result: dict[str, Any]) -> dict[str, Any] | None:
-    usage = result.get("openclaw_usage")
+def openclaw_usage_with_trace_fallback(record: dict[str, Any]) -> dict[str, Any] | None:
+    usage = record.get("openclaw_usage")
     if isinstance(usage, dict) and usage:
         return usage
-    agent_result = result.get("agent_result") if isinstance(result.get("agent_result"), dict) else {}
+    agent_result = record.get("agent_result") if isinstance(record.get("agent_result"), dict) else {}
     metadata = agent_result.get("metadata") if isinstance(agent_result.get("metadata"), dict) else {}
     openclaw = metadata.get("openclaw") if isinstance(metadata.get("openclaw"), dict) else {}
     usage = openclaw.get("openclaw_usage")
     if isinstance(usage, dict) and usage:
         return usage
     return usage_from_weave_agents_verifier(
-        result.get("weave_agents_verifier_json") or openclaw.get("weave_agents_verifier_json")
+        record.get("weave_agents_verifier_json") or openclaw.get("weave_agents_verifier_json")
     ) or None
 
 
@@ -541,7 +541,7 @@ def lite_rows(
                 "openclaw_disqualified_reason": patch.get("openclaw_disqualified_reason"),
                 "openclaw_tool_call_count": patch.get("openclaw_tool_call_count"),
                 "openclaw_tool_error_count": patch.get("openclaw_tool_error_count"),
-                "openclaw_usage": patch.get("openclaw_usage"),
+                "openclaw_usage": openclaw_usage_with_trace_fallback(patch),
                 "runtime_budget": patch.get("runtime_budget"),
                 "weave_agents_ok": patch.get("weave_agents_ok"),
                 "weave_agents_conversation_url": patch.get("weave_agents_conversation_url"),
@@ -585,7 +585,7 @@ def deepswe_rows(*, metadata_rows: list[dict[str, Any]], result_rows: list[dict[
                 "openclaw_disqualified_reason": result.get("openclaw_disqualified_reason"),
                 "openclaw_tool_call_count": result.get("openclaw_tool_call_count"),
                 "openclaw_tool_error_count": None,
-                "openclaw_usage": deepswe_openclaw_usage(result),
+                "openclaw_usage": openclaw_usage_with_trace_fallback(result),
                 "runtime_budget": None,
                 "weave_agents_ok": result.get("weave_agents_ok"),
                 "weave_agents_conversation_url": result.get("weave_agents_conversation_url"),

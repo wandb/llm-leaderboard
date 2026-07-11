@@ -202,3 +202,48 @@ def test_deepswe_usage_falls_back_to_weave_agents_trace_usage(tmp_path):
         "usageSource": "weave_agents_trace",
         "usageApproximate": True,
     }
+
+
+def test_lite_usage_falls_back_to_weave_agents_trace_usage(tmp_path):
+    module = load_module(SCRIPT)
+    verifier = tmp_path / "weave_agents.json"
+    verifier.write_text(
+        """{
+  "checks": [
+    {
+      "name": "usage",
+      "ok": true,
+      "trace_input_tokens": 1234,
+      "trace_output_tokens": 56
+    }
+  ]
+}
+""",
+        encoding="utf-8",
+    )
+    rows = module.lite_rows(
+        source_rows=[
+            {
+                "instance_id": "django__django-1",
+                "repo": "django/django",
+                "agentic_swe_tier": "low",
+            }
+        ],
+        patch_rows=[
+            {
+                "instance_id": "django__django-1",
+                "patch": "",
+                "openclaw_usage": {},
+                "weave_agents_verifier_json": str(verifier),
+            }
+        ],
+        eval_results={"django__django-1": False},
+    )
+
+    assert rows[0]["openclaw_usage"] == {
+        "inputTokens": 1234,
+        "outputTokens": 56,
+        "cacheReadInputTokens": 0,
+        "usageSource": "weave_agents_trace",
+        "usageApproximate": True,
+    }
