@@ -397,15 +397,28 @@ if [ ! -s /tmp/nejumi_deepswe_model.patch ]; then
   echo '{"patch_applied": false, "reason": "empty_patch"}'
   exit 0
 fi
-git apply --binary --index /tmp/nejumi_deepswe_model.patch
+apply_method="index"
+if ! git apply --binary --index /tmp/nejumi_deepswe_model.patch 2>/tmp/nejumi_deepswe_git_apply_index.err; then
+  index_error="$(cat /tmp/nejumi_deepswe_git_apply_index.err || true)"
+  git reset --hard >/dev/null 2>&1 || true
+  apply_method="worktree"
+  if ! git apply --binary /tmp/nejumi_deepswe_model.patch 2>/tmp/nejumi_deepswe_git_apply_worktree.err; then
+    echo "git apply --index failed:" >&2
+    printf '%s\n' "$index_error" >&2
+    echo "git apply worktree fallback failed:" >&2
+    cat /tmp/nejumi_deepswe_git_apply_worktree.err >&2 || true
+    exit 1
+  fi
+  git add -A
+fi
 git add -A
 if git diff --cached --quiet; then
-  echo '{"patch_applied": true, "committed": false, "reason": "no_index_diff"}'
+  echo "{\"patch_applied\": true, \"committed\": false, \"reason\": \"no_index_diff\", \"apply_method\": \"$apply_method\"}"
   exit 0
 fi
 git commit -m "DeepSWE model patch"
 head_commit="$(git rev-parse HEAD)"
-echo "{\"patch_applied\": true, \"committed\": true, \"head_commit\": \"$head_commit\"}"
+echo "{\"patch_applied\": true, \"committed\": true, \"head_commit\": \"$head_commit\", \"apply_method\": \"$apply_method\"}"
 """
         result = await environment.exec(command, timeout_sec=180)
         applied = {

@@ -212,6 +212,16 @@ def test_collect_results_uses_openclaw_metadata_fallback_for_exception_rows(tmp_
     assert rows[0]["agent_result"]["metadata"]["openclaw"]["openclaw_usage"]["inputTokens"] == 100
 
 
+def test_deepswe_patch_apply_falls_back_when_index_hashes_differ():
+    source = (ROOT / "scripts" / "tools" / "deepswe_openclaw_pier_agent.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "git apply --binary --index /tmp/nejumi_deepswe_model.patch" in source
+    assert "git apply --binary /tmp/nejumi_deepswe_model.patch" in source
+    assert '\\"apply_method\\": \\"$apply_method\\"' in source
+
+
 def test_deepswe_pier_agent_uses_trial_scoped_sandbox_checkout_root(monkeypatch, tmp_path):
     pier_module = types.ModuleType("pier")
     agents_module = types.ModuleType("pier.agents")
