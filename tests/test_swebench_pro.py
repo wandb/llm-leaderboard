@@ -1233,6 +1233,28 @@ def test_swebench_nemoclaw_copy_mode_syncs_when_checkout_not_visible(tmp_path, m
     }
 
 
+def test_swebench_nemoclaw_copy_mode_requires_git_checkout(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    checkout_dir = tmp_path / "checkout-example"
+    checkout_dir.mkdir()
+    args = SimpleNamespace(
+        nemoclaw_sandbox="nejumi-taiwan",
+        nemoclaw_checkout_sandbox_root="/sandbox/checkouts",
+        nemoclaw_checkout_transfer_mode="copy",
+    )
+    calls = []
+
+    def fake_run_nemoclaw_text_command(args, command, input_text=None, timeout=60, check=True, workdir="/sandbox"):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="")
+
+    monkeypatch.setattr(module, "run_nemoclaw_text_command", fake_run_nemoclaw_text_command)
+
+    assert module.nemoclaw_checkout_visible(checkout_dir, args) is False
+    assert "git -C" in calls[0][2]
+    assert "rev-parse --is-inside-work-tree" in calls[0][2]
+
+
 def test_swebench_nemoclaw_copy_mode_writes_config_to_sandbox(tmp_path, monkeypatch):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
     row = sample_row()

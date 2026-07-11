@@ -1733,9 +1733,13 @@ def nemoclaw_checkout_visible(checkout_dir: Path, args: argparse.Namespace) -> b
     sandbox_dir = str(sandbox_checkout_dir(checkout_dir, args))
     if "\n" in sandbox_dir or "\r" in sandbox_dir:
         raise RuntimeError(f"Invalid sandbox checkout path: {sandbox_dir!r}")
+    transfer_mode = str(getattr(args, "nemoclaw_checkout_transfer_mode", "visible") or "visible")
+    check_script = 'test -d "$1"'
+    if transfer_mode == "copy":
+        check_script = 'test -d "$1" && git -C "$1" rev-parse --is-inside-work-tree >/dev/null 2>&1'
     result = run_nemoclaw_text_command(
         args,
-        ["bash", "-lc", 'test -d "$1"', "check-checkout", sandbox_dir],
+        ["bash", "-lc", check_script, "check-checkout", sandbox_dir],
         timeout=30,
         check=False,
     )
