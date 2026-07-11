@@ -417,6 +417,15 @@ def test_swebench_sidecar_path_is_attempt_scoped(tmp_path):
     assert path == attempt_dir / "agentic_swe" / "example__repo-1" / "openclaw_result.json"
 
 
+def test_swebench_protocol_benchmark_id_normalizes_swebench_sources():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+
+    assert module.protocol_benchmark_id({"benchmark_id": "swebench_lite"}) == "agentic_swe"
+    assert module.protocol_benchmark_id({"benchmark_id": "swebench_pro"}) == "agentic_swe"
+    assert module.protocol_benchmark_id({}) == "agentic_swe"
+    assert module.protocol_benchmark_id({"benchmark_id": "deepswe"}) == "deepswe"
+
+
 def test_swebench_nemoclaw_task_agent_config_is_sandbox_visible(tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
     row = sample_row()

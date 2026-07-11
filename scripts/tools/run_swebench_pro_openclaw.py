@@ -401,6 +401,14 @@ def task_sidecar_path(protocol_output_dir: Path, instance_id: str, benchmark_id:
     return protocol_output_dir / benchmark_id / instance_id / "openclaw_result.json"
 
 
+def protocol_benchmark_id(row: dict[str, Any]) -> str:
+    """Map source benchmark names onto the protocol runner's supported IDs."""
+    benchmark_id = str(row.get("benchmark_id") or "agentic_swe")
+    if benchmark_id in {"swebench_lite", "swebench_pro", "swebench"}:
+        return "agentic_swe"
+    return benchmark_id
+
+
 def effective_deny_tools(args: argparse.Namespace) -> list[str]:
     return sorted(set(str(item) for item in (getattr(args, "deny_tool", None) or DEFAULT_DENIED_TOOLS)))
 
@@ -2103,7 +2111,7 @@ def run_openclaw_for_task(
     sidecar_path: Path | None = None
     for attempt_number in range(1, max_attempts + 1):
         attempt_id = f"{int(time.time())}-{os.getpid()}-{attempt_number}"
-        benchmark_id = str(row.get("benchmark_id") or "agentic_swe")
+        benchmark_id = protocol_benchmark_id(row)
         session_key = f"{resolve_session_prefix(args)}:{row['instance_id']}:{attempt_id}"
         attempt_output_dir = task_dir / "openclaw_attempts" / attempt_id
         sidecar_path = task_sidecar_path(attempt_output_dir, str(row["instance_id"]), benchmark_id=benchmark_id)
