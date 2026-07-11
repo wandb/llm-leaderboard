@@ -369,6 +369,47 @@ def _latest_trace_id(raw_spans: list[dict[str, Any]]) -> str | None:
     return max(trace_latest_keys.items(), key=lambda item: (item[1], item[0]))[0]
 
 
+def _selected_trace_id(raw_spans: list[dict[str, Any]]) -> str | None:
+    traces: dict[str, list[dict[str, Any]]] = {}
+    for span in raw_spans:
+        trace_id = span.get("trace_id")
+        if isinstance(trace_id, str) and trace_id:
+            traces.setdefault(trace_id, []).append(span)
+    if not traces:
+        return None
+
+    def trace_key(item: tuple[str, list[dict[str, Any]]]) -> tuple[Any, ...]:
+        trace_id, spans = item
+        latest_key = max((_chronological_key(span) for span in spans), default=(0.0, 0.0, "", ""))
+        content_count = sum(
+            1 for span in spans if _has_message_content(span) or _has_tool_content(span)
+        )
+        message_count = sum(
+            1
+            for span in spans
+            if span.get("operation_name") in {"chat", "invoke_agent"}
+        )
+        tool_count = sum(1 for span in spans if span.get("operation_name") == "execute_tool")
+        token_count = sum(
+            int(span.get("input_tokens") or 0) + int(span.get("output_tokens") or 0)
+            for span in spans
+        )
+        model_count = sum(1 for span in spans if str(span.get("request_model") or "").strip())
+        return (
+            content_count > 0,
+            token_count > 0,
+            message_count > 0,
+            tool_count > 0,
+            len(spans),
+            token_count,
+            model_count,
+            latest_key,
+            trace_id,
+        )
+
+    return max(traces.items(), key=trace_key)[0]
+
+
 def _conversation_matches(
     span: dict[str, Any],
     *,
@@ -556,41 +597,57 @@ def verify_agents_payload(
                 span_count=len(raw_spans),
             )
         )
-        latest_trace_id = _latest_trace_id(raw_spans)
+        latest_trace_id = _selected_trace_id(raw_spans)
         latest_trace_spans = [
             span for span in raw_spans if latest_trace_id and span.get("trace_id") == latest_trace_id
         ]
 
     latest_trace_spans_chronological = sorted(latest_trace_spans, key=_chronological_key)
+    raw_spans_chronological = sorted(raw_spans, key=_chronological_key)
     timestamp_issues = _timestamp_quality_issues(latest_trace_spans_chronological)
+    conversation_timestamp_issues = _timestamp_quality_issues(raw_spans_chronological)
     trace_input_tokens = sum(int(span.get("input_tokens") or 0) for span in latest_trace_spans_chronological)
     trace_output_tokens = sum(int(span.get("output_tokens") or 0) for span in latest_trace_spans_chronological)
+    conversation_input_tokens = sum(int(span.get("input_tokens") or 0) for span in raw_spans_chronological)
+    conversation_output_tokens = sum(int(span.get("output_tokens") or 0) for span in raw_spans_chronological)
     if not latest_trace_id:
         checks.append(_fail_check("latest_trace", "latest trace id is missing"))
     else:
         checks.append(_ok_check("latest_trace", "latest trace id is present", trace_id=latest_trace_id))
 
     if require_usage:
-        if agent_input_tokens + agent_output_tokens + trace_input_tokens + trace_output_tokens <= 0:
+        if (
+            agent_input_tokens
+            + agent_output_tokens
+            + trace_input_tokens
+            + trace_output_tokens
+            + conversation_input_tokens
+            + conversation_output_tokens
+            <= 0
+        ):
             checks.append(
                 _fail_check(
                     "usage",
-                    "agent and latest trace token usage are missing or zero",
+                    "agent, latest trace, and matching conversation token usage are missing or zero",
                     agent_input_tokens=agent_input_tokens,
                     agent_output_tokens=agent_output_tokens,
                     trace_input_tokens=trace_input_tokens,
                     trace_output_tokens=trace_output_tokens,
+                    conversation_input_tokens=conversation_input_tokens,
+                    conversation_output_tokens=conversation_output_tokens,
                 )
             )
         else:
             checks.append(
                 _ok_check(
                     "usage",
-                    "token usage is present on the agent summary or latest trace spans",
+                    "token usage is present on the agent summary, latest trace, or matching conversation spans",
                     agent_input_tokens=agent_input_tokens,
                     agent_output_tokens=agent_output_tokens,
                     trace_input_tokens=trace_input_tokens,
                     trace_output_tokens=trace_output_tokens,
+                    conversation_input_tokens=conversation_input_tokens,
+                    conversation_output_tokens=conversation_output_tokens,
                 )
             )
 
@@ -615,12 +672,12 @@ def verify_agents_payload(
 
     message_spans = [
         span
-        for span in latest_trace_spans_chronological
+        for span in raw_spans_chronological
         if span.get("operation_name") in {"chat", "invoke_agent"}
     ]
     tool_spans = [
         span
-        for span in latest_trace_spans_chronological
+        for span in raw_spans_chronological
         if span.get("operation_name") == "execute_tool"
     ]
     message_spans_with_content = [span for span in message_spans if _has_message_content(span)]
@@ -655,6 +712,7 @@ def verify_agents_payload(
         text
         for text in [
             "\n".join(_span_visible_text(span) for span in latest_trace_spans_chronological),
+            "\n".join(_span_visible_text(span) for span in raw_spans_chronological),
             "\n".join(_chat_visible_text(message) for message in trace_chat_messages),
         ]
         if text
@@ -665,7 +723,7 @@ def verify_agents_payload(
     observed_request_models = sorted(
         {
             str(span.get("request_model")).strip()
-            for span in latest_trace_spans_chronological
+            for span in raw_spans_chronological
             if str(span.get("request_model") or "").strip()
         }
         | {
@@ -888,12 +946,12 @@ def verify_agents_payload(
     ]
 
     if message_spans and tool_spans:
-        if timestamp_issues:
+        if conversation_timestamp_issues:
             checks.append(
                 _fail_check(
                     "trace_order",
                     "message/tool ordering could not be compared because timestamps are invalid",
-                    timestamp_issue_count=len(timestamp_issues),
+                    timestamp_issue_count=len(conversation_timestamp_issues),
                 )
             )
         else:
@@ -926,12 +984,12 @@ def verify_agents_payload(
                 )
 
     if tool_spans:
-        if timestamp_issues:
+        if conversation_timestamp_issues:
             checks.append(
                 _fail_check(
                     "trace_user_message_order",
                     "input/tool ordering could not be compared because timestamps are invalid",
-                    timestamp_issue_count=len(timestamp_issues),
+                    timestamp_issue_count=len(conversation_timestamp_issues),
                     first_tool_started_at=min(str(span.get("started_at") or "") for span in tool_spans),
                 )
             )
@@ -1067,6 +1125,7 @@ def verify_agents_payload(
     )
     content_capture_health = {
         "span_count_checked": len(latest_trace_spans_chronological),
+        "conversation_span_count_checked": len(raw_spans_chronological),
         "message_span_count": len(message_spans),
         "message_spans_with_content": message_content_count,
         "message_spans_with_input": message_input_count,
@@ -1077,6 +1136,8 @@ def verify_agents_payload(
         "spans_with_invalid_timestamps": len(timestamp_issues),
         "trace_input_tokens": trace_input_tokens,
         "trace_output_tokens": trace_output_tokens,
+        "conversation_input_tokens": conversation_input_tokens,
+        "conversation_output_tokens": conversation_output_tokens,
         "required_text_count": len(required_texts),
         "request_model_count": len(observed_request_models),
         "trace_final_answer_after_tool_warning": tool_after_final_answer_warning,
@@ -1252,7 +1313,7 @@ def main() -> None:
         conversation_id=args.conversation_id,
         conversation_id_contains=args.conversation_id_contains,
     )
-    latest_trace_id = _latest_trace_id(matching_spans)
+    latest_trace_id = _selected_trace_id(matching_spans)
     trace_chat_payload = (
         query_trace_chat(
             env=env,

@@ -191,6 +191,7 @@ def test_verify_weave_agents_accepts_contentful_ordered_trace():
     }
     assert result["content_capture_health"] == {
         "span_count_checked": 2,
+        "conversation_span_count_checked": 2,
         "message_span_count": 1,
         "message_spans_with_content": 1,
         "message_spans_with_input": 1,
@@ -201,6 +202,8 @@ def test_verify_weave_agents_accepts_contentful_ordered_trace():
         "spans_with_invalid_timestamps": 0,
         "trace_input_tokens": 10,
         "trace_output_tokens": 3,
+        "conversation_input_tokens": 10,
+        "conversation_output_tokens": 3,
         "required_text_count": 0,
         "request_model_count": 1,
         "trace_final_answer_after_tool_warning": False,
@@ -654,6 +657,51 @@ def test_verify_weave_agents_chooses_latest_trace_by_span_time_not_api_order():
     assert {
         span["trace_id"] for span in result["latest_trace_spans_chronological"]
     } == {"trace-new"}
+
+
+def test_verify_weave_agents_accepts_tool_only_latest_trace_when_conversation_has_input():
+    module = load_module()
+    payload = spans_payload(
+        conversation_id="agent:task-agent:agentic-swe-assorted:django__django-11910",
+        output_content="instance_id: django__django-11910",
+        request_model="z-ai/glm-5.2",
+    )
+    payload["spans"][0]["trace_id"] = "trace-input"
+    payload["spans"][0]["started_at"] = "2026-06-27T00:00:01.000000"
+    payload["spans"][0]["ended_at"] = "2026-06-27T00:00:02.000000"
+    payload["spans"][1]["trace_id"] = "trace-tool-only"
+    payload["spans"][1]["started_at"] = "2026-06-27T00:00:10.000000"
+    payload["spans"][1]["ended_at"] = "2026-06-27T00:00:11.000000"
+    payload["spans"][1]["input_tokens"] = 0
+    payload["spans"][1]["output_tokens"] = 0
+
+    result = module.verify_agents_payload(
+        agents_payload(),
+        payload,
+        entity="llm-leaderboard",
+        project="tc-leaderboard",
+        agent_name="nejumi-taiwan-openclaw",
+        require_content=True,
+        require_tool_span=True,
+        require_tool_content=True,
+        require_usage=True,
+        required_texts=["instance_id: django__django-11910"],
+        expected_request_models=["openrouter-direct/z-ai/glm-5.2", "z-ai/glm-5.2"],
+        conversation_id_contains="agentic-swe-assorted:django__django-11910",
+    )
+
+    assert result["ok"] is True
+    assert result["latest_trace_id"] == "trace-input"
+    assert result["content_capture_health"]["conversation_span_count_checked"] == 2
+    assert any(check["name"] == "usage" and check["ok"] for check in result["checks"])
+    assert any(
+        check["name"] == "message_content_capture" and check["ok"]
+        for check in result["checks"]
+    )
+    assert any(
+        check["name"] == "required_text_capture" and check["ok"]
+        for check in result["checks"]
+    )
 
 
 def test_verify_weave_agents_usage_accepts_span_tokens_when_agent_totals_are_zero():
