@@ -631,7 +631,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-agent-turns", type=int, default=40)
     parser.add_argument("--max-tool-wall-seconds", type=int, default=120)
     parser.add_argument("--require-actual-token-usage", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--use-task-agent", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--use-task-agent", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--verify-weave-agents", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--nemoclaw-bin", default="nemoclaw")
     parser.add_argument("--nemoclaw-sandbox", default="nejumi-taiwan")
