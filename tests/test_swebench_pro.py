@@ -155,6 +155,12 @@ def test_swebench_copy_archive_excludes_git_history(tmp_path):
     assert not any(name == "./.git" or name.startswith("./.git/") for name in names)
 
 
+def test_nemoclaw_checkout_transfer_chunk_size_is_large_repo_friendly():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+
+    assert module.NEMOCLAW_TRANSFER_CHUNK_BYTES >= 8 * 1024 * 1024
+
+
 def sample_row() -> dict:
     return {
         "repo": "example/repo",

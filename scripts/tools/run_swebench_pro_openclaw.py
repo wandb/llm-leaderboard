@@ -61,7 +61,9 @@ SCOREABLE_OPENCLAW_DISQUALIFIED_REASONS = {
 OPENCLAW_RUNTIME_DIR = ".nejumi_openclaw"
 RUNTIME_EXCLUDED_PATHS = [OPENCLAW_RUNTIME_DIR]
 NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
-NEMOCLAW_TRANSFER_CHUNK_BYTES = 512 * 1024
+# Keep copy-mode checkout uploads coarse enough for large DeepSWE repositories.
+# A 1 GiB checkout would require ~2,000 sandbox exec calls at 512 KiB.
+NEMOCLAW_TRANSFER_CHUNK_BYTES = 16 * 1024 * 1024
 DEFAULT_DENIED_TOOLS = [
     "code_execution",
     "web_search",
