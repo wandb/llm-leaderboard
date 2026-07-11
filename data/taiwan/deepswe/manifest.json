@@ -168,6 +168,36 @@
         "lo_family_mean_r2": 0.0844358171935066,
         "lo_family_min_r2": -3.435322328358501
       }
+    },
+    "essential_8": {
+      "display_name": "DeepSWE-Essential-8",
+      "count": 8,
+      "language_distribution": {
+        "go": 2,
+        "python": 2,
+        "rust": 2,
+        "typescript": 2
+      },
+      "task_names_path": "subsets/essential_8_task_names.json",
+      "metadata_jsonl_path": "subsets/essential_8.jsonl",
+      "selection_metrics": {
+        "k": 8,
+        "in_mae": 0.04272541337615211,
+        "in_pearson": 0.9701820155775356,
+        "in_spearman": 0.9831377433853431,
+        "in_kendall": 0.9115518387093855,
+        "in_r2": 0.9117052016492687,
+        "lo_family_mean_pearson": 0.8515994736608944,
+        "lo_family_min_pearson": 0.6263811220090825,
+        "lo_family_mean_spearman": 0.7775800653985216,
+        "lo_family_min_spearman": 0.20519567041703085,
+        "lo_family_mean_kendall": 0.6933045446920161,
+        "lo_family_min_kendall": 0.10540925533894596,
+        "lo_family_mean_mae": 0.057100852642851925,
+        "lo_family_min_mae": 0.0011061946902654607,
+        "lo_family_mean_r2": -1.0159460700508915,
+        "lo_family_min_r2": -4.43541514023057
+      }
     }
   },
   "essential_selection": {

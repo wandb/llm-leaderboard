@@ -34,6 +34,7 @@ auditable: public data is used only to choose tasks, not to weight the metric.
 
 | subset | tasks | in-sample Spearman | LO-family mean Spearman | LO-family mean MAE |
 |---|---:|---:|---:|---:|
+| DeepSWE-Essential-8 | 8 | 0.983 | 0.778 | 0.057 |
 | DeepSWE-Essential-10 | 10 | 0.987 | 0.697 | 0.051 |
 | DeepSWE-Essential-16 | 16 | 0.992 | 0.803 | 0.038 |
 | DeepSWE-Essential-20 | 20 | 0.996 | 0.842 | 0.042 |
@@ -41,6 +42,8 @@ auditable: public data is used only to choose tasks, not to weight the metric.
 
 Interpretation:
 
+- `Essential-8` is a minimal frontier-signal tier for mixed-difficulty suites.
+  It should not be interpreted as a precise DeepSWE rank estimate.
 - `Essential-10` is a cheap screening tier. It is not stable enough to use as a
   final ranking signal.
 - `Essential-16` is the current cost/performance compromise.
@@ -52,6 +55,7 @@ Interpretation:
 ## Generated Files
 
 - `data/taiwan/deepswe/subsets/essential_10_task_names.json`
+- `data/taiwan/deepswe/subsets/essential_8_task_names.json`
 - `data/taiwan/deepswe/subsets/essential_16_task_names.json`
 - `data/taiwan/deepswe/subsets/essential_20_task_names.json`
 - `data/taiwan/deepswe/subsets/essential_30_task_names.json`

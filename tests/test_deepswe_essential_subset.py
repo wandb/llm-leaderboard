@@ -24,6 +24,7 @@ def test_deepswe_essential_subsets_are_manifested_and_known_tasks():
     known_tasks = {path.name for path in TASKS_ROOT.iterdir() if path.is_dir()}
 
     expected_thresholds = {
+        "essential_8": 0.75,
         "essential_10": 0.65,
         "essential_16": 0.75,
         "essential_20": 0.80,
