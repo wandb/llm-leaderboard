@@ -2372,16 +2372,23 @@ def run_openclaw_for_task(
             f"OpenClaw sidecar metadata mismatch for {row['instance_id']}: "
             f"{sidecar_path}"
         )
-    if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):
-        raise RuntimeError(
-            f"OpenClaw NeMoClaw session audit mismatch for {row['instance_id']}: "
-            f"{sidecar_path}"
-        )
     if is_weave_sidecar_failure(sidecar):
         raise RuntimeError(f"Diagnostic Weave sidecar logging failed for {row['instance_id']}")
     disqualified_reason = metadata.get("openclaw_disqualified_reason", "")
     if not disqualified_reason and sidecar_conversation_order_failed(sidecar):
         disqualified_reason = "conversation_order_violation"
+    if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):
+        if not disqualified_reason:
+            raise RuntimeError(
+                f"OpenClaw NeMoClaw session audit mismatch for {row['instance_id']}: "
+                f"{sidecar_path}"
+            )
+        print(
+            "OpenClaw NeMoClaw session audit failed for "
+            f"{row['instance_id']} after {disqualified_reason}; "
+            "recording as disqualified instead of aborting the run.",
+            flush=True,
+        )
     weave_agents_evidence = verify_weave_agents_for_attempt(
         row,
         task_dir,
