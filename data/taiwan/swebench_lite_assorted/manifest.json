@@ -1,0 +1,102 @@
+{
+  "benchmark": "Agentic SWE-Assorted Low/Middle",
+  "source_benchmark": "SWE-bench Lite",
+  "source_dataset": "princeton-nlp/SWE-bench_Lite",
+  "source_config": "default",
+  "source_split": "test",
+  "source_count": 300,
+  "selection_method": "Static-only SWE-bench Lite slicing. Low is selected from the lower difficulty band; Middle is selected near the middle difficulty band. Difficulty uses gold patch files/hunks/changed lines, test patch size, issue length, and F2P/P2P test counts. No model outcomes are used.",
+  "subsets": {
+    "low_36": {
+      "count": 36,
+      "jsonl_path": "subsets/low_36.jsonl",
+      "csv_path": "subsets/low_36.csv",
+      "instance_ids_path": "subsets/low_36_instance_ids.json",
+      "repo_distribution": {
+        "django/django": 6,
+        "sympy/sympy": 6,
+        "scikit-learn/scikit-learn": 4,
+        "astropy/astropy": 3,
+        "sphinx-doc/sphinx": 3,
+        "pylint-dev/pylint": 3,
+        "matplotlib/matplotlib": 3,
+        "pydata/xarray": 2,
+        "pytest-dev/pytest": 4,
+        "mwaskom/seaborn": 2
+      },
+      "static_difficulty": {
+        "min": 7.34758,
+        "mean": 9.742676222222222,
+        "max": 11.980673
+      },
+      "gold_patch_changed_lines_mean": 2.638888888888889,
+      "gold_patch_files_mean": 1.0,
+      "fail_to_pass_count_mean": 1.9166666666666667,
+      "pass_to_pass_count_mean": 20.555555555555557
+    },
+    "middle_36": {
+      "count": 36,
+      "jsonl_path": "subsets/middle_36.jsonl",
+      "csv_path": "subsets/middle_36.csv",
+      "instance_ids_path": "subsets/middle_36_instance_ids.json",
+      "repo_distribution": {
+        "sympy/sympy": 6,
+        "django/django": 6,
+        "pytest-dev/pytest": 5,
+        "psf/requests": 2,
+        "matplotlib/matplotlib": 2,
+        "sphinx-doc/sphinx": 4,
+        "mwaskom/seaborn": 1,
+        "pylint-dev/pylint": 3,
+        "scikit-learn/scikit-learn": 5,
+        "astropy/astropy": 1,
+        "pallets/flask": 1
+      },
+      "static_difficulty": {
+        "min": 13.191353,
+        "mean": 14.060802250000002,
+        "max": 14.95496
+      },
+      "gold_patch_changed_lines_mean": 11.583333333333334,
+      "gold_patch_files_mean": 1.0,
+      "fail_to_pass_count_mean": 1.3333333333333333,
+      "pass_to_pass_count_mean": 47.27777777777778
+    },
+    "low_middle_72": {
+      "count": 72,
+      "jsonl_path": "subsets/low_middle_72.jsonl",
+      "csv_path": "subsets/low_middle_72.csv",
+      "instance_ids_path": "subsets/low_middle_72_instance_ids.json",
+      "repo_distribution": {
+        "django/django": 12,
+        "sympy/sympy": 12,
+        "scikit-learn/scikit-learn": 9,
+        "astropy/astropy": 4,
+        "sphinx-doc/sphinx": 7,
+        "pylint-dev/pylint": 6,
+        "matplotlib/matplotlib": 5,
+        "pydata/xarray": 2,
+        "pytest-dev/pytest": 9,
+        "mwaskom/seaborn": 3,
+        "psf/requests": 2,
+        "pallets/flask": 1
+      },
+      "static_difficulty": {
+        "min": 7.34758,
+        "mean": 11.901739236111109,
+        "max": 14.95496
+      },
+      "gold_patch_changed_lines_mean": 7.111111111111111,
+      "gold_patch_files_mean": 1.0,
+      "fail_to_pass_count_mean": 1.625,
+      "pass_to_pass_count_mean": 33.916666666666664
+    }
+  },
+  "assorted_80_plan": {
+    "low": 36,
+    "middle": 36,
+    "high": 8,
+    "low_middle_jsonl_path": "subsets/low_middle_72.jsonl",
+    "high_subset": "data/taiwan/deepswe/subsets/essential_8.jsonl"
+  }
+}
