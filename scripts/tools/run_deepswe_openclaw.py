@@ -217,6 +217,17 @@ def jsonable(value: Any) -> Any:
 
 
 def build_agent_kwargs(args: argparse.Namespace) -> dict[str, Any]:
+    if (
+        args.verify_weave_agents
+        and args.use_task_agent
+        and args.nemoclaw_sandbox
+        and not args.no_local
+    ):
+        raise ValueError(
+            "DeepSWE native Weave Agents verification requires --no-local with "
+            "--use-task-agent and --nemoclaw-sandbox. Use --local only for explicit "
+            "non-native-trace debugging."
+        )
     output_root = args.output_dir / "openclaw"
     kwargs: dict[str, Any] = {
         "repo_root": REPO_ROOT,
@@ -348,7 +359,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--openclaw-tool-profile", default="coding")
     parser.add_argument("--task-agent-prefix", default="tw-deepswe")
     parser.add_argument("--session-prefix", default="deepswe")
-    parser.add_argument("--no-local", action=argparse.BooleanOptionalAction, default=True)
+    local_mode = parser.add_mutually_exclusive_group()
+    local_mode.add_argument(
+        "--no-local",
+        dest="no_local",
+        action="store_true",
+        default=True,
+        help="Run OpenClaw through the NeMoClaw Gateway rather than host-local OpenClaw.",
+    )
+    local_mode.add_argument(
+        "--local",
+        dest="no_local",
+        action="store_false",
+        help="Debug-only: run OpenClaw locally instead of through the NeMoClaw Gateway.",
+    )
     parser.add_argument("--use-task-agent", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--restart-gateway-before-run", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--verify-weave-agents", action=argparse.BooleanOptionalAction, default=True)

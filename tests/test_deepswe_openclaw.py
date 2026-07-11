@@ -1,6 +1,7 @@
 import argparse
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 
@@ -81,9 +82,53 @@ def test_build_job_config_pins_deepswe_budget_and_native_agent(tmp_path):
     assert kwargs["max_input_tokens"] == 1_000_000
     assert kwargs["max_tool_calls"] == 40
     assert kwargs["max_agent_turns"] == 40
+    assert kwargs["no_local"] == "true"
+    assert kwargs["use_task_agent"] == "true"
     assert kwargs["verify_weave_agents"] == "true"
     assert kwargs["deny_tool"] == "web_search,browser"
     assert kwargs["deny_argument_pattern"] == r"https?://"
+
+
+def test_parse_no_local_flag_keeps_gateway_mode(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["run_deepswe_openclaw.py", "--model", "dummy/model"])
+    args = run_deepswe_openclaw.parse_args()
+    assert args.no_local is True
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["run_deepswe_openclaw.py", "--model", "dummy/model", "--no-local"],
+    )
+    args = run_deepswe_openclaw.parse_args()
+    assert args.no_local is True
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_deepswe_openclaw.py",
+            "--model",
+            "dummy/model",
+            "--local",
+            "--no-verify-weave-agents",
+        ],
+    )
+    args = run_deepswe_openclaw.parse_args()
+    assert args.no_local is False
+
+
+def test_build_job_config_rejects_native_trace_without_gateway_mode(tmp_path):
+    task_names_file = tmp_path / "pilot_2_task_names.json"
+    task_names_file.write_text(json.dumps(["task-a", "task-b"]) + "\n", encoding="utf-8")
+    args = _args(tmp_path, task_names_file)
+    args.no_local = False
+
+    try:
+        run_deepswe_openclaw.build_job_config(args, "job-a")
+    except ValueError as exc:
+        assert "native Weave Agents verification requires --no-local" in str(exc)
+    else:
+        raise AssertionError("Expected build_job_config to reject local native trace mode")
 
 
 def test_dry_run_results_are_traceably_incomplete(tmp_path):

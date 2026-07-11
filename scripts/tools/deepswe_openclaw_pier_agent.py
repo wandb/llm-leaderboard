@@ -84,6 +84,31 @@ def _sidecar_usage(metadata: dict[str, Any]) -> dict[str, int]:
     return usage if isinstance(usage, dict) else {}
 
 
+def _assert_gateway_task_agent_metadata(
+    task_dir: Path,
+    *,
+    agent_id: str,
+    canonical_config_path: str,
+) -> None:
+    metadata_path = task_dir / "openclaw_task_agent.json"
+    metadata = _read_json(metadata_path)
+    if not metadata:
+        raise RuntimeError(f"Missing DeepSWE Gateway task-agent metadata: {metadata_path}")
+    registration = metadata.get("gateway_registered")
+    if (
+        metadata.get("agent_id") != agent_id
+        or metadata.get("config_path") != canonical_config_path
+        or not isinstance(registration, dict)
+        or registration.get("ok") is not True
+    ):
+        raise RuntimeError(
+            "DeepSWE task-agent was not registered through the NeMoClaw Gateway. "
+            f"agent_id={agent_id!r}, config_path={metadata.get('config_path')!r}, "
+            f"expected_config_path={canonical_config_path!r}, "
+            f"gateway_registered={registration!r}"
+        )
+
+
 class NejumiDeepSWEOpenClawAgent(BaseAgent):
     """DeepSWE Pier adapter for Nejumi Taiwan OpenClaw evaluation."""
 
@@ -235,7 +260,7 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
                 "no_local": self.no_local,
                 "allow_failed_preflight": self.allow_failed_preflight,
                 "no_reset": False,
-                "redo": True,
+                "redo": False,
                 "weave_sidecar": False,
                 "weave_sidecar_strict": False,
                 "verify_weave_agents": self.verify_weave_agents,
@@ -279,10 +304,39 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
         with _RUN_LOCK:
             swe_runner.ensure_nemoclaw_openclaw_permissions(args)
             swe_runner.ensure_nemoclaw_checkout_ready(checkout_dir, task_dir, args)
-            if self.restart_gateway_before_run and swe_runner.uses_nemoclaw_gateway_task_agent(args):
-                swe_runner.write_task_openclaw_config(row, checkout_dir, task_dir, args)
+            gateway_task_agent = swe_runner.uses_nemoclaw_gateway_task_agent(args)
+            if (
+                self.verify_weave_agents
+                and self.use_task_agent
+                and self.nemoclaw_sandbox
+                and not gateway_task_agent
+            ):
+                raise RuntimeError(
+                    "DeepSWE native Weave Agents trace requires the NeMoClaw Gateway "
+                    "task-agent path. Check no_local/use_task_agent/nemoclaw_sandbox wiring."
+                )
+            if self.restart_gateway_before_run and gateway_task_agent:
+                agent_id, config_path = swe_runner.write_task_openclaw_config(
+                    row, checkout_dir, task_dir, args
+                )
+                if config_path is not None:
+                    raise RuntimeError(
+                        "DeepSWE Gateway task-agent registration unexpectedly returned "
+                        f"a checkout-local OpenClaw config path: {config_path}"
+                    )
+                _assert_gateway_task_agent_metadata(
+                    task_dir,
+                    agent_id=agent_id,
+                    canonical_config_path=self.nemoclaw_openclaw_config_path,
+                )
                 swe_runner.restart_nemoclaw_gateway_after_task_agent_registration(args, label="DeepSWE")
             metadata = swe_runner.run_openclaw_for_task(row, checkout_dir, task_dir, args)
+            if gateway_task_agent:
+                _assert_gateway_task_agent_metadata(
+                    task_dir,
+                    agent_id=swe_runner.safe_agent_id(task_id, self.task_agent_prefix),
+                    canonical_config_path=self.nemoclaw_openclaw_config_path,
+                )
             if swe_runner.should_force_empty_patch(metadata):
                 patch = ""
             elif self.nemoclaw_sandbox and self.nemoclaw_checkout_transfer_mode == "copy":
