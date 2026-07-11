@@ -46,7 +46,7 @@ def test_swebench_main_rejects_weave_sidecar_before_dataset_read(tmp_path, monke
         module.main()
 
 
-def test_swebench_default_policy_allows_local_pip_and_blocks_external_fetches():
+def test_swebench_default_policy_allows_pip_and_blocks_external_fetches():
     module = load_script_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
     patterns = [re.compile(pattern) for pattern in module.DEFAULT_DENIED_ARGUMENT_PATTERNS]
 
@@ -56,9 +56,12 @@ def test_swebench_default_policy_allows_local_pip_and_blocks_external_fetches():
     assert not denied("pip install -e .")
     assert not denied('python -m pip install --break-system-packages -e ".[dev]"')
     assert not denied("cd /sandbox/checkouts/example && .venv/bin/pip install -e .")
-    assert denied("pip install setuptools")
+    assert not denied("pip install setuptools")
+    assert not denied("pip install --break-system-packages asgiref sqlparse")
     assert denied("pip install git+https://example.com/project.git")
     assert denied("pip install https://example.com/package.whl")
+    assert denied("pip install git+ssh://example.com/project.git")
+    assert denied("git clone git@example.com:project/repo.git")
     assert denied("curl https://example.com/data")
     assert denied("python - <<'PY'\nimport requests\nrequests.get('https://example.com')\nPY")
 

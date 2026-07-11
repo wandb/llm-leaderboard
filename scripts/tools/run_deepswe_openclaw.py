@@ -421,8 +421,10 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=[
             r"https?://",
+            r"\b(?:ftp|sftp|ssh)://",
+            r"\bgit\+",
+            r"\bgit\s+(?:clone|fetch|pull|ls-remote)\b",
             r"\b(curl|wget)\b",
-            r"\b(?:python(?:3)?\s+-m\s+)?pip(?:3)?\s+install\b(?![^\n;&|]*(?:\s(?:-e|--editable)\s+['\"]?(?:\.|/sandbox/checkouts/|file:)|\s['\"]?(?:\.|/sandbox/checkouts/|file:)))",
             r"\b(requests|urllib|httpx)\.",
         ],
     )
