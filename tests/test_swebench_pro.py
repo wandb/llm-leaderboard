@@ -2,6 +2,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -134,6 +135,24 @@ def test_swebench_openclaw_context_tokens_appends_missing_model_entry():
             "contextTokens": 1_000_000,
         }
     ]
+
+
+def test_swebench_copy_archive_excludes_git_history(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    (checkout / ".git").mkdir()
+    (checkout / ".git" / "objects").mkdir()
+    (checkout / ".git" / "objects" / "large").write_text("history", encoding="utf-8")
+    (checkout / "src.py").write_text("print('ok')\n", encoding="utf-8")
+    archive = tmp_path / "checkout.tgz"
+
+    module.create_checkout_archive(checkout, archive)
+
+    with tarfile.open(archive, "r:gz") as tar:
+        names = tar.getnames()
+    assert "./src.py" in names
+    assert not any(name == "./.git" or name.startswith("./.git/") for name in names)
 
 
 def sample_row() -> dict:

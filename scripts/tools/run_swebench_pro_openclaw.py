@@ -1750,6 +1750,8 @@ def create_checkout_archive(checkout_dir: Path, archive_path: Path) -> None:
             "-C",
             str(checkout_dir),
             "--exclude",
+            "./.git",
+            "--exclude",
             f"./{OPENCLAW_RUNTIME_DIR}",
             "-czf",
             str(archive_path),
@@ -1817,7 +1819,14 @@ def sync_checkout_to_nemoclaw_copy(
         [
             "bash",
             "-lc",
-            'rm -rf "$1" && mkdir -p "$1" && tar -xzf "$2" -C "$1"',
+            (
+                'rm -rf "$1" && mkdir -p "$1" && tar -xzf "$2" -C "$1" '
+                '&& cd "$1" && git init -q '
+                '&& git config user.email "nejumi-swe@example.local" '
+                '&& git config user.name "Nejumi SWE Harness" '
+                '&& git add -f -A '
+                '&& git commit -q -m baseline'
+            ),
             "extract-checkout",
             sandbox_dir,
             sandbox_archive,
