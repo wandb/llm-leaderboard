@@ -37,6 +37,46 @@ DEFAULT_DEEPSWE_TASK_NAMES = (
 )
 DEFAULT_OFFICIAL_SWEBENCH = REPO_ROOT / "external" / "SWE-bench"
 
+PRICE_PER_MILLION: dict[str, dict[str, float]] = {
+    # Accountability estimates only. Provider dashboards remain authoritative.
+    "openai-direct/gpt-4.1-mini-2025-04-14": {
+        "input": 0.40,
+        "output": 1.60,
+        "cacheRead": 0.10,
+        "cacheWrite": 0.0,
+    },
+    "openrouter-direct/z-ai/glm-5.2": {
+        "input": 0.95,
+        "output": 3.00,
+        "cacheRead": 0.18,
+        "cacheWrite": 0.0,
+    },
+    "openrouter-direct/google/gemini-3.1-pro-preview": {
+        "input": 2.00,
+        "output": 12.00,
+        "cacheRead": 0.30,
+        "cacheWrite": 0.0,
+    },
+    "openrouter-direct/qwen/qwen3.6-max-preview": {
+        "input": 1.10,
+        "output": 3.00,
+        "cacheRead": 0.0,
+        "cacheWrite": 0.0,
+    },
+    "openrouter-direct/anthropic/claude-sonnet-4.6": {
+        "input": 3.00,
+        "output": 15.00,
+        "cacheRead": 0.30,
+        "cacheWrite": 0.0,
+    },
+    "openrouter-direct/anthropic/claude-opus-4.7": {
+        "input": 5.00,
+        "output": 25.00,
+        "cacheRead": 0.50,
+        "cacheWrite": 0.0,
+    },
+}
+
 OUTPUT_REQUIRED_COLUMNS = (
     "source_benchmark",
     "source_dataset",
@@ -390,13 +430,85 @@ def usage_numbers(value: Any) -> dict[str, float]:
     return totals
 
 
-def merge_usage(rows: list[dict[str, Any]]) -> dict[str, float]:
+def estimate_cost_usd(model: str, usage: dict[str, float]) -> float | None:
+    price = PRICE_PER_MILLION.get(model)
+    if price is None:
+        return None
+    return (
+        usage.get("input_tokens", 0.0) / 1_000_000 * price.get("input", 0.0)
+        + usage.get("output_tokens", 0.0) / 1_000_000 * price.get("output", 0.0)
+        + usage.get("cache_read_input_tokens", 0.0) / 1_000_000 * price.get("cacheRead", 0.0)
+        + usage.get("cache_write_input_tokens", 0.0) / 1_000_000 * price.get("cacheWrite", 0.0)
+    )
+
+
+def merge_usage(rows: list[dict[str, Any]], *, model: str) -> dict[str, float]:
     totals = usage_numbers({})
+    explicit_cost = 0.0
+    estimated_cost = 0.0
     for row in rows:
         usage = usage_numbers(row.get("openclaw_usage"))
         for key, value in usage.items():
-            totals[key] += value
+            if key == "cost_usd":
+                explicit_cost += value
+            else:
+                totals[key] += value
+        if usage["cost_usd"]:
+            continue
+        cost = estimate_cost_usd(model, usage)
+        if cost is not None:
+            estimated_cost += cost
+    totals["cost_usd"] = explicit_cost + estimated_cost
     return totals
+
+
+def usage_from_weave_agents_verifier(path_value: Any) -> dict[str, Any]:
+    if not isinstance(path_value, str) or not path_value:
+        return {}
+    path = Path(path_value)
+    try:
+        payload = read_json(path)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    checks = payload.get("checks")
+    if not isinstance(checks, list):
+        return {}
+    for check in checks:
+        if not isinstance(check, dict) or check.get("name") != "usage" or check.get("ok") is not True:
+            continue
+        input_tokens = (
+            numeric_value(check.get("agent_input_tokens"))
+            + numeric_value(check.get("trace_input_tokens"))
+        )
+        output_tokens = (
+            numeric_value(check.get("agent_output_tokens"))
+            + numeric_value(check.get("trace_output_tokens"))
+        )
+        if input_tokens + output_tokens <= 0:
+            return {}
+        return {
+            "inputTokens": int(input_tokens),
+            "outputTokens": int(output_tokens),
+            "cacheReadInputTokens": 0,
+            "usageSource": "weave_agents_trace",
+            "usageApproximate": True,
+        }
+    return {}
+
+
+def deepswe_openclaw_usage(result: dict[str, Any]) -> dict[str, Any] | None:
+    usage = result.get("openclaw_usage")
+    if isinstance(usage, dict) and usage:
+        return usage
+    agent_result = result.get("agent_result") if isinstance(result.get("agent_result"), dict) else {}
+    metadata = agent_result.get("metadata") if isinstance(agent_result.get("metadata"), dict) else {}
+    openclaw = metadata.get("openclaw") if isinstance(metadata.get("openclaw"), dict) else {}
+    usage = openclaw.get("openclaw_usage")
+    if isinstance(usage, dict) and usage:
+        return usage
+    return usage_from_weave_agents_verifier(
+        result.get("weave_agents_verifier_json") or openclaw.get("weave_agents_verifier_json")
+    ) or None
 
 
 def lite_rows(
@@ -473,7 +585,7 @@ def deepswe_rows(*, metadata_rows: list[dict[str, Any]], result_rows: list[dict[
                 "openclaw_disqualified_reason": result.get("openclaw_disqualified_reason"),
                 "openclaw_tool_call_count": result.get("openclaw_tool_call_count"),
                 "openclaw_tool_error_count": None,
-                "openclaw_usage": result.get("openclaw_usage"),
+                "openclaw_usage": deepswe_openclaw_usage(result),
                 "runtime_budget": None,
                 "weave_agents_ok": result.get("weave_agents_ok"),
                 "weave_agents_conversation_url": result.get("weave_agents_conversation_url"),
@@ -489,10 +601,10 @@ def deepswe_rows(*, metadata_rows: list[dict[str, Any]], result_rows: list[dict[
     return rows
 
 
-def summarize_group(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def summarize_group(rows: list[dict[str, Any]], *, model: str) -> dict[str, Any]:
     total = len(rows)
     resolved = sum(1 for row in rows if row.get("resolved") is True)
-    usage = merge_usage(rows)
+    usage = merge_usage(rows, model=model)
     return {
         "total_instances": total,
         "resolved_instances": resolved,
@@ -515,9 +627,9 @@ def build_summary(rows: list[dict[str, Any]], *, args: argparse.Namespace, elaps
         "model": args.model,
         "elapsed_seconds": elapsed,
         "dry_run": bool(args.dry_run),
-        "total": summarize_group(rows),
-        "by_tier": {key: summarize_group(value) for key, value in sorted(by_tier.items())},
-        "by_source": {key: summarize_group(value) for key, value in sorted(by_source.items())},
+        "total": summarize_group(rows, model=args.model),
+        "by_tier": {key: summarize_group(value, model=args.model) for key, value in sorted(by_tier.items())},
+        "by_source": {key: summarize_group(value, model=args.model) for key, value in sorted(by_source.items())},
         "limits": {
             "max_input_tokens": args.max_input_tokens,
             "max_cumulative_input_tokens": args.max_cumulative_input_tokens,

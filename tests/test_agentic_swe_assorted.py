@@ -121,3 +121,84 @@ def test_agentic_swe_assorted_usage_tracks_cache_tokens_separately():
     assert usage["cache_read_input_tokens"] == 300
     assert usage["cache_write_input_tokens"] == 40
     assert usage["total_tokens"] == 460
+
+
+def test_agentic_swe_assorted_summary_estimates_model_cost():
+    module = load_module(SCRIPT)
+    args = SimpleNamespace(
+        model="openai-direct/gpt-4.1-mini-2025-04-14",
+        dry_run=False,
+        max_input_tokens=1_000_000,
+        max_cumulative_input_tokens=1_000_000,
+        max_cumulative_output_tokens=500_000,
+        max_tool_calls=40,
+        max_agent_turns=40,
+        max_tool_wall_seconds=120,
+        swe_workers=4,
+        high_workers=2,
+    )
+    rows = [
+        {
+            "source_benchmark": "SWE-bench Lite",
+            "agentic_swe_tier": "low",
+            "resolved": False,
+            "patch_empty": True,
+            "weave_agents_ok": True,
+            "openclaw_usage": {
+                "inputTokens": 1_000_000,
+                "outputTokens": 100_000,
+                "cacheReadInputTokens": 2_000_000,
+            },
+        }
+    ]
+
+    summary = module.build_summary(rows, args=args, elapsed=1.0)
+
+    assert summary["total"]["usage"]["cost_usd"] == 0.76
+
+
+def test_deepswe_usage_falls_back_to_weave_agents_trace_usage(tmp_path):
+    module = load_module(SCRIPT)
+    verifier = tmp_path / "weave_agents.json"
+    verifier.write_text(
+        """{
+  "checks": [
+    {
+      "name": "usage",
+      "ok": true,
+      "agent_input_tokens": 10,
+      "agent_output_tokens": 2,
+      "trace_input_tokens": 1000,
+      "trace_output_tokens": 50
+    }
+  ]
+}
+""",
+        encoding="utf-8",
+    )
+    rows = module.deepswe_rows(
+        metadata_rows=[
+            {
+                "task_name": "example-task",
+                "repository": "example/repo",
+                "subset": "essential_8",
+            }
+        ],
+        result_rows=[
+            {
+                "task_name": "datacurve/example-task",
+                "resolved": False,
+                "score": 0.0,
+                "openclaw_usage": {},
+                "weave_agents_verifier_json": str(verifier),
+            }
+        ],
+    )
+
+    assert rows[0]["openclaw_usage"] == {
+        "inputTokens": 1010,
+        "outputTokens": 52,
+        "cacheReadInputTokens": 0,
+        "usageSource": "weave_agents_trace",
+        "usageApproximate": True,
+    }
