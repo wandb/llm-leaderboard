@@ -76,6 +76,20 @@ def verifier_score(verifier_result: Any) -> float | None:
     return None
 
 
+def deepswe_task_id_from_name(task_name: Any) -> str | None:
+    if not isinstance(task_name, str) or not task_name.strip():
+        return None
+    return task_name.rstrip("/").split("/")[-1] or None
+
+
+def fallback_openclaw_metadata(output_dir: Path, task_name: Any) -> dict[str, Any]:
+    task_id = deepswe_task_id_from_name(task_name)
+    if not task_id:
+        return {}
+    metadata_path = output_dir / "openclaw" / task_id / "deepswe_openclaw_metadata.json"
+    return read_json(metadata_path)
+
+
 def collect_results(job_dir: Path, output_dir: Path, *, command: list[str], elapsed: float) -> None:
     job_result = read_json(job_dir / "result.json")
     rows: list[dict[str, Any]] = []
@@ -86,6 +100,13 @@ def collect_results(job_dir: Path, output_dir: Path, *, command: list[str], elap
         agent_result = result.get("agent_result") if isinstance(result.get("agent_result"), dict) else {}
         metadata = agent_result.get("metadata") if isinstance(agent_result.get("metadata"), dict) else {}
         openclaw = metadata.get("openclaw") if isinstance(metadata.get("openclaw"), dict) else {}
+        if not openclaw:
+            openclaw = fallback_openclaw_metadata(output_dir, result.get("task_name"))
+            if openclaw:
+                metadata = dict(metadata)
+                metadata["openclaw"] = openclaw
+                agent_result = dict(agent_result)
+                agent_result["metadata"] = metadata
         score = verifier_score(result.get("verifier_result"))
         rows.append(
             {

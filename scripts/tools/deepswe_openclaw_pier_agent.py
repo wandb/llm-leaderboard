@@ -8,6 +8,7 @@ execution, native Weave Agents evidence, and runtime-budget enforcement.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import importlib.util
 import json
 import os
@@ -77,6 +78,12 @@ def _read_json(path: Path) -> dict[str, Any]:
 def _read_task_toml(task_dir: Path) -> dict[str, Any]:
     with (task_dir / "task.toml").open("rb") as f:
         return tomllib.load(f)
+
+
+def _deepswe_sandbox_checkout_root(task_id: str, logs_dir: Path) -> str:
+    """Return a task/trial-scoped sandbox root for copied DeepSWE checkouts."""
+    digest = hashlib.sha256(str(logs_dir.parent.resolve()).encode("utf-8")).hexdigest()[:10]
+    return f"/sandbox/checkouts/deepswe/{swe_runner.safe_id(task_id)}-{digest}"
 
 
 def _sidecar_usage(metadata: dict[str, Any]) -> dict[str, int]:
@@ -298,6 +305,11 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
 
     def _run_openclaw_host(self, task_id: str, task_toml: dict[str, Any], instruction: str, checkout_dir: Path) -> tuple[dict[str, Any], str]:
         args = self._args()
+        if self.nemoclaw_sandbox and self.nemoclaw_checkout_transfer_mode == "copy":
+            args.nemoclaw_checkout_sandbox_root = _deepswe_sandbox_checkout_root(
+                task_id,
+                self.logs_dir,
+            )
         row = self._row(task_id, task_toml, instruction)
         task_dir = self.output_root / swe_runner.safe_id(task_id)
         task_dir.mkdir(parents=True, exist_ok=True)
