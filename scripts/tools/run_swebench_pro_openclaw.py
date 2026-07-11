@@ -1717,6 +1717,12 @@ def sandbox_checkout_dir(checkout_dir: Path, args: argparse.Namespace) -> Path:
     return checkout_dir.resolve()
 
 
+def openclaw_nemoclaw_workdir(checkout_dir: Path, args: argparse.Namespace) -> str | None:
+    if not getattr(args, "nemoclaw_sandbox", None):
+        return None
+    return str(sandbox_checkout_dir(checkout_dir, args))
+
+
 def nemoclaw_checkout_visible(checkout_dir: Path, args: argparse.Namespace) -> bool:
     if not getattr(args, "nemoclaw_sandbox", None):
         return True
@@ -2165,9 +2171,7 @@ def run_openclaw_for_task(
         if getattr(args, "nemoclaw_sandbox", None):
             command.extend(["--nemoclaw-bin", str(getattr(args, "nemoclaw_bin", "nemoclaw"))])
             command.extend(["--nemoclaw-sandbox", str(args.nemoclaw_sandbox)])
-            nemoclaw_workdir = getattr(args, "nemoclaw_workdir", None)
-            if not nemoclaw_workdir:
-                nemoclaw_workdir = str(sandbox_checkout_dir(checkout_dir, args))
+            nemoclaw_workdir = openclaw_nemoclaw_workdir(checkout_dir, args)
             command.extend(["--nemoclaw-workdir", str(nemoclaw_workdir)])
         if args.profile:
             command.extend(["--profile", args.profile])
@@ -2200,12 +2204,7 @@ def run_openclaw_for_task(
             "prompt_hash": prompt_hash,
             "expected_openclaw_result_path": str(sidecar_path),
             "nemoclaw_sandbox": getattr(args, "nemoclaw_sandbox", None),
-            "nemoclaw_workdir": getattr(args, "nemoclaw_workdir", None)
-            or (
-                str(sandbox_checkout_dir(checkout_dir, args))
-                if getattr(args, "nemoclaw_sandbox", None)
-                else None
-            ),
+            "nemoclaw_workdir": openclaw_nemoclaw_workdir(checkout_dir, args),
             "nemoclaw_checkout_sandbox_root": getattr(args, "nemoclaw_checkout_sandbox_root", None),
             "nemoclaw_checkout_transfer": checkout_transfer,
             "returncode": result.returncode,

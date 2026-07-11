@@ -959,7 +959,7 @@ def test_swebench_nemoclaw_run_forwards_sandbox_command_args(tmp_path, monkeypat
         nemoclaw_checkout_sandbox_root="/sandbox/checkouts",
         nemoclaw_openclaw_config_path="/sandbox/.openclaw/openclaw.json",
         nemoclaw_sandbox="nejumi-taiwan",
-        nemoclaw_workdir=None,
+        nemoclaw_workdir="/sandbox",
         openclaw_config_template=template,
         openclaw_max_attempts=1,
         openclaw_retry_base_seconds=0,
