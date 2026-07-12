@@ -2,6 +2,8 @@ import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "tools" / "run_agentic_swe_assorted.py"
@@ -106,6 +108,7 @@ def test_agentic_swe_assorted_summary_groups_by_tier_and_source():
         max_tool_wall_seconds=120,
         swe_workers=4,
         high_workers=2,
+        tier_weights="low=1,middle=1,high=1",
     )
     rows = [
         {
@@ -145,6 +148,78 @@ def test_agentic_swe_assorted_summary_groups_by_tier_and_source():
     assert summary["by_source"]["SWE-bench Lite"]["total_instances"] == 1
     assert summary["total"]["usage"]["input_tokens"] == 300
     assert summary["total"]["usage"]["output_tokens"] == 150
+    assert summary["total"]["micro_pass_at_1"] == 0.5
+    assert summary["scoring"]["weighted_pass_at_1"] is None
+    assert summary["scoring"]["weighted_present_pass_at_1"] == 0.5
+    assert summary["scoring"]["weighted_pass_at_1_complete"] is False
+    assert summary["scoring"]["missing_weighted_tiers"] == ["middle"]
+
+
+def test_agentic_swe_assorted_summary_uses_tier_macro_score_when_complete():
+    module = load_module(SCRIPT)
+    args = SimpleNamespace(
+        model="dummy/local",
+        dry_run=False,
+        max_input_tokens=1_000_000,
+        max_cumulative_input_tokens=1_000_000,
+        max_cumulative_output_tokens=500_000,
+        max_tool_calls=40,
+        max_agent_turns=40,
+        max_tool_wall_seconds=120,
+        swe_workers=4,
+        high_workers=2,
+        tier_weights="low=1,middle=1,high=1",
+    )
+    rows = [
+        {"source_benchmark": "SWE-bench Lite", "agentic_swe_tier": "low", "resolved": True},
+        {"source_benchmark": "SWE-bench Lite", "agentic_swe_tier": "low", "resolved": True},
+        {"source_benchmark": "SWE-bench Lite", "agentic_swe_tier": "middle", "resolved": False},
+        {"source_benchmark": "DeepSWE", "agentic_swe_tier": "high", "resolved": True},
+    ]
+
+    summary = module.build_summary(rows, args=args, elapsed=1.0)
+
+    assert summary["total"]["micro_pass_at_1"] == 0.75
+    assert summary["scoring"]["weighted_pass_at_1"] == pytest.approx(2 / 3)
+    assert summary["total"]["weighted_pass_at_1"] == pytest.approx(2 / 3)
+    assert summary["scoring"]["weighted_pass_at_1_complete"] is True
+    assert summary["scoring"]["missing_weighted_tiers"] == []
+    assert summary["scoring"]["tier_weights"] == pytest.approx({
+        "low": 1 / 3,
+        "middle": 1 / 3,
+        "high": 1 / 3,
+    })
+
+
+def test_agentic_swe_assorted_summary_accepts_custom_tier_weights():
+    module = load_module(SCRIPT)
+    args = SimpleNamespace(
+        model="dummy/local",
+        dry_run=False,
+        max_input_tokens=1_000_000,
+        max_cumulative_input_tokens=1_000_000,
+        max_cumulative_output_tokens=500_000,
+        max_tool_calls=40,
+        max_agent_turns=40,
+        max_tool_wall_seconds=120,
+        swe_workers=4,
+        high_workers=2,
+        tier_weights="low=2,middle=1,high=1",
+    )
+    rows = [
+        {"source_benchmark": "SWE-bench Lite", "agentic_swe_tier": "low", "resolved": True},
+        {"source_benchmark": "SWE-bench Lite", "agentic_swe_tier": "middle", "resolved": False},
+        {"source_benchmark": "DeepSWE", "agentic_swe_tier": "high", "resolved": True},
+    ]
+
+    summary = module.build_summary(rows, args=args, elapsed=1.0)
+
+    assert summary["scoring"]["weighted_pass_at_1"] == pytest.approx(0.75)
+    assert summary["scoring"]["tier_weights"] == pytest.approx({
+        "low": 0.5,
+        "middle": 0.25,
+        "high": 0.25,
+    })
 
 
 def test_agentic_swe_assorted_usage_tracks_cache_tokens_separately():
@@ -179,6 +254,7 @@ def test_agentic_swe_assorted_summary_estimates_model_cost():
         max_tool_wall_seconds=120,
         swe_workers=4,
         high_workers=2,
+        tier_weights="low=1,middle=1,high=1",
     )
     rows = [
         {

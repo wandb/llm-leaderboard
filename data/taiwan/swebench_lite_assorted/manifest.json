@@ -201,6 +201,12 @@
     "low": 36,
     "middle": 36,
     "high": 8,
+    "score_weights": {
+      "low": 0.3333333333333333,
+      "middle": 0.3333333333333333,
+      "high": 0.3333333333333333
+    },
+    "score_definition": "Total Score = (Low Pass@1 + Middle Pass@1 + High Pass@1) / 3. Instance-level micro Pass@1 is reported separately.",
     "low_middle_jsonl_path": "subsets/low_middle_v2_72.jsonl",
     "legacy_low_middle_jsonl_path": "subsets/low_middle_72.jsonl",
     "high_subset": "data/taiwan/deepswe/subsets/essential_8.jsonl"

@@ -51,6 +51,23 @@ The current default runner input is:
 data/taiwan/swebench_lite_assorted/subsets/low_middle_v2_72.jsonl
 ```
 
+## Scoring
+
+The default full set keeps the practical task mix at 36 Low, 36 Middle, and 8
+High tasks, but the official Agentic SWE-Assorted score is a tier macro average:
+
+```text
+Score = (Low Pass@1 + Middle Pass@1 + High Pass@1) / 3
+```
+
+This keeps the Frontier/High tier visible even though it is intentionally small
+for cost control. The runner exposes this as `weighted_pass_at_1` and records the
+old instance-level micro average separately as `micro_pass_at_1`.
+
+If a run omits any positive-weight tier, for example `--skip-high`, the formal
+`weighted_pass_at_1` is left unset and `weighted_pass_at_1_complete` is false.
+`weighted_present_pass_at_1` is logged only as a diagnostic for partial pilots.
+
 ## Validation
 
 Implemented checks:
@@ -60,6 +77,8 @@ Implemented checks:
 - V2 Low and Middle have no overlap.
 - V2 Low has higher public solve-rate prior than V2 Middle.
 - Runner defaults point to `low_middle_v2_72`.
+- Runner scoring records complete official tier macro score only when all
+  positive-weight tiers are present.
 
 Command run:
 
@@ -69,7 +88,7 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q \
   tests/test_agentic_swe_assorted.py
 ```
 
-Result: `13 passed`.
+Result: `15 passed`.
 
 Dry-run command:
 

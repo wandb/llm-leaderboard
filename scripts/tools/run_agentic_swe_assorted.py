@@ -40,7 +40,9 @@ DEFAULT_DEEPSWE_META = REPO_ROOT / "data" / "taiwan" / "deepswe" / "subsets" / "
 DEFAULT_DEEPSWE_TASK_NAMES = (
     REPO_ROOT / "data" / "taiwan" / "deepswe" / "subsets" / "essential_8_task_names.json"
 )
+TIER_ORDER = ("low", "middle", "high")
 DEFAULT_OFFICIAL_SWEBENCH = REPO_ROOT / "external" / "SWE-bench"
+DEFAULT_TIER_WEIGHTS: dict[str, float] = {tier: 1.0 for tier in TIER_ORDER}
 
 PRICE_PER_MILLION: dict[str, dict[str, float]] = {
     # Accountability estimates only. Provider dashboards remain authoritative.
@@ -193,6 +195,41 @@ def prepare_high_inputs(args: argparse.Namespace) -> tuple[Path, list[dict[str, 
     task_names_path = args.output_dir / "inputs" / "deepswe_high_task_names.json"
     write_json(task_names_path, task_names)
     return task_names_path, rows
+
+
+def parse_tier_weights(raw: str | None) -> dict[str, float]:
+    if raw is None or not raw.strip():
+        return dict(DEFAULT_TIER_WEIGHTS)
+
+    text = raw.strip()
+    if text.startswith("{"):
+        payload = json.loads(text)
+        if not isinstance(payload, dict):
+            raise ValueError("--tier-weights JSON must be an object")
+        items = payload.items()
+    else:
+        items = []
+        for part in text.split(","):
+            if not part.strip():
+                continue
+            key, sep, value = part.partition("=")
+            if sep != "=":
+                raise ValueError(
+                    "--tier-weights must be JSON or comma-separated tier=value pairs"
+                )
+            items.append((key.strip(), value.strip()))
+
+    weights = dict(DEFAULT_TIER_WEIGHTS)
+    for key, value in items:
+        if key not in DEFAULT_TIER_WEIGHTS:
+            raise ValueError(f"unknown tier weight key: {key}")
+        weight = float(value)
+        if weight < 0:
+            raise ValueError(f"tier weight must be non-negative: {key}={weight}")
+        weights[key] = weight
+    if sum(weights.values()) <= 0:
+        raise ValueError("at least one tier weight must be positive")
+    return weights
 
 
 def build_swe_command(args: argparse.Namespace, jsonl_path: Path) -> list[str]:
@@ -647,19 +684,82 @@ def summarize_group(rows: list[dict[str, Any]], *, model: str) -> dict[str, Any]
     }
 
 
+def build_scoring_summary(by_tier: dict[str, list[dict[str, Any]]], *, args: argparse.Namespace) -> dict[str, Any]:
+    weights = parse_tier_weights(getattr(args, "tier_weights", None))
+    by_tier_summary = {
+        tier: summarize_group(rows, model=args.model)
+        for tier, rows in sorted(by_tier.items())
+    }
+    normalized_denominator = sum(weights.values())
+    normalized_weights = {
+        tier: weight / normalized_denominator
+        for tier, weight in weights.items()
+        if weight > 0
+    }
+    present_tiers = {
+        tier
+        for tier, summary in by_tier_summary.items()
+        if summary.get("total_instances", 0) > 0
+    }
+    missing_tiers = [
+        tier
+        for tier, weight in weights.items()
+        if weight > 0 and tier not in present_tiers
+    ]
+
+    present_weight_sum = sum(
+        weight
+        for tier, weight in weights.items()
+        if weight > 0 and tier in present_tiers
+    )
+    weighted_present_pass_at_1 = None
+    if present_weight_sum > 0:
+        weighted_present_pass_at_1 = sum(
+            by_tier_summary[tier]["pass_at_1"] * weight
+            for tier, weight in weights.items()
+            if weight > 0 and tier in present_tiers
+        ) / present_weight_sum
+
+    weighted_pass_at_1 = None
+    if not missing_tiers and weighted_present_pass_at_1 is not None:
+        weighted_pass_at_1 = weighted_present_pass_at_1
+
+    return {
+        "tier_weights": normalized_weights,
+        "tier_weights_raw": weights,
+        "weighted_pass_at_1": weighted_pass_at_1,
+        "weighted_present_pass_at_1": weighted_present_pass_at_1,
+        "weighted_pass_at_1_complete": not missing_tiers,
+        "missing_weighted_tiers": missing_tiers,
+        "score_definition": "equal-weight tier macro average by default: (low + middle + high) / 3",
+    }
+
+
 def build_summary(rows: list[dict[str, Any]], *, args: argparse.Namespace, elapsed: float) -> dict[str, Any]:
     by_tier: dict[str, list[dict[str, Any]]] = defaultdict(list)
     by_source: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         by_tier[str(row.get("agentic_swe_tier"))].append(row)
         by_source[str(row.get("source_benchmark"))].append(row)
+    by_tier_summary = {
+        key: summarize_group(value, model=args.model)
+        for key, value in sorted(by_tier.items())
+    }
+    total = summarize_group(rows, model=args.model)
+    scoring = build_scoring_summary(by_tier, args=args)
     return {
         "benchmark": "Agentic SWE-Assorted",
         "model": args.model,
         "elapsed_seconds": elapsed,
         "dry_run": bool(args.dry_run),
-        "total": summarize_group(rows, model=args.model),
-        "by_tier": {key: summarize_group(value, model=args.model) for key, value in sorted(by_tier.items())},
+        "total": {
+            **total,
+            "micro_pass_at_1": total["pass_at_1"],
+            "weighted_pass_at_1": scoring["weighted_pass_at_1"],
+            "weighted_present_pass_at_1": scoring["weighted_present_pass_at_1"],
+        },
+        "scoring": scoring,
+        "by_tier": by_tier_summary,
         "by_source": {key: summarize_group(value, model=args.model) for key, value in sorted(by_source.items())},
         "limits": {
             "max_input_tokens": args.max_input_tokens,
@@ -703,7 +803,10 @@ def log_wandb(args: argparse.Namespace, rows: list[dict[str, Any]], summary: dic
                 "model_name": args.model,
                 "total_samples": summary["total"]["total_instances"],
                 "issues_resolved": summary["total"]["resolved_instances"],
-                "pass_at_1": summary["total"]["pass_at_1"],
+                "pass_at_1": summary["scoring"]["weighted_pass_at_1"],
+                "micro_pass_at_1": summary["total"]["micro_pass_at_1"],
+                "weighted_present_pass_at_1": summary["scoring"]["weighted_present_pass_at_1"],
+                "weighted_pass_at_1_complete": summary["scoring"]["weighted_pass_at_1_complete"],
                 "low_pass_at_1": summary["by_tier"].get("low", {}).get("pass_at_1"),
                 "middle_pass_at_1": summary["by_tier"].get("middle", {}).get("pass_at_1"),
                 "high_pass_at_1": summary["by_tier"].get("high", {}).get("pass_at_1"),
@@ -717,25 +820,35 @@ def log_wandb(args: argparse.Namespace, rows: list[dict[str, Any]], summary: dic
         name=args.wandb_run_name or f"agentic-swe-assorted/{args.model}",
         config=vars(args),
     ) as run:
-        run.log(
-            {
-                "agentic_swe_leaderboard_table": wandb.Table(dataframe=leaderboard),
-                "agentic_swe_output_table": wandb.Table(dataframe=table_df),
-                "agentic_swe_results": summary,
-                "agentic_swe/pass_at_1": float(summary["total"]["pass_at_1"]),
-                "agentic_swe/resolved_instances": int(summary["total"]["resolved_instances"]),
-                "agentic_swe/total_instances": int(summary["total"]["total_instances"]),
-                "agentic_swe/low/pass_at_1": float(
-                    summary["by_tier"].get("low", {}).get("pass_at_1") or 0.0
-                ),
-                "agentic_swe/middle/pass_at_1": float(
-                    summary["by_tier"].get("middle", {}).get("pass_at_1") or 0.0
-                ),
-                "agentic_swe/high/pass_at_1": float(
-                    summary["by_tier"].get("high", {}).get("pass_at_1") or 0.0
-                ),
-            }
-        )
+        metrics = {
+            "agentic_swe_leaderboard_table": wandb.Table(dataframe=leaderboard),
+            "agentic_swe_output_table": wandb.Table(dataframe=table_df),
+            "agentic_swe_results": summary,
+            "agentic_swe/micro_pass_at_1": float(summary["total"]["micro_pass_at_1"]),
+            "agentic_swe/weighted_present_pass_at_1": float(
+                summary["scoring"]["weighted_present_pass_at_1"] or 0.0
+            ),
+            "agentic_swe/weighted_pass_at_1_complete": int(
+                bool(summary["scoring"]["weighted_pass_at_1_complete"])
+            ),
+            "agentic_swe/resolved_instances": int(summary["total"]["resolved_instances"]),
+            "agentic_swe/total_instances": int(summary["total"]["total_instances"]),
+            "agentic_swe/low/pass_at_1": float(
+                summary["by_tier"].get("low", {}).get("pass_at_1") or 0.0
+            ),
+            "agentic_swe/middle/pass_at_1": float(
+                summary["by_tier"].get("middle", {}).get("pass_at_1") or 0.0
+            ),
+            "agentic_swe/high/pass_at_1": float(
+                summary["by_tier"].get("high", {}).get("pass_at_1") or 0.0
+            ),
+        }
+        if summary["scoring"]["weighted_pass_at_1"] is not None:
+            metrics["agentic_swe/pass_at_1"] = float(summary["scoring"]["weighted_pass_at_1"])
+            metrics["agentic_swe/weighted_pass_at_1"] = float(
+                summary["scoring"]["weighted_pass_at_1"]
+            )
+        run.log(metrics)
         artifact = wandb.Artifact(
             "agentic-swe-assorted-" + args.model.replace("/", "-").replace(":", "-"),
             type="evaluation-results",
@@ -743,7 +856,8 @@ def log_wandb(args: argparse.Namespace, rows: list[dict[str, Any]], summary: dic
                 "model": args.model,
                 "total_instances": summary["total"]["total_instances"],
                 "resolved_instances": summary["total"]["resolved_instances"],
-                "pass_at_1": summary["total"]["pass_at_1"],
+                "pass_at_1": summary["scoring"]["weighted_pass_at_1"],
+                "micro_pass_at_1": summary["total"]["micro_pass_at_1"],
             },
         )
         for filename in ("summary.json", "output_table.jsonl", "leaderboard_table.json"):
@@ -769,6 +883,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--deepswe-task-names-file", type=Path, default=DEFAULT_DEEPSWE_TASK_NAMES)
     parser.add_argument("--deepswe-tasks-root", type=Path, default=REPO_ROOT / "external" / "deep-swe" / "tasks")
     parser.add_argument("--high-limit", type=int)
+    parser.add_argument(
+        "--tier-weights",
+        default="low=1,middle=1,high=1",
+        help=(
+            "Official score weights as JSON object or comma-separated tier=value pairs. "
+            "Default makes Low, Middle, and High contribute one third each."
+        ),
+    )
     parser.add_argument("--official-swebench-repo", type=Path, default=DEFAULT_OFFICIAL_SWEBENCH)
     parser.add_argument("--checkout-root", type=Path, default=Path("outputs/swebench_lite_checkouts"))
     parser.add_argument("--skip-low-middle", action="store_true")
@@ -892,7 +1014,10 @@ def main() -> None:
                 "model_name": args.model,
                 "total_samples": summary["total"]["total_instances"],
                 "issues_resolved": summary["total"]["resolved_instances"],
-                "pass_at_1": summary["total"]["pass_at_1"],
+                "pass_at_1": summary["scoring"]["weighted_pass_at_1"],
+                "micro_pass_at_1": summary["total"]["micro_pass_at_1"],
+                "weighted_present_pass_at_1": summary["scoring"]["weighted_present_pass_at_1"],
+                "weighted_pass_at_1_complete": summary["scoring"]["weighted_pass_at_1_complete"],
                 "low_pass_at_1": summary["by_tier"].get("low", {}).get("pass_at_1"),
                 "middle_pass_at_1": summary["by_tier"].get("middle", {}).get("pass_at_1"),
                 "high_pass_at_1": summary["by_tier"].get("high", {}).get("pass_at_1"),

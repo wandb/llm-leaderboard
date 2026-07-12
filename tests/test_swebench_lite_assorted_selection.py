@@ -31,7 +31,7 @@ def test_swebench_lite_low_middle_subsets_are_manifested():
     assert manifest["subsets"]["low_v2_36"]["count"] == 36
     assert manifest["subsets"]["middle_v2_36"]["count"] == 36
     assert manifest["subsets"]["low_middle_v2_72"]["count"] == 72
-    assert manifest["assorted_80_plan"] == {
+    expected_plan_fields = {
         "low": 36,
         "middle": 36,
         "high": 8,
@@ -39,6 +39,14 @@ def test_swebench_lite_low_middle_subsets_are_manifested():
         "legacy_low_middle_jsonl_path": "subsets/low_middle_72.jsonl",
         "high_subset": "data/taiwan/deepswe/subsets/essential_8.jsonl",
     }
+    for key, value in expected_plan_fields.items():
+        assert manifest["assorted_80_plan"][key] == value
+    assert manifest["assorted_80_plan"]["score_weights"] == {
+        "low": 1 / 3,
+        "middle": 1 / 3,
+        "high": 1 / 3,
+    }
+    assert "Low Pass@1 + Middle Pass@1 + High Pass@1" in manifest["assorted_80_plan"]["score_definition"]
 
 
 def test_swebench_lite_low_middle_rows_have_source_and_runner_fields():

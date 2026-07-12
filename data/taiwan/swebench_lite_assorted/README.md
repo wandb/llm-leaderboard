@@ -20,6 +20,11 @@ Two selection families are retained:
 This means V2 `Low` is intended to mean practical low-cost/easier Agentic SWE,
 not merely small gold patch size.
 
+The full Agentic SWE-Assorted mix is 36 Low, 36 Middle, and 8 High tasks. The
+official score is not the raw instance micro average; it is the tier macro
+average `(Low Pass@1 + Middle Pass@1 + High Pass@1) / 3`. Partial pilots that
+skip a positive-weight tier do not produce a complete official score.
+
 Subsets:
 
 - `subsets/low_36.jsonl`: lower difficulty band.
