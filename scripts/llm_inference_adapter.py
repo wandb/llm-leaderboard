@@ -437,7 +437,46 @@ def _resolve_openai_compatible_api_key(base_url: str, cfg: Any | None = None) ->
             "XAI_API_KEY",
             os.environ.get("OPENAI_COMPATIBLE_API_KEY", "EMPTY"),
         )
+    if "api.inference.wandb.ai" in normalized:
+        return os.environ.get(
+            "WANDB_API_KEY",
+            os.environ.get("OPENAI_COMPATIBLE_API_KEY", "EMPTY"),
+        )
     return os.environ.get("OPENAI_COMPATIBLE_API_KEY", os.environ.get("VLLM_API_KEY", "EMPTY"))
+
+
+def _cfg_select(cfg: Any | None, key: str, default: Any = None) -> Any:
+    if cfg is None:
+        return default
+    try:
+        return OmegaConf.select(cfg, key, default=default)
+    except Exception:
+        pass
+    try:
+        return cfg.get(key, default)
+    except Exception:
+        return default
+
+
+def _resolve_openai_compatible_project(base_url: str, cfg: Any | None = None) -> str | None:
+    """Return an OpenAI SDK project value for compatible providers that need it."""
+    normalized = (base_url or "").lower()
+    explicit_project = (
+        _cfg_select(cfg, "openai_compatible.project")
+        or _cfg_select(cfg, "openai.project")
+        or _cfg_select(cfg, "project")
+    )
+    if explicit_project:
+        return str(explicit_project)
+
+    if "api.inference.wandb.ai" not in normalized:
+        return None
+
+    entity = _cfg_select(cfg, "wandb.entity")
+    project = _cfg_select(cfg, "wandb.project")
+    if entity and project:
+        return f"{entity}/{project}"
+    return None
 
 
 def _resolve_http_timeout_from_cfg(cfg, primary_key: str = "openai") -> httpx.Timeout:
@@ -727,21 +766,22 @@ class OpenAIClient:
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config if instance else None
         timeout = _resolve_http_timeout_from_cfg(cfg, primary_key=timeout_primary_key) if cfg else httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=30.0)
+        project = kwargs.pop("project", None)
 
-        self.async_client = openai.AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            timeout=timeout,
-            max_retries=3
-        )
-        self.client = openai.OpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            timeout=timeout,
-            max_retries=3
-        )
+        client_kwargs = {
+            "api_key": api_key,
+            "base_url": base_url,
+            "timeout": timeout,
+            "max_retries": 3,
+        }
+        if project:
+            client_kwargs["project"] = project
+
+        self.async_client = openai.AsyncOpenAI(**client_kwargs)
+        self.client = openai.OpenAI(**client_kwargs)
         self.model = model
         self.base_url = base_url
+        self.project = project
         self.kwargs = kwargs
         
         self.allowed_params = {
@@ -1879,6 +1919,7 @@ def get_llm_inference_engine() -> BaseLLMClient:
             api_key=_resolve_openai_compatible_api_key(base_url, cfg),
             base_url=base_url,
             model=model_name,  # model_name -> model に修正
+            project=_resolve_openai_compatible_project(base_url, cfg),
             **cfg.generator,
         )
         return llm

@@ -280,6 +280,11 @@ def summarize_runtime_validation(cfg, enabled_benchmarks):
                 )
             elif "api.x.ai" in base_url:
                 require_any_env("answer model xAI-compatible API", ["XAI_API_KEY", "OPENAI_COMPATIBLE_API_KEY"])
+            elif "api.inference.wandb.ai" in base_url:
+                require_any_env(
+                    "answer model W&B Inference API",
+                    ["WANDB_API_KEY", "OPENAI_COMPATIBLE_API_KEY"],
+                )
             elif any(host in base_url for host in ["localhost", "127.0.0.1", "0.0.0.0", "vllm"]):
                 return
             else:

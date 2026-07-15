@@ -20,7 +20,10 @@ if "mistralai" not in sys.modules:
 
 from config_singleton import WandbConfigSingleton
 from evaluator.evaluate_utils.llm_judge_client import get_openai_judge_client
-from llm_inference_adapter import _resolve_openai_compatible_api_key
+from llm_inference_adapter import (
+    _resolve_openai_compatible_api_key,
+    _resolve_openai_compatible_project,
+)
 
 
 class DummyJudgeOutput(BaseModel):
@@ -106,4 +109,53 @@ def test_openai_compatible_explicit_key_env_wins(monkeypatch):
     assert (
         _resolve_openai_compatible_api_key("https://openrouter.ai/api/v1", cfg)
         == "custom-key"
+    )
+
+
+def test_openai_compatible_wandb_inference_uses_wandb_api_key(monkeypatch):
+    monkeypatch.setenv("WANDB_API_KEY", "wandb-key")
+    monkeypatch.setenv("OPENAI_COMPATIBLE_API_KEY", "generic-key")
+
+    assert (
+        _resolve_openai_compatible_api_key("https://api.inference.wandb.ai/v1")
+        == "wandb-key"
+    )
+
+
+def test_openai_compatible_wandb_inference_project_from_wandb_config():
+    cfg = OmegaConf.create(
+        {
+            "wandb": {
+                "entity": "llm-leaderboard",
+                "project": "tc-leaderboard",
+            }
+        }
+    )
+
+    assert (
+        _resolve_openai_compatible_project(
+            "https://api.inference.wandb.ai/v1",
+            cfg,
+        )
+        == "llm-leaderboard/tc-leaderboard"
+    )
+
+
+def test_openai_compatible_explicit_project_wins_for_wandb_inference():
+    cfg = OmegaConf.create(
+        {
+            "openai_compatible": {"project": "custom/team-project"},
+            "wandb": {
+                "entity": "llm-leaderboard",
+                "project": "tc-leaderboard",
+            },
+        }
+    )
+
+    assert (
+        _resolve_openai_compatible_project(
+            "https://api.inference.wandb.ai/v1",
+            cfg,
+        )
+        == "custom/team-project"
     )

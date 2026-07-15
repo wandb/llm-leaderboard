@@ -453,6 +453,115 @@ def test_run_eval_preflight_passes_when_openrouter_key_present(tmp_path):
     ]
 
 
+def test_run_eval_preflight_fails_before_execution_when_wandb_inference_key_missing(tmp_path):
+    base_config = tmp_path / "base.yaml"
+    config = tmp_path / "config.yaml"
+    output_json = tmp_path / "preflight.json"
+
+    write_yaml(
+        base_config,
+        """
+        wandb:
+          entity: llm-leaderboard
+          project: tc-leaderboard
+          run_name: preflight-base
+        api: openai-compatible
+        base_url: https://api.inference.wandb.ai/v1
+        model:
+          pretrained_model_name_or_path: meta-llama/Llama-3.3-70B-Instruct
+        generator:
+          max_tokens: 2048
+        run:
+          bfcl: false
+        bfcl:
+          max_tokens: 2048
+        """,
+    )
+    write_yaml(
+        config,
+        """
+        run:
+          bfcl: true
+        """,
+    )
+
+    result = run_preflight(
+        config,
+        base_config,
+        output_json,
+        extra_env={
+            "NEJUMI_DISABLE_DOTENV": "1",
+            "WANDB_API_KEY": None,
+            "OPENAI_COMPATIBLE_API_KEY": None,
+        },
+    )
+
+    assert result.returncode == 2
+    payload = json.loads(output_json.read_text(encoding="utf-8"))
+    assert payload["ok"] is False
+    assert payload["runtime_validation"]["ok"] is False
+    assert "Missing credential for answer model W&B Inference API" in (
+        payload["runtime_validation"]["errors"][0]
+    )
+    assert payload["runtime_validation"]["credential_checks"][0]["required_any_of"] == [
+        "WANDB_API_KEY",
+        "OPENAI_COMPATIBLE_API_KEY",
+    ]
+    assert payload["will_initialize_wandb"] is False
+
+
+def test_run_eval_preflight_passes_when_wandb_inference_key_present(tmp_path):
+    base_config = tmp_path / "base.yaml"
+    config = tmp_path / "config.yaml"
+    output_json = tmp_path / "preflight.json"
+
+    write_yaml(
+        base_config,
+        """
+        wandb:
+          entity: llm-leaderboard
+          project: tc-leaderboard
+          run_name: preflight-base
+        api: openai-compatible
+        base_url: https://api.inference.wandb.ai/v1
+        model:
+          pretrained_model_name_or_path: meta-llama/Llama-3.3-70B-Instruct
+        generator:
+          max_tokens: 2048
+        run:
+          bfcl: false
+        bfcl:
+          max_tokens: 2048
+        """,
+    )
+    write_yaml(
+        config,
+        """
+        run:
+          bfcl: true
+        """,
+    )
+
+    result = run_preflight(
+        config,
+        base_config,
+        output_json,
+        extra_env={
+            "NEJUMI_DISABLE_DOTENV": "1",
+            "WANDB_API_KEY": "test-wandb-key",
+            "OPENAI_COMPATIBLE_API_KEY": None,
+        },
+    )
+
+    assert result.returncode == 0, result.stderr + result.stdout
+    payload = json.loads(output_json.read_text(encoding="utf-8"))
+    assert payload["ok"] is True
+    assert payload["runtime_validation"]["ok"] is True
+    assert payload["runtime_validation"]["credential_checks"][0]["present_envs"] == [
+        "WANDB_API_KEY"
+    ]
+
+
 def _literal_assignment_from_source(path: Path, name: str):
     tree = ast.parse(path.read_text(encoding="utf-8"))
     for node in tree.body:
