@@ -600,6 +600,35 @@ def test_weave_expected_request_models_reads_generated_config(tmp_path):
     ]
 
 
+def test_weave_expected_request_models_include_wandb_inference_remainder(tmp_path):
+    module = load_module()
+    config = tmp_path / "config-taiwan-full-glm52-wandb.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "api: openai_compatible",
+                "model:",
+                "  pretrained_model_name_or_path: zai-org/GLM-5.2",
+                "run:",
+                "  agentic_math: true",
+                "  agentic_swe_assorted: true",
+                "agentic_math:",
+                "  openclaw_model: wandb-inference/zai-org/GLM-5.2",
+                "agentic_swe_assorted:",
+                "  openclaw_model: wandb-inference/zai-org/GLM-5.2",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert module.weave_expected_request_models(config, phase="agentic") == [
+        "GLM-5.2",
+        "wandb-inference/zai-org/GLM-5.2",
+        "zai-org/GLM-5.2",
+    ]
+
+
 def test_resolve_weave_conversation_id_contains_defaults_to_wandb_run_id():
     module = load_module()
 

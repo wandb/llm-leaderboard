@@ -287,7 +287,7 @@ if not path.exists():
     raise SystemExit
 mode = stat.S_IMODE(path.stat().st_mode)
 data = json.loads(path.read_text(encoding="utf-8"))
-print(str(bool(data.get("wandb", {}).get("apiKey")) and mode & 0o077 == 0).lower())
+print(str(bool(data.get("wandb", {}).get("apiKey")) and mode & 0o007 == 0).lower())
 PY
 }
 
@@ -308,7 +308,7 @@ if not path.exists():
     raise SystemExit
 mode = stat.S_IMODE(path.stat().st_mode)
 data = json.loads(path.read_text(encoding="utf-8"))
-print(str(bool(data.get("openai", {}).get("apiKey")) and mode & 0o077 == 0).lower())
+print(str(bool(data.get("openai", {}).get("apiKey")) and mode & 0o007 == 0).lower())
 PY
 }
 

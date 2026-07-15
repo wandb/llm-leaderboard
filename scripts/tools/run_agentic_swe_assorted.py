@@ -94,6 +94,12 @@ PRICE_PER_MILLION: dict[str, dict[str, float]] = {
         "cacheRead": 0.18,
         "cacheWrite": 0.0,
     },
+    "wandb-inference/zai-org/GLM-5.2": {
+        "input": 1.39,
+        "output": 4.40,
+        "cacheRead": 0.26,
+        "cacheWrite": 0.0,
+    },
     "openrouter-direct/google/gemini-3.1-pro-preview": {
         "input": 2.00,
         "output": 12.00,

@@ -21,3 +21,13 @@ def test_model_aliases_include_openrouter_provider_stripped_model():
         "glm-5.2",
         "z-ai/glm-5.2",
     ]
+
+
+def test_model_aliases_include_wandb_inference_provider_stripped_model():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "weave_agents_native_trace.py")
+
+    assert module.model_aliases("wandb-inference/zai-org/GLM-5.2") == [
+        "wandb-inference/zai-org/GLM-5.2",
+        "GLM-5.2",
+        "zai-org/GLM-5.2",
+    ]

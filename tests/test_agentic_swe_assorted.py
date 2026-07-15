@@ -722,6 +722,44 @@ def test_agentic_swe_assorted_summary_estimates_gpt56_luna_cost():
     assert summary["total"]["usage"]["cost_usd"] == pytest.approx(0.1126909)
 
 
+def test_agentic_swe_assorted_summary_estimates_wandb_inference_glm52_cost():
+    module = load_module(SCRIPT)
+    args = SimpleNamespace(
+        model="wandb-inference/zai-org/GLM-5.2",
+        dry_run=False,
+        max_input_tokens=1_000_000,
+        max_cumulative_input_tokens=1_000_000,
+        high_max_cumulative_input_tokens=5_000_000,
+        max_cumulative_output_tokens=500_000,
+        max_tool_calls=40,
+        high_max_tool_calls=72,
+        max_agent_turns=40,
+        high_max_agent_turns=60,
+        max_tool_wall_seconds=120,
+        swe_workers=4,
+        high_workers=1,
+        llm_response_idle_timeout_seconds=900.0,
+        tier_weights="low=1,middle=1,high=1",
+    )
+    rows = [
+        {
+            "source_benchmark": "SWE-bench Lite",
+            "agentic_swe_tier": "low",
+            "resolved": True,
+            "weave_agents_ok": True,
+            "openclaw_usage": {
+                "inputTokens": 55_884,
+                "outputTokens": 2_274,
+                "cacheReadInputTokens": 260_928,
+            },
+        }
+    ]
+
+    summary = module.build_summary(rows, args=args, elapsed=1.0)
+
+    assert summary["total"]["usage"]["cost_usd"] == pytest.approx(0.15552564)
+
+
 def test_deepswe_usage_falls_back_to_weave_agents_trace_usage(tmp_path):
     module = load_module(SCRIPT)
     verifier = tmp_path / "weave_agents.json"

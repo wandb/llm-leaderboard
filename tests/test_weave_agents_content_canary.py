@@ -364,6 +364,16 @@ def test_request_model_aliases_include_direct_provider_remainder():
     ]
 
 
+def test_request_model_aliases_include_wandb_inference_remainder():
+    module = load_module()
+
+    assert module.request_model_aliases("wandb-inference/zai-org/GLM-5.2") == [
+        "wandb-inference/zai-org/GLM-5.2",
+        "zai-org/GLM-5.2",
+        "GLM-5.2",
+    ]
+
+
 def test_verify_command_uses_sidecar_conversation_or_task_id(tmp_path):
     module = load_module()
     args = make_args(
