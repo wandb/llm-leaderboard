@@ -42,6 +42,7 @@ SUPPORTED_MODELS = [
     "gpt-4o-mini-2024-07-18",
     "gpt-4o-mini-2024-07-18-FC",
     "OpenAI-FC",
+    "WandBInference-FC",
     "claude-3-opus-20240229",
     "claude-3-opus-20240229-FC",
     "claude-3-7-sonnet-20250219",

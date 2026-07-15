@@ -1,0 +1,88 @@
+wandb:
+  run_name: "z-ai/glm-5.2: wandb-inference"
+
+api: openai-compatible
+base_url: https://api.inference.wandb.ai/v1
+batch_size: 4
+inference_interval: 1
+
+model:
+  pretrained_model_name_or_path: zai-org/GLM-5.2
+  bfcl_model_id: WandBInference-FC
+  base_model: unknown
+  size_category: api
+  size: null
+  release_date: 6/16/2026
+
+generator:
+  temperature: null
+  top_p: null
+  parallel_tool_calls: true
+  max_tokens: 32768
+
+jaster:
+  override_max_tokens: 32768
+
+jbbq:
+  generator_config:
+    max_tokens: 32768
+
+toxicity:
+  generator_config:
+    max_tokens: 32768
+    temperature: null
+    top_p: null
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 32768
+
+swebench:
+  max_tokens: 32768
+
+mtbench:
+  max_new_token: 32768
+  generator_config:
+    max_tokens: 32768
+    temperature: null
+    top_p: null
+  temperature_override:
+    writing: null
+    roleplay: null
+    extraction: null
+    math: null
+    coding: null
+    reasoning: null
+    stem: null
+    humanities: null
+
+bfcl:
+  generator_config:
+    max_tokens: 32768
+    temperature: null
+    top_p: null
+
+hallulens:
+  generator_config:
+    max_tokens: 32768
+    temperature: null
+    top_p: null
+
+hle:
+  max_completion_tokens: 32768
+  generator_config:
+    max_tokens: 32768
+
+arc_agi:
+  max_output_tokens: 32768
+
+m_ifeval:
+  generator_config:
+    max_tokens: 32768
+
+openai:
+  http_timeout:
+    connect: 10.0
+    read: 1800.0
+    write: 300.0
+    pool: 30.0

@@ -408,6 +408,26 @@ def test_default_glm_manifest_generates_math50_swe40(tmp_path):
     assert cfg.agentic_swe_assorted.openclaw_model_overrides.maxTokens == 4096
 
 
+def test_wandb_inference_glm_manifest_generates_wandb_routes(tmp_path):
+    args = _args(tmp_path, "full", manifest=FULL_EVAL_MANIFEST)
+    args.model = ["glm-5_2-wandb-inference"]
+
+    [config_path] = generate_configs(args)
+    cfg = OmegaConf.load(config_path)
+
+    assert config_path.name == "config-taiwan-full-glm-5_2-wandb-inference.yaml"
+    assert cfg.api == "openai-compatible"
+    assert cfg.base_url == "https://api.inference.wandb.ai/v1"
+    assert cfg.model.pretrained_model_name_or_path == "zai-org/GLM-5.2"
+    assert cfg.model.bfcl_model_id == "WandBInference-FC"
+    assert cfg.agentic_math.openclaw_model == "wandb-inference/zai-org/GLM-5.2"
+    assert cfg.swebench_pro.openclaw_model == "wandb-inference/zai-org/GLM-5.2"
+    assert cfg.deepswe.openclaw_model == "wandb-inference/zai-org/GLM-5.2"
+    assert cfg.agentic_swe_assorted.openclaw_model == "wandb-inference/zai-org/GLM-5.2"
+    assert cfg.agentic_math.openclaw_model_overrides.maxTokens == 4096
+    assert cfg.agentic_swe_assorted.openclaw_model_overrides.maxTokens == 4096
+
+
 def test_twbias_stays_excluded_from_generated_full_configs(tmp_path):
     args = _args(tmp_path, "full", manifest=OPENAI_CANARY_MANIFEST)
     args.model = None

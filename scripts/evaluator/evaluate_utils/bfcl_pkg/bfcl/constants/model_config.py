@@ -26,6 +26,7 @@ from ..model_handler.api_inference.openai_completion import (
 from ..model_handler.api_inference.openai_response import OpenAIResponsesHandler
 from ..model_handler.api_inference.openrouter import OpenRouterHandler
 from ..model_handler.api_inference.plamo import PLaMoAPIHandler
+from ..model_handler.api_inference.wandb_inference import WandBInferenceHandler
 from ..model_handler.openai_compatible_handler import OpenAICompatibleHandler
 from ..model_handler.api_inference.qwen import (
     QwenAgentNoThinkHandler,
@@ -134,6 +135,18 @@ api_inference_model_map = {
         model_handler=OpenRouterHandler,
         input_price=2, # filled as formality
         output_price=8, # filled as formality
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
+    "WandBInference-FC": ModelConfig(
+        model_name="WandBInference-FC",
+        display_name="W&B Inference (FC)",
+        url="https://docs.wandb.ai/inference/",
+        org="Weights & Biases",
+        license="Proprietary",
+        model_handler=WandBInferenceHandler,
+        input_price=None,
+        output_price=None,
         is_fc_model=True,
         underscore_to_dot=True,
     ),

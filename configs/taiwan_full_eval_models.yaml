@@ -23,6 +23,21 @@ models:
     canary: true
     notes: "Preferred one-model full canary before multi-model expansion."
 
+  - slug: glm-5_2-wandb-inference
+    source_config: config-zai-glm-5_2-wandb-inference.yaml
+    run_name: "taiwan/full/z-ai/glm-5.2: wandb-inference"
+    japanese_runname: "z-ai/glm-5.2: wandb-inference"
+    openclaw_model: "wandb-inference/zai-org/GLM-5.2"
+    openclaw_model_overrides:
+      maxTokens: 4096
+    reasoning_effort: null
+    agentic_thinking: high
+    swe_thinking: high
+    math_limit: 50
+    math_openclaw_timeout: 900
+    swe_subset: "leaderboard_compact_40"
+    notes: "Alternative GLM-5.2 route for users with W&B Inference access; use after live probe confirms credentials and model availability."
+
   - slug: claude-opus-4_7-openrouter-xhigh
     source_config: config-anthropic-claude-opus-4-7-openrouter.yaml
     run_name: "taiwan/full/anthropic/claude-opus-4.7: adaptive-thinking-xhigh"

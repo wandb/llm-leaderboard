@@ -104,6 +104,7 @@ These unified handlers eliminate the need to configure individual model-specific
 | GPT-4o-mini-2024-07-18                         | Prompt           | OpenAI         | gpt-4o-mini-2024-07-18                                      |
 | OpenAI (Generic Handler)                       | Function Calling | OpenAI         | OpenAI-FC                                                   |
 | OpenRouter (Generic Handler)                   | Function Calling | OpenRouter     | OpenRouter-FC                                               |
+| W&B Inference (Generic Handler)                | Function Calling | W&B Inference  | WandBInference-FC                                           |
 | Qwen3.5 Plus 2026-04-20                        | Function Calling | OpenRouter     | qwen/qwen3.5-plus-20260420-FC                               |
 | Qwen3.6 Plus                                   | Function Calling | OpenRouter     | qwen/qwen3.6-plus-FC                                        |
 | Qwen3.6 Max Preview                            | Function Calling | OpenRouter     | qwen/qwen3.6-max-preview-FC                                 |
