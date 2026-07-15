@@ -16,6 +16,9 @@ Options:
   --policy-file PATH          NeMoClaw OpenRouter egress policy YAML.
   --secret-file PATH          Sandbox secret JSON path. Default: /sandbox/.openclaw/nejumi_secrets.json.
   --openclaw-config PATH      Sandbox OpenClaw config path. Default: /sandbox/.openclaw/openclaw.json.
+  --openclaw-model-params-json JSON
+                              JSON object written to the OpenClaw GLM model params.
+                              Default: {}. Set provider routing from YAML/CLI when needed.
   --check-only                Do not mutate; inspect current sandbox state only.
   --skip-policy               Do not add the OpenRouter egress policy.
   --json PATH                 Write a machine-readable report.
@@ -35,6 +38,7 @@ OPENROUTER_KEY_ENV="OPENROUTER_API_KEY"
 POLICY_FILE="$REPO_ROOT/configs/nemoclaw/policies/openrouter_inference.yaml"
 SECRET_FILE="/sandbox/.openclaw/nejumi_secrets.json"
 OPENCLAW_CONFIG="/sandbox/.openclaw/openclaw.json"
+OPENCLAW_MODEL_PARAMS_JSON='{}'
 CHECK_ONLY=0
 SKIP_POLICY=0
 JSON_OUT=""
@@ -48,6 +52,7 @@ while [ "$#" -gt 0 ]; do
     --policy-file) POLICY_FILE="$2"; shift 2 ;;
     --secret-file) SECRET_FILE="$2"; shift 2 ;;
     --openclaw-config) OPENCLAW_CONFIG="$2"; shift 2 ;;
+    --openclaw-model-params-json) OPENCLAW_MODEL_PARAMS_JSON="$2"; shift 2 ;;
     --check-only) CHECK_ONLY=1; shift ;;
     --skip-policy) SKIP_POLICY=1; shift ;;
     --json) JSON_OUT="$2"; shift 2 ;;
@@ -115,12 +120,13 @@ PY
 }
 
 config_probe() {
-  "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 - "$OPENCLAW_CONFIG" <<'PY' 2>/dev/null || printf false
+  "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 - "$OPENCLAW_CONFIG" "$OPENCLAW_MODEL_PARAMS_JSON" <<'PY' 2>/dev/null || printf false
 import json
 import sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
+expected_params = json.loads(sys.argv[2])
 if not path.exists():
     print("false")
     raise SystemExit
@@ -128,7 +134,14 @@ data = json.loads(path.read_text(encoding="utf-8"))
 provider = data.get("models", {}).get("providers", {}).get("openrouter-direct")
 api_key = provider.get("apiKey") if isinstance(provider, dict) else None
 models = provider.get("models") if isinstance(provider, dict) else None
-model_ids = {str(model.get("id")) for model in models or [] if isinstance(model, dict)}
+glm = next(
+    (
+        model
+        for model in models or []
+        if isinstance(model, dict) and str(model.get("id")) == "z-ai/glm-5.2"
+    ),
+    None,
+)
 print(str(bool(
     isinstance(provider, dict)
     and provider.get("baseUrl") == "https://openrouter.ai/api/v1"
@@ -136,7 +149,8 @@ print(str(bool(
     and api_key.get("source") == "file"
     and api_key.get("provider") == "nejumi-openrouter"
     and api_key.get("id") == "/openrouter/apiKey"
-    and "z-ai/glm-5.2" in model_ids
+    and isinstance(glm, dict)
+    and (glm.get("params") or {}) == expected_params
 )).lower())
 PY
 }
@@ -157,13 +171,16 @@ if [ "$CHECK_ONLY" -eq 0 ]; then
   fi
 
   "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 - \
-    "$OPENCLAW_CONFIG" "$SECRET_FILE" <<'PY'
+    "$OPENCLAW_CONFIG" "$SECRET_FILE" "$OPENCLAW_MODEL_PARAMS_JSON" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 config_path = Path(sys.argv[1])
 secret_file = sys.argv[2]
+model_params = json.loads(sys.argv[3])
+if not isinstance(model_params, dict):
+    raise SystemExit("OpenClaw model params JSON must be an object")
 data = json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
 
 secrets = data.setdefault("secrets", {})
@@ -211,12 +228,9 @@ glm = {
         "cacheRead": 0.18,
         "cacheWrite": 0,
     },
-    "compat": {
-        "supportsUsageInStreaming": True,
-        "supportsReasoningEffort": True,
-        "maxTokensField": "max_tokens",
-    },
 }
+if model_params:
+    glm["params"] = model_params
 models.append(glm)
 openrouter_direct["models"] = models
 
@@ -235,7 +249,7 @@ if [ "$policy_ok" = true ] && [ "$config_ok" = true ] && { [ "$credential_availa
   ok=true
 fi
 
-report_json="$(python3 - "$SANDBOX" "$OPENROUTER_KEY_ENV" "$credential_available" "$policy_added" "$secret_written" "$config_written" "$policy_ok" "$secret_ok" "$config_ok" "$ok" "$SECRET_FILE" "$OPENCLAW_CONFIG" "$POLICY_FILE" "$SKIP_POLICY" <<'PY'
+report_json="$(python3 - "$SANDBOX" "$OPENROUTER_KEY_ENV" "$credential_available" "$policy_added" "$secret_written" "$config_written" "$policy_ok" "$secret_ok" "$config_ok" "$ok" "$SECRET_FILE" "$OPENCLAW_CONFIG" "$POLICY_FILE" "$SKIP_POLICY" "$OPENCLAW_MODEL_PARAMS_JSON" <<'PY'
 import json
 import sys
 
@@ -254,6 +268,7 @@ keys = [
     "openclaw_config",
     "policy_file",
     "skip_policy",
+    "openclaw_model_params_json",
 ]
 payload = dict(zip(keys, sys.argv[1:]))
 for key in [
@@ -270,6 +285,7 @@ for key in [
     payload[key] = str(payload[key]).lower() in {"1", "true", "yes", "on"}
 payload["secret_value_in_report"] = False
 payload["registered_models"] = ["openrouter-direct/z-ai/glm-5.2"]
+payload["openclaw_model_params"] = json.loads(payload.pop("openclaw_model_params_json"))
 print(json.dumps(payload, ensure_ascii=False, indent=2))
 PY
 )"

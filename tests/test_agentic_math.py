@@ -781,6 +781,34 @@ def test_agentic_math_openclaw_context_tokens_keeps_stricter_existing_cap():
     assert entry["contextTokens"] == 200_000
 
 
+def test_agentic_math_openclaw_model_params_updates_model_entry():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    config = {"models": {"providers": {"openrouter-direct": {"models": []}}}}
+    args = SimpleNamespace(
+        model="openrouter-direct/z-ai/glm-5.2",
+        max_input_tokens=0,
+        openclaw_model_overrides_json=json.dumps({"maxTokens": 4096}),
+        openclaw_model_params_json=json.dumps(
+            {
+                "provider": {
+                    "order": ["z-ai/fp8"],
+                    "only": ["z-ai/fp8"],
+                    "allow_fallbacks": False,
+                }
+            }
+        ),
+    )
+
+    result = module.configure_openclaw_context_tokens(config, args)
+
+    assert result["overrides"]["maxTokens"] == 4096
+    assert result["params"]["provider"]["only"] == ["z-ai/fp8"]
+    [entry] = config["models"]["providers"]["openrouter-direct"]["models"]
+    assert entry["maxTokens"] == 4096
+    assert entry["params"]["provider"]["order"] == ["z-ai/fp8"]
+    assert "compat" not in entry
+
+
 def test_agentic_math_run_passes_wandb_scoped_session_key(tmp_path, monkeypatch):
     monkeypatch.setenv("WANDB_RUN_ID", "twcanary-run-3")
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
@@ -1682,6 +1710,10 @@ def test_task_openclaw_config_registers_nemoclaw_gateway_agent_when_no_local(tmp
     assert 'exec_config["timeoutSec"] = max_tool_wall_seconds' in script
     assert "min(existing_timeout, max_tool_wall_seconds)" not in script
     assert 'target["contextTokens"]' not in script
+    assert "is_process_control_tool" in script
+    assert 'existing_budget_config.get("denyArgumentPatterns"' not in script
+    assert '"denyTools": current_deny_tools' in script
+    assert '"denyArgumentPatterns": current_deny_argument_patterns' in script
     assert command[2:5] == [
         "bash",
         "-lc",
@@ -1697,6 +1729,7 @@ def test_task_openclaw_config_registers_nemoclaw_gateway_agent_when_no_local(tmp
     assert budget["max_agent_turns"] == 40
     assert budget["max_cumulative_input_tokens"] == 50000
     assert budget["max_cumulative_output_tokens"] == 0
+    assert all("requests" not in pattern for pattern in budget["deny_argument_patterns"])
     assert budget["require_actual_token_usage"] is False
     metadata = json.loads((task_dir / "openclaw_task_agent.json").read_text(encoding="utf-8"))
     assert metadata["config_path"] == "/sandbox/.openclaw/openclaw.json"
@@ -1789,6 +1822,21 @@ def test_nemoclaw_gateway_cleanup_skips_remaining_after_total_budget(monkeypatch
     assert calls == []
     assert module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS == []
     assert "skipped 2 NeMoClaw task-agent cleanup calls" in capsys.readouterr().err
+
+
+def test_nemoclaw_gateway_cleanup_swallows_keyboard_interrupt(monkeypatch, capsys):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+
+    def fake_unregister(args, agent_id, *, timeout=60):
+        raise KeyboardInterrupt("pier shutdown")
+
+    monkeypatch.setattr(module, "unregister_nemoclaw_gateway_task_agent", fake_unregister)
+    module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS[:] = [(SimpleNamespace(), "agent-a")]
+
+    module.cleanup_registered_nemoclaw_gateway_agents()
+
+    assert module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS == []
+    assert "ignored NeMoClaw task-agent cleanup failure for agent-a" in capsys.readouterr().err
 
 
 def test_task_python_sitecustomize_is_written_for_local_workspace(tmp_path):

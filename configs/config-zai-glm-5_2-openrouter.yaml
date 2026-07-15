@@ -23,7 +23,12 @@ generator:
     reasoning:
       enabled: true
     provider:
+      order:
+        - z-ai/fp8
+      only:
+        - z-ai/fp8
       allow_fallbacks: false
+      require_parameters: true
 
 jaster:
   override_max_tokens: 32768

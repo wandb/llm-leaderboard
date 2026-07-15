@@ -1,0 +1,10 @@
+[
+  "go-genai-streamed-function-args",
+  "etree-xml-diff-patch",
+  "termenv-preserve-ansi-resets",
+  "bandit-interprocedural-taint-checks",
+  "psd-tools-blend-range-api",
+  "superjson-error-stack-serialization",
+  "ts-pattern-match-each",
+  "kea-atomic-signal-selectors"
+]

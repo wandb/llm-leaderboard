@@ -35,6 +35,12 @@ from weave_agents_native_trace import (
     env_default_project,
     verify_native_weave_agents_trace,
 )
+from openclaw_model_params import (
+    apply_openclaw_model_overrides,
+    apply_openclaw_model_params,
+    openclaw_model_overrides_from_args,
+    openclaw_model_params_from_args,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -65,7 +71,6 @@ DEFAULT_DENIED_ARGUMENT_PATTERNS = [
     r"https?://",
     r"\b(curl|wget)\b",
     r"\b(?:python(?:3)?\s+-m\s+)?pip(?:3)?\s+install\b",
-    r"\b(requests|urllib|httpx)\.",
 ]
 
 
@@ -218,6 +223,7 @@ def build_cache_key(row: dict[str, Any], prompt_text: str, args: argparse.Namesp
         "deny_tools": effective_deny_tools(args),
         "deny_argument_patterns": effective_deny_argument_patterns(args),
         "openclaw_config_source": openclaw_config_cache_source(args),
+        "openclaw_model_params": openclaw_model_params_from_args(args),
         "max_input_tokens": int(getattr(args, "max_input_tokens", 0) or 0),
         "max_cumulative_input_tokens": resolved_max_cumulative_input_tokens(args),
         "max_cumulative_output_tokens": resolved_max_cumulative_output_tokens(args),
@@ -480,6 +486,10 @@ def register_nemoclaw_gateway_task_agent(
             "max_cumulative_input_tokens": resolved_max_cumulative_input_tokens(args),
             "max_cumulative_output_tokens": resolved_max_cumulative_output_tokens(args),
             "require_actual_token_usage": bool(getattr(args, "require_actual_token_usage", False)),
+            "deny_tools": effective_deny_tools(args),
+            "deny_argument_patterns": effective_deny_argument_patterns(args),
+            "openclaw_model_overrides": openclaw_model_overrides_from_args(args),
+            "openclaw_model_params": openclaw_model_params_from_args(args),
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -516,12 +526,42 @@ session_prefix = str(budget.get("session_prefix") or "")
 max_cumulative_input_tokens = int(budget.get("max_cumulative_input_tokens") or 0)
 max_cumulative_output_tokens = int(budget.get("max_cumulative_output_tokens") or 0)
 require_actual_token_usage = bool(budget.get("require_actual_token_usage"))
+openclaw_model_params = budget.get("openclaw_model_params")
+if not isinstance(openclaw_model_params, dict):
+    openclaw_model_params = {}
+openclaw_model_overrides = budget.get("openclaw_model_overrides")
+if not isinstance(openclaw_model_overrides, dict):
+    openclaw_model_overrides = {}
+deny_argument_patterns = [
+    str(item)
+    for item in budget.get("deny_argument_patterns", [])
+    if isinstance(item, str) and item
+]
 session_key_prefixes = [
     session_prefix,
     f"agent:{agent_id}:{session_prefix}",
 ]
 
+def is_process_control_tool(value):
+    normalized = str(value).strip().lower()
+    return normalized == "process" or normalized.startswith("process_")
+
+deny_tools_for_guard = [
+    str(item)
+    for item in budget.get("deny_tools", [])
+    if isinstance(item, str) and item and not is_process_control_tool(item)
+]
+
 config = json.loads(config_path.read_text(encoding="utf-8"))
+
+def deep_merge_dict(base, override):
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = deep_merge_dict(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
 
 def positive_int(value):
     return int(value) if isinstance(value, int) and value > 0 else 0
@@ -537,7 +577,11 @@ def context_cap_value(existing, context_window, cap):
     return min(candidates)
 
 def resolve_context_cap(config, model, max_input_tokens):
-    if max_input_tokens <= 0 or not model or "/" not in model:
+    if (
+        max_input_tokens <= 0
+        and not openclaw_model_params
+        and not openclaw_model_overrides
+    ) or not model or "/" not in model:
         return None
     provider_id, model_id = model.split("/", 1)
     if not provider_id or not model_id:
@@ -557,13 +601,35 @@ def resolve_context_cap(config, model, max_input_tokens):
             target = item
             break
     if target is None:
-        target = {}
-    context_tokens = context_cap_value(
-        target.get("contextTokens"),
-        target.get("contextWindow"),
-        max_input_tokens,
-    )
-    return {"provider": provider_id, "model": model_id, "contextTokens": context_tokens}
+        target = {"id": model_id, "name": model_id}
+        models.append(target)
+    overrides = None
+    if openclaw_model_overrides:
+        merged_target = deep_merge_dict(target, openclaw_model_overrides)
+        target.clear()
+        target.update(merged_target)
+        overrides = openclaw_model_overrides
+    context_tokens = None
+    if max_input_tokens > 0:
+        context_tokens = context_cap_value(
+            target.get("contextTokens"),
+            target.get("contextWindow"),
+            max_input_tokens,
+        )
+        target.update({"contextTokens": context_tokens})
+    params = None
+    if openclaw_model_params:
+        existing = target.get("params") if isinstance(target.get("params"), dict) else {}
+        params = deep_merge_dict(existing, openclaw_model_params)
+        target["params"] = params
+    result = {"provider": provider_id, "model": model_id}
+    if overrides is not None:
+        result["overrides"] = overrides
+    if context_tokens is not None:
+        result["contextTokens"] = context_tokens
+    if params is not None:
+        result["params"] = params
+    return result
 
 context_cap = resolve_context_cap(config, model, max_input_tokens)
 def run_retries(max_agent_turns):
@@ -620,6 +686,8 @@ existing_session_key_prefixes = [
 for prefix in session_key_prefixes:
     if prefix and prefix not in existing_session_key_prefixes:
         existing_session_key_prefixes.append(prefix)
+current_deny_tools = list(deny_tools_for_guard)
+current_deny_argument_patterns = list(deny_argument_patterns)
 
 budget_guard["config"] = {
     "enabled": True,
@@ -630,6 +698,8 @@ budget_guard["config"] = {
     "requireActualTokenUsage": require_actual_token_usage,
     "agentIds": existing_agent_ids,
     "sessionKeyPrefixes": existing_session_key_prefixes,
+    "denyTools": current_deny_tools,
+    "denyArgumentPatterns": current_deny_argument_patterns,
     "blockReasonPrefix": "NEJUMI_BUDGET_GUARD_BLOCKED",
 }
 budget_guard["hooks"] = {
@@ -750,14 +820,71 @@ def unregister_nemoclaw_gateway_task_agent(
 ) -> dict[str, Any]:
     if not getattr(args, "nemoclaw_sandbox", None):
         return {"ok": None, "skipped": True, "reason": "no_nemoclaw_sandbox"}
+    config_path = str(getattr(args, "nemoclaw_openclaw_config_path", NEMOCLAW_OPENCLAW_CONFIG_PATH))
+    shell_script = r'''
+set -euo pipefail
+agent_id="$1"
+config_path="$2"
+set +e
+delete_output="$(openclaw agents delete "$agent_id" --force --json 2>&1)"
+delete_rc=$?
+set -e
+printf '%s\n' "$delete_output"
+python3 - "$config_path" "$agent_id" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+config_path = Path(sys.argv[1])
+agent_id = sys.argv[2]
+config = json.loads(config_path.read_text(encoding="utf-8"))
+
+agents = config.setdefault("agents", {})
+entries = agents.setdefault("list", [])
+if isinstance(entries, list):
+    entries[:] = [
+        item
+        for item in entries
+        if not (isinstance(item, dict) and item.get("id") == agent_id)
+    ]
+
+budget_guard = (
+    config.get("plugins", {})
+    .get("entries", {})
+    .get("nejumi-budget-guard", {})
+)
+budget_config = budget_guard.get("config") if isinstance(budget_guard, dict) else None
+if isinstance(budget_config, dict):
+    budget_config["agentIds"] = [
+        item for item in budget_config.get("agentIds", []) if item != agent_id
+    ]
+    budget_config["sessionKeyPrefixes"] = [
+        item
+        for item in budget_config.get("sessionKeyPrefixes", [])
+        if agent_id not in str(item)
+    ]
+
+tmp_path = config_path.with_suffix(config_path.suffix + ".tmp")
+tmp_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+tmp_path.replace(config_path)
+PY
+if [ "$delete_rc" -ne 0 ] \
+  && ! printf '%s\n' "$delete_output" | grep -Eqi 'not found|ConfigMutationConflictError'; then
+  exit "$delete_rc"
+fi
+'''
+    shell_script_b64 = base64.b64encode(shell_script.encode("utf-8")).decode("ascii")
     result = run_nemoclaw_text_command(
         args,
         [
+            "env",
+            f"OPENCLAW_CLEANUP_SCRIPT_B64={shell_script_b64}",
             "bash",
             "-lc",
-            'openclaw agents delete "$1" --force --json',
+            'printf %s "$OPENCLAW_CLEANUP_SCRIPT_B64" | base64 -d | bash -s -- "$@"',
             "delete-task-agent",
             agent_id,
+            config_path,
         ],
         timeout=timeout,
         check=False,
@@ -765,6 +892,7 @@ def unregister_nemoclaw_gateway_task_agent(
     return {
         "ok": result.returncode == 0,
         "agent_id": agent_id,
+        "config_path": config_path,
         "returncode": result.returncode,
         "stdout": result.stdout,
         "stderr": result.stderr,
@@ -791,8 +919,13 @@ def cleanup_registered_nemoclaw_gateway_agents() -> None:
                 agent_id,
                 timeout=NEMOCLAW_GATEWAY_CLEANUP_PER_AGENT_TIMEOUT_SEC,
             )
-        except Exception:
-            pass
+        except BaseException as exc:
+            print(
+                "WARNING: ignored NeMoClaw task-agent cleanup failure for "
+                f"{agent_id}: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
 
 
 atexit.register(cleanup_registered_nemoclaw_gateway_agents)
@@ -823,6 +956,8 @@ def configure_openclaw_budget_guard(
     max_cumulative_input_tokens = resolved_max_cumulative_input_tokens(args)
     max_cumulative_output_tokens = resolved_max_cumulative_output_tokens(args)
     require_actual_token_usage = bool(getattr(args, "require_actual_token_usage", False))
+    deny_tools = effective_deny_tools(args)
+    deny_argument_patterns = effective_deny_argument_patterns(args)
     if (
         max_tool_calls <= 0
         and max_agent_turns <= 0
@@ -830,6 +965,8 @@ def configure_openclaw_budget_guard(
         and max_cumulative_input_tokens <= 0
         and max_cumulative_output_tokens <= 0
         and not require_actual_token_usage
+        and not deny_tools
+        and not deny_argument_patterns
     ):
         return
 
@@ -860,6 +997,8 @@ def configure_openclaw_budget_guard(
             session_prefix,
             f"agent:{agent_id}:{session_prefix}",
         ],
+        "denyTools": deny_tools,
+        "denyArgumentPatterns": deny_argument_patterns,
         "blockReasonPrefix": OPENCLAW_BUDGET_GUARD_BLOCK_PREFIX,
     }
     entry["hooks"] = {
@@ -911,7 +1050,9 @@ def bounded_context_tokens(existing: Any, context_window: Any, max_input_tokens:
 
 def configure_openclaw_context_tokens(config: dict[str, Any], args: argparse.Namespace) -> dict[str, Any] | None:
     max_input_tokens = int(getattr(args, "max_input_tokens", 0) or 0)
-    if max_input_tokens <= 0:
+    model_overrides = openclaw_model_overrides_from_args(args)
+    model_params = openclaw_model_params_from_args(args)
+    if max_input_tokens <= 0 and not model_params and not model_overrides:
         return None
     provider_id, model_id = split_openclaw_model_ref(str(getattr(args, "model", "") or ""))
     if not provider_id or not model_id:
@@ -938,16 +1079,24 @@ def configure_openclaw_context_tokens(config: dict[str, Any], args: argparse.Nam
     if target is None:
         target = {"id": model_id, "name": model_id}
         model_entries.append(target)
-    target["contextTokens"] = bounded_context_tokens(
-        target.get("contextTokens"),
-        target.get("contextWindow"),
-        max_input_tokens,
-    )
-    return {
+    result = {
         "provider": provider_id,
         "model": model_id,
-        "contextTokens": target["contextTokens"],
     }
+    applied_overrides = apply_openclaw_model_overrides(target, model_overrides)
+    if applied_overrides is not None:
+        result["overrides"] = applied_overrides
+    if max_input_tokens > 0:
+        target["contextTokens"] = bounded_context_tokens(
+            target.get("contextTokens"),
+            target.get("contextWindow"),
+            max_input_tokens,
+        )
+        result["contextTokens"] = target["contextTokens"]
+    applied_params = apply_openclaw_model_params(target, model_params)
+    if applied_params is not None:
+        result["params"] = applied_params
+    return result
 
 
 def openclaw_run_retries_for_turn_cap(args: argparse.Namespace) -> dict[str, int] | None:
@@ -2952,6 +3101,26 @@ def parse_args() -> argparse.Namespace:
             "OpenClaw config sets tools.exec.timeoutSec to this value, and the "
             "Nejumi OpenClaw runtime patch clamps model-supplied exec timeouts to it. "
             "0 disables this harness-level setting."
+        ),
+    )
+    parser.add_argument(
+        "--openclaw-model-params-json",
+        "--openclaw-extra-body-json",
+        dest="openclaw_model_params_json",
+        help=(
+            "JSON object merged into the selected OpenClaw model entry's params. "
+            "For OpenRouter provider routing, pass e.g. "
+            "'{\"provider\":{\"order\":[\"provider-name\"],\"only\":[\"provider-name\"],"
+            "\"allow_fallbacks\":false}}'."
+        ),
+    )
+    parser.add_argument(
+        "--openclaw-model-overrides-json",
+        dest="openclaw_model_overrides_json",
+        help=(
+            "JSON object merged into the selected OpenClaw model entry itself. "
+            "Use this for OpenClaw model metadata such as {\"maxTokens\":4096}; "
+            "provider routing belongs in --openclaw-model-params-json."
         ),
     )
     parser.add_argument(

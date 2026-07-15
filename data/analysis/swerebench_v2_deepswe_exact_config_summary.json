@@ -1,0 +1,45 @@
+{
+  "fetched_at": "2026-06-24T15:26:06.875480+00:00",
+  "n_matches": 3,
+  "pearson_r": 0.9132736382824089,
+  "spearman_rho": 0.5,
+  "kendall_tau": 0.33333333333333337,
+  "sources": {
+    "swerebench_v2": {
+      "source_url": "https://swe-rebench.com/",
+      "title": "SWE-rebench Leaderboard",
+      "date_from": "01/03/2026",
+      "date_to": "15/05/2026",
+      "problem_count": 110,
+      "repo_count": 86
+    },
+    "deepswe": {
+      "source_url": "https://deepswe.datacurve.ai/",
+      "generated_at": "2026-06-20T18:00:09.904443+00:00",
+      "latest_job_name": "20260620-deep-swe-glm-5-2",
+      "latest_job_finished_at": "2026-06-20T22:09:10.110006"
+    }
+  },
+  "included_models": [
+    {
+      "canonical_model": "gpt-5.5[xhigh]",
+      "match_decision": "strict_config_match",
+      "deepswe_pass_at_1": 67.03539823008849,
+      "swerebench_resolved_rate": 62.7
+    },
+    {
+      "canonical_model": "gpt-5.5[medium]",
+      "match_decision": "strict_config_match",
+      "deepswe_pass_at_1": 53.98230088495575,
+      "swerebench_resolved_rate": 58.9
+    },
+    {
+      "canonical_model": "claude-opus-4.8[xhigh]",
+      "match_decision": "strict_config_match",
+      "deepswe_pass_at_1": 54.36241610738255,
+      "swerebench_resolved_rate": 56.5
+    }
+  ],
+  "caveat": "Only strict same-generation plus same-explicit-effort matches are included.",
+  "n_exact_config_matches": 3
+}

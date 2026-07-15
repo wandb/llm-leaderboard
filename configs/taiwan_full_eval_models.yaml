@@ -4,6 +4,16 @@ models:
     run_name: "taiwan/full/z-ai/glm-5.2: openrouter-reasoning"
     japanese_runname: "z-ai/glm-5.2: openrouter-reasoning-xhigh"
     openclaw_model: "openrouter-direct/z-ai/glm-5.2"
+    openclaw_model_overrides:
+      maxTokens: 4096
+    openclaw_model_params:
+      provider:
+        order:
+          - z-ai/fp8
+        only:
+          - z-ai/fp8
+        allow_fallbacks: false
+        require_parameters: true
     reasoning_effort: null
     agentic_thinking: high
     swe_thinking: high

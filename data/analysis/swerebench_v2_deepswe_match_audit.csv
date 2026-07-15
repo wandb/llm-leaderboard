@@ -1,0 +1,10 @@
+canonical_model,swerebench_model,deepswe_model,deepswe_effort,decision,include_in_strict,include_in_semantic,present_in_sources,rationale
+gpt-5.5[xhigh],gpt-5.5-2026-04-23-xhigh,gpt-5-5,xhigh,strict_config_match,True,True,True,same GPT-5.5 dated model generation and explicit xhigh effort
+gpt-5.5[medium],gpt-5.5-2026-04-23-medium,gpt-5-5,medium,strict_config_match,True,True,True,same GPT-5.5 dated model generation and explicit medium effort
+claude-opus-4.8[xhigh],Claude Opus 4.8-xhigh,claude-opus-4-8,xhigh,strict_config_match,True,True,True,same Claude Opus 4.8 generation and explicit xhigh effort
+gpt-5.4[swerebench medium / deepswe xhigh],gpt-5.4-2026-03-05-medium,gpt-5-4,xhigh,same_generation_effort_mismatch,False,True,True,"same GPT-5.4 generation, but SWE-rebench is medium and DeepSWE only has xhigh"
+claude-sonnet-4.6[deepswe high],Claude Sonnet 4.6,claude-sonnet-4-6,high,same_generation_config_uncertain,False,True,True,"same Sonnet 4.6 generation, but SWE-rebench row does not expose an effort label"
+gemini-3.1-pro-preview[deepswe high],Gemini 3.1 Pro Preview,gemini-3-1-pro-preview,high,same_generation_config_uncertain,False,True,True,"same Gemini 3.1 Pro Preview generation, but SWE-rebench row does not expose an effort label"
+gemini-3.5-flash[deepswe medium],Gemini 3.5 Flash,gemini-3-5-flash,medium,same_generation_config_uncertain,False,True,True,"same Gemini 3.5 Flash generation, but SWE-rebench row does not expose an effort label"
+glm,GLM-5.1,glm-5-2,max,different_generation,False,False,True,GLM-5.1 and GLM-5.2 are different generations
+kimi-k2,Kimi K2.6,kimi-k2-7-code,,different_generation_or_variant,False,False,True,Kimi K2.6 and Kimi K2.7 Code are different generation/variant labels

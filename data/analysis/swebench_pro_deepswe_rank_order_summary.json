@@ -1,0 +1,40 @@
+{
+  "n_mapped_pairs": 7,
+  "kendall_tau_rank_order": 0.047619047619047616,
+  "concordant_pair_count": 11,
+  "discordant_pair_count": 10,
+  "largest_rank_gaps": [
+    {
+      "model_pair": "gemini-3.1-pro",
+      "deep_rank": 7,
+      "swebench_pro_rank": 3,
+      "rank_delta_swe_minus_deepswe": -4,
+      "match_type": "strict",
+      "note": "same model family/name; effort labels differ"
+    },
+    {
+      "model_pair": "glm-family",
+      "deep_rank": 3,
+      "swebench_pro_rank": 7,
+      "rank_delta_swe_minus_deepswe": 4,
+      "match_type": "family",
+      "note": "GLM family but major version mismatch; use with caution"
+    },
+    {
+      "model_pair": "claude-sonnet-family",
+      "deep_rank": 6,
+      "swebench_pro_rank": 4,
+      "rank_delta_swe_minus_deepswe": -2,
+      "match_type": "family",
+      "note": "nearby Sonnet generation, not exact model"
+    },
+    {
+      "model_pair": "gpt-5.4",
+      "deep_rank": 2,
+      "swebench_pro_rank": 1,
+      "rank_delta_swe_minus_deepswe": -1,
+      "match_type": "strict",
+      "note": "same model family/name and reasoning tier label"
+    }
+  ]
+}

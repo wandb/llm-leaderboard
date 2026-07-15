@@ -1,0 +1,57 @@
+{
+  "dataset": "opencompass/AIME2025",
+  "configs": [
+    "AIME2025-I",
+    "AIME2025-II"
+  ],
+  "split": "test",
+  "dataset_dir_name": "agentic_math_aime2025",
+  "total_instances": 30,
+  "smoke_size": 3,
+  "license": "mit",
+  "source_urls": {
+    "dataset": "https://huggingface.co/datasets/opencompass/AIME2025"
+  },
+  "files": {
+    "README.md": {
+      "bytes": 520,
+      "sha256": "29995bfe44b2c8909c345f00c91189d2eccfa96947dd309e2e211f2e9ddc9ab6"
+    },
+    "manifest.json": {
+      "bytes": 1447,
+      "sha256": "414cdbbf4fb5a41c0d5969336bfad7248595fe0d385fabf0551bbb0c2fdd483d"
+    },
+    "subsets/full.csv": {
+      "bytes": 13347,
+      "sha256": "3b258af29a3597d59f720303b716a9fc96c83341c445588fc3b369389d6a7b97"
+    },
+    "subsets/full.jsonl": {
+      "bytes": 18163,
+      "sha256": "553934cd1f521cd7628b9a12acb35d750d49acc0b485aa24e6238bd121178cbb"
+    },
+    "subsets/leaderboard.csv": {
+      "bytes": 13347,
+      "sha256": "3b258af29a3597d59f720303b716a9fc96c83341c445588fc3b369389d6a7b97"
+    },
+    "subsets/leaderboard.jsonl": {
+      "bytes": 18163,
+      "sha256": "553934cd1f521cd7628b9a12acb35d750d49acc0b485aa24e6238bd121178cbb"
+    },
+    "subsets/smoke.csv": {
+      "bytes": 1313,
+      "sha256": "331ce5104b08f7b31242c1c45e465051c040417f2a8741b93f6af09ff1c35217"
+    },
+    "subsets/smoke.jsonl": {
+      "bytes": 1689,
+      "sha256": "ac175a58ed055a4586522ab0866dada0491fe1749697145717ed07927e86b312"
+    },
+    "test.csv": {
+      "bytes": 13347,
+      "sha256": "3b258af29a3597d59f720303b716a9fc96c83341c445588fc3b369389d6a7b97"
+    },
+    "test.jsonl": {
+      "bytes": 18163,
+      "sha256": "553934cd1f521cd7628b9a12acb35d750d49acc0b485aa24e6238bd121178cbb"
+    }
+  }
+}

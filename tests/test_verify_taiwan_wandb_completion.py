@@ -58,6 +58,19 @@ AGENTIC_SWE_OUTPUT_COLUMNS = [
     "openclaw_command_sha256",
     "openclaw_config_source",
 ]
+AGENTIC_SWE_ASSORTED_OUTPUT_COLUMNS = [
+    "source_benchmark",
+    "source_dataset",
+    "source_subset",
+    "source_instance_id",
+    "agentic_swe_tier",
+    "instance_id",
+    "resolved",
+    "score",
+    "weave_agents_conversation_url",
+    "openclaw_tool_call_count",
+    "openclaw_usage",
+]
 
 
 def table_value(column, row_index):
@@ -119,11 +132,39 @@ def table_payload(columns, nrows):
     }
 
 
+def assorted_table_payload(tier_counts):
+    columns = AGENTIC_SWE_OUTPUT_COLUMNS + AGENTIC_SWE_ASSORTED_OUTPUT_COLUMNS
+    rows = []
+    row_index = 1
+    for tier, count in tier_counts.items():
+        for tier_index in range(1, count + 1):
+            row = {column: table_value(column, row_index) for column in columns}
+            row["agentic_swe_tier"] = tier
+            row["source_benchmark"] = "DeepSWE" if tier == "high" else "SWE-bench Lite"
+            row["source_dataset"] = "deep-swe" if tier == "high" else "swe-bench-lite"
+            row["source_subset"] = "high-8" if tier == "high" else tier
+            row["source_instance_id"] = f"{tier}-{tier_index}"
+            row["instance_id"] = f"{tier}-{tier_index}"
+            row["resolved"] = tier_index % 2 == 0
+            row["score"] = 1 if row["resolved"] else 0
+            row["openclaw_tool_call_count"] = tier_index
+            row["openclaw_usage"] = {"input_tokens": 10, "output_tokens": 5}
+            rows.append([row[column] for column in columns])
+            row_index += 1
+    return {"columns": columns, "data": rows}
+
+
 class FakeArtifact:
-    def __init__(self, name, type_, aliases):
+    def __init__(self, name, type_, aliases, manifest_entries=None):
         self.name = name
         self.type = type_
         self.aliases = aliases
+        if manifest_entries is not None:
+            class Manifest:
+                pass
+
+            self.manifest = Manifest()
+            self.manifest.entries = {entry: object() for entry in manifest_entries}
 
 
 class FakeWandbFile:
@@ -252,6 +293,44 @@ def complete_swe_result_artifact():
         "evaluation-results",
         ["latest", "production"],
     )
+
+
+def complete_swe_assorted_result_artifact():
+    return FakeArtifact(
+        "agentic-swe-assorted-model-results:v0",
+        "evaluation-results",
+        ["latest", "production"],
+        manifest_entries=[
+            "summary.json",
+            "output_table.jsonl",
+            "leaderboard_table.json",
+            "report.md",
+        ],
+    )
+
+
+def complete_agentic_swe_assorted_summary():
+    summary = complete_agentic_swe_summary()
+    summary.update(
+        {
+            "agentic_swe/resolved_instances": 40,
+            "agentic_swe/unresolved_instances": 40,
+            "agentic_swe/pass_at_1": 0.7,
+            "agentic_swe/weighted_pass_at_1": 0.7,
+            "agentic_swe/weighted_present_pass_at_1": 0.7,
+            "agentic_swe/weighted_pass_at_1_complete": 1,
+            "agentic_swe/low/pass_at_1": 0.9,
+            "agentic_swe/middle/pass_at_1": 0.8,
+            "agentic_swe/high/pass_at_1": 0.4,
+            "agentic_swe_output_table": {
+                "_type": "table-file",
+                "nrows": 80,
+                "path": "media/table/agentic_swe_output_table_0.table.json",
+                "columns": AGENTIC_SWE_OUTPUT_COLUMNS + AGENTIC_SWE_ASSORTED_OUTPUT_COLUMNS,
+            },
+        }
+    )
+    return summary
 
 
 def complete_taiwan_full_summary():
@@ -881,6 +960,123 @@ def test_verify_agentic_swe_wandb_completion_accepts_complete_run():
         check["name"] == "accuracy_metric" and check["value"] == 0.3
         for check in result["checks"]
     )
+
+
+def test_verify_agentic_swe_assorted_completion_accepts_complete_weighted_run():
+    module = load_module()
+    tier_counts = {"low": 36, "middle": 36, "high": 8}
+    run = FakeRun(
+        summary=complete_agentic_swe_assorted_summary(),
+        artifacts=[complete_swe_assorted_result_artifact()],
+        table_files={
+            "media/table/agentic_swe_output_table_0.table.json": assorted_table_payload(
+                tier_counts
+            )
+        },
+    )
+
+    result = module.verify_run(
+        run,
+        module.BENCHMARK_SPECS["agentic_swe"],
+        expected_total=80,
+        require_agentic_swe_assorted=True,
+        agentic_swe_assorted_tier_counts=tier_counts,
+    )
+
+    assert result["ok"] is True
+    assert result["required_evidence"]["agentic_swe_assorted"] == {
+        "required": True,
+        "expected_tier_counts": tier_counts,
+        "weighted_score_complete_metric": "agentic_swe/weighted_pass_at_1_complete",
+        "weighted_score_metric": "agentic_swe/weighted_pass_at_1",
+        "pass_at_1_metric": "agentic_swe/pass_at_1",
+        "output_table_required_columns": module.AGENTIC_SWE_ASSORTED_OUTPUT_TABLE_REQUIRED_COLUMNS
+        if isinstance(module.AGENTIC_SWE_ASSORTED_OUTPUT_TABLE_REQUIRED_COLUMNS, list)
+        else list(module.AGENTIC_SWE_ASSORTED_OUTPUT_TABLE_REQUIRED_COLUMNS),
+        "required_artifact_files": list(module.AGENTIC_SWE_ASSORTED_REQUIRED_ARTIFACT_FILES),
+    }
+    assert any(
+        check["name"] == "accuracy_metric"
+        and check["expected"] == "validated by Agentic SWE-Assorted checks"
+        for check in result["checks"]
+    )
+    assert any(
+        check["name"] == "agentic_swe_assorted_tier_counts" and check["ok"]
+        for check in result["checks"]
+    )
+    assert any(
+        check["name"] == "result_artifact_files" and check["ok"]
+        for check in result["checks"]
+    )
+
+
+def test_verify_agentic_swe_assorted_completion_rejects_incomplete_tier_counts():
+    module = load_module()
+    expected_tier_counts = {"low": 36, "middle": 36, "high": 8}
+    observed_tier_counts = {"low": 36, "middle": 36, "high": 7}
+    summary = complete_agentic_swe_assorted_summary()
+    summary["agentic_swe/total_instances"] = 79
+    summary["agentic_swe_output_table"]["nrows"] = 79
+    run = FakeRun(
+        summary=summary,
+        artifacts=[complete_swe_assorted_result_artifact()],
+        table_files={
+            "media/table/agentic_swe_output_table_0.table.json": assorted_table_payload(
+                observed_tier_counts
+            )
+        },
+    )
+
+    result = module.verify_run(
+        run,
+        module.BENCHMARK_SPECS["agentic_swe"],
+        require_agentic_swe_assorted=True,
+        agentic_swe_assorted_tier_counts=expected_tier_counts,
+    )
+
+    assert result["ok"] is False
+    assert any(
+        check["name"] == "agentic_swe_assorted_total" and not check["ok"]
+        for check in result["checks"]
+    )
+    assert any(
+        check["name"] == "agentic_swe_assorted_tier_counts" and not check["ok"]
+        for check in result["checks"]
+    )
+
+
+def test_verify_agentic_swe_assorted_completion_rejects_missing_report_artifact_file():
+    module = load_module()
+    tier_counts = {"low": 36, "middle": 36, "high": 8}
+    artifact = FakeArtifact(
+        "agentic-swe-assorted-model-results:v0",
+        "evaluation-results",
+        ["latest", "production"],
+        manifest_entries=["summary.json", "output_table.jsonl", "leaderboard_table.json"],
+    )
+    run = FakeRun(
+        summary=complete_agentic_swe_assorted_summary(),
+        artifacts=[artifact],
+        table_files={
+            "media/table/agentic_swe_output_table_0.table.json": assorted_table_payload(
+                tier_counts
+            )
+        },
+    )
+
+    result = module.verify_run(
+        run,
+        module.BENCHMARK_SPECS["agentic_swe"],
+        require_agentic_swe_assorted=True,
+        agentic_swe_assorted_tier_counts=tier_counts,
+    )
+
+    assert result["ok"] is False
+    check = next(
+        check for check in result["checks"] if check["name"] == "result_artifact_files"
+    )
+    assert check["ok"] is False
+    assert check["missing_by_artifact"][0]["missing_files"] == ["report.md"]
 
 
 def test_verify_agentic_swe_wandb_completion_requires_nemoclaw_session_audit():

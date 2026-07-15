@@ -198,6 +198,473 @@
         "lo_family_mean_r2": -1.0159460700508915,
         "lo_family_min_r2": -4.43541514023057
       }
+    },
+    "budgeted_high_8_lang_balanced": {
+      "display_name": "DeepSWE-Budgeted-High-8-Lang-Balanced",
+      "count": 8,
+      "language_distribution": {
+        "go": 3,
+        "python": 2,
+        "typescript": 3
+      },
+      "task_names_path": "subsets/budgeted_high_8_lang_balanced_task_names.json",
+      "metadata_jsonl_path": "subsets/budgeted_high_8_lang_balanced.jsonl",
+      "selection_metrics": {
+        "n": 40.0,
+        "mae": 0.05881769170152455,
+        "pearson": 0.9381033186607148,
+        "spearman": 0.9469072617069351,
+        "kendall": 0.824090435385895,
+        "r2": 0.8315200493024265
+      },
+      "selection_summary_path": "../../../outputs/deepswe_subset_analysis/budgeted_high_8_lang_balanced_selection_summary.json",
+      "selection_constraints": {
+        "language_counts": {
+          "go": 3,
+          "python": 2,
+          "typescript": 3
+        },
+        "base_subset": "essential_8",
+        "budgeted_subset": "budgeted_high_8",
+        "must_include": [
+          "psd-tools-blend-range-api"
+        ],
+        "max_avg_cost_usd": 4.8,
+        "max_avg_steps": 70.0,
+        "min_pass_rate": 0.12,
+        "max_pass_rate": 0.9,
+        "max_candidates_per_language": 8
+      }
+    },
+    "budgeted_high_8_cap50_lang_balanced": {
+      "display_name": "DeepSWE-Budgeted-High-8-Cap50-Lang-Balanced",
+      "count": 8,
+      "language_distribution": {
+        "go": 3,
+        "python": 2,
+        "typescript": 3
+      },
+      "task_names_path": "subsets/budgeted_high_8_cap50_lang_balanced_task_names.json",
+      "metadata_jsonl_path": "subsets/budgeted_high_8_cap50_lang_balanced.jsonl",
+      "selection_metrics": {
+        "n": 40.0,
+        "mae": 0.08294478971385641,
+        "pearson": 0.8698287184572271,
+        "spearman": 0.8437480172410678,
+        "kendall": 0.6667350591702934,
+        "r2": 0.6693470911152983
+      },
+      "selection_summary_path": "../../../outputs/deepswe_subset_analysis/budgeted_high_8_cap50_lang_balanced_selection_summary.json",
+      "selection_constraints": {
+        "language_counts": {
+          "go": 3,
+          "python": 2,
+          "typescript": 3
+        },
+        "base_subset": "essential_8",
+        "budgeted_subset": "budgeted_high_8",
+        "must_include": [],
+        "max_avg_cost_usd": 4.8,
+        "max_avg_steps": 50.0,
+        "min_pass_rate": 0.12,
+        "max_pass_rate": 0.9,
+        "max_candidates_per_language": 12
+      }
+    },
+    "essential_anchored_high_8_lang_balanced": {
+      "display_name": "DeepSWE-Budgeted-High-8-Lang-Balanced",
+      "count": 8,
+      "language_distribution": {
+        "go": 3,
+        "python": 2,
+        "typescript": 3
+      },
+      "task_names_path": "subsets/essential_anchored_high_8_lang_balanced_task_names.json",
+      "metadata_jsonl_path": "subsets/essential_anchored_high_8_lang_balanced.jsonl",
+      "selection_metrics": {
+        "n": 40.0,
+        "mae": 0.06669833504154905,
+        "pearson": 0.9441185430132025,
+        "spearman": 0.9678003072250639,
+        "kendall": 0.8711684074602198,
+        "r2": 0.8048773348349882
+      },
+      "selection_summary_path": "../../../outputs/deepswe_subset_analysis/essential_anchored_high_8_lang_balanced_selection_summary.json",
+      "selection_constraints": {
+        "language_counts": {
+          "go": 3,
+          "python": 2,
+          "typescript": 3
+        },
+        "base_subset": "essential_8",
+        "budgeted_subset": "budgeted_high_8",
+        "must_include": [
+          "psd-tools-blend-range-api",
+          "true-myth-iterable-collection-combinators"
+        ],
+        "max_avg_cost_usd": 5.0,
+        "max_avg_steps": 70.0,
+        "min_pass_rate": 0.12,
+        "max_pass_rate": 0.9,
+        "max_candidates_per_language": 10
+      }
+    },
+    "essential_anchored_high_8_safe_lang_balanced": {
+      "display_name": "DeepSWE-Budgeted-High-8-Lang-Balanced",
+      "count": 8,
+      "language_distribution": {
+        "go": 3,
+        "python": 2,
+        "typescript": 3
+      },
+      "task_names_path": "subsets/essential_anchored_high_8_safe_lang_balanced_task_names.json",
+      "metadata_jsonl_path": "subsets/essential_anchored_high_8_safe_lang_balanced.jsonl",
+      "selection_metrics": {
+        "n": 40.0,
+        "mae": 0.07523677530703576,
+        "pearson": 0.952946406996945,
+        "spearman": 0.9579134257456905,
+        "kendall": 0.8386276916126347,
+        "r2": 0.760409485637506
+      },
+      "selection_summary_path": "../../../outputs/deepswe_subset_analysis/essential_anchored_high_8_safe_lang_balanced_selection_summary.json",
+      "selection_constraints": {
+        "language_counts": {
+          "go": 3,
+          "python": 2,
+          "typescript": 3
+        },
+        "base_subset": "essential_8",
+        "budgeted_subset": "budgeted_high_8",
+        "must_include": [
+          "psd-tools-blend-range-api",
+          "true-myth-iterable-collection-combinators"
+        ],
+        "exclude_task_names": [
+          "etree-xml-diff-patch",
+          "go-genai-streamed-function-args"
+        ],
+        "max_avg_cost_usd": 5.0,
+        "max_avg_steps": 70.0,
+        "min_pass_rate": 0.12,
+        "max_pass_rate": 0.9,
+        "max_candidates_per_language": 10
+      }
+    },
+    "essential_anchored_high_8_safe_local_lang_balanced": {
+      "display_name": "DeepSWE-Budgeted-High-8-Lang-Balanced",
+      "count": 8,
+      "language_distribution": {
+        "go": 3,
+        "python": 2,
+        "typescript": 3
+      },
+      "task_names_path": "subsets/essential_anchored_high_8_safe_local_lang_balanced_task_names.json",
+      "metadata_jsonl_path": "subsets/essential_anchored_high_8_safe_local_lang_balanced.jsonl",
+      "selection_metrics": {
+        "n": 40.0,
+        "mae": 0.09056218091175554,
+        "pearson": 0.9320609091456968,
+        "spearman": 0.937840661590773,
+        "kendall": 0.8014991528685441,
+        "r2": 0.6512702787248987
+      },
+      "selection_summary_path": "../../../outputs/deepswe_subset_analysis/essential_anchored_high_8_safe_local_lang_balanced_selection_summary.json",
+      "selection_constraints": {
+        "language_counts": {
+          "go": 3,
+          "python": 2,
+          "typescript": 3
+        },
+        "base_subset": "essential_8",
+        "budgeted_subset": "budgeted_high_8",
+        "must_include": [
+          "psd-tools-blend-range-api",
+          "true-myth-iterable-collection-combinators"
+        ],
+        "exclude_task_names": [
+          "dasel-html-document-format",
+          "etree-xml-diff-patch",
+          "go-genai-streamed-function-args"
+        ],
+        "max_avg_cost_usd": 5.0,
+        "max_avg_steps": 70.0,
+        "min_pass_rate": 0.12,
+        "max_pass_rate": 0.9,
+        "max_candidates_per_language": 10
+      }
+    },
+    "essential_anchored_high_8_safe_local_image_lang_balanced": {
+      "display_name": "DeepSWE-Budgeted-High-8-Lang-Balanced",
+      "count": 8,
+      "language_distribution": {
+        "go": 3,
+        "python": 2,
+        "typescript": 3
+      },
+      "task_names_path": "subsets/essential_anchored_high_8_safe_local_image_lang_balanced_task_names.json",
+      "metadata_jsonl_path": "subsets/essential_anchored_high_8_safe_local_image_lang_balanced.jsonl",
+      "selection_metrics": {
+        "n": 40.0,
+        "mae": 0.12101206414676047,
+        "pearson": 0.9299236896705195,
+        "spearman": 0.934931250693623,
+        "kendall": 0.7970297817814953,
+        "r2": 0.44036358604416825
+      },
+      "selection_summary_path": "../../../outputs/deepswe_subset_analysis/essential_anchored_high_8_safe_local_image_lang_balanced_selection_summary.json",
+      "selection_constraints": {
+        "language_counts": {
+          "go": 3,
+          "python": 2,
+          "typescript": 3
+        },
+        "base_subset": "essential_8",
+        "budgeted_subset": "budgeted_high_8",
+        "must_include": [
+          "kcp-go-multiplexed-kcp-streams",
+          "psd-tools-blend-range-api",
+          "termenv-preserve-ansi-resets",
+          "true-myth-iterable-collection-combinators",
+          "ytt-jsonpath-query-api"
+        ],
+        "exclude_task_names": [
+          "anko-typed-variable-bindings",
+          "dasel-html-document-format",
+          "etree-xml-diff-patch",
+          "go-genai-streamed-function-args",
+          "prometheus-typed-label-sorting"
+        ],
+        "max_avg_cost_usd": 5.0,
+        "max_avg_steps": 70.0,
+        "min_pass_rate": 0.12,
+        "max_pass_rate": 0.9,
+        "max_candidates_per_language": 10
+      }
+    },
+    "essential_anchored_high_8_safe_go_local_lang_balanced": {
+      "display_name": "DeepSWE-Essential-Anchored-High-8-Safe-Go-Local-Lang-Balanced",
+      "count": 8,
+      "language_distribution": {
+        "go": 3,
+        "python": 2,
+        "typescript": 3
+      },
+      "task_names_path": "subsets/essential_anchored_high_8_safe_go_local_lang_balanced_task_names.json",
+      "metadata_jsonl_path": "subsets/essential_anchored_high_8_safe_go_local_lang_balanced.jsonl",
+      "selection_metrics": {
+        "n": 40.0,
+        "mae": 0.12101206414676047,
+        "pearson": 0.9299236896705195,
+        "spearman": 0.934931250693623,
+        "kendall": 0.7970297817814953,
+        "r2": 0.44036358604416825
+      },
+      "selection_summary_path": "../../../outputs/deepswe_subset_analysis/essential_anchored_high_8_safe_go_local_lang_balanced_selection_summary.json",
+      "selection_constraints": {
+        "language_counts": {
+          "go": 3,
+          "python": 2,
+          "typescript": 3
+        },
+        "base_subset": "essential_8",
+        "budgeted_subset": "budgeted_high_8",
+        "must_include": [
+          "kcp-go-multiplexed-kcp-streams",
+          "psd-tools-blend-range-api",
+          "termenv-preserve-ansi-resets",
+          "true-myth-iterable-collection-combinators",
+          "ytt-jsonpath-query-api"
+        ],
+        "exclude_task_names": [
+          "anko-typed-variable-bindings",
+          "dasel-html-document-format",
+          "etree-xml-diff-patch",
+          "go-genai-streamed-function-args",
+          "prometheus-typed-label-sorting"
+        ],
+        "max_avg_cost_usd": 5.0,
+        "max_avg_steps": 70.0,
+        "min_pass_rate": 0.12,
+        "max_pass_rate": 0.9,
+        "max_candidates_per_language": 10
+      }
+    },
+    "essential_anchored_high_8_cost_trimmed_no_rust_lang_balanced": {
+      "display_name": "DeepSWE-Essential-Anchored-High-8-Cost-Trimmed-No-Rust-Lang-Balanced",
+      "count": 8,
+      "language_distribution": {
+        "go": 3,
+        "python": 2,
+        "typescript": 3
+      },
+      "task_names_path": "subsets/essential_anchored_high_8_cost_trimmed_no_rust_lang_balanced_task_names.json",
+      "metadata_jsonl_path": "subsets/essential_anchored_high_8_cost_trimmed_no_rust_lang_balanced.jsonl",
+      "selection_metrics": {
+        "n": 40.0,
+        "mae": 0.07773938255519039,
+        "pearson": 0.9282345046543058,
+        "spearman": 0.9378916604459375,
+        "kendall": 0.7972358292656694,
+        "r2": 0.7384599746385988
+      },
+      "selection_summary_path": "../../../outputs/deepswe_subset_analysis/essential_anchored_high_8_cost_trimmed_no_rust_lang_balanced_selection_summary.json",
+      "selection_constraints": {
+        "language_counts": {
+          "go": 3,
+          "python": 2,
+          "typescript": 3
+        },
+        "base_subset": "essential_8",
+        "budgeted_subset": "budgeted_high_8",
+        "must_include": [
+          "expr-try-catch-errors",
+          "kcp-go-multiplexed-kcp-streams",
+          "psd-tools-blend-range-api",
+          "termenv-preserve-ansi-resets",
+          "true-myth-iterable-collection-combinators"
+        ],
+        "exclude_task_names": [
+          "anko-typed-variable-bindings",
+          "dasel-html-document-format",
+          "etree-xml-diff-patch",
+          "go-genai-streamed-function-args",
+          "prometheus-typed-label-sorting",
+          "ytt-jsonpath-query-api"
+        ],
+        "max_avg_cost_usd": 5.0,
+        "max_avg_steps": 70.0,
+        "min_pass_rate": 0.12,
+        "max_pass_rate": 0.9,
+        "max_candidates_per_language": 10
+      }
+    },
+    "essential_anchored_high_8_cost_trimmed_cap_safe_lang_balanced": {
+      "display_name": "DeepSWE-Essential-Anchored-High-8-Cost-Trimmed-Cap-Safe-Lang-Balanced",
+      "count": 8,
+      "language_distribution": {
+        "go": 3,
+        "python": 2,
+        "typescript": 3
+      },
+      "task_names_path": "subsets/essential_anchored_high_8_cost_trimmed_cap_safe_lang_balanced_task_names.json",
+      "metadata_jsonl_path": "subsets/essential_anchored_high_8_cost_trimmed_cap_safe_lang_balanced.jsonl",
+      "selection_metrics": {
+        "n": 40.0,
+        "mae": 0.05535821912450001,
+        "pearson": 0.9551607730803808,
+        "spearman": 0.9613284582961901,
+        "kendall": 0.849250297170319,
+        "r2": 0.8301889338783344
+      },
+      "selection_summary_path": "../../../outputs/deepswe_subset_analysis/essential_anchored_high_8_cost_trimmed_cap_safe_lang_balanced_selection_summary.json",
+      "selection_constraints": {
+        "language_counts": {
+          "go": 3,
+          "python": 2,
+          "typescript": 3
+        },
+        "base_subset": "essential_8",
+        "budgeted_subset": "budgeted_high_8",
+        "must_include": [
+          "psd-tools-blend-range-api"
+        ],
+        "exclude_task_names": [
+          "kcp-go-multiplexed-kcp-streams",
+          "termenv-preserve-ansi-resets",
+          "ts-pattern-match-each"
+        ],
+        "max_avg_cost_usd": 4.8,
+        "max_avg_steps": 70.0,
+        "min_pass_rate": 0.12,
+        "max_pass_rate": 0.9,
+        "max_candidates_per_language": 8
+      }
+    },
+    "essential_anchored_high_8_essential3_cost_trimmed_lang_balanced": {
+      "display_name": "DeepSWE-Essential-Anchored-High-8-Essential3-Cost-Trimmed-Lang-Balanced",
+      "count": 8,
+      "language_distribution": {
+        "go": 3,
+        "python": 2,
+        "typescript": 3
+      },
+      "task_names_path": "subsets/essential_anchored_high_8_essential3_cost_trimmed_lang_balanced_task_names.json",
+      "metadata_jsonl_path": "subsets/essential_anchored_high_8_essential3_cost_trimmed_lang_balanced.jsonl",
+      "selection_metrics": {
+        "n": 40.0,
+        "mae": 0.0914247244031707,
+        "pearson": 0.9517150798422673,
+        "spearman": 0.96141206946992,
+        "kendall": 0.8505568360890425,
+        "r2": 0.6497136944444539
+      },
+      "selection_summary_path": "../../../outputs/deepswe_subset_analysis/essential_anchored_high_8_essential3_cost_trimmed_lang_balanced_selection_summary.json",
+      "selection_constraints": {
+        "language_counts": {
+          "go": 3,
+          "python": 2,
+          "typescript": 3
+        },
+        "base_subset": "essential_8",
+        "budgeted_subset": "budgeted_high_8",
+        "must_include": [
+          "expr-try-catch-errors",
+          "psd-tools-blend-range-api",
+          "true-myth-iterable-collection-combinators"
+        ],
+        "exclude_task_names": [
+          "kcp-go-multiplexed-kcp-streams",
+          "termenv-preserve-ansi-resets",
+          "ts-pattern-match-each"
+        ],
+        "max_avg_cost_usd": 8.0,
+        "max_avg_steps": 100.0,
+        "min_pass_rate": 0.12,
+        "max_pass_rate": 0.9,
+        "max_candidates_per_language": 10
+      }
+    },
+    "essential_anchored_high_8_glm52max_cap100_10m_lang_balanced": {
+      "display_name": "DeepSWE-Essential-Anchored-High-8-GLM52Max-Cap100-10M-Lang-Balanced",
+      "count": 8,
+      "language_distribution": {
+        "go": 3,
+        "python": 2,
+        "typescript": 3
+      },
+      "task_names_path": "subsets/essential_anchored_high_8_glm52max_cap100_10m_lang_balanced_task_names.json",
+      "metadata_jsonl_path": "subsets/essential_anchored_high_8_glm52max_cap100_10m_lang_balanced.jsonl",
+      "selection_metrics": {
+        "n": 40.0,
+        "mae": 0.06081137005243405,
+        "pearson": 0.9344915688114783,
+        "spearman": 0.941704325506112,
+        "kendall": 0.815602238315571,
+        "r2": 0.7982714475755056
+      },
+      "selection_summary_path": "../../../outputs/deepswe_subset_analysis/essential_anchored_high_8_glm52max_cap100_10m_lang_balanced_selection_summary.json",
+      "selection_constraints": {
+        "language_counts": {
+          "go": 3,
+          "python": 2,
+          "typescript": 3
+        },
+        "base_subset": "essential_8",
+        "budgeted_subset": "budgeted_high_8",
+        "must_include": [],
+        "exclude_task_names": [],
+        "max_avg_cost_usd": 5.0,
+        "max_avg_steps": 75.0,
+        "max_avg_input_tokens": 7000000.0,
+        "budget_model": "glm-5-2",
+        "budget_effort": "max",
+        "max_model_avg_steps": 100.0,
+        "max_model_avg_input_tokens": 10000000.0,
+        "min_pass_rate": 0.12,
+        "max_pass_rate": 0.9,
+        "max_candidates_per_language": 5
+      }
     }
   },
   "essential_selection": {
@@ -205,5 +672,11 @@
     "public_trials_url": "https://deepswe.datacurve.ai/artifacts/v1.1/trials.json",
     "public_tasks_url": "https://deepswe.datacurve.ai/artifacts/v1.1/tasks.json",
     "method": "Supervised sparse greedy task selection from public DeepSWE v1.1 rollout matrix. Objective maximizes Spearman correlation to the full 113-task score with MAE, cost, duration, language, and repository penalties."
+  },
+  "budgeted_high_selection": {
+    "name_prefix": "DeepSWE-Budgeted-High",
+    "public_trials_url": "https://deepswe.datacurve.ai/artifacts/v1.1/trials.json",
+    "public_tasks_url": "https://deepswe.datacurve.ai/artifacts/v1.1/tasks.json",
+    "method": "Budget-conscious fixed-size selection over public DeepSWE v1.1 rollout matrix. The default High-8 profile is anchored on DeepSWE-Essential-8, keeps three Essential tasks, excludes empirically cap-unsafe pilots, and optimizes Spearman-to-full under cost, step, and language-balance constraints."
   }
 }

@@ -51,6 +51,33 @@ The current default runner input is:
 data/taiwan/swebench_lite_assorted/subsets/low_middle_v2_72.jsonl
 ```
 
+The current default High input is:
+
+```text
+data/taiwan/deepswe/subsets/essential_anchored_high_8_glm52max_cap100_10m_lang_balanced.jsonl
+```
+
+This High-8 slice was selected from public DeepSWE v1.1 rollouts with explicit
+GLM-5.2 max budget constraints:
+
+- language balance: Go 3, Python 2, TypeScript 3
+- public all-model average steps <= 75
+- public all-model average input tokens <= 7M
+- public GLM-5.2 max average steps <= 100
+- public GLM-5.2 max average input tokens <= 10M
+
+The runner uses a stricter paid-run gate before launching DeepSWE High:
+
+- default High cap: `120` turns / `120` tool calls / `12M` cumulative input tokens
+- preflight basis: public DeepSWE rows for the current model and `--thinking`
+- hard statistic: public p75 by default
+- policy: `--deepswe-budget-preflight error`
+
+If the selected High tasks are known from public data to exceed the configured
+caps, the runner writes `inputs/deepswe_budget_preflight.json` and exits before
+paid OpenClaw execution. Use `--allow-deepswe-budget-mismatch` only for an
+intentional experiment.
+
 ## Scoring
 
 The default full set keeps the practical task mix at 36 Low, 36 Middle, and 8
@@ -108,13 +135,45 @@ python3 scripts/tools/run_agentic_swe_assorted.py \
 Result: v2 Low/Middle input preparation and SWE-bench Lite prepare-only path
 completed.
 
+## Runtime Setup
+
+Agentic SWE-Assorted uses OpenClaw/NeMoClaw as the agent runtime. Before paid
+runs, apply the repo-managed OpenClaw runtime patch instead of relying on a
+local one-off edit:
+
+```bash
+NEMOCLAW_SANDBOX=nejumi-taiwan scripts/setup/install_openclaw_budget_guard.sh
+```
+
+This installs the Nejumi budget guard plugin and patches both the host OpenClaw
+package and the NeMoClaw Gateway runtime package. The patch is required for:
+
+- hard budget enforcement for turns, cumulative tokens, and tool wall time
+- actual token usage exposure from OpenClaw diagnostic events
+- passing `xhigh` and `max` thinking levels through OpenClaw validation when the
+  provider/API supports them
+
+Do not start a paid High or full Assorted run if this check fails:
+
+```bash
+python3 scripts/tools/check_agentic_swe_assorted_high_readiness.py \
+  --model openai-direct/gpt-5.6-luna
+```
+
+The readiness report contains an `openclaw_runtime` section. It accepts either
+the repo-managed patch or an upstream OpenClaw runtime that already exposes the
+same capability. If either the host or NeMoClaw Gateway runtime is missing the
+required capability, the report is `not_ready` and prints the setup command to
+run.
+
 ## Next Paid Validation
 
-Do not re-run all 72 tasks for calibration. Use public prior plus a small paid
-check:
+Do not use paid runs to rediscover cap mismatches already visible in public
+DeepSWE data. The order is:
 
-- GLM-5.2: Low 8 + Middle 8, no High
-- Optional: GPT-4.1-mini Low 8 only
-
-The purpose is to confirm that V2 Low/Middle reduce empty patches and runtime
-budget failures under the 40 tool-call cap.
+1. regenerate or inspect the High subset from public trials;
+2. run the Assorted runner in dry-run/preflight mode;
+3. launch a small paid High sample only if `deepswe_budget_preflight.json` is
+   clean;
+4. expand to the full 36/36/8 suite after Low, Middle, and High all have clean
+   harness behavior.

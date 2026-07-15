@@ -1,0 +1,35 @@
+{
+  "n_exact_models": 4,
+  "pearson_r_score": 0.617963524562179,
+  "spearman_rho_ranked_scores": 0.3999999999999999,
+  "kendall_tau_rank_order": 0.3333333333333333,
+  "concordant_pair_count": 4,
+  "discordant_pair_count": 2,
+  "models": [
+    {
+      "model": "gpt-5.5",
+      "deep_rank": 1,
+      "swebench_pro_rank": 3,
+      "rank_delta_swe_minus_deepswe": 2
+    },
+    {
+      "model": "claude-opus-4.8",
+      "deep_rank": 2,
+      "swebench_pro_rank": 1,
+      "rank_delta_swe_minus_deepswe": -1
+    },
+    {
+      "model": "glm-5.2",
+      "deep_rank": 3,
+      "swebench_pro_rank": 2,
+      "rank_delta_swe_minus_deepswe": -1
+    },
+    {
+      "model": "gemini-3.1-pro",
+      "deep_rank": 4,
+      "swebench_pro_rank": 4,
+      "rank_delta_swe_minus_deepswe": 0
+    }
+  ],
+  "caveat": "Exact-model overlap found so far is four models. SWE-bench Pro scores come from the Z.ai GLM-5.2 model card rather than the Scale public leaderboard for three of the four models."
+}

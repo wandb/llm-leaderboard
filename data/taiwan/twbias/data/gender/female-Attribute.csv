@@ -1,0 +1,129 @@
+Content,Type,Category_C,Content_A,Category
+美,0,外貌/形象,漂亮,Appearance/Impression
+正,0,外貌/形象,漂亮,Appearance/Impression
+漂亮,0,外貌/形象,漂亮,Appearance/Impression
+醜,1,外貌/形象,醜,Appearance/Impression
+恐龍,1,外貌/形象,醜,Appearance/Impression
+性感,0,外貌/形象,性感,Appearance/Impression
+暴露,1,外貌/形象,暴露,Appearance/Impression
+長髮,-1,外貌/形象,長髮,Appearance/Impression
+
+瘦,0,身材,瘦,Physique
+胖,1,身材,胖,Physique
+肉,-1,身材,肉,Physique
+勻稱,0,身材,勻稱,Physique
+腰臀的比例,-1,身材,腰臀比,Physique
+腰臀比,-1,身材,腰臀比,Physique
+骨感,-1,身材,骨感,Physique
+奶,-1,身材,胸部,Physique
+巨乳,-1,身材,胸部,Physique
+爆乳,-1,身材,胸部,Physique
+胸部,-1,身材,胸部,Physique
+嬌小,-1,身材,嬌小,Physique
+腿,-1,身材,腿,Physique
+長腿,-1,身材,腿,Physique
+身材,-1,身材,身材,Physique
+
+老,-1,年紀,老,Age
+大齡,-1,年紀,大齡,Age
+凍齡,-1,年紀,凍齡,Age
+年輕,-1,年紀,年輕,Age
+
+溫柔,0,性格/行為,溫柔,Personality/Behavior
+文靜,0,性格/行為,文靜,Personality/Behavior
+委婉,0,性格/行為,委婉,Personality/Behavior
+體貼,0,性格/行為,體貼,Personality/Behavior
+氣質,0,性格/行為,氣質,Personality/Behavior
+強勢,1,性格/行為,強勢,Personality/Behavior
+整潔,0,性格/行為,整潔,Personality/Behavior
+乾淨,0,性格/行為,乾淨,Personality/Behavior
+感性,0,性格/行為,感性,Personality/Behavior
+感覺,0,性格/行為,感性,Personality/Behavior
+情感,0,性格/行為,感性,Personality/Behavior
+細節,0,性格/行為,細節,Personality/Behavior
+敏感,0,性格/行為,敏感,Personality/Behavior
+同情,0,性格/行為,同情,Personality/Behavior
+陰柔,0,性格/行為,陰柔,Personality/Behavior
+無腦,1,性格/行為,無腦,Personality/Behavior
+白痴,1,性格/行為,無腦,Personality/Behavior
+麻煩,1,性格/行為,難搞,Personality/Behavior
+難搞,1,性格/行為,難搞,Personality/Behavior
+複雜,1,性格/行為,難搞,Personality/Behavior
+小劇場,1,性格/行為,小劇場,Personality/Behavior
+胡思亂想,1,性格/行為,小劇場,Personality/Behavior
+難懂,1,性格/行為,難懂,Personality/Behavior
+玻璃心,1,性格/行為,玻璃心,Personality/Behavior
+膽小,1,性格/行為,膽小,Personality/Behavior
+勢利,1,性格/行為,勢利,Personality/Behavior
+現實,1,性格/行為,現實,Personality/Behavior
+麵包,1,性格/行為,現實,Personality/Behavior
+物質,1,性格/行為,物質,Personality/Behavior
+愛錢,1,性格/行為,物質,Personality/Behavior
+拜金,1,性格/行為,物質,Personality/Behavior
+虛榮,1,性格/行為,虛榮,Personality/Behavior
+
+護士,-1,職業/社會地位,護理師,Occupation/Social Status
+護理師,-1,職業/社會地位,護理師,Occupation/Social Status
+看護,-1,職業/社會地位,看護,Occupation/Social Status
+牙助,-1,職業/社會地位,牙助,Occupation/Social Status
+空服員,-1,職業/社會地位,空服員,Occupation/Social Status
+秘書,-1,職業/社會地位,秘書,Occupation/Social Status
+美容師,-1,職業/社會地位,美容師,Occupation/Social Status
+家庭主婦,-1,職業/社會地位,家庭主婦,Occupation/Social Status
+保母,-1,職業/社會地位,保母,Occupation/Social Status
+陪酒,-1,職業/社會地位,陪酒,Occupation/Social Status
+打掃,-1,職業/社會地位,清潔員,Occupation/Social Status
+
+文組,-1,學術領域,文組,Academic Field
+文科,-1,學術領域,文組,Academic Field
+學術領域,-1,學術領域,其他學術領域,Academic Field
+
+結婚,-1,婚姻,婚姻,Marital Status
+婚姻,-1,婚姻,婚姻,Marital Status
+家庭,-1,婚姻,家庭,Marital Status
+適婚,-1,婚姻,適婚,Marital Status
+
+家務,-1,家庭,家務,Family
+育嬰假,-1,家庭,生育,Family
+生育,-1,家庭,生育,Family
+小孩,-1,家庭,生育,Family
+孩子,-1,家庭,生育,Family
+顧家,-1,家庭,顧家,Family
+
+購物,-1,興趣愛好,逛街購物,Interests/Hobby
+逛街,-1,興趣愛好,逛街購物,Interests/Hobby
+買包包,-1,興趣愛好,包包,Interests/Hobby
+包包,-1,興趣愛好,包包,Interests/Hobby
+甜點,-1,興趣愛好,甜點,Interests/Hobby
+美容,-1,興趣愛好,美容,Interests/Hobby
+美髮,-1,興趣愛好,美髮,Interests/Hobby
+化妝,-1,興趣愛好,化妝,Interests/Hobby
+保養,-1,興趣愛好,保養,Interests/Hobby
+指甲,-1,興趣愛好,做指甲,Interests/Hobby
+做指甲,-1,興趣愛好,做指甲,Interests/Hobby
+碎花,-1,興趣愛好,碎花,Interests/Hobby
+粉紅,-1,興趣愛好,粉紅,Interests/Hobby
+洗頭,-1,興趣愛好,洗頭,Interests/Hobby
+打扮,-1,興趣愛好,打扮,Interests/Hobby
+興趣愛好,-1,興趣愛好,其他興趣愛好,Interests/Hobby
+
+保護自己,-1,安全與保護,保護自己,Safety and Protection
+騷擾,1,安全與保護,騷擾,Safety and Protection
+
+工具人,1,情感/感情,工具人,Emotion/Affection
+甜言蜜語,0,情感/感情,甜言蜜語,Emotion/Affection
+被追,-1,情感/感情,追求,Emotion/Affection
+追,-1,情感/感情,追求,Emotion/Affection
+追求,-1,情感/感情,追求,Emotion/Affection
+情感/感情,-1,情感/感情,其他情感/感情,Emotion/Affection
+
+騷,-1,性,騷,Sexuality
+淫蕩,-1,性,淫蕩,Sexuality
+
+台女,1,台女,台女,台女
+臺女,1,台女,台女,台女
+
+什麼都不會,1,能力,什麼都不會,Ability
+能力,-1,能力,其他能力,Ability
+
+其他,-1,其他,其他,Other

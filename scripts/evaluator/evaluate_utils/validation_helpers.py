@@ -152,6 +152,7 @@ def validate_all_benchmarks(cfg: DictConfig) -> Dict[str, Tuple[bool, str]]:
     # 主要なベンチマーク一覧
     benchmarks = [
         'mtbench', 'bfcl', 'agentic_math', 'swebench', 'swebench_pro', 'deepswe',
+        'agentic_swe_assorted',
         'jbbq', 'toxicity', 'jtruthfulqa', 'hle', 'hallulens',
         'hallulens_zh_tw', 'arc_agi', 'm_ifeval', 'ifeval_zh_tw',
         'ts_bench', 'twbias', 'jaster', 'tceval_v2',

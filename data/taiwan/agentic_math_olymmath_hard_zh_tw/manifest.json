@@ -1,0 +1,68 @@
+{
+  "dataset": "RUC-AIBOX/OlymMATH",
+  "zh_config": "zh-hard",
+  "en_config": "en-hard",
+  "split": "test",
+  "dataset_dir_name": "agentic_math_olymmath_hard_zh_tw",
+  "total_instances": 100,
+  "smoke_size": 4,
+  "leaderboard40_size": 40,
+  "license": "mit",
+  "language": "zh-TW",
+  "script_conversion": "OpenCC s2twp with s2tw/s2t fallback",
+  "source_urls": {
+    "dataset": "https://huggingface.co/datasets/RUC-AIBOX/OlymMATH",
+    "paper": "https://arxiv.org/abs/2503.21380",
+    "repository": "https://github.com/RUCAIBox/OlymMATH"
+  },
+  "files": {
+    "README.md": {
+      "bytes": 1133,
+      "sha256": "dcb17fc6193177e53f4a6d58f53d72582c235eb8bec926dd6a0ca505bf522b38"
+    },
+    "manifest.json": {
+      "bytes": 1972,
+      "sha256": "89df481c24eec5182c7af36aa6b46bff175c1bec156ef86d4df097c479a5dddc"
+    },
+    "subsets/full.csv": {
+      "bytes": 94113,
+      "sha256": "dda82a88294a277ffa0099abe18741cf95af8889616c6306090ff03b614563cb"
+    },
+    "subsets/full.jsonl": {
+      "bytes": 124078,
+      "sha256": "a165bce8cfbfe10cfe414161717d1ae6599305b986028d21401ef0c8272f719f"
+    },
+    "subsets/leaderboard.csv": {
+      "bytes": 94113,
+      "sha256": "dda82a88294a277ffa0099abe18741cf95af8889616c6306090ff03b614563cb"
+    },
+    "subsets/leaderboard.jsonl": {
+      "bytes": 124078,
+      "sha256": "a165bce8cfbfe10cfe414161717d1ae6599305b986028d21401ef0c8272f719f"
+    },
+    "subsets/leaderboard_40.csv": {
+      "bytes": 35834,
+      "sha256": "a5b66e20aa724d5bc76a2240956ab8044c58279820d969f23a393c187602c968"
+    },
+    "subsets/leaderboard_40.jsonl": {
+      "bytes": 47572,
+      "sha256": "bd0d1a39b0369e8a3710f28c92375f89f38384a93fea8d918197f9fa9bb06c26"
+    },
+    "subsets/smoke.csv": {
+      "bytes": 3583,
+      "sha256": "5eb5d308471993be43a61048b9e7da13e0ac75c9211c51ac788c3f6299a01aea"
+    },
+    "subsets/smoke.jsonl": {
+      "bytes": 4547,
+      "sha256": "9a3f6010b5a234786a7e7684c6b31e088a2868149d7d11ef90a8bf042350cdcb"
+    },
+    "test.csv": {
+      "bytes": 94113,
+      "sha256": "dda82a88294a277ffa0099abe18741cf95af8889616c6306090ff03b614563cb"
+    },
+    "test.jsonl": {
+      "bytes": 124078,
+      "sha256": "a165bce8cfbfe10cfe414161717d1ae6599305b986028d21401ef0c8272f719f"
+    }
+  }
+}

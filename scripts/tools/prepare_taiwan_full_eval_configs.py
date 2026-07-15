@@ -23,8 +23,9 @@ RUN_FLAGS: dict[str, bool] = {
     "agentic_math": True,
     "bfcl": True,
     "swebench": False,
-    "swebench_pro": True,
+    "swebench_pro": False,
     "deepswe": False,
+    "agentic_swe_assorted": True,
     "mtbench": True,
     "jbbq": False,
     "toxicity": False,
@@ -63,6 +64,23 @@ AGENTIC_DENIED_ARGUMENT_PATTERNS = [
     r"\b(?:python(?:3)?\s+-m\s+)?pip(?:3)?\s+install\b",
     r"\b(requests|urllib|httpx)\.",
 ]
+AGENTIC_SWE_DENIED_ARGUMENT_PATTERNS = [
+    r"https?://",
+    r"\b(?:ftp|sftp|ssh)://",
+    r"\bgit\+",
+    r"\bgit\s+(?:clone|fetch|pull|ls-remote)\b",
+    r"\b(curl|wget)\b",
+]
+AGENTIC_SWE_ASSORTED_DENIED_TOOLS = [
+    "code_execution",
+    "web_search",
+    "web_fetch",
+    "browser",
+    "browser_*",
+]
+AGENTIC_SWE_ASSORTED_DENIED_ARGUMENT_PATTERNS = [
+    *AGENTIC_SWE_DENIED_ARGUMENT_PATTERNS,
+]
 MANIFEST_JUDGE_OVERRIDE_KEYS = (
     "judge_model",
     "judge_parallel",
@@ -74,6 +92,32 @@ def _plain(value: Any) -> Any:
     if OmegaConf.is_config(value):
         return OmegaConf.to_container(value, resolve=True)
     return value
+
+
+def _optional_plain_dict(value: Any, *, field_name: str) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    plain = _plain(value)
+    if not isinstance(plain, dict):
+        raise ValueError(f"{field_name} must be a mapping/object")
+    return plain
+
+
+def _openclaw_model_params(model: dict[str, Any], section: str) -> dict[str, Any] | None:
+    section_key = f"{section}_openclaw_model_params"
+    if section_key in model:
+        return _optional_plain_dict(model.get(section_key), field_name=section_key)
+    return _optional_plain_dict(model.get("openclaw_model_params"), field_name="openclaw_model_params")
+
+
+def _openclaw_model_overrides(model: dict[str, Any], section: str) -> dict[str, Any] | None:
+    section_key = f"{section}_openclaw_model_overrides"
+    if section_key in model:
+        return _optional_plain_dict(model.get(section_key), field_name=section_key)
+    return _optional_plain_dict(
+        model.get("openclaw_model_overrides"),
+        field_name="openclaw_model_overrides",
+    )
 
 
 def _reject_manifest_judge_overrides(model: dict[str, Any]) -> None:
@@ -97,13 +141,14 @@ def _run_flags_for_phase(phase: str) -> dict[str, bool]:
         flags["agentic_math"] = False
         flags["swebench_pro"] = False
         flags["deepswe"] = False
+        flags["agentic_swe_assorted"] = False
         flags["aggregate_taiwan"] = False
         return flags
     if phase == "agentic":
-        return {key: key in {"agentic_math", "swebench_pro", "deepswe"} for key in flags}
+        return {key: key in {"agentic_math", "agentic_swe_assorted"} for key in flags}
     if phase == "agentic_aggregate":
         return {
-            key: key in {"agentic_math", "swebench_pro", "deepswe", "aggregate_taiwan"}
+            key: key in {"agentic_math", "agentic_swe_assorted", "aggregate_taiwan"}
             for key in flags
         }
     raise ValueError(f"Unsupported Taiwan eval phase: {phase}")
@@ -153,6 +198,29 @@ def _with_cli_nemoclaw_overrides(
         deepswe_config_path = getattr(args, "deepswe_nemoclaw_openclaw_config_path", None)
         if deepswe_config_path:
             updated["deepswe_nemoclaw_openclaw_config_path"] = str(deepswe_config_path)
+    assorted_sandbox = getattr(args, "agentic_swe_assorted_nemoclaw_sandbox", None)
+    if assorted_sandbox:
+        updated["agentic_swe_assorted_nemoclaw_sandbox"] = str(assorted_sandbox)
+        updated["agentic_swe_assorted_nemoclaw_bin"] = str(
+            getattr(args, "agentic_swe_assorted_nemoclaw_bin", None) or "nemoclaw"
+        )
+        assorted_workdir = getattr(args, "agentic_swe_assorted_nemoclaw_workdir", None)
+        if assorted_workdir:
+            updated["agentic_swe_assorted_nemoclaw_workdir"] = str(assorted_workdir)
+        assorted_transfer_mode = getattr(
+            args, "agentic_swe_assorted_nemoclaw_checkout_transfer_mode", None
+        )
+        if assorted_transfer_mode:
+            updated["agentic_swe_assorted_nemoclaw_checkout_transfer_mode"] = str(
+                assorted_transfer_mode
+            )
+        assorted_config_path = getattr(
+            args, "agentic_swe_assorted_nemoclaw_openclaw_config_path", None
+        )
+        if assorted_config_path:
+            updated["agentic_swe_assorted_nemoclaw_openclaw_config_path"] = str(
+                assorted_config_path
+            )
     math_config_path = getattr(args, "agentic_math_nemoclaw_openclaw_config_path", None)
     if sandbox:
         updated["agentic_math_nemoclaw_openclaw_config_path"] = str(
@@ -237,6 +305,41 @@ def _apply_deepswe_nemoclaw_config(
     deepswe["nemoclaw_openclaw_config_path"] = str(config_path)
 
 
+def _apply_agentic_swe_assorted_nemoclaw_config(
+    agentic_swe_assorted: dict[str, Any],
+    model: dict[str, Any],
+) -> None:
+    sandbox = model.get("agentic_swe_assorted_nemoclaw_sandbox") or model.get("nemoclaw_sandbox")
+    if not sandbox:
+        return
+    agentic_swe_assorted["nemoclaw_sandbox"] = str(sandbox)
+    agentic_swe_assorted["nemoclaw_bin"] = str(
+        model.get("agentic_swe_assorted_nemoclaw_bin")
+        or model.get("nemoclaw_bin")
+        or "nemoclaw"
+    )
+    agentic_swe_assorted["nemoclaw_workdir"] = str(
+        model.get("agentic_swe_assorted_nemoclaw_workdir")
+        or model.get("nemoclaw_workdir")
+        or "/sandbox"
+    )
+    transfer_mode = (
+        model.get("agentic_swe_assorted_nemoclaw_checkout_transfer_mode")
+        or model.get("nemoclaw_checkout_transfer_mode")
+        or "copy"
+    )
+    agentic_swe_assorted["nemoclaw_checkout_transfer_mode"] = str(transfer_mode)
+    transfer_timeout = model.get("agentic_swe_assorted_nemoclaw_checkout_transfer_timeout")
+    if transfer_timeout:
+        agentic_swe_assorted["nemoclaw_checkout_transfer_timeout"] = int(transfer_timeout)
+    config_path = (
+        model.get("agentic_swe_assorted_nemoclaw_openclaw_config_path")
+        or model.get("nemoclaw_openclaw_config_path")
+        or DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH
+    )
+    agentic_swe_assorted["nemoclaw_openclaw_config_path"] = str(config_path)
+
+
 def build_override(
     model: dict[str, Any],
     output_root: Path,
@@ -246,6 +349,18 @@ def build_override(
     slug = str(model["slug"])
     openclaw_model = str(model["openclaw_model"])
     reasoning_effort = model.get("reasoning_effort")
+    agentic_math_model_params = _openclaw_model_params(model, "agentic_math")
+    swebench_pro_model_params = _openclaw_model_params(model, "swebench_pro")
+    deepswe_model_params = _openclaw_model_params(model, "deepswe")
+    agentic_swe_assorted_model_params = _openclaw_model_params(
+        model, "agentic_swe_assorted"
+    )
+    agentic_math_model_overrides = _openclaw_model_overrides(model, "agentic_math")
+    swebench_pro_model_overrides = _openclaw_model_overrides(model, "swebench_pro")
+    deepswe_model_overrides = _openclaw_model_overrides(model, "deepswe")
+    agentic_swe_assorted_model_overrides = _openclaw_model_overrides(
+        model, "agentic_swe_assorted"
+    )
     math_limit = model.get("math_limit", 50)
     if math_limit is None:
         math_limit = 50
@@ -269,6 +384,12 @@ def build_override(
             "prefix": f"taiwan-math-{slug}",
             "task_agent_prefix": f"tw-math-{slug}",
             "openclaw_model": openclaw_model,
+            **({"openclaw_model_params": agentic_math_model_params} if agentic_math_model_params else {}),
+            **(
+                {"openclaw_model_overrides": agentic_math_model_overrides}
+                if agentic_math_model_overrides
+                else {}
+            ),
             "thinking": str(model.get("agentic_thinking", "high")),
             "num_workers": int(model.get("math_num_workers", 8)),
             "task_start_min_interval_seconds": float(
@@ -325,6 +446,12 @@ def build_override(
             "prefix": f"taiwan-swe-{slug}",
             "task_agent_prefix": f"tw-swe-{slug}",
             "openclaw_model": openclaw_model,
+            **({"openclaw_model_params": swebench_pro_model_params} if swebench_pro_model_params else {}),
+            **(
+                {"openclaw_model_overrides": swebench_pro_model_overrides}
+                if swebench_pro_model_overrides
+                else {}
+            ),
             "thinking": str(model.get("swe_thinking", "medium")),
             "openclaw_num_workers": int(model.get("swe_openclaw_num_workers", 8)),
             "openclaw_task_start_min_interval_seconds": float(
@@ -373,7 +500,7 @@ def build_override(
             ),
             "weave_agents_poll_seconds": int(model.get("weave_agents_poll_seconds", 5)),
             "deny_tool": AGENTIC_DENIED_TOOLS,
-            "deny_argument_pattern": AGENTIC_DENIED_ARGUMENT_PATTERNS,
+            "deny_argument_pattern": AGENTIC_SWE_DENIED_ARGUMENT_PATTERNS,
         },
         "deepswe": {
             "subset": str(model.get("deepswe_subset", "pilot_16")),
@@ -385,6 +512,12 @@ def build_override(
             "task_agent_prefix": f"tw-deepswe-{slug}",
             "session_prefix": f"deepswe-{slug}",
             "openclaw_model": openclaw_model,
+            **({"openclaw_model_params": deepswe_model_params} if deepswe_model_params else {}),
+            **(
+                {"openclaw_model_overrides": deepswe_model_overrides}
+                if deepswe_model_overrides
+                else {}
+            ),
             "thinking": str(model.get("deepswe_thinking", model.get("swe_thinking", "high"))),
             "n_concurrent": int(model.get("deepswe_n_concurrent", 1)),
             "openclaw_timeout": int(model.get("deepswe_openclaw_timeout", 3600)),
@@ -430,7 +563,151 @@ def build_override(
             ),
             "weave_agents_poll_seconds": int(model.get("weave_agents_poll_seconds", 5)),
             "deny_tool": AGENTIC_DENIED_TOOLS,
-            "deny_argument_pattern": AGENTIC_DENIED_ARGUMENT_PATTERNS,
+            "deny_argument_pattern": AGENTIC_SWE_DENIED_ARGUMENT_PATTERNS,
+        },
+        "agentic_swe_assorted": {
+            "output_dir": str(output_root / "agentic_swe_assorted" / slug),
+            "results_dir": str(output_root / "agentic_swe_assorted" / slug / "runner")
+            if phase == "agentic_aggregate"
+            else None,
+            "run_openclaw": phase != "agentic_aggregate",
+            "dry_run": False,
+            "prefix": f"taiwan-swe-assorted-{slug}",
+            "task_agent_prefix": f"tw-swe-assorted-{slug}",
+            "session_prefix": f"agentic-swe-assorted-{slug}",
+            "openclaw_model": openclaw_model,
+            **(
+                {"openclaw_model_params": agentic_swe_assorted_model_params}
+                if agentic_swe_assorted_model_params
+                else {}
+            ),
+            **(
+                {"openclaw_model_overrides": agentic_swe_assorted_model_overrides}
+                if agentic_swe_assorted_model_overrides
+                else {}
+            ),
+            "thinking": str(
+                model.get("agentic_swe_assorted_thinking", model.get("swe_thinking", "high"))
+            ),
+            "tier_weights": str(model.get("agentic_swe_assorted_tier_weights", "low=1,middle=1,high=1")),
+            "low_middle_jsonl": str(
+                model.get(
+                    "agentic_swe_assorted_low_middle_jsonl",
+                    "data/taiwan/swebench_lite_assorted/subsets/low_middle_v2_72.jsonl",
+                )
+            ),
+            "low_middle_instance_ids_json": str(
+                model.get(
+                    "agentic_swe_assorted_low_middle_instance_ids_json",
+                    "data/taiwan/swebench_lite_assorted/subsets/low_middle_v2_72_instance_ids.json",
+                )
+            ),
+            "low_limit": int(model.get("agentic_swe_assorted_low_limit", 36)),
+            "middle_limit": int(model.get("agentic_swe_assorted_middle_limit", 36)),
+            "high_limit": int(model.get("agentic_swe_assorted_high_limit", 8)),
+            "deepswe_metadata_jsonl": str(
+                model.get(
+                    "agentic_swe_assorted_deepswe_metadata_jsonl",
+                    "data/taiwan/deepswe/subsets/essential_anchored_high_8_glm52max_cap100_10m_lang_balanced.jsonl",
+                )
+            ),
+            "deepswe_task_names_file": str(
+                model.get(
+                    "agentic_swe_assorted_deepswe_task_names_file",
+                    "data/taiwan/deepswe/subsets/essential_anchored_high_8_glm52max_cap100_10m_lang_balanced_task_names.json",
+                )
+            ),
+            "deepswe_tasks_root": str(
+                model.get("agentic_swe_assorted_deepswe_tasks_root", "external/deep-swe/tasks")
+            ),
+            "deepswe_public_trials_json": str(
+                model.get(
+                    "agentic_swe_assorted_deepswe_public_trials_json",
+                    "outputs/deepswe_subset_analysis/deepswe_v1_1_trials.json",
+                )
+            ),
+            "deepswe_public_model": model.get("agentic_swe_assorted_deepswe_public_model"),
+            "deepswe_public_effort": model.get("agentic_swe_assorted_deepswe_public_effort"),
+            "deepswe_budget_preflight": str(
+                model.get("agentic_swe_assorted_deepswe_budget_preflight", "error")
+            ),
+            "deepswe_preflight_hard_stat": str(
+                model.get("agentic_swe_assorted_deepswe_preflight_hard_stat", "p75")
+            ),
+            "allow_deepswe_budget_mismatch": bool(
+                model.get("agentic_swe_assorted_allow_deepswe_budget_mismatch", False)
+            ),
+            "official_swebench_repo": str(
+                model.get("agentic_swe_assorted_official_swebench_repo", "external/SWE-bench")
+            ),
+            "checkout_root": str(output_root / "swebench_lite_checkouts" / slug),
+            "skip_low_middle": bool(model.get("agentic_swe_assorted_skip_low_middle", False)),
+            "skip_high": bool(model.get("agentic_swe_assorted_skip_high", False)),
+            "no_docker_check": bool(model.get("agentic_swe_assorted_no_docker_check", False)),
+            "swe_workers": int(model.get("agentic_swe_assorted_swe_workers", 4)),
+            "high_workers": int(model.get("agentic_swe_assorted_high_workers", 2)),
+            "eval_workers": int(model.get("agentic_swe_assorted_eval_workers", 4)),
+            "swe_task_start_min_interval_seconds": float(
+                model.get("agentic_swe_assorted_swe_task_start_min_interval_seconds", 5.0)
+            ),
+            "swe_openclaw_timeout": int(
+                model.get("agentic_swe_assorted_swe_openclaw_timeout", 900)
+            ),
+            "high_openclaw_timeout": int(
+                model.get("agentic_swe_assorted_high_openclaw_timeout", 1800)
+            ),
+            "eval_timeout": int(model.get("agentic_swe_assorted_eval_timeout", 1800)),
+            "openclaw_max_attempts": int(
+                model.get("agentic_swe_assorted_openclaw_max_attempts", 1)
+            ),
+            "openclaw_retry_base_seconds": int(model.get("openclaw_retry_base_seconds", 15)),
+            "max_input_tokens": int(model.get("agentic_swe_assorted_max_input_tokens", 1_000_000)),
+            "max_cumulative_input_tokens": int(
+                model.get("agentic_swe_assorted_max_cumulative_input_tokens", 1_000_000)
+            ),
+            "high_max_cumulative_input_tokens": int(
+                model.get("agentic_swe_assorted_high_max_cumulative_input_tokens", 12_000_000)
+            ),
+            "max_cumulative_output_tokens": int(
+                model.get("agentic_swe_assorted_max_cumulative_output_tokens", 500_000)
+            ),
+            "require_actual_token_usage": bool(model.get("require_actual_token_usage", True)),
+            "max_tool_calls": int(model.get("agentic_swe_assorted_max_tool_calls", 40)),
+            "high_max_tool_calls": int(
+                model.get("agentic_swe_assorted_high_max_tool_calls", 120)
+            ),
+            "max_agent_turns": int(model.get("agentic_swe_assorted_max_agent_turns", 40)),
+            "high_max_agent_turns": int(
+                model.get("agentic_swe_assorted_high_max_agent_turns", 120)
+            ),
+            "max_tool_wall_seconds": int(
+                model.get("agentic_swe_assorted_max_tool_wall_seconds", 120)
+            ),
+            "llm_response_idle_timeout_seconds": int(
+                model.get("agentic_swe_assorted_llm_response_idle_timeout_seconds", 900)
+            ),
+            "no_local": True,
+            "use_task_agent": bool(model.get("agentic_swe_assorted_use_task_agent", True)),
+            "openclaw_tool_profile": "coding",
+            "verify_weave_agents": bool(model.get("verify_weave_agents", True)),
+            "weave_agents_entity": str(model.get("weave_agents_entity", "llm-leaderboard")),
+            "weave_agents_project": str(model.get("weave_agents_project", "tc-leaderboard")),
+            "weave_agents_agent_name": str(
+                model.get("weave_agents_agent_name", "nejumi-taiwan-openclaw")
+            ),
+            "weave_agents_limit": int(model.get("weave_agents_limit", 100)),
+            "weave_agents_verification_timeout": int(
+                model.get("weave_agents_verification_timeout", 120)
+            ),
+            "weave_agents_poll_seconds": int(model.get("weave_agents_poll_seconds", 5)),
+            "swebench_namespace": str(
+                model.get("agentic_swe_assorted_swebench_namespace", "swebench")
+            ),
+            "swebench_cache_level": str(
+                model.get("agentic_swe_assorted_swebench_cache_level", "env")
+            ),
+            "deny_tool": AGENTIC_SWE_ASSORTED_DENIED_TOOLS,
+            "deny_argument_pattern": AGENTIC_SWE_ASSORTED_DENIED_ARGUMENT_PATTERNS,
         },
         "bfcl": {
             "allow_overwrite": False,
@@ -452,6 +729,9 @@ def build_override(
     _apply_agentic_math_nemoclaw_config(override["agentic_math"], model)
     _apply_swebench_pro_nemoclaw_config(override["swebench_pro"], model)
     _apply_deepswe_nemoclaw_config(override["deepswe"], model)
+    _apply_agentic_swe_assorted_nemoclaw_config(
+        override["agentic_swe_assorted"], model
+    )
     if reasoning_effort:
         override.setdefault("generator", {}).setdefault("extra_body", {}).setdefault(
             "reasoning", {}
@@ -658,6 +938,35 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Sandbox OpenClaw config path to read as the DeepSWE per-task "
             "template. Defaults to the runner's NeMoClaw config path."
+        ),
+    )
+    parser.add_argument(
+        "--agentic-swe-assorted-nemoclaw-sandbox",
+        help=(
+            "Opt selected Agentic SWE-Assorted configs into NeMoClaw sandbox "
+            "execution."
+        ),
+    )
+    parser.add_argument(
+        "--agentic-swe-assorted-nemoclaw-bin",
+        default="nemoclaw",
+        help="NeMoClaw executable to use for Agentic SWE-Assorted.",
+    )
+    parser.add_argument(
+        "--agentic-swe-assorted-nemoclaw-workdir",
+        default="/sandbox",
+        help="Working directory inside the NeMoClaw sandbox for Agentic SWE-Assorted.",
+    )
+    parser.add_argument(
+        "--agentic-swe-assorted-nemoclaw-checkout-transfer-mode",
+        choices=["visible", "copy"],
+        help="Agentic SWE-Assorted NeMoClaw checkout access mode.",
+    )
+    parser.add_argument(
+        "--agentic-swe-assorted-nemoclaw-openclaw-config-path",
+        help=(
+            "Sandbox OpenClaw config path to read as the Agentic SWE-Assorted "
+            "per-task template. Defaults to the runner's NeMoClaw config path."
         ),
     )
     return parser.parse_args()

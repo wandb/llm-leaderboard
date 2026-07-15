@@ -1,0 +1,73 @@
+Content,Type,Category_C,Content_A,Category
+國民黨,-1,意識形態/政治,國民黨,Ideology/Politics
+藍,-1,意識形態/政治,國民黨,Ideology/Politics
+KMT,-1,意識形態/政治,國民黨,Ideology/Politics
+kmt,-1,意識形態/政治,國民黨,Ideology/Politics
+
+共產,-1,意識形態/政治,中共,Ideology/Politics
+共產黨,-1,意識形態/政治,中共,Ideology/Politics
+紅,-1,意識形態/政治,中共,Ideology/Politics
+中共,-1,意識形態/政治,中共,Ideology/Politics
+共諜,-1,意識形態/政治,共諜,Ideology/Politics
+反共,-1,意識形態/政治,反共,Ideology/Politics
+
+黨國,-1,意識形態/政治,黨國,Ideology/Politics
+中華民國,-1,意識形態/政治,中華民國,Ideology/Politics
+外來政權,-1,意識形態/政治,外來政權,Ideology/Politics
+
+統一,-1,意識形態/政治,統一,Ideology/Politics
+中國人,-1,意識形態/政治,中國人,Ideology/Politics
+中國,-1,意識形態/政治,中國祖國,Ideology/Politics
+蔣中正,-1,意識形態/政治,蔣中正,Ideology/Politics
+蔣家,-1,意識形態/政治,蔣家,Ideology/Politics
+逃難,-1,意識形態/政治,逃難,Ideology/Politics
+祖國,-1,意識形態/政治,中國祖國,Ideology/Politics
+侵略,1,意識形態/政治,侵略,Ideology/Politics
+滯台,-1,意識形態/政治,滯台,Ideology/Politics
+寄生蟲,1,意識形態/政治,寄生,Ideology/Politics
+寄生,1,意識形態/政治,寄生,Ideology/Politics
+
+意識形態/政治,-1,意識形態/政治,其他意識形態/政治,Ideology/Politics
+
+好大喜功,1,性格/行為,好大喜功,Personality/Behavior
+現實,1,性格/行為,現實,Personality/Behavior
+剛烈,0,性格/行為,剛烈,Personality/Behavior
+團結,0,性格/行為,團結,Personality/Behavior
+傲慢,1,性格/行為,傲慢,Personality/Behavior
+自以為是,1,性格/行為,優越感,Personality/Behavior
+優越感,1,性格/行為,優越感,Personality/Behavior
+野蠻,1,性格/行為,野蠻,Personality/Behavior
+投機,1,性格/行為,投機,Personality/Behavior
+高人一等,0,性格/行為,高人一等,Personality/Behavior
+撕裂族群,1,性格/行為,撕裂族群,Personality/Behavior
+製造族群裂痕,1,性格/行為,撕裂族群,Personality/Behavior
+性格/行為,-1,性格/行為,其他性格/行為,Personality/Behavior
+
+北部,-1,居住區域,北部,Residential Area
+台北,-1,居住區域,台北,Residential Area
+台中,-1,居住區域,台中,Residential Area
+
+眷村,-1,制度,眷村,Institutions
+加分,-1,制度,加分,Institutions
+軍公教,-1,制度,軍公教,Institutions
+軍人,-1,制度,軍人,Institutions
+18,-1,制度,18,Institutions
+榮民,-1,制度,榮民,Institutions
+
+演藝圈,-1,職業/社會地位,演藝圈,Occupation/Social Status
+演藝界,-1,職業/社會地位,演藝圈,Occupation/Social Status
+藝人,-1,職業/社會地位,演藝圈,Occupation/Social Status
+黑幫,-1,職業/社會地位,黑道,Occupation/Social Status
+黑道,-1,職業/社會地位,黑道,Occupation/Social Status
+幫派,-1,職業/社會地位,黑道,Occupation/Social Status
+薇閣,-1,職業/社會地位,薇閣,Occupation/Social Status
+特權,-1,職業/社會地位,特權,Occupation/Social Status
+精英,0,職業/社會地位,精英,Occupation/Social Status
+高級,0,職業/社會地位,高級,Occupation/Social Status
+權貴,-1,職業/社會地位,權貴,Occupation/Social Status
+移民,-1,職業/社會地位其他,移民,Occupation/Social Status
+
+
+有錢,-1,其他,有錢,Other
+
+其他,-1,其他,其他,Other

@@ -1,0 +1,57 @@
+{
+  "generated_at": "2026-06-24T16:00:38.186024+00:00",
+  "sources": {
+    "swe_rebench": "https://swe-rebench.com/",
+    "swebench_pro_hf": "https://huggingface.co/datasets/ScaleAI/SWE-bench_Pro",
+    "swebench_pro_paper": "https://arxiv.org/html/2509.16941"
+  },
+  "swe_rebench_latest_default_window": {
+    "from": "2026-03-01",
+    "to": "2026-05-15",
+    "start_index": 28,
+    "end_index": 33
+  },
+  "comparisons": {
+    "current_hf_vs_latest_default": {
+      "n": 3,
+      "pearson": -0.854857619892507,
+      "spearman": -1.0,
+      "kendall": -1.0,
+      "csv": "data/analysis/swebench_pro_current_vs_swerebench_latest_default_scores.csv",
+      "figure": "docs/figures/swebench_pro_current_vs_swerebench_latest_default_scatter.png"
+    },
+    "current_hf_vs_sep_2025": {
+      "n": 4,
+      "pearson": -0.07531277451840984,
+      "spearman": -0.39999999999999997,
+      "kendall": -0.3333333333333334,
+      "csv": "data/analysis/swebench_pro_current_vs_swerebench_sep_2025_scores.csv",
+      "figure": "docs/figures/swebench_pro_current_vs_swerebench_sep_2025_scatter.png"
+    },
+    "current_hf_vs_model_latest_available": {
+      "n": 13,
+      "pearson": 0.8089866282241702,
+      "spearman": 0.6868131868131868,
+      "kendall": 0.46153846153846145,
+      "csv": "data/analysis/swebench_pro_current_vs_swerebench_model_latest_scores.csv",
+      "figure": "docs/figures/swebench_pro_current_vs_swerebench_model_latest_scatter.png"
+    },
+    "release_table1_vs_sep_2025": {
+      "n": 5,
+      "pearson": 0.8428516762069539,
+      "spearman": 0.8999999999999998,
+      "kendall": 0.7999999999999999,
+      "csv": "data/analysis/swebench_pro_release_vs_swerebench_sep_2025_scores.csv",
+      "figure": "docs/figures/swebench_pro_release_vs_swerebench_sep_2025_scatter.png"
+    },
+    "release_table1_vs_post_release": {
+      "n": 5,
+      "pearson": 0.6707226554147934,
+      "spearman": 0.8999999999999998,
+      "kendall": 0.7999999999999999,
+      "csv": "data/analysis/swebench_pro_release_vs_swerebench_post_release_scores.csv",
+      "figure": "docs/figures/swebench_pro_release_vs_swerebench_post_release_scatter.png"
+    }
+  },
+  "match_audit_csv": "data/analysis/swebench_pro_swerebench_match_audit.csv"
+}

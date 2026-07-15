@@ -74,6 +74,7 @@ run:
   swebench: false
   swebench_pro: false
   deepswe: false
+  agentic_swe_assorted: false
   mtbench: true
   jbbq: false
   toxicity: false
@@ -296,17 +297,98 @@ deepswe:
   agent_timeout_multiplier: null
   deny_tool:
     - 'code_execution'
-    - 'process'
-    - 'process_*'
     - 'web_search'
     - 'web_fetch'
     - 'browser'
     - 'browser_*'
   deny_argument_pattern:
     - 'https?://'
+    - '\b(?:ftp|sftp|ssh)://'
+    - '\bgit\+'
+    - '\bgit\s+(?:clone|fetch|pull|ls-remote)\b'
     - '\b(curl|wget)\b'
-    - '\b(?:python(?:3)?\s+-m\s+)?pip(?:3)?\s+install\b'
-    - '\b(requests|urllib|httpx)\.'
+
+agentic_swe_assorted:
+  output_dir: 'outputs/agentic_swe_assorted'
+  results_dir: null
+  run_openclaw: true
+  dry_run: false
+  prefix: 'agentic-swe-assorted'
+  agent: 'main'
+  openclaw_model: null
+  thinking: 'high'
+  tier_weights: 'low=1,middle=1,high=1'
+  low_middle_jsonl: 'data/taiwan/swebench_lite_assorted/subsets/low_middle_v2_72.jsonl'
+  low_middle_instance_ids_json: 'data/taiwan/swebench_lite_assorted/subsets/low_middle_v2_72_instance_ids.json'
+  low_middle_limit: null
+  low_limit: null
+  middle_limit: null
+  deepswe_metadata_jsonl: 'data/taiwan/deepswe/subsets/essential_anchored_high_8_glm52max_cap100_10m_lang_balanced.jsonl'
+  deepswe_task_names_file: 'data/taiwan/deepswe/subsets/essential_anchored_high_8_glm52max_cap100_10m_lang_balanced_task_names.json'
+  deepswe_tasks_root: 'external/deep-swe/tasks'
+  deepswe_public_trials_json: 'outputs/deepswe_subset_analysis/deepswe_v1_1_trials.json'
+  deepswe_public_model: null
+  deepswe_public_effort: null
+  deepswe_budget_preflight: 'error'
+  deepswe_preflight_hard_stat: 'p75'
+  allow_deepswe_budget_mismatch: false
+  high_limit: null
+  official_swebench_repo: 'external/SWE-bench'
+  checkout_root: 'outputs/swebench_lite_checkouts'
+  skip_low_middle: false
+  skip_high: false
+  no_docker_check: false
+  swe_workers: 4
+  high_workers: 2
+  eval_workers: 4
+  swe_task_start_min_interval_seconds: 5.0
+  swe_openclaw_timeout: 900
+  high_openclaw_timeout: 1800
+  eval_timeout: 1800
+  openclaw_max_attempts: 1
+  openclaw_retry_base_seconds: 15
+  max_input_tokens: 1000000
+  max_cumulative_input_tokens: 1000000
+  high_max_cumulative_input_tokens: 12000000
+  max_cumulative_output_tokens: 500000
+  require_actual_token_usage: true
+  max_tool_calls: 40
+  high_max_tool_calls: 120
+  max_agent_turns: 40
+  high_max_agent_turns: 120
+  max_tool_wall_seconds: 120
+  llm_response_idle_timeout_seconds: 900
+  nemoclaw_bin: 'nemoclaw'
+  nemoclaw_sandbox: null
+  nemoclaw_workdir: '/sandbox'
+  nemoclaw_openclaw_config_path: '/sandbox/.openclaw/openclaw.json'
+  nemoclaw_checkout_transfer_mode: 'copy'
+  nemoclaw_checkout_transfer_timeout: 600
+  openclaw_tool_profile: 'coding'
+  use_task_agent: true
+  task_agent_prefix: 'tw-swe-assorted'
+  session_prefix: 'agentic-swe-assorted'
+  verify_weave_agents: true
+  weave_agents_entity: 'llm-leaderboard'
+  weave_agents_project: 'tc-leaderboard'
+  weave_agents_agent_name: 'nejumi-taiwan-openclaw'
+  weave_agents_limit: 100
+  weave_agents_verification_timeout: 120
+  weave_agents_poll_seconds: 5
+  swebench_namespace: 'swebench'
+  swebench_cache_level: 'env'
+  deny_tool:
+    - 'code_execution'
+    - 'web_search'
+    - 'web_fetch'
+    - 'browser'
+    - 'browser_*'
+  deny_argument_pattern:
+    - 'https?://'
+    - '\b(?:ftp|sftp|ssh)://'
+    - '\bgit\+'
+    - '\bgit\s+(?:clone|fetch|pull|ls-remote)\b'
+    - '\b(curl|wget)\b'
 
 agentic_math:
   artifacts_path: 'llm-leaderboard/tc-leaderboard/agentic-math-olymmath-hard-zh-tw:production'

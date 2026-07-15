@@ -39,6 +39,12 @@ from weave_agents_native_trace import (
     env_default_project,
     verify_native_weave_agents_trace,
 )
+from openclaw_model_params import (
+    apply_openclaw_model_overrides,
+    apply_openclaw_model_params,
+    openclaw_model_overrides_from_args,
+    openclaw_model_params_from_args,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -54,7 +60,6 @@ OPENCLAW_BUDGET_GUARD_PLUGIN_VERSION = "0.1.0"
 OPENCLAW_BUDGET_GUARD_BLOCK_PREFIX = "NEJUMI_BUDGET_GUARD_BLOCKED"
 SCOREABLE_OPENCLAW_DISQUALIFIED_REASONS = {
     "runtime_budget_exceeded",
-    "tool_policy_violation",
     "conversation_order_violation",
     "time_up",
 }
@@ -74,8 +79,12 @@ DEFAULT_DENIED_ARGUMENT_PATTERNS = [
     r"\bgit\+",
     r"\bgit\s+(?:clone|fetch|pull|ls-remote)\b",
     r"\b(curl|wget)\b",
-    r"\b(requests|urllib|httpx)\.",
 ]
+
+
+def is_process_control_tool_name(value: Any) -> bool:
+    normalized = str(value).strip().lower()
+    return normalized == "process" or normalized.startswith("process_")
 
 
 class TaskStartLimiter:
@@ -192,6 +201,7 @@ def build_cache_key(row: dict[str, Any], prompt_text: str, args: argparse.Namesp
         "deny_tools": effective_deny_tools(args),
         "deny_argument_patterns": effective_deny_argument_patterns(args),
         "openclaw_config_source": openclaw_config_cache_source(args),
+        "openclaw_model_params": openclaw_model_params_from_args(args),
         "max_input_tokens": int(getattr(args, "max_input_tokens", 0) or 0),
         "max_cumulative_input_tokens": resolved_max_cumulative_input_tokens(args),
         "max_cumulative_output_tokens": resolved_max_cumulative_output_tokens(args),
@@ -446,7 +456,13 @@ def protocol_benchmark_id(row: dict[str, Any]) -> str:
 
 
 def effective_deny_tools(args: argparse.Namespace) -> list[str]:
-    return sorted(set(str(item) for item in (getattr(args, "deny_tool", None) or DEFAULT_DENIED_TOOLS)))
+    return sorted(
+        set(
+            str(item)
+            for item in (getattr(args, "deny_tool", None) or DEFAULT_DENIED_TOOLS)
+            if not is_process_control_tool_name(item)
+        )
+    )
 
 
 def effective_deny_argument_patterns(args: argparse.Namespace) -> list[str]:
@@ -703,6 +719,10 @@ def register_nemoclaw_gateway_task_agent(
             "max_cumulative_input_tokens": resolved_max_cumulative_input_tokens(args),
             "max_cumulative_output_tokens": resolved_max_cumulative_output_tokens(args),
             "require_actual_token_usage": bool(getattr(args, "require_actual_token_usage", False)),
+            "deny_tools": effective_deny_tools(args),
+            "deny_argument_patterns": effective_deny_argument_patterns(args),
+            "openclaw_model_overrides": openclaw_model_overrides_from_args(args),
+            "openclaw_model_params": openclaw_model_params_from_args(args),
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -739,12 +759,37 @@ session_prefix = str(budget.get("session_prefix") or "")
 max_cumulative_input_tokens = int(budget.get("max_cumulative_input_tokens") or 0)
 max_cumulative_output_tokens = int(budget.get("max_cumulative_output_tokens") or 0)
 require_actual_token_usage = bool(budget.get("require_actual_token_usage"))
+openclaw_model_params = budget.get("openclaw_model_params")
+if not isinstance(openclaw_model_params, dict):
+    openclaw_model_params = {}
+openclaw_model_overrides = budget.get("openclaw_model_overrides")
+if not isinstance(openclaw_model_overrides, dict):
+    openclaw_model_overrides = {}
+deny_argument_patterns = [
+    str(item)
+    for item in budget.get("deny_argument_patterns", [])
+    if isinstance(item, str) and item
+]
+deny_tools_for_guard = [
+    str(item)
+    for item in budget.get("deny_tools", [])
+    if isinstance(item, str) and item
+]
 session_key_prefixes = [
     session_prefix,
     f"agent:{agent_id}:{session_prefix}",
 ]
 
 config = json.loads(config_path.read_text(encoding="utf-8"))
+
+def deep_merge_dict(base, override):
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = deep_merge_dict(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
 
 def positive_int(value):
     return int(value) if isinstance(value, int) and value > 0 else 0
@@ -760,7 +805,11 @@ def context_cap_value(existing, context_window, cap):
     return min(candidates)
 
 def resolve_context_cap(config, model, max_input_tokens):
-    if max_input_tokens <= 0 or not model or "/" not in model:
+    if (
+        max_input_tokens <= 0
+        and not openclaw_model_params
+        and not openclaw_model_overrides
+    ) or not model or "/" not in model:
         return None
     provider_id, model_id = model.split("/", 1)
     if not provider_id or not model_id:
@@ -780,13 +829,35 @@ def resolve_context_cap(config, model, max_input_tokens):
             target = item
             break
     if target is None:
-        target = {}
-    context_tokens = context_cap_value(
-        target.get("contextTokens"),
-        target.get("contextWindow"),
-        max_input_tokens,
-    )
-    return {"provider": provider_id, "model": model_id, "contextTokens": context_tokens}
+        target = {"id": model_id, "name": model_id}
+        models.append(target)
+    overrides = None
+    if openclaw_model_overrides:
+        merged_target = deep_merge_dict(target, openclaw_model_overrides)
+        target.clear()
+        target.update(merged_target)
+        overrides = openclaw_model_overrides
+    context_tokens = None
+    if max_input_tokens > 0:
+        context_tokens = context_cap_value(
+            target.get("contextTokens"),
+            target.get("contextWindow"),
+            max_input_tokens,
+        )
+        target.update({"contextTokens": context_tokens})
+    params = None
+    if openclaw_model_params:
+        existing = target.get("params") if isinstance(target.get("params"), dict) else {}
+        params = deep_merge_dict(existing, openclaw_model_params)
+        target["params"] = params
+    result = {"provider": provider_id, "model": model_id}
+    if overrides is not None:
+        result["overrides"] = overrides
+    if context_tokens is not None:
+        result["contextTokens"] = context_tokens
+    if params is not None:
+        result["params"] = params
+    return result
 
 context_cap = resolve_context_cap(config, model, max_input_tokens)
 def run_retries(max_agent_turns):
@@ -844,6 +915,17 @@ for prefix in session_key_prefixes:
     if prefix and prefix not in existing_session_key_prefixes:
         existing_session_key_prefixes.append(prefix)
 
+def is_process_control_tool(value):
+    normalized = str(value).strip().lower()
+    return normalized == "process" or normalized.startswith("process_")
+
+current_deny_tools = [
+    str(item)
+    for item in deny_tools_for_guard
+    if isinstance(item, str) and item and not is_process_control_tool(item)
+]
+current_deny_argument_patterns = list(deny_argument_patterns)
+
 budget_guard["config"] = {
     "enabled": True,
     "maxToolCalls": max_tool_calls,
@@ -853,6 +935,8 @@ budget_guard["config"] = {
     "requireActualTokenUsage": require_actual_token_usage,
     "agentIds": existing_agent_ids,
     "sessionKeyPrefixes": existing_session_key_prefixes,
+    "denyTools": current_deny_tools,
+    "denyArgumentPatterns": current_deny_argument_patterns,
     "blockReasonPrefix": "NEJUMI_BUDGET_GUARD_BLOCKED",
 }
 budget_guard["hooks"] = {
@@ -1014,8 +1098,13 @@ def cleanup_registered_nemoclaw_gateway_agents() -> None:
                 agent_id,
                 timeout=NEMOCLAW_GATEWAY_CLEANUP_PER_AGENT_TIMEOUT_SEC,
             )
-        except Exception:
-            pass
+        except BaseException as exc:
+            print(
+                "WARNING: ignored NeMoClaw task-agent cleanup failure for "
+                f"{agent_id}: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
 
 
 atexit.register(cleanup_registered_nemoclaw_gateway_agents)
@@ -1046,6 +1135,8 @@ def configure_openclaw_budget_guard(
     max_cumulative_input_tokens = resolved_max_cumulative_input_tokens(args)
     max_cumulative_output_tokens = resolved_max_cumulative_output_tokens(args)
     require_actual_token_usage = bool(getattr(args, "require_actual_token_usage", False))
+    deny_tools = effective_deny_tools(args)
+    deny_argument_patterns = effective_deny_argument_patterns(args)
     if (
         max_tool_calls <= 0
         and max_agent_turns <= 0
@@ -1053,6 +1144,8 @@ def configure_openclaw_budget_guard(
         and max_cumulative_input_tokens <= 0
         and max_cumulative_output_tokens <= 0
         and not require_actual_token_usage
+        and not deny_tools
+        and not deny_argument_patterns
     ):
         return
 
@@ -1083,6 +1176,8 @@ def configure_openclaw_budget_guard(
             session_prefix,
             f"agent:{agent_id}:{session_prefix}",
         ],
+        "denyTools": deny_tools,
+        "denyArgumentPatterns": deny_argument_patterns,
         "blockReasonPrefix": OPENCLAW_BUDGET_GUARD_BLOCK_PREFIX,
     }
     entry["hooks"] = {
@@ -1134,7 +1229,9 @@ def bounded_context_tokens(existing: Any, context_window: Any, max_input_tokens:
 
 def configure_openclaw_context_tokens(config: dict[str, Any], args: argparse.Namespace) -> dict[str, Any] | None:
     max_input_tokens = int(getattr(args, "max_input_tokens", 0) or 0)
-    if max_input_tokens <= 0:
+    model_overrides = openclaw_model_overrides_from_args(args)
+    model_params = openclaw_model_params_from_args(args)
+    if max_input_tokens <= 0 and not model_params and not model_overrides:
         return None
     provider_id, model_id = split_openclaw_model_ref(str(getattr(args, "model", "") or ""))
     if not provider_id or not model_id:
@@ -1161,16 +1258,24 @@ def configure_openclaw_context_tokens(config: dict[str, Any], args: argparse.Nam
     if target is None:
         target = {"id": model_id, "name": model_id}
         model_entries.append(target)
-    target["contextTokens"] = bounded_context_tokens(
-        target.get("contextTokens"),
-        target.get("contextWindow"),
-        max_input_tokens,
-    )
-    return {
+    result = {
         "provider": provider_id,
         "model": model_id,
-        "contextTokens": target["contextTokens"],
     }
+    applied_overrides = apply_openclaw_model_overrides(target, model_overrides)
+    if applied_overrides is not None:
+        result["overrides"] = applied_overrides
+    if max_input_tokens > 0:
+        target["contextTokens"] = bounded_context_tokens(
+            target.get("contextTokens"),
+            target.get("contextWindow"),
+            max_input_tokens,
+        )
+        result["contextTokens"] = target["contextTokens"]
+    applied_params = apply_openclaw_model_params(target, model_params)
+    if applied_params is not None:
+        result["params"] = applied_params
+    return result
 
 
 def openclaw_run_retries_for_turn_cap(args: argparse.Namespace) -> dict[str, int] | None:
@@ -1426,6 +1531,22 @@ def is_outer_openclaw_timeout(
 def sidecar_provider_timeout(sidecar: dict[str, Any] | None) -> bool:
     if not isinstance(sidecar, dict):
         return False
+    runtime_budget = sidecar.get("runtime_budget")
+    live = runtime_budget.get("live") if isinstance(runtime_budget, dict) else None
+    if isinstance(live, dict):
+        try:
+            provider_timeout_count = int(live.get("live_provider_timeout_count") or 0)
+        except (TypeError, ValueError):
+            provider_timeout_count = 0
+        if provider_timeout_count > 0:
+            return True
+        if live.get("reason") == "live_provider_timeout":
+            return True
+        if live.get("interrupt_reason") == "live_provider_timeout":
+            return True
+        exceeded_limits = live.get("exceeded_limits")
+        if isinstance(exceeded_limits, list) and "live_provider_timeout" in exceeded_limits:
+            return True
     stdout_json = sidecar.get("stdout_json")
     if not isinstance(stdout_json, dict):
         return False
@@ -1440,10 +1561,27 @@ def sidecar_provider_timeout(sidecar: dict[str, Any] | None) -> bool:
     )
 
 
+def sidecar_llm_response_idle_timeout(sidecar: dict[str, Any] | None) -> bool:
+    if not isinstance(sidecar, dict):
+        return False
+    runtime_budget = sidecar.get("runtime_budget")
+    live = runtime_budget.get("live") if isinstance(runtime_budget, dict) else None
+    if not isinstance(live, dict):
+        return False
+    if live.get("reason") == "llm_response_idle_timeout":
+        return True
+    if live.get("interrupt_reason") == "llm_response_idle_timeout":
+        return True
+    exceeded_limits = live.get("exceeded_limits")
+    return isinstance(exceeded_limits, list) and "llm_response_idle_timeout" in exceeded_limits
+
+
 def is_transient_openclaw_failure(
     result: subprocess.CompletedProcess[str],
     sidecar: dict[str, Any] | None,
 ) -> bool:
+    if sidecar_provider_timeout(sidecar):
+        return True
     if isinstance(sidecar, dict):
         if sidecar.get("tool_policy_ok") is False or sidecar.get("tool_policy_violations"):
             return False
@@ -1572,7 +1710,66 @@ def normalize_prompt_newlines(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
-def build_prompt(row: dict[str, Any], max_tool_wall_seconds: int | None = DEFAULT_MAX_TOOL_WALL_SECONDS) -> str:
+def _positive_int_or_none(value: Any) -> int | None:
+    try:
+        number = int(value or 0)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
+def _runtime_budget_lines(
+    *,
+    max_tool_calls: int | None,
+    max_agent_turns: int | None,
+    max_input_tokens: int | None,
+    max_cumulative_input_tokens: int | None,
+    max_cumulative_output_tokens: int | None,
+) -> list[str]:
+    limits: list[str] = []
+    if max_tool_calls:
+        limits.append(f"- Maximum tool calls: {max_tool_calls}")
+    if max_agent_turns:
+        limits.append(f"- Maximum agent turns: {max_agent_turns}")
+    if max_input_tokens:
+        limits.append(f"- Per-turn input-token cap: {max_input_tokens}")
+    if max_cumulative_input_tokens:
+        limits.append(f"- Cumulative input-token cap: {max_cumulative_input_tokens}")
+    if max_cumulative_output_tokens:
+        limits.append(f"- Cumulative output-token cap: {max_cumulative_output_tokens}")
+    if not limits:
+        return []
+
+    guidance = [
+        "",
+        "## Runtime Budget",
+        "",
+        *limits,
+        "",
+        "Treat these as hard evaluation limits. Spend the early part of the run on targeted orientation, then edit files before exhausting the tool budget.",
+        "Prefer high-signal searches and focused file reads. Avoid repeated broad searches after you have identified the relevant implementation and tests.",
+    ]
+    if max_tool_calls:
+        orientation_budget = max(5, min(max_tool_calls // 3, max_tool_calls - 5))
+        guidance.append(
+            f"As a planning rule, aim to finish repository orientation within about {orientation_budget} tool calls and reserve the remaining calls for patching and verification."
+        )
+    guidance.append(
+        "If the remaining budget is low, make the best minimal patch from the evidence already gathered instead of continuing exploratory reads."
+    )
+    return guidance
+
+
+def build_prompt(
+    row: dict[str, Any],
+    max_tool_wall_seconds: int | None = DEFAULT_MAX_TOOL_WALL_SECONDS,
+    *,
+    max_tool_calls: int | None = None,
+    max_agent_turns: int | None = None,
+    max_input_tokens: int | None = None,
+    max_cumulative_input_tokens: int | None = None,
+    max_cumulative_output_tokens: int | None = None,
+) -> str:
     benchmark_name = str(row.get("benchmark_name") or "SWE-bench Pro")
     issue_categories = list_text(row.get("issue_categories"))
     selected_tests = list_text(row.get("selected_test_files_to_run"))
@@ -1613,6 +1810,15 @@ def build_prompt(row: dict[str, Any], max_tool_wall_seconds: int | None = DEFAUL
     if before_cmd:
         parts.extend(["", "## Evaluation Setup Hint", "", before_cmd])
     parts.extend(
+        _runtime_budget_lines(
+            max_tool_calls=_positive_int_or_none(max_tool_calls),
+            max_agent_turns=_positive_int_or_none(max_agent_turns),
+            max_input_tokens=_positive_int_or_none(max_input_tokens),
+            max_cumulative_input_tokens=_positive_int_or_none(max_cumulative_input_tokens),
+            max_cumulative_output_tokens=_positive_int_or_none(max_cumulative_output_tokens),
+        )
+    )
+    parts.extend(
         [
             "",
             "## Agent Workflow",
@@ -1624,6 +1830,8 @@ def build_prompt(row: dict[str, Any], max_tool_wall_seconds: int | None = DEFAUL
             f"Each shell execution has a wall-clock limit of {wall_limit_text}.",
             "Keep commands targeted: prefer `rg`, focused file reads, selected tests, and small verification commands.",
             "Do not run broad repository-wide builds, servers, notebooks, or background jobs unless required by the issue.",
+            "Language runtimes and common tools required by the selected task are preinstalled on PATH by the harness.",
+            "Do not download or install language runtimes, compilers, or toolchains during the task.",
             "Package installs with `pip install ...` are allowed when needed to run local tests.",
             "Do not install from explicit git URLs, HTTP(S) URLs, or other remote source URLs.",
             "Do not use package managers as web search or data-fetch tools.",
@@ -1639,6 +1847,7 @@ def build_prompt(row: dict[str, Any], max_tool_wall_seconds: int | None = DEFAUL
             "Keep the change minimal and avoid unrelated formatting or dependency churn.",
             "Use local shell execution in the target checkout; do not use remote code interpreter tools.",
             "Do not use web search, browser, HTTP, or any external internet lookup.",
+            "Do not use `curl`, `wget`, `git clone`, `git fetch`, or `git pull`; all necessary source is already in the checkout.",
             "If an install command is needed, keep it targeted to the repository or its normal test dependencies.",
             "Do not write `FINAL ANSWER`, `ANSWER:`, or any equivalent final-answer marker before all tool use is complete.",
             "Do not include a final-answer marker in the same assistant turn as a tool call.",
@@ -2159,7 +2368,15 @@ def run_openclaw_for_task(
     args: argparse.Namespace,
 ) -> dict[str, Any]:
     task_dir.mkdir(parents=True, exist_ok=True)
-    prompt_text = build_prompt(row, max_tool_wall_seconds=int(getattr(args, "max_tool_wall_seconds", 0) or 0))
+    prompt_text = build_prompt(
+        row,
+        max_tool_wall_seconds=int(getattr(args, "max_tool_wall_seconds", 0) or 0),
+        max_tool_calls=getattr(args, "max_tool_calls", None),
+        max_agent_turns=getattr(args, "max_agent_turns", None),
+        max_input_tokens=getattr(args, "max_input_tokens", None),
+        max_cumulative_input_tokens=getattr(args, "max_cumulative_input_tokens", None),
+        max_cumulative_output_tokens=getattr(args, "max_cumulative_output_tokens", None),
+    )
     prompt_hash = sha256_text(prompt_text)
     cache_key = build_cache_key(row, prompt_text, args)
     prompt_file = task_dir / "prompt.md"
@@ -2214,6 +2431,26 @@ def run_openclaw_for_task(
             "--max-tool-wall-seconds",
             str(int(getattr(args, "max_tool_wall_seconds", 0) or 0)),
         ]
+        final_idle_salvage_seconds = float(
+            getattr(args, "final_assistant_idle_salvage_seconds", 0.0) or 0.0
+        )
+        if final_idle_salvage_seconds > 0:
+            command.extend(
+                [
+                    "--final-assistant-idle-salvage-seconds",
+                    str(final_idle_salvage_seconds),
+                ]
+            )
+        llm_response_idle_timeout_seconds = float(
+            getattr(args, "llm_response_idle_timeout_seconds", 0.0) or 0.0
+        )
+        if llm_response_idle_timeout_seconds > 0:
+            command.extend(
+                [
+                    "--llm-response-idle-timeout-seconds",
+                    str(llm_response_idle_timeout_seconds),
+                ]
+            )
         if bool(getattr(args, "require_actual_token_usage", False)):
             command.append("--require-actual-token-usage")
         if openclaw_config_path:
@@ -2230,6 +2467,10 @@ def run_openclaw_for_task(
             command.extend(["--nemoclaw-sandbox", str(args.nemoclaw_sandbox)])
             nemoclaw_workdir = openclaw_nemoclaw_workdir(checkout_dir, args)
             command.extend(["--nemoclaw-workdir", str(nemoclaw_workdir)])
+            for path_entry in getattr(args, "nemoclaw_extra_path", None) or []:
+                command.extend(["--nemoclaw-extra-path", str(path_entry)])
+            for pythonpath_entry in getattr(args, "nemoclaw_extra_pythonpath", None) or []:
+                command.extend(["--nemoclaw-extra-pythonpath", str(pythonpath_entry)])
         if args.profile:
             command.extend(["--profile", args.profile])
         if args.model:
@@ -2303,14 +2544,45 @@ def run_openclaw_for_task(
             raise RuntimeError(
                 f"Diagnostic Weave sidecar logging failed for {row['instance_id']}"
             )
+        if sidecar_provider_timeout(sidecar):
+            append_transient_failure(
+                task_dir,
+                {
+                    "instance_id": row["instance_id"],
+                    "attempt_id": attempt_id,
+                    "attempt_number": attempt_number,
+                    "max_attempts": max_attempts,
+                    "returncode": result.returncode,
+                    "openclaw_result_path": str(sidecar_path),
+                    "failure_text": sidecar_error_text(
+                        sidecar,
+                        openclaw_failure_text(result, sidecar),
+                    ),
+                    "failure_reason": "provider_timeout",
+                    "exhausted": attempt_number >= max_attempts,
+                },
+            )
+            if attempt_number < max_attempts:
+                delay = max(0.0, float(args.openclaw_retry_base_seconds)) * attempt_number
+                print(
+                    f"OpenClaw provider timeout for {row['instance_id']} on attempt "
+                    f"{attempt_number}/{max_attempts}; retrying after {delay:.1f}s.",
+                    flush=True,
+                )
+                if delay:
+                    time.sleep(delay)
+                continue
+            metadata["openclaw_disqualified_reason"] = "provider_transient_exhausted"
+            metadata["runtime_budget"] = sidecar.get("runtime_budget") if isinstance(sidecar, dict) else {}
+            print(
+                f"OpenClaw provider timeout exhausted for {row['instance_id']} after "
+                f"{attempt_number}/{max_attempts} attempts; recording an empty patch.",
+                flush=True,
+            )
+            break
         if is_runtime_budget_exceeded(sidecar):
             metadata["openclaw_disqualified_reason"] = "runtime_budget_exceeded"
             metadata["runtime_budget"] = sidecar.get("runtime_budget")
-            break
-        if isinstance(sidecar, dict) and (
-            sidecar.get("tool_policy_ok") is False or sidecar.get("tool_policy_violations")
-        ):
-            metadata["openclaw_disqualified_reason"] = "tool_policy_violation"
             break
         if sidecar_conversation_order_failed(sidecar):
             metadata["openclaw_disqualified_reason"] = "conversation_order_violation"
@@ -2385,6 +2657,15 @@ def run_openclaw_for_task(
             print(
                 f"OpenClaw transient failure exhausted for {row['instance_id']} after "
                 f"{attempt_number}/{max_attempts} attempts; recording an empty patch.",
+                flush=True,
+            )
+            break
+        if isinstance(sidecar, dict) and (
+            sidecar.get("tool_policy_ok") is False or sidecar.get("tool_policy_violations")
+        ):
+            print(
+                f"OpenClaw reported tool-policy blocks for {row['instance_id']}; "
+                "keeping the run scoreable so the agent's patch can be evaluated.",
                 flush=True,
             )
             break
@@ -2617,6 +2898,18 @@ def parse_args() -> argparse.Namespace:
         default=300,
         help="Timeout in seconds for extracting copied checkouts in the sandbox.",
     )
+    parser.add_argument(
+        "--nemoclaw-extra-path",
+        action="append",
+        default=[],
+        help="Extra sandbox PATH entry to prepend for OpenClaw protocol invocations.",
+    )
+    parser.add_argument(
+        "--nemoclaw-extra-pythonpath",
+        action="append",
+        default=[],
+        help="Extra sandbox PYTHONPATH entry to prepend for OpenClaw protocol invocations.",
+    )
     parser.add_argument("--deny-tool", action="append")
     parser.add_argument("--deny-argument-pattern", action="append")
     parser.add_argument("--use-task-agent", action=argparse.BooleanOptionalAction, default=True)
@@ -2696,6 +2989,47 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--openclaw-model-params-json",
+        "--openclaw-extra-body-json",
+        dest="openclaw_model_params_json",
+        help=(
+            "JSON object merged into the selected OpenClaw model entry's params. "
+            "For OpenRouter provider routing, pass e.g. "
+            "'{\"provider\":{\"order\":[\"provider-name\"],\"only\":[\"provider-name\"],"
+            "\"allow_fallbacks\":false}}'."
+        ),
+    )
+    parser.add_argument(
+        "--openclaw-model-overrides-json",
+        dest="openclaw_model_overrides_json",
+        help=(
+            "JSON object merged into the selected OpenClaw model entry itself. "
+            "Use this for OpenClaw model metadata such as {\"maxTokens\":4096}; "
+            "provider routing belongs in --openclaw-model-params-json."
+        ),
+    )
+    parser.add_argument(
+        "--final-assistant-idle-salvage-seconds",
+        type=float,
+        default=60.0,
+        help=(
+            "If OpenClaw has already written a final assistant message and remains idle "
+            "for this many seconds, terminate the stuck process and score the saved "
+            "sidecar. 0 disables this salvage path."
+        ),
+    )
+    parser.add_argument(
+        "--llm-response-idle-timeout-seconds",
+        type=float,
+        default=0.0,
+        help=(
+            "If the live OpenClaw session is waiting after a tool result for this "
+            "many seconds without a new assistant response, interrupt as a "
+            "provider-side idle timeout and retry if attempts remain. "
+            "0 disables this watchdog."
+        ),
+    )
+    parser.add_argument(
         "--openclaw-max-attempts",
         type=int,
         default=3,
@@ -2771,7 +3105,15 @@ def main() -> None:
         print(f"[{index}/{len(rows)}] {instance_id}")
         task_dir = args.output_dir / safe_id(instance_id)
         task_dir.mkdir(parents=True, exist_ok=True)
-        prompt_text = build_prompt(row, max_tool_wall_seconds=int(getattr(args, "max_tool_wall_seconds", 0) or 0))
+        prompt_text = build_prompt(
+            row,
+            max_tool_wall_seconds=int(getattr(args, "max_tool_wall_seconds", 0) or 0),
+            max_tool_calls=getattr(args, "max_tool_calls", None),
+            max_agent_turns=getattr(args, "max_agent_turns", None),
+            max_input_tokens=getattr(args, "max_input_tokens", None),
+            max_cumulative_input_tokens=getattr(args, "max_cumulative_input_tokens", None),
+            max_cumulative_output_tokens=getattr(args, "max_cumulative_output_tokens", None),
+        )
         cache_key = build_cache_key(row, prompt_text, args)
         if not args.redo:
             cached_patch = load_cached_patch_record(
@@ -2881,6 +3223,11 @@ def main() -> None:
             prompt_text = build_prompt(
                 row,
                 max_tool_wall_seconds=int(getattr(args, "max_tool_wall_seconds", 0) or 0),
+                max_tool_calls=getattr(args, "max_tool_calls", None),
+                max_agent_turns=getattr(args, "max_agent_turns", None),
+                max_input_tokens=getattr(args, "max_input_tokens", None),
+                max_cumulative_input_tokens=getattr(args, "max_cumulative_input_tokens", None),
+                max_cumulative_output_tokens=getattr(args, "max_cumulative_output_tokens", None),
             )
             cache_key = build_cache_key(row, prompt_text, args)
             cached_patch = load_cached_patch_record(

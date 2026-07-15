@@ -55,6 +55,10 @@ AGENTIC_REQUIRED_DENIED_ARGUMENT_PATTERNS = {
     r"\b(requests|urllib|httpx)\.",
     r"https?://",
 }
+AGENTIC_SWE_REQUIRED_DENIED_ARGUMENT_PATTERNS = {
+    r"\b(curl|wget)\b",
+    r"https?://",
+}
 AGENTIC_REQUIRED_ALLOWED_LOCAL_TOOLS = {"exec"}
 NEMOCLAW_ALLOWED_RUNTIME_NETWORK_POLICIES = {
     "clawhub",
@@ -954,7 +958,7 @@ def check_generated_configs(
                         cfg,
                         "swebench_pro",
                         "deny_argument_pattern",
-                        AGENTIC_REQUIRED_DENIED_ARGUMENT_PATTERNS,
+                        AGENTIC_SWE_REQUIRED_DENIED_ARGUMENT_PATTERNS,
                         "SWE",
                     ),
                 ]

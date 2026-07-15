@@ -53,6 +53,20 @@ const CONFIG_SCHEMA = {
       },
       default: [],
     },
+    denyTools: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+      default: [],
+    },
+    denyArgumentPatterns: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+      default: [],
+    },
     blockReasonPrefix: {
       type: "string",
       default: "NEJUMI_BUDGET_GUARD_BLOCKED",
@@ -111,6 +125,8 @@ function normalizeConfig(config) {
     maxAgentTurns: asPositiveInteger(raw.maxAgentTurns),
     agentIds: asStringArray(raw.agentIds),
     sessionKeyPrefixes: asStringArray(raw.sessionKeyPrefixes),
+    denyTools: asStringArray(raw.denyTools || raw.deny_tools),
+    denyArgumentPatterns: asStringArray(raw.denyArgumentPatterns || raw.deny_argument_patterns),
     blockReasonPrefix: String(raw.blockReasonPrefix || "NEJUMI_BUDGET_GUARD_BLOCKED"),
     stateRoot: asString(raw.stateRoot),
     auditFile: asString(raw.auditFile),
@@ -145,6 +161,10 @@ function hasBudgetKeys(value) {
     "requireActualTokenUsage" in value ||
     "agentIds" in value ||
     "sessionKeyPrefixes" in value ||
+    "denyTools" in value ||
+    "deny_tools" in value ||
+    "denyArgumentPatterns" in value ||
+    "deny_argument_patterns" in value ||
     "blockReasonPrefix" in value ||
     "stateRoot" in value ||
     "auditFile" in value
@@ -420,6 +440,112 @@ function toolName(event) {
   return String(event.toolName || event.name || "");
 }
 
+function wildcardToRegExp(pattern) {
+  const escaped = String(pattern).replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
+  return new RegExp(`^${escaped.replace(/\*/g, ".*").replace(/\?/g, ".")}$`, "i");
+}
+
+function toolNameMatches(value, pattern) {
+  const tool = String(value || "").toLowerCase();
+  const rawPattern = String(pattern || "");
+  const normalizedPattern = rawPattern.toLowerCase();
+  if (!tool || !normalizedPattern) {
+    return false;
+  }
+  if (normalizedPattern.startsWith("re:")) {
+    try {
+      return new RegExp(rawPattern.slice(3), "i").test(tool);
+    } catch {
+      return false;
+    }
+  }
+  if (normalizedPattern.includes("*") || normalizedPattern.includes("?")) {
+    return wildcardToRegExp(rawPattern).test(tool);
+  }
+  return tool === normalizedPattern;
+}
+
+function toolArgumentsText(value) {
+  if (value == null) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => toolArgumentsText(item)).join("\n");
+  }
+  if (typeof value === "object") {
+    return Object.values(value).map((item) => toolArgumentsText(item)).join("\n");
+  }
+  return String(value);
+}
+
+function toolArgumentsMayExecute(name) {
+  const normalized = String(name || "").toLowerCase();
+  const executableNames = new Set([
+    "bash",
+    "code_execution",
+    "exec",
+    "python",
+    "python_exec",
+    "shell",
+    "terminal",
+  ]);
+  if (executableNames.has(normalized)) {
+    return true;
+  }
+  return ["exec", "shell", "terminal", "bash"].some((token) => normalized.includes(token));
+}
+
+function policyViolation(config, event) {
+  const name = toolName(event);
+  for (const pattern of config.denyTools) {
+    if (toolNameMatches(name, pattern)) {
+      return {
+        type: "denied_tool",
+        pattern,
+      };
+    }
+  }
+  if (!toolArgumentsMayExecute(name)) {
+    return null;
+  }
+  const argsText = toolArgumentsText(
+    event?.arguments ?? event?.args ?? event?.input ?? event?.params ?? event?.parameters,
+  );
+  for (const pattern of config.denyArgumentPatterns) {
+    try {
+      if (new RegExp(pattern, "i").test(argsText)) {
+        return {
+          type: "denied_argument_pattern",
+          pattern,
+        };
+      }
+    } catch {
+      // Invalid regexes are ignored by the hook rather than weakening unrelated
+      // budget enforcement. The post-run verifier still records configured policy.
+    }
+  }
+  return null;
+}
+
+function policyBlockResult(config, violation, event, ctx) {
+  const reason = [
+    config.blockReasonPrefix,
+    "tool_policy_violation",
+    `type=${violation.type}`,
+    `pattern=${encodeURIComponent(String(violation.pattern || ""))}`,
+    `agentId=${agentId(event, ctx) || "unknown"}`,
+    `sessionKey=${sessionKey(event, ctx) || "unknown"}`,
+    `toolName=${toolName(event) || "n/a"}`,
+  ].join(" ");
+  return {
+    block: true,
+    blockReason: reason,
+  };
+}
+
 function blockResult(config, kind, observed, limit, event, ctx) {
   const reason = [
     config.blockReasonPrefix,
@@ -502,8 +628,9 @@ function pluginConfig(api, event, ctx) {
 function handleBeforeToolCall(api, event, ctx, phase) {
   const config = pluginConfig(api, event, ctx);
   const inScope = scoped(config, event, ctx);
-  if (!inScope || config.maxToolCalls <= 0) {
-    if (config.maxToolCalls > 0 || config.maxAgentTurns > 0) {
+  const hasPolicy = config.denyTools.length > 0 || config.denyArgumentPatterns.length > 0;
+  if (!inScope || (config.maxToolCalls <= 0 && !hasPolicy)) {
+    if (config.maxToolCalls > 0 || config.maxAgentTurns > 0 || hasPolicy) {
       writeAudit(config, `${phase}_skip`, event, ctx, { inScope });
     }
     return undefined;
@@ -512,6 +639,33 @@ function handleBeforeToolCall(api, event, ctx, phase) {
     const id = toolCallId(event, ctx);
     if (id && state.seenToolCallIds.has(id)) {
       writeAudit(config, `${phase}_seen`, event, ctx, {
+        state: serializeRunState(state),
+      });
+      return undefined;
+    }
+    const violation = policyViolation(config, event);
+    if (violation) {
+      state.blocked = true;
+      state.blockedKind = "tool_policy";
+      state.blockedObserved = 1;
+      state.blockedLimit = 0;
+      if (id) {
+        state.seenToolCallIds.add(id);
+      }
+      const result = policyBlockResult(config, violation, event, ctx);
+      writeAudit(config, `${phase}_policy_block`, event, ctx, {
+        result,
+        violation,
+        state: serializeRunState(state),
+      });
+      return result;
+    }
+    if (config.maxToolCalls <= 0) {
+      if (id) {
+        state.seenToolCallIds.add(id);
+      }
+      writeAudit(config, `${phase}_allow`, event, ctx, {
+        observed: state.toolCalls,
         state: serializeRunState(state),
       });
       return undefined;
@@ -544,7 +698,8 @@ function handleBeforeToolCall(api, event, ctx, phase) {
 function handleBeforeAgentReplyAudit(api, event, ctx) {
   const config = pluginConfig(api, event, ctx);
   const inScope = scoped(config, event, ctx);
-  if (config.maxAgentTurns > 0 || config.maxToolCalls > 0) {
+  const hasPolicy = config.denyTools.length > 0 || config.denyArgumentPatterns.length > 0;
+  if (config.maxAgentTurns > 0 || config.maxToolCalls > 0 || hasPolicy) {
     writeAudit(config, inScope ? "before_agent_reply_seen" : "before_agent_reply_skip", event, ctx, {
       inScope,
       cleanedBodyLength: String(event?.cleanedBody || "").length,
@@ -572,8 +727,9 @@ export default definePluginEntry({
       async (event, ctx) => {
 	        const config = pluginConfig(api, event, ctx);
 	        const inScope = scoped(config, event, ctx);
-	        if (!inScope || (config.maxAgentTurns <= 0 && config.maxToolCalls <= 0)) {
-	          if (config.maxAgentTurns > 0 || config.maxToolCalls > 0) {
+	        const hasPolicy = config.denyTools.length > 0 || config.denyArgumentPatterns.length > 0;
+	        if (!inScope || (config.maxAgentTurns <= 0 && config.maxToolCalls <= 0 && !hasPolicy)) {
+	          if (config.maxAgentTurns > 0 || config.maxToolCalls > 0 || hasPolicy) {
 	            writeAudit(config, "before_agent_run_skip", event, ctx, { inScope });
 	          }
 	          return;

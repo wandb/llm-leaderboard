@@ -15784,6 +15784,10 @@ def test_verify_release_evidence_bundle_rejects_agentic_math_missing_fresh_sidec
         script_text.replace(
             "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):\n"
             "        raise RuntimeError(",
+            "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):\n"
+            "        raise RuntimeError(",
+        ).replace(
+            "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):",
             "if False:\n        raise RuntimeError(",
         ),
         encoding="utf-8",
@@ -15804,8 +15808,7 @@ def test_verify_release_evidence_bundle_rejects_agentic_math_missing_fresh_sidec
     assert any(
         "NeMoClaw session audit fresh sidecar adoption call" in error
         and "scripts/tools/run_agentic_math_openclaw.py" in error
-        and "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):\n"
-        "        raise RuntimeError(" in error
+        and "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):" in error
         for error in payload["errors"]
     )
 
@@ -15909,6 +15912,10 @@ def test_verify_release_evidence_bundle_rejects_swe_missing_fresh_sidecar_audit_
         script_text.replace(
             "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):\n"
             "        raise RuntimeError(",
+            "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):\n"
+            "        raise RuntimeError(",
+        ).replace(
+            "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):",
             "if False:\n        raise RuntimeError(",
         ),
         encoding="utf-8",
@@ -15929,8 +15936,7 @@ def test_verify_release_evidence_bundle_rejects_swe_missing_fresh_sidecar_audit_
     assert any(
         "NeMoClaw session audit fresh sidecar adoption call" in error
         and "scripts/tools/run_swebench_pro_openclaw.py" in error
-        and "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):\n"
-        "        raise RuntimeError(" in error
+        and "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):" in error
         for error in payload["errors"]
     )
 
@@ -16274,7 +16280,7 @@ def test_verify_release_evidence_bundle_rejects_full_batch_missing_budget_breakd
     script_text = script_path.read_text(encoding="utf-8")
     script_path.write_text(
         script_text.replace(
-            'for category in ("agentic_math", "swebench_pro"):',
+            'for category in ("agentic_math", "agentic_swe_assorted"):',
             'for category in ():',
         ),
         encoding="utf-8",
@@ -16296,7 +16302,7 @@ def test_verify_release_evidence_bundle_rejects_full_batch_missing_budget_breakd
         "agentic runner script missing source contract "
         "pre-run budget agentic breakdown loop: "
         "scripts/tools/run_taiwan_full_eval_batch.py: "
-        'for category in ("agentic_math", "swebench_pro"):'
+        'for category in ("agentic_math", "agentic_swe_assorted"):'
     ) in payload["errors"]
 
 

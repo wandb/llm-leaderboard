@@ -25,6 +25,8 @@ from external_action_approval_checks import (
 )
 from prepare_taiwan_full_eval_configs import (
     AGENTIC_DENIED_ARGUMENT_PATTERNS,
+    AGENTIC_SWE_ASSORTED_DENIED_ARGUMENT_PATTERNS,
+    AGENTIC_SWE_ASSORTED_DENIED_TOOLS,
     AGENTIC_DENIED_TOOLS,
     CONFIG_DIR,
     DEFAULT_MANIFEST,
@@ -56,12 +58,12 @@ NEMOCLAW_OPENCLAW_CONFIG_SOURCE_TRACE_TEXT = (
 )
 BENCHMARK_RUN_FLAG_EXPECTATIONS = {
     "agentic_math": "run.agentic_math",
-    "agentic_swe": "run.swebench_pro",
+    "agentic_swe": "run.agentic_swe_assorted",
     "taiwan_full": "run.aggregate_taiwan",
 }
 BENCHMARK_MODEL_CONFIG_EXPECTATIONS = {
     "agentic_math": "agentic_math.openclaw_model",
-    "agentic_swe": "swebench_pro.openclaw_model",
+    "agentic_swe": "agentic_swe_assorted.openclaw_model",
 }
 BENCHMARK_NEMOCLAW_CONFIG_EXPECTATIONS = {
     "agentic_math": [
@@ -72,12 +74,11 @@ BENCHMARK_NEMOCLAW_CONFIG_EXPECTATIONS = {
         "agentic_math.deny_argument_pattern",
     ],
     "agentic_swe": [
-        "swebench_pro.nemoclaw_sandbox",
-        "swebench_pro.nemoclaw_openclaw_config_path",
-        "swebench_pro.nemoclaw_checkout_transfer_mode",
-        "swebench_pro.nemoclaw_checkout_sandbox_root",
-        "swebench_pro.deny_tool",
-        "swebench_pro.deny_argument_pattern",
+        "agentic_swe_assorted.nemoclaw_sandbox",
+        "agentic_swe_assorted.nemoclaw_openclaw_config_path",
+        "agentic_swe_assorted.nemoclaw_checkout_transfer_mode",
+        "agentic_swe_assorted.deny_tool",
+        "agentic_swe_assorted.deny_argument_pattern",
     ],
 }
 AGENTIC_GENERATION_PHASES = {"agentic", "full"}
@@ -87,11 +88,15 @@ REQUIRED_NEMOCLAW_AGENTIC_DENIED_TOOLS = set(AGENTIC_DENIED_TOOLS)
 REQUIRED_NEMOCLAW_AGENTIC_DENIED_ARGUMENT_PATTERNS = set(
     AGENTIC_DENIED_ARGUMENT_PATTERNS
 )
+REQUIRED_NEMOCLAW_AGENTIC_SWE_DENIED_TOOLS = set(AGENTIC_SWE_ASSORTED_DENIED_TOOLS)
+REQUIRED_NEMOCLAW_AGENTIC_SWE_DENIED_ARGUMENT_PATTERNS = set(
+    AGENTIC_SWE_ASSORTED_DENIED_ARGUMENT_PATTERNS
+)
 REQUIRED_NEMOCLAW_AGENTIC_ALLOWED_LOCAL_TOOLS = {"exec"}
 AGENTIC_PRODUCTION_EVIDENCE_REQUIREMENTS = {
     "--require-nemoclaw-agentic-config": "Agentic Math/SWE generated configs must route through NeMoClaw with deny-policy guards.",
     "--agentic-math-nemoclaw-openclaw-config-path": "Agentic Math must bind NeMoClaw to the reviewed OpenClaw config inside the sandbox.",
-    "--swebench-pro-nemoclaw-openclaw-config-path": "SWE-Bench Pro must bind NeMoClaw to the reviewed OpenClaw config inside the sandbox.",
+    "--agentic-swe-assorted-nemoclaw-openclaw-config-path": "Agentic SWE-Assorted must bind NeMoClaw to the reviewed OpenClaw config inside the sandbox.",
     "--require-weave-content-canary": "A fresh native Weave content canary must pass before paid agentic execution.",
     "--weave-content-canary-gate": "The paid run must be bound to the reviewed content-canary gate JSON.",
     "--verify-wandb-completion": "W&B scalar/table/artifact completion verification is mandatory.",
@@ -107,7 +112,7 @@ PHASE_EXPECTED_SCHEDULED_EVALUATORS = {
     "full": [
         "bfcl",
         "agentic_math",
-        "swebench_pro",
+        "agentic_swe_assorted",
         "mtbench",
         "script_adherence",
         "hle",
@@ -133,11 +138,11 @@ PHASE_EXPECTED_SCHEDULED_EVALUATORS = {
     ],
     "agentic": [
         "agentic_math",
-        "swebench_pro",
+        "agentic_swe_assorted",
     ],
     "agentic_aggregate": [
         "agentic_math",
-        "swebench_pro",
+        "agentic_swe_assorted",
         "aggregate_taiwan",
     ],
 }
@@ -261,7 +266,7 @@ def model_identifier_values(config: dict, *, phase: str) -> list[str]:
         keys.extend(
             [
                 "agentic_math.openclaw_model",
-                "swebench_pro.openclaw_model",
+                "agentic_swe_assorted.openclaw_model",
             ]
         )
     values: list[str] = []
@@ -407,7 +412,7 @@ def build_nemoclaw_agentic_config_guard(
 
         issues: list[str] = []
         run_agentic_math = lookup("run.agentic_math") is True
-        run_swebench_pro = lookup("run.swebench_pro") is True
+        run_agentic_swe_assorted = lookup("run.agentic_swe_assorted") is True
         math_sandbox = lookup("agentic_math.nemoclaw_sandbox")
         math_config_path = lookup("agentic_math.nemoclaw_openclaw_config_path")
         math_use_task_agent = lookup("agentic_math.use_task_agent")
@@ -416,20 +421,19 @@ def build_nemoclaw_agentic_config_guard(
         math_weave_sidecar_strict = lookup("agentic_math.weave_sidecar_strict")
         math_deny_tools = lookup("agentic_math.deny_tool")
         math_deny_argument_patterns = lookup("agentic_math.deny_argument_pattern")
-        swe_sandbox = lookup("swebench_pro.nemoclaw_sandbox")
-        swe_config_path = lookup("swebench_pro.nemoclaw_openclaw_config_path")
-        swe_transfer_mode = lookup("swebench_pro.nemoclaw_checkout_transfer_mode")
-        swe_checkout_root = lookup("swebench_pro.nemoclaw_checkout_sandbox_root")
-        swe_no_local = lookup("swebench_pro.no_local")
-        swe_weave_sidecar = lookup("swebench_pro.weave_sidecar")
-        swe_weave_sidecar_strict = lookup("swebench_pro.weave_sidecar_strict")
-        swe_deny_tools = lookup("swebench_pro.deny_tool")
-        swe_deny_argument_patterns = lookup("swebench_pro.deny_argument_pattern")
+        swe_sandbox = lookup("agentic_swe_assorted.nemoclaw_sandbox")
+        swe_config_path = lookup("agentic_swe_assorted.nemoclaw_openclaw_config_path")
+        swe_transfer_mode = lookup("agentic_swe_assorted.nemoclaw_checkout_transfer_mode")
+        swe_no_local = lookup("agentic_swe_assorted.no_local")
+        swe_weave_sidecar = lookup("agentic_swe_assorted.weave_sidecar")
+        swe_weave_sidecar_strict = lookup("agentic_swe_assorted.weave_sidecar_strict")
+        swe_deny_tools = lookup("agentic_swe_assorted.deny_tool")
+        swe_deny_argument_patterns = lookup("agentic_swe_assorted.deny_argument_pattern")
 
         record.update(
             {
                 "run_agentic_math": run_agentic_math,
-                "run_swebench_pro": run_swebench_pro,
+                "run_agentic_swe_assorted": run_agentic_swe_assorted,
                 "agentic_math_nemoclaw_sandbox": math_sandbox if isinstance(math_sandbox, str) else "",
                 "agentic_math_nemoclaw_openclaw_config_path": (
                     math_config_path if isinstance(math_config_path, str) else ""
@@ -448,27 +452,24 @@ def build_nemoclaw_agentic_config_guard(
                 "agentic_math_deny_argument_pattern": (
                     string_list(math_deny_argument_patterns) or []
                 ),
-                "swebench_pro_nemoclaw_sandbox": swe_sandbox if isinstance(swe_sandbox, str) else "",
-                "swebench_pro_nemoclaw_openclaw_config_path": (
+                "agentic_swe_assorted_nemoclaw_sandbox": swe_sandbox if isinstance(swe_sandbox, str) else "",
+                "agentic_swe_assorted_nemoclaw_openclaw_config_path": (
                     swe_config_path if isinstance(swe_config_path, str) else ""
                 ),
-                "swebench_pro_nemoclaw_checkout_transfer_mode": (
+                "agentic_swe_assorted_nemoclaw_checkout_transfer_mode": (
                     swe_transfer_mode if isinstance(swe_transfer_mode, str) else ""
                 ),
-                "swebench_pro_nemoclaw_checkout_sandbox_root": (
-                    swe_checkout_root if isinstance(swe_checkout_root, str) else ""
-                ),
-                "swebench_pro_no_local": swe_no_local,
-                "swebench_pro_weave_sidecar": swe_weave_sidecar,
-                "swebench_pro_weave_sidecar_strict": swe_weave_sidecar_strict,
-                "swebench_pro_deny_tool": string_list(swe_deny_tools) or [],
-                "swebench_pro_local_exec_blocking_patterns": local_exec_blocking_patterns(
+                "agentic_swe_assorted_no_local": swe_no_local,
+                "agentic_swe_assorted_weave_sidecar": swe_weave_sidecar,
+                "agentic_swe_assorted_weave_sidecar_strict": swe_weave_sidecar_strict,
+                "agentic_swe_assorted_deny_tool": string_list(swe_deny_tools) or [],
+                "agentic_swe_assorted_local_exec_blocking_patterns": local_exec_blocking_patterns(
                     swe_deny_tools
                 ),
-                "swebench_pro_local_exec_allowed": not local_exec_blocking_patterns(
+                "agentic_swe_assorted_local_exec_allowed": not local_exec_blocking_patterns(
                     swe_deny_tools
                 ),
-                "swebench_pro_deny_argument_pattern": (
+                "agentic_swe_assorted_deny_argument_pattern": (
                     string_list(swe_deny_argument_patterns) or []
                 ),
             }
@@ -476,8 +477,8 @@ def build_nemoclaw_agentic_config_guard(
         if enforced:
             if not run_agentic_math:
                 issues.append("run.agentic_math must be true")
-            if not run_swebench_pro:
-                issues.append("run.swebench_pro must be true")
+            if not run_agentic_swe_assorted:
+                issues.append("run.agentic_swe_assorted must be true")
             if not nonempty_string(math_sandbox):
                 issues.append("agentic_math.nemoclaw_sandbox must be set")
             if not canonical_nemoclaw_openclaw_config_path(math_config_path):
@@ -513,44 +514,40 @@ def build_nemoclaw_agentic_config_guard(
                 required_values=REQUIRED_NEMOCLAW_AGENTIC_DENIED_ARGUMENT_PATTERNS,
             )
             if not nonempty_string(swe_sandbox):
-                issues.append("swebench_pro.nemoclaw_sandbox must be set")
+                issues.append("agentic_swe_assorted.nemoclaw_sandbox must be set")
             if not canonical_nemoclaw_openclaw_config_path(swe_config_path):
                 issues.append(
-                    "swebench_pro.nemoclaw_openclaw_config_path must be "
+                    "agentic_swe_assorted.nemoclaw_openclaw_config_path must be "
                     f"{CANONICAL_NEMOCLAW_OPENCLAW_CONFIG_PATH}"
                 )
-            if not (
-                swe_transfer_mode == "copy"
-                or nonempty_string(swe_checkout_root)
-            ):
+            if swe_transfer_mode != "copy":
                 issues.append(
-                    "swebench_pro must set nemoclaw_checkout_transfer_mode=copy "
-                    "or nemoclaw_checkout_sandbox_root"
+                    "agentic_swe_assorted.nemoclaw_checkout_transfer_mode must be copy"
                 )
             if swe_no_local is not True:
                 issues.append(
-                    "swebench_pro.no_local must be true for production native "
+                    "agentic_swe_assorted.no_local must be true for production native "
                     "weave-openclaw tracing; local OpenClaw execution is not "
                     "accepted as production trace evidence"
                 )
             if swe_weave_sidecar is True or swe_weave_sidecar_strict is True:
                 issues.append(
-                    "swebench_pro must use native weave-openclaw tracing only; "
+                    "agentic_swe_assorted must use native weave-openclaw tracing only; "
                     "weave_sidecar/weave_sidecar_strict are diagnostic paths and "
                     "are not valid production evidence"
                 )
             require_string_superset(
-                section="swebench_pro",
+                section="agentic_swe_assorted",
                 field="deny_tool",
                 observed_value=swe_deny_tools,
-                required_values=REQUIRED_NEMOCLAW_AGENTIC_DENIED_TOOLS,
+                required_values=REQUIRED_NEMOCLAW_AGENTIC_SWE_DENIED_TOOLS,
             )
-            require_local_exec_allowed("swebench_pro", swe_deny_tools)
+            require_local_exec_allowed("agentic_swe_assorted", swe_deny_tools)
             require_string_superset(
-                section="swebench_pro",
+                section="agentic_swe_assorted",
                 field="deny_argument_pattern",
                 observed_value=swe_deny_argument_patterns,
-                required_values=REQUIRED_NEMOCLAW_AGENTIC_DENIED_ARGUMENT_PATTERNS,
+                required_values=REQUIRED_NEMOCLAW_AGENTIC_SWE_DENIED_ARGUMENT_PATTERNS,
             )
         record["ok"] = not issues
         record["errors"] = issues
@@ -576,13 +573,15 @@ def build_agentic_production_evidence_guard(
 ) -> dict[str, object]:
     enforced = bool(will_call_paid_model_api and phase in AGENTIC_GENERATION_PHASES)
     math_config_path = getattr(args, "agentic_math_nemoclaw_openclaw_config_path", None)
-    swe_config_path = getattr(args, "swebench_pro_nemoclaw_openclaw_config_path", None)
+    swe_config_path = getattr(
+        args, "agentic_swe_assorted_nemoclaw_openclaw_config_path", None
+    )
     observations = {
         "--require-nemoclaw-agentic-config": bool(args.require_nemoclaw_agentic_config),
         "--agentic-math-nemoclaw-openclaw-config-path": nonempty_string(
             math_config_path
         ),
-        "--swebench-pro-nemoclaw-openclaw-config-path": nonempty_string(
+        "--agentic-swe-assorted-nemoclaw-openclaw-config-path": nonempty_string(
             swe_config_path
         ),
         "--require-weave-content-canary": bool(args.require_weave_content_canary),
@@ -600,7 +599,7 @@ def build_agentic_production_evidence_guard(
         flag: value
         for flag, value in {
             "--agentic-math-nemoclaw-openclaw-config-path": math_config_path,
-            "--swebench-pro-nemoclaw-openclaw-config-path": swe_config_path,
+            "--agentic-swe-assorted-nemoclaw-openclaw-config-path": swe_config_path,
         }.items()
         if nonempty_string(value)
         and not canonical_nemoclaw_openclaw_config_path(value)
@@ -699,7 +698,7 @@ def build_pre_run_budget_estimate_record(
     if not isinstance(target_model, str) or not target_model:
         record["errors"].append("target_model is missing or not a string")
         target_model = ""
-    for category in ("agentic_math", "swebench_pro"):
+    for category in ("agentic_math", "agentic_swe_assorted"):
         category_payload = payload.get(category)
         if category_payload is None:
             continue
@@ -1674,7 +1673,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help=(
             "Fail before run_eval.py when phase=agentic/full selected configs do not "
-            "route Agentic Math and SWE-Bench Pro through NeMoClaw."
+            "route Agentic Math and Agentic SWE-Assorted through NeMoClaw."
         ),
     )
     parser.add_argument(
@@ -1700,6 +1699,14 @@ def parse_args() -> argparse.Namespace:
         choices=["visible", "copy"],
     )
     parser.add_argument("--swebench-pro-nemoclaw-openclaw-config-path")
+    parser.add_argument("--agentic-swe-assorted-nemoclaw-sandbox")
+    parser.add_argument("--agentic-swe-assorted-nemoclaw-bin", default="nemoclaw")
+    parser.add_argument("--agentic-swe-assorted-nemoclaw-workdir", default="/sandbox")
+    parser.add_argument(
+        "--agentic-swe-assorted-nemoclaw-checkout-transfer-mode",
+        choices=["visible", "copy"],
+    )
+    parser.add_argument("--agentic-swe-assorted-nemoclaw-openclaw-config-path")
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--yes", action="store_true", help="Pass --yes to scripts/run_eval.py.")
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)

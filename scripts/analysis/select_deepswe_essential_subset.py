@@ -102,6 +102,9 @@ class EssentialSelector:
             avg_cost_usd=("cost_usd", "mean"),
             avg_duration_seconds=("agent_duration_seconds", "mean"),
             avg_steps=("n_agent_steps", "mean"),
+            avg_input_tokens=("n_input_tokens", "mean"),
+            avg_output_tokens=("n_output_tokens", "mean"),
+            avg_peak_context_tokens=("peak_context_tokens", "mean"),
             n=("score_value", "size"),
         )
         for column in ("language", "repository", "repository_url", "problem_title", "prompt_characters"):
@@ -233,6 +236,9 @@ class EssentialSelector:
                 "public_task_pass_rate": float(task_stats["task_pass_rate"]),
                 "public_avg_cost_usd": float(task_stats["avg_cost_usd"]),
                 "public_avg_duration_seconds": float(task_stats["avg_duration_seconds"]),
+                "public_avg_input_tokens": float(task_stats["avg_input_tokens"]),
+                "public_avg_output_tokens": float(task_stats["avg_output_tokens"]),
+                "public_avg_peak_context_tokens": float(task_stats["avg_peak_context_tokens"]),
                 "single_task_spearman_to_full": float(self.single_spearman[idx]),
             },
         }

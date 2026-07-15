@@ -1,0 +1,12 @@
+{
+  "n_exact_models_from_same_source_table": 8,
+  "pearson_r_score": 0.6255438238902539,
+  "spearman_rho_ranked_scores": 0.6826469692905576,
+  "kendall_tau_b_rank_order": 0.5455447255899809,
+  "concordant_pair_count": 21,
+  "discordant_pair_count": 6,
+  "tie_only_deepswe_pair_count": 1,
+  "tie_only_swebench_pro_pair_count": 0,
+  "source": "https://huggingface.co/zai-org/GLM-5.2",
+  "interpretation_note": "Exact model names from the same Z.ai benchmark table; independent reproduction still needed before treating as leaderboard-grade evidence."
+}

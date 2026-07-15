@@ -56,3 +56,116 @@ def test_deepswe_essential_selection_source_is_recorded():
     assert selection["public_trials_url"].endswith("/artifacts/v1.1/trials.json")
     assert selection["public_tasks_url"].endswith("/artifacts/v1.1/tasks.json")
     assert "Spearman" in selection["method"]
+
+
+def test_deepswe_budgeted_high_lang_balanced_subset_is_manifested():
+    manifest = _read_json(DEEPSWE_DIR / "manifest.json")
+    subset = manifest["subsets"]["budgeted_high_8_lang_balanced"]
+    task_names = _read_json(DEEPSWE_DIR / subset["task_names_path"])
+    records = _read_jsonl(DEEPSWE_DIR / subset["metadata_jsonl_path"])
+
+    assert subset["display_name"] == "DeepSWE-Budgeted-High-8-Lang-Balanced"
+    assert subset["count"] == 8
+    assert len(task_names) == 8
+    assert [record["task_name"] for record in records] == task_names
+    assert subset["language_distribution"] == {"go": 3, "python": 2, "typescript": 3}
+    assert {record["language"] for record in records} == {"go", "python", "typescript"}
+
+    total_public_cost = sum(
+        record["selection_stats"]["public_avg_cost_usd"] for record in records
+    )
+    mean_public_steps = sum(
+        record["selection_stats"]["public_avg_steps"] for record in records
+    ) / len(records)
+
+    assert total_public_cost < 25.0
+    assert mean_public_steps < 50.0
+    assert subset["selection_metrics"]["spearman"] >= 0.90
+    assert manifest["budgeted_high_selection"]["name_prefix"] == "DeepSWE-Budgeted-High"
+
+
+def test_deepswe_budgeted_high_cap50_lang_balanced_subset_is_manifested():
+    manifest = _read_json(DEEPSWE_DIR / "manifest.json")
+    subset = manifest["subsets"]["budgeted_high_8_cap50_lang_balanced"]
+    task_names = _read_json(DEEPSWE_DIR / subset["task_names_path"])
+    records = _read_jsonl(DEEPSWE_DIR / subset["metadata_jsonl_path"])
+
+    assert subset["display_name"] == "DeepSWE-Budgeted-High-8-Cap50-Lang-Balanced"
+    assert subset["count"] == 8
+    assert len(task_names) == 8
+    assert [record["task_name"] for record in records] == task_names
+    assert subset["language_distribution"] == {"go": 3, "python": 2, "typescript": 3}
+    assert {record["language"] for record in records} == {"go", "python", "typescript"}
+
+    total_public_cost = sum(
+        record["selection_stats"]["public_avg_cost_usd"] for record in records
+    )
+    mean_public_steps = sum(
+        record["selection_stats"]["public_avg_steps"] for record in records
+    ) / len(records)
+
+    assert total_public_cost < 21.0
+    assert mean_public_steps < 40.0
+    assert subset["selection_metrics"]["spearman"] >= 0.80
+
+
+def test_deepswe_selection_summary_paths_exist():
+    manifest = _read_json(DEEPSWE_DIR / "manifest.json")
+    for subset_name, subset in manifest["subsets"].items():
+        summary_path = subset.get("selection_summary_path")
+        if not summary_path:
+            continue
+        assert (DEEPSWE_DIR / summary_path).resolve().exists(), subset_name
+
+
+def test_deepswe_essential3_high_subset_is_manifested():
+    manifest = _read_json(DEEPSWE_DIR / "manifest.json")
+    subset = manifest["subsets"]["essential_anchored_high_8_essential3_cost_trimmed_lang_balanced"]
+    task_names = _read_json(DEEPSWE_DIR / subset["task_names_path"])
+    records = _read_jsonl(DEEPSWE_DIR / subset["metadata_jsonl_path"])
+
+    assert (
+        subset["display_name"]
+        == "DeepSWE-Essential-Anchored-High-8-Essential3-Cost-Trimmed-Lang-Balanced"
+    )
+    assert subset["count"] == 8
+    assert len(task_names) == 8
+    assert [record["task_name"] for record in records] == task_names
+    assert subset["language_distribution"] == {"go": 3, "python": 2, "typescript": 3}
+    assert {record["language"] for record in records} == {"go", "python", "typescript"}
+
+    assert {
+        "expr-try-catch-errors",
+        "psd-tools-blend-range-api",
+        "true-myth-iterable-collection-combinators",
+    } <= set(task_names)
+    assert subset["selection_metrics"]["pearson"] >= 0.90
+    assert subset["selection_metrics"]["spearman"] >= 0.90
+
+
+def test_deepswe_glm52max_cap_aware_high_subset_is_manifested():
+    manifest = _read_json(DEEPSWE_DIR / "manifest.json")
+    name = "essential_anchored_high_8_glm52max_cap100_10m_lang_balanced"
+    subset = manifest["subsets"][name]
+    task_names = _read_json(DEEPSWE_DIR / subset["task_names_path"])
+    records = _read_jsonl(DEEPSWE_DIR / subset["metadata_jsonl_path"])
+
+    assert (
+        subset["display_name"]
+        == "DeepSWE-Essential-Anchored-High-8-GLM52Max-Cap100-10M-Lang-Balanced"
+    )
+    assert subset["count"] == 8
+    assert len(task_names) == 8
+    assert [record["task_name"] for record in records] == task_names
+    assert subset["language_distribution"] == {"go": 3, "python": 2, "typescript": 3}
+    assert subset["selection_constraints"]["budget_model"] == "glm-5-2"
+    assert subset["selection_constraints"]["budget_effort"] == "max"
+    assert subset["selection_constraints"]["max_model_avg_steps"] == 100.0
+    assert subset["selection_constraints"]["max_model_avg_input_tokens"] == 10_000_000.0
+
+    for record in records:
+        stats = record["selection_stats"]
+        assert stats["public_budget_model_avg_steps"] <= 100.0
+        assert stats["public_budget_model_avg_input_tokens"] <= 10_000_000.0
+    assert subset["selection_metrics"]["pearson"] >= 0.90
+    assert subset["selection_metrics"]["spearman"] >= 0.90

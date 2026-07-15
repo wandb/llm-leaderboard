@@ -1,0 +1,4 @@
+model,swebench_pro_model_id,swebench_pro_score,swerebench_model,swerebench_agent_version,swerebench_window_from,swerebench_window_to,swerebench_resolved_rate,swerebench_resolved_rate_sem,swerebench_pass_at_5,match_kind,rationale
+MiniMax M3,MiniMaxAI/MiniMax-M3,59.0,MiniMax M3,tools,2026-03-01,2026-05-15,45.63636363636363,1.2662171161076474,67.27272727272727,exact_model,same model label
+Kimi K2.6,moonshotai/Kimi-K2.6,58.6,Kimi K2.6,tools,2026-03-01,2026-05-15,46.54545454545455,1.2662171161076474,64.54545454545455,exact_model,same model label
+GLM-5.1,zai-org/GLM-5.1,58.4,GLM-5.1,tools,2026-03-01,2026-05-15,50.72727272727272,0.9270944570168703,65.45454545454545,exact_model,same model label

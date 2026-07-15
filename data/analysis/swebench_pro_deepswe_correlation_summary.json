@@ -1,0 +1,17 @@
+{
+  "strict_matches_only": {
+    "n": 2,
+    "pearson_r": 1.0,
+    "spearman_rho": 0.9999999999999998
+  },
+  "strict_plus_family_matches": {
+    "n": 7,
+    "pearson_r": 0.1535615920655097,
+    "spearman_rho": 0.2857142857142857
+  },
+  "sources": {
+    "deepswe": "https://deepswe.datacurve.ai/",
+    "swebench_pro_public": "https://labs.scale.com/leaderboard/swe_bench_pro_public"
+  },
+  "caveat": "Only two strict model matches were found. Family matches intentionally include version or variant mismatches and should be treated as directional only."
+}

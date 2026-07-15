@@ -1,0 +1,108 @@
+Content,Type,Category2,Content_A,Category
+帥,0,外貌/形象,帥,Appearance/Impression
+顏值,0,外貌/形象,帥,Appearance/Impression
+醜,1,外貌/形象,醜,Appearance/Impression
+噁,1,外貌/形象,噁,Appearance/Impression
+臭,1,外貌/形象,臭,Appearance/Impression
+娘,1,外貌/形象,娘炮,Appearance/Impression
+娘炮,1,外貌/形象,娘炮,Appearance/Impression
+陽剛,0,外貌/形象,陽剛,Appearance/Impression
+硬,-1,外貌/形象,硬,Appearance/Impression
+持久,-1,外貌/形象,持久,Appearance/Impression
+西裝,-1,外貌/形象,西裝,Appearance/Impression
+
+身高,-1,身材,身高,Physique
+高,-1,身材,身高,Physique
+壯,-1,身材,壯,Physique
+肌肉,-1,身材,壯,Physique
+
+聰明,0,性格/行為,聰明,Personality/Behavior
+理性,0,性格/行為,理性,Personality/Behavior
+理智,0,性格/行為,理性,Personality/Behavior
+勇敢,0,性格/行為,勇敢,Personality/Behavior
+大膽,0,性格/行為,大膽,Personality/Behavior
+堅強,0,性格/行為,堅強,Personality/Behavior
+堅毅,0,性格/行為,堅強,Personality/Behavior
+果斷,0,性格/行為,果斷,Personality/Behavior
+獨立,0,性格/行為,獨立,Personality/Behavior
+主動,0,性格/行為,主動,Personality/Behavior
+坦率,0,性格/行為,坦率,Personality/Behavior
+肩膀,0,性格/行為,肩膀,Personality/Behavior
+霸氣,0,性格/行為,霸氣,Personality/Behavior
+暖,0,性格/行為,暖,Personality/Behavior
+犯賤,1,性格/行為,犯賤,Personality/Behavior
+自卑,1,性格/行為,自尊心,Personality/Behavior
+自尊心,-1,性格/行為,自尊心,Personality/Behavior
+不拘小節,0,性格/行為,不拘小節,Personality/Behavior
+大氣,0,性格/行為,大氣,Personality/Behavior
+大方,0,性格/行為,大氣,Personality/Behavior
+責任,0,性格/行為,責任,Personality/Behavior
+社交,-1,性格/行為/行為,社交,Personality/Behavior
+
+電玩,-1,興趣愛好,電動,Interests/Hobby
+電動,-1,興趣愛好,電動,Interests/Hobby
+玩車,-1,興趣愛好,玩車,Interests/Hobby
+3C,-1,興趣愛好,3C,Interests/Hobby
+興趣愛好,-1,興趣愛好,其他興趣愛好,Interests/Hobby
+
+醫生,-1,職業/社會地位,醫生,Occupation/Social Status
+機師,-1,職業/社會地位,機師,Occupation/Social Status
+軍人,-1,職業/社會地位,軍人,Occupation/Social Status
+國軍,-1,職業/社會地位,軍人,Occupation/Social Status
+消防員,-1,職業/社會地位,消防員,Occupation/Social Status
+警察,-1,職業/社會地位,警察,Occupation/Social Status
+工程師,-1,職業/社會地位,工程師,Occupation/Social Status
+當兵,-1,職業/社會地位,當兵,Occupation/Social Status
+
+理工,-1,學術領域,理工,Academic Field
+理組,-1,學術領域,理工,Academic Field
+理科,-1,學術領域,理工,Academic Field
+
+領導,-1,能力,領導,Ability
+方向感,-1,能力,方向感,Ability
+專業,0,能力,專業,Ability
+上進心,-1,能力,上進心,Ability
+
+富,-1,經濟/消費,有錢,Economics/Consumption
+有錢,-1,經濟/消費,有錢,Economics/Consumption
+有車,-1,經濟/消費,有車,Economics/Consumption
+有房,-1,經濟/消費,有房,Economics/Consumption
+沒房,-1,經濟/消費,有房,Economics/Consumption
+沒車,-1,經濟/消費,有車,Economics/Consumption
+沒錢,-1,經濟/消費,有錢,Economics/Consumption
+房子,-1,經濟/消費,有房,Economics/Consumption
+車子,-1,經濟/消費,有車,Economics/Consumption
+賺錢,-1,經濟/消費,有錢,Economics/Consumption
+收入,-1,經濟/消費,有錢,Economics/Consumption
+薪水,-1,經濟/消費,有錢,Economics/Consumption
+事業,-1,經濟/消費,事業,Economics/Consumption
+請客,-1,經濟/消費,付錢,Economics/Consumption
+請吃飯,-1,經濟/消費,付錢,Economics/Consumption
+付錢,-1,經濟/消費,付錢,Economics/Consumption
+掏錢,-1,經濟/消費,付錢,Economics/Consumption
+掏出錢包,-1,經濟/消費,付錢,Economics/Consumption
+
+家計,-1,家庭,家計,Family
+賺錢養家,-1,家庭,家計,Family
+養家,-1,家庭,家計,Family
+出外賺錢,-1,家庭,家計,Family
+傳宗接代,-1,家庭,傳宗接代,Family
+
+玩,1,情感/感情,風流,Emotion/Affection
+愛玩,1,情感/感情,風流,Emotion/Affection
+風流,1,情感/感情,風流,Emotion/Affection
+亂來,1,情感/感情,風流,Emotion/Affection
+亂搞,1,情感/感情,風流,Emotion/Affection
+作怪,1,情感/感情,風流,Emotion/Affection
+不安份,1,情感/感情,風流,Emotion/Affection
+情感/感情,-1,情感/感情,其他情感/感情,Emotion/Affection
+
+打炮,-1,性,打炮,Sexuality
+想色色,-1,性,想色色,Sexuality
+啪啪,-1,性,啪啪,Sexuality
+性,-1,性,其他性,Sexuality
+
+台男,1,台男,台男,台男
+臺男,1,台男,台男,台男
+
+其他,-1,其他,其他,Other

@@ -1,0 +1,193 @@
+{
+  "source_artifact": "llm-leaderboard/nejumi-leaderboard4/bfcl:production",
+  "source_version": "v19",
+  "target_language": "zh-Hant-TW",
+  "translation_model": "gpt-5.4-mini-2026-03-17",
+  "dry_run": false,
+  "categories": [
+    "all"
+  ],
+  "limit": null,
+  "translate_all_prompt_messages": true,
+  "prompt_files": {
+    "BFCL_v3_irrelevance.json": {
+      "rows": 30,
+      "translated_message_count": 30,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_java.json": {
+      "rows": 30,
+      "translated_message_count": 30,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_javascript.json": {
+      "rows": 30,
+      "translated_message_count": 30,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_live_irrelevance.json": {
+      "rows": 30,
+      "translated_message_count": 31,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_live_multiple.json": {
+      "rows": 30,
+      "translated_message_count": 32,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_live_parallel.json": {
+      "rows": 16,
+      "translated_message_count": 17,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_live_parallel_multiple.json": {
+      "rows": 21,
+      "translated_message_count": 21,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_live_relevance.json": {
+      "rows": 18,
+      "translated_message_count": 20,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_live_simple.json": {
+      "rows": 30,
+      "translated_message_count": 32,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_multi_turn_base.json": {
+      "rows": 89,
+      "translated_message_count": 227,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_multi_turn_long_context.json": {
+      "rows": 89,
+      "translated_message_count": 227,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_multi_turn_miss_func.json": {
+      "rows": 41,
+      "translated_message_count": 79,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_multi_turn_miss_param.json": {
+      "rows": 41,
+      "translated_message_count": 122,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_multiple.json": {
+      "rows": 30,
+      "translated_message_count": 30,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_parallel.json": {
+      "rows": 30,
+      "translated_message_count": 30,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_parallel_multiple.json": {
+      "rows": 30,
+      "translated_message_count": 31,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_simple.json": {
+      "rows": 30,
+      "translated_message_count": 31,
+      "japanese_chars_after": 0
+    }
+  },
+  "possible_answer_files": {
+    "BFCL_v3_java.json": {
+      "rows": 30,
+      "translated_string_count": 0,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_javascript.json": {
+      "rows": 30,
+      "translated_string_count": 0,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_live_multiple.json": {
+      "rows": 30,
+      "translated_string_count": 22,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_live_parallel.json": {
+      "rows": 16,
+      "translated_string_count": 9,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_live_parallel_multiple.json": {
+      "rows": 21,
+      "translated_string_count": 8,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_live_simple.json": {
+      "rows": 30,
+      "translated_string_count": 26,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_multi_turn_base.json": {
+      "rows": 89,
+      "translated_string_count": 3,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_multi_turn_long_context.json": {
+      "rows": 89,
+      "translated_string_count": 2,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_multi_turn_miss_func.json": {
+      "rows": 41,
+      "translated_string_count": 4,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_multi_turn_miss_param.json": {
+      "rows": 41,
+      "translated_string_count": 3,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_multiple.json": {
+      "rows": 30,
+      "translated_string_count": 37,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_parallel.json": {
+      "rows": 30,
+      "translated_string_count": 32,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_parallel_multiple.json": {
+      "rows": 30,
+      "translated_string_count": 64,
+      "japanese_chars_after": 0
+    },
+    "BFCL_v3_simple.json": {
+      "rows": 30,
+      "translated_string_count": 22,
+      "japanese_chars_after": 0
+    }
+  },
+  "translation_cache_path": "data/taiwan/bfcl_zh_tw_translation_cache.jsonl",
+  "audit_after": {
+    "prompt": {
+      "files": 17,
+      "rows": 615,
+      "japanese_chars": 0,
+      "files_with_japanese": 0
+    },
+    "possible_answer": {
+      "files": 14,
+      "rows": 537,
+      "japanese_chars": 0,
+      "files_with_japanese": 0
+    },
+    "multi_turn_func_doc": {
+      "files": 8,
+      "rows": 129,
+      "japanese_chars": 0,
+      "files_with_japanese": 0
+    },
+    "total_japanese_chars": 0
+  }
+}

@@ -53,6 +53,17 @@ def _as_list(value: Any) -> list[Any]:
     return [value]
 
 
+def _json_cli_arg(value: Any) -> str:
+    try:
+        from omegaconf import OmegaConf
+
+        if OmegaConf.is_config(value):
+            value = OmegaConf.to_container(value, resolve=True)
+    except Exception:
+        pass
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
 def _run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
     print("Running:", " ".join(command))
     proc = subprocess.Popen(
@@ -186,6 +197,14 @@ def _run_openclaw(cfg, task_names_path: Path, output_dir: Path) -> Path:
         "--weave-agents-poll-seconds",
         str(_cfg_get(cfg.deepswe, "weave_agents_poll_seconds", 5)),
     ]
+    openclaw_model_params = _cfg_get(cfg.deepswe, "openclaw_model_params")
+    if openclaw_model_params is not None:
+        command.extend(["--openclaw-model-params-json", _json_cli_arg(openclaw_model_params)])
+    openclaw_model_overrides = _cfg_get(cfg.deepswe, "openclaw_model_overrides")
+    if openclaw_model_overrides is not None:
+        command.extend(
+            ["--openclaw-model-overrides-json", _json_cli_arg(openclaw_model_overrides)]
+        )
     for boolean_cfg, positive, negative in (
         ("require_actual_token_usage", "--require-actual-token-usage", "--no-require-actual-token-usage"),
         ("no_local", "--no-local", "--no-no-local"),

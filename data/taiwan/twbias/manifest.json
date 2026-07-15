@@ -1,0 +1,83 @@
+{
+  "dataset": "TWBias",
+  "dataset_dir_name": "twbias",
+  "source_repo": "https://github.com/hsinmosyi/TWBias",
+  "source_commit": "d32e9ff0ee029a47898deac8ddbf80b0333e4341",
+  "paper": "https://aclanthology.org/2024.findings-emnlp.507/",
+  "license": "unknown",
+  "license_note": "No LICENSE file was present in hsinmosyi/TWBias at materialization time.",
+  "files": {
+    "README.md": {
+      "bytes": 201,
+      "sha256": "efe5ed217646a521df6a6e04af9bbdbde7bdf636891aae1c2bbed7b5d48495b5"
+    },
+    "UPSTREAM_README.md": {
+      "bytes": 1288,
+      "sha256": "cc0d3679591fc7f1f2b3cba6159b0f93b6687d54dc2e7bca521c3dd6a5ef5607"
+    },
+    "data/ethinicity/B-Attribute.csv": {
+      "bytes": 2926,
+      "sha256": "f466ef1a1720f7a0382017018c27ca74120be0e42704cc145c90b8bb5f288834"
+    },
+    "data/ethinicity/NT-Attribute.csv": {
+      "bytes": 2821,
+      "sha256": "6ff7ef89f15e700c169e4827281d8be3753b9db4d9dc3c6f0bb97eace545fee4"
+    },
+    "data/ethinicity/W-Attribute.csv": {
+      "bytes": 3451,
+      "sha256": "89e29679224842dfd88545a9f2ed69da08e50e5459d9b03e8b442e22af158506"
+    },
+    "data/ethinicity/hakka-Attribute.csv": {
+      "bytes": 2758,
+      "sha256": "8ff3a3795feccc2834c709793578e0eebce1a6f87bc5503be84ba542a30c2438"
+    },
+    "data/ethinicity/label_data_B.csv": {
+      "bytes": 22042,
+      "sha256": "dcfa5d50da5fe5cc8a05e47b727ed7626f0de2ed3aeab7abcf326d333964a8ba"
+    },
+    "data/ethinicity/label_data_NT.csv": {
+      "bytes": 30821,
+      "sha256": "f81ff99934a2ab4722ab6a576ec24a21c1814c2052ec8628e1d557f1bd3ab790"
+    },
+    "data/ethinicity/label_data_W.csv": {
+      "bytes": 27057,
+      "sha256": "a7a9681da3526560812b210f4122aa7012cd5ccc1cd041854a6a776b59e78b1f"
+    },
+    "data/ethinicity/label_data_hakka.csv": {
+      "bytes": 35137,
+      "sha256": "e2648c9395b361faeb8381d3cef95ee3fce95d6140b65438ae0c356fd501cc5c"
+    },
+    "data/ethinicity/target_ethnicity.csv": {
+      "bytes": 261,
+      "sha256": "b0f6963084da4b1212485fb8b8cc9578eb0a326dbbb1fe48aa8b1e6d51bce543"
+    },
+    "data/gender/female-Attribute.csv": {
+      "bytes": 5500,
+      "sha256": "d09f8230ddd01c0cff37e5c3d001863b543cb803e7da20c92d4720418b5fdf8b"
+    },
+    "data/gender/label_data_female.csv": {
+      "bytes": 66397,
+      "sha256": "b7f5215643e75c1c4fa560c81fbdd71d20e1466f9bff2211c303e053b8bbf03c"
+    },
+    "data/gender/label_data_male.csv": {
+      "bytes": 56555,
+      "sha256": "af09db6bd31d66e347b761188d0e6ca45b14485e2114e173e9a0a262aad0b69c"
+    },
+    "data/gender/male-Attribute.csv": {
+      "bytes": 4751,
+      "sha256": "36661d4c0073165568363285a8b6c30d54919f93365bc036c0916fb0b1e8b8f3"
+    },
+    "data/gender/target_gender.csv": {
+      "bytes": 602,
+      "sha256": "67162b809dda35a812a7ddbf9ed98ddb47e8301f4ab322d8e35c03323d266995"
+    },
+    "manifest.json": {
+      "bytes": 3061,
+      "sha256": "93095f5892021fce48fcdbfbface4607a960461d5b4b126a250827e366961d06"
+    },
+    "prompts.json": {
+      "bytes": 424,
+      "sha256": "a89537c6860cbfded5dc2b1e96acfcccf630f1b33f385928fe1d10bcd7f02774"
+    }
+  }
+}

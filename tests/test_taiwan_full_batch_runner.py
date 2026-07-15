@@ -317,7 +317,7 @@ def test_build_run_eval_preflight_records_include_nonexecuting_command(tmp_path)
     assert record["required_before_run_eval"] is True
     assert record["expected_scheduled_evaluators"] == [
         "agentic_math",
-        "swebench_pro",
+        "agentic_swe_assorted",
     ]
     assert record["output_json"].endswith(
         "run_eval_preflight/agentic-gpt-4_1-mini.json"
@@ -334,7 +334,7 @@ def test_run_eval_preflight_phase_validation_rejects_missing_taiwan_evaluators()
     validation = module.validate_run_eval_preflight_phase(
         {
             "ok": True,
-            "scheduled_evaluators": ["agentic_math", "swebench_pro"],
+            "scheduled_evaluators": ["agentic_math", "agentic_swe_assorted"],
         },
         "full",
     )
@@ -387,7 +387,7 @@ def test_wandb_verify_config_expectations_read_generated_config(tmp_path):
                 "  pretrained_model_name_or_path: gpt-4.1-mini-2025-04-14",
                 "run:",
                 "  agentic_math: true",
-                "  swebench_pro: true",
+                "  agentic_swe_assorted: true",
                 "  aggregate_taiwan: false",
                 "agentic_math:",
                 "  openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14",
@@ -399,7 +399,7 @@ def test_wandb_verify_config_expectations_read_generated_config(tmp_path):
                 "    - web_fetch",
                 "  deny_argument_pattern:",
                 "    - https?://",
-                "swebench_pro:",
+                "agentic_swe_assorted:",
                 "  openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14",
                 "  nemoclaw_sandbox: nejumi-taiwan",
                 "  nemoclaw_openclaw_config_path: /sandbox/.openclaw/openclaw.json",
@@ -437,13 +437,13 @@ def test_wandb_verify_config_expectations_read_generated_config(tmp_path):
     }
     assert swe_expectations == {
         "model.pretrained_model_name_or_path": "gpt-4.1-mini-2025-04-14",
-        "run.swebench_pro": True,
-        "swebench_pro.deny_argument_pattern": ["https?://"],
-        "swebench_pro.deny_tool": ["web_search", "web_fetch"],
-        "swebench_pro.nemoclaw_checkout_transfer_mode": "copy",
-        "swebench_pro.nemoclaw_openclaw_config_path": "/sandbox/.openclaw/openclaw.json",
-        "swebench_pro.nemoclaw_sandbox": "nejumi-taiwan",
-        "swebench_pro.openclaw_model": "openai-direct/gpt-4.1-mini-2025-04-14",
+        "run.agentic_swe_assorted": True,
+        "agentic_swe_assorted.deny_argument_pattern": ["https?://"],
+        "agentic_swe_assorted.deny_tool": ["web_search", "web_fetch"],
+        "agentic_swe_assorted.nemoclaw_checkout_transfer_mode": "copy",
+        "agentic_swe_assorted.nemoclaw_openclaw_config_path": "/sandbox/.openclaw/openclaw.json",
+        "agentic_swe_assorted.nemoclaw_sandbox": "nejumi-taiwan",
+        "agentic_swe_assorted.openclaw_model": "openai-direct/gpt-4.1-mini-2025-04-14",
         "wandb.run_name": "taiwan/full/openai/gpt-4.1-mini: canary",
     }
 
@@ -583,10 +583,10 @@ def test_weave_expected_request_models_reads_generated_config(tmp_path):
                 "  pretrained_model_name_or_path: gpt-4.1-mini-2025-04-14",
                 "run:",
                 "  agentic_math: true",
-                "  swebench_pro: true",
+                "  agentic_swe_assorted: true",
                 "agentic_math:",
                 "  openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14",
-                "swebench_pro:",
+                "agentic_swe_assorted:",
                 "  openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14",
             ]
         )
@@ -925,11 +925,11 @@ def test_paid_agentic_run_rejects_hand_edited_weave_gate_before_run_eval(
             "nejumi-taiwan",
             "--agentic-math-nemoclaw-openclaw-config-path",
             "/sandbox/.openclaw/openclaw.json",
-            "--swebench-pro-nemoclaw-sandbox",
+            "--agentic-swe-assorted-nemoclaw-sandbox",
             "nejumi-taiwan",
-            "--swebench-pro-nemoclaw-openclaw-config-path",
+            "--agentic-swe-assorted-nemoclaw-openclaw-config-path",
             "/sandbox/.openclaw/openclaw.json",
-            "--swebench-pro-nemoclaw-checkout-transfer-mode",
+            "--agentic-swe-assorted-nemoclaw-checkout-transfer-mode",
             "copy",
             "--require-nemoclaw-agentic-config",
             "--wandb-run-id-prefix",
@@ -1070,7 +1070,7 @@ def test_pre_run_budget_estimate_record_rejects_incomplete_agentic_breakdown(tmp
         "historical_records": 0,
         "estimate_usd": {"method": "no_local_evidence", "low": None, "mid": None, "high": None},
     }
-    payload["swebench_pro"] = {
+    payload["agentic_swe_assorted"] = {
         "historical_records": 0,
         "estimate_usd": {"method": "no_local_evidence", "low": None, "mid": None, "high": None},
     }
@@ -1083,7 +1083,7 @@ def test_pre_run_budget_estimate_record_rejects_incomplete_agentic_breakdown(tmp
 
     assert record["valid"] is False
     assert any("agentic_math.historical_records must be positive" in item for item in record["errors"])
-    assert any("swebench_pro.estimate_usd.low is missing" in item for item in record["errors"])
+    assert any("agentic_swe_assorted.estimate_usd.low is missing" in item for item in record["errors"])
 
 
 def test_external_action_approval_record_accepts_source_bound_verifier_report(tmp_path):
@@ -1282,11 +1282,11 @@ def test_prepare_only_review_records_completion_requirements(tmp_path, monkeypat
             "nejumi-taiwan",
             "--agentic-math-nemoclaw-openclaw-config-path",
             "/sandbox/.openclaw/openclaw.json",
-            "--swebench-pro-nemoclaw-sandbox",
+            "--agentic-swe-assorted-nemoclaw-sandbox",
             "nejumi-taiwan",
-            "--swebench-pro-nemoclaw-openclaw-config-path",
+            "--agentic-swe-assorted-nemoclaw-openclaw-config-path",
             "/sandbox/.openclaw/openclaw.json",
-            "--swebench-pro-nemoclaw-checkout-transfer-mode",
+            "--agentic-swe-assorted-nemoclaw-checkout-transfer-mode",
             "copy",
             "--require-nemoclaw-agentic-config",
             "--wandb-run-id-prefix",
@@ -1393,17 +1393,17 @@ def test_prepare_only_review_records_completion_requirements(tmp_path, monkeypat
     assert "https?://" in guard["records"][0]["agentic_math_deny_argument_pattern"]
     assert guard["records"][0]["agentic_math_local_exec_allowed"] is True
     assert guard["records"][0]["agentic_math_local_exec_blocking_patterns"] == []
-    assert guard["records"][0]["swebench_pro_nemoclaw_sandbox"] == "nejumi-taiwan"
+    assert guard["records"][0]["agentic_swe_assorted_nemoclaw_sandbox"] == "nejumi-taiwan"
     assert (
-        guard["records"][0]["swebench_pro_nemoclaw_openclaw_config_path"]
+        guard["records"][0]["agentic_swe_assorted_nemoclaw_openclaw_config_path"]
         == "/sandbox/.openclaw/openclaw.json"
     )
-    assert guard["records"][0]["swebench_pro_nemoclaw_checkout_transfer_mode"] == "copy"
-    assert guard["records"][0]["swebench_pro_no_local"] is True
-    assert "web_search" in guard["records"][0]["swebench_pro_deny_tool"]
-    assert "https?://" in guard["records"][0]["swebench_pro_deny_argument_pattern"]
-    assert guard["records"][0]["swebench_pro_local_exec_allowed"] is True
-    assert guard["records"][0]["swebench_pro_local_exec_blocking_patterns"] == []
+    assert guard["records"][0]["agentic_swe_assorted_nemoclaw_checkout_transfer_mode"] == "copy"
+    assert guard["records"][0]["agentic_swe_assorted_no_local"] is True
+    assert "web_search" in guard["records"][0]["agentic_swe_assorted_deny_tool"]
+    assert "https?://" in guard["records"][0]["agentic_swe_assorted_deny_argument_pattern"]
+    assert guard["records"][0]["agentic_swe_assorted_local_exec_allowed"] is True
+    assert guard["records"][0]["agentic_swe_assorted_local_exec_blocking_patterns"] == []
     preflights = review["run_eval_preflights"]
     assert len(preflights) == 1
     assert preflights[0]["required_before_run_eval"] is True
@@ -1485,7 +1485,7 @@ def test_nemoclaw_agentic_config_guard_requires_remote_lookup_deny_policy(tmp_pa
             [
                 "run:",
                 "  agentic_math: true",
-                "  swebench_pro: true",
+                "  agentic_swe_assorted: true",
                 "agentic_math:",
                 "  nemoclaw_sandbox: nejumi-taiwan",
                 "  use_task_agent: true",
@@ -1493,7 +1493,7 @@ def test_nemoclaw_agentic_config_guard_requires_remote_lookup_deny_policy(tmp_pa
                 "    - code_execution",
                 "  deny_argument_pattern:",
                 r"    - \b(curl|wget)\b",
-                "swebench_pro:",
+                "agentic_swe_assorted:",
                 "  nemoclaw_sandbox: nejumi-taiwan",
                 "  nemoclaw_checkout_transfer_mode: copy",
                 "  deny_tool:",
@@ -1537,7 +1537,7 @@ def test_nemoclaw_agentic_config_guard_rejects_local_exec_denied(tmp_path):
             [
                 "run:",
                 "  agentic_math: true",
-                "  swebench_pro: true",
+                "  agentic_swe_assorted: true",
                 "agentic_math:",
                 "  nemoclaw_sandbox: nejumi-taiwan",
                 "  use_task_agent: true",
@@ -1552,7 +1552,7 @@ def test_nemoclaw_agentic_config_guard_rejects_local_exec_denied(tmp_path):
                 "    - https?://",
                 r"    - \b(curl|wget)\b",
                 r"    - \b(requests|urllib|httpx)\.",
-                "swebench_pro:",
+                "agentic_swe_assorted:",
                 "  nemoclaw_sandbox: nejumi-taiwan",
                 "  nemoclaw_checkout_transfer_mode: copy",
                 "  deny_tool:",
@@ -1584,13 +1584,13 @@ def test_nemoclaw_agentic_config_guard_rejects_local_exec_denied(tmp_path):
         for error in guard["errors"]
     )
     assert any(
-        "swebench_pro.deny_tool must not block local OpenClaw exec tool: *exec*" in error
+        "agentic_swe_assorted.deny_tool must not block local OpenClaw exec tool: *exec*" in error
         for error in guard["errors"]
     )
     assert guard["records"][0]["agentic_math_local_exec_allowed"] is False
     assert guard["records"][0]["agentic_math_local_exec_blocking_patterns"] == ["exec"]
-    assert guard["records"][0]["swebench_pro_local_exec_allowed"] is False
-    assert guard["records"][0]["swebench_pro_local_exec_blocking_patterns"] == ["*exec*"]
+    assert guard["records"][0]["agentic_swe_assorted_local_exec_allowed"] is False
+    assert guard["records"][0]["agentic_swe_assorted_local_exec_blocking_patterns"] == ["*exec*"]
 
 
 def test_nemoclaw_agentic_config_guard_rejects_weave_sidecar_for_production(tmp_path):
@@ -1601,7 +1601,7 @@ def test_nemoclaw_agentic_config_guard_rejects_weave_sidecar_for_production(tmp_
             [
                 "run:",
                 "  agentic_math: true",
-                "  swebench_pro: true",
+                "  agentic_swe_assorted: true",
                 "agentic_math:",
                 "  nemoclaw_sandbox: nejumi-taiwan",
                 "  nemoclaw_openclaw_config_path: /sandbox/.openclaw/openclaw.json",
@@ -1618,7 +1618,7 @@ def test_nemoclaw_agentic_config_guard_rejects_weave_sidecar_for_production(tmp_
                 "    - https?://",
                 r"    - \b(curl|wget)\b",
                 r"    - \b(requests|urllib|httpx)\.",
-                "swebench_pro:",
+                "agentic_swe_assorted:",
                 "  nemoclaw_sandbox: nejumi-taiwan",
                 "  nemoclaw_openclaw_config_path: /sandbox/.openclaw/openclaw.json",
                 "  nemoclaw_checkout_transfer_mode: copy",
@@ -1652,12 +1652,12 @@ def test_nemoclaw_agentic_config_guard_rejects_weave_sidecar_for_production(tmp_
         for error in guard["errors"]
     )
     assert any(
-        "swebench_pro must use native weave-openclaw tracing only" in error
+        "agentic_swe_assorted must use native weave-openclaw tracing only" in error
         for error in guard["errors"]
     )
     record = guard["records"][0]
     assert record["agentic_math_weave_sidecar"] is True
-    assert record["swebench_pro_weave_sidecar_strict"] is True
+    assert record["agentic_swe_assorted_weave_sidecar_strict"] is True
 
 
 def test_agentic_production_evidence_guard_requires_wandb_weave_and_nemoclaw(tmp_path):
@@ -1665,7 +1665,7 @@ def test_agentic_production_evidence_guard_requires_wandb_weave_and_nemoclaw(tmp
     args = SimpleNamespace(
         require_nemoclaw_agentic_config=False,
         agentic_math_nemoclaw_openclaw_config_path=None,
-        swebench_pro_nemoclaw_openclaw_config_path=None,
+        agentic_swe_assorted_nemoclaw_openclaw_config_path=None,
         require_weave_content_canary=False,
         weave_content_canary_gate=None,
         verify_wandb_completion=False,
@@ -1699,7 +1699,7 @@ def test_agentic_production_evidence_guard_requires_wandb_weave_and_nemoclaw(tmp
     assert "--verify-weave-agents" in blocked["missing_flags"]
     assert "--require-nemoclaw-agentic-config" in blocked["missing_flags"]
     assert "--agentic-math-nemoclaw-openclaw-config-path" in blocked["missing_flags"]
-    assert "--swebench-pro-nemoclaw-openclaw-config-path" in blocked["missing_flags"]
+    assert "--agentic-swe-assorted-nemoclaw-openclaw-config-path" in blocked["missing_flags"]
     assert "--weave-content-canary-gate" in blocked["missing_flags"]
     assert prepare_only["enforced"] is False
     assert prepare_only["ok"] is True
@@ -1714,7 +1714,7 @@ def test_agentic_production_evidence_guard_rejects_wrong_nemoclaw_openclaw_confi
     args = SimpleNamespace(
         require_nemoclaw_agentic_config=True,
         agentic_math_nemoclaw_openclaw_config_path="/tmp/openclaw.json",
-        swebench_pro_nemoclaw_openclaw_config_path="/sandbox/.openclaw/openclaw.json",
+        agentic_swe_assorted_nemoclaw_openclaw_config_path="/sandbox/.openclaw/openclaw.json",
         require_weave_content_canary=True,
         weave_content_canary_gate=tmp_path / "gate.json",
         verify_wandb_completion=True,
@@ -1826,8 +1826,8 @@ def test_paid_run_executes_run_eval_preflight_before_run_eval(tmp_path, monkeypa
                         "schema_version": 1,
                         "ok": True,
                         "status": "passed",
-                        "enabled_benchmarks": ["agentic_math", "swebench_pro"],
-                        "scheduled_evaluators": ["agentic_math", "swebench_pro"],
+                        "enabled_benchmarks": ["agentic_math", "agentic_swe_assorted"],
+                        "scheduled_evaluators": ["agentic_math", "agentic_swe_assorted"],
                         "will_initialize_wandb": False,
                         "will_log_wandb_artifacts": False,
                         "will_initialize_weave": False,
@@ -1860,11 +1860,11 @@ def test_paid_run_executes_run_eval_preflight_before_run_eval(tmp_path, monkeypa
             "nejumi-taiwan",
             "--agentic-math-nemoclaw-openclaw-config-path",
             "/sandbox/.openclaw/openclaw.json",
-            "--swebench-pro-nemoclaw-sandbox",
+            "--agentic-swe-assorted-nemoclaw-sandbox",
             "nejumi-taiwan",
-            "--swebench-pro-nemoclaw-openclaw-config-path",
+            "--agentic-swe-assorted-nemoclaw-openclaw-config-path",
             "/sandbox/.openclaw/openclaw.json",
-            "--swebench-pro-nemoclaw-checkout-transfer-mode",
+            "--agentic-swe-assorted-nemoclaw-checkout-transfer-mode",
             "copy",
             "--require-nemoclaw-agentic-config",
             "--wandb-run-id-prefix",
@@ -1993,11 +1993,11 @@ def test_paid_run_stops_before_run_eval_when_preflight_fails(tmp_path, monkeypat
             "nejumi-taiwan",
             "--agentic-math-nemoclaw-openclaw-config-path",
             "/sandbox/.openclaw/openclaw.json",
-            "--swebench-pro-nemoclaw-sandbox",
+            "--agentic-swe-assorted-nemoclaw-sandbox",
             "nejumi-taiwan",
-            "--swebench-pro-nemoclaw-openclaw-config-path",
+            "--agentic-swe-assorted-nemoclaw-openclaw-config-path",
             "/sandbox/.openclaw/openclaw.json",
-            "--swebench-pro-nemoclaw-checkout-transfer-mode",
+            "--agentic-swe-assorted-nemoclaw-checkout-transfer-mode",
             "copy",
             "--require-nemoclaw-agentic-config",
             "--wandb-run-id-prefix",

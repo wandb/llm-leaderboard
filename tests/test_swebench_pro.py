@@ -63,6 +63,7 @@ def test_swebench_default_policy_allows_pip_and_blocks_external_fetches():
     assert denied("pip install git+ssh://example.com/project.git")
     assert denied("git clone git@example.com:project/repo.git")
     assert denied("curl https://example.com/data")
+    assert not denied("python - <<'PY'\nimport requests\nprint(requests.Session)\nPY")
     assert denied("python - <<'PY'\nimport requests\nrequests.get('https://example.com')\nPY")
 
 
@@ -156,6 +157,34 @@ def test_swebench_openclaw_context_tokens_appends_missing_model_entry():
             "contextTokens": 1_000_000,
         }
     ]
+
+
+def test_swebench_openclaw_model_params_updates_model_entry():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    config = {"models": {"providers": {"openrouter-direct": {"models": []}}}}
+    args = SimpleNamespace(
+        model="openrouter-direct/z-ai/glm-5.2",
+        max_input_tokens=0,
+        openclaw_model_overrides_json=json.dumps({"maxTokens": 4096}),
+        openclaw_model_params_json=json.dumps(
+            {
+                "provider": {
+                    "order": ["z-ai/fp8"],
+                    "only": ["z-ai/fp8"],
+                    "allow_fallbacks": False,
+                }
+            }
+        ),
+    )
+
+    result = module.configure_openclaw_context_tokens(config, args)
+
+    assert result["overrides"]["maxTokens"] == 4096
+    assert result["params"]["provider"]["only"] == ["z-ai/fp8"]
+    [entry] = config["models"]["providers"]["openrouter-direct"]["models"]
+    assert entry["maxTokens"] == 4096
+    assert entry["params"]["provider"]["order"] == ["z-ai/fp8"]
+    assert "compat" not in entry
 
 
 def test_swebench_copy_archive_excludes_git_history(tmp_path):
@@ -464,6 +493,41 @@ def test_openclaw_prompt_ignores_embedded_text_fields():
     assert "Do not include a final-answer marker in the same assistant turn as a tool call" in prompt
 
 
+def test_openclaw_prompt_includes_runtime_budget_when_configured():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    row = sample_row()
+
+    prompt = module.build_prompt(
+        row,
+        max_tool_wall_seconds=120,
+        max_tool_calls=40,
+        max_agent_turns=40,
+        max_input_tokens=1_000_000,
+        max_cumulative_input_tokens=1_000_000,
+        max_cumulative_output_tokens=500_000,
+    )
+
+    assert "## Runtime Budget" in prompt
+    assert "Maximum tool calls: 40" in prompt
+    assert "Maximum agent turns: 40" in prompt
+    assert "Per-turn input-token cap: 1000000" in prompt
+    assert "Cumulative input-token cap: 1000000" in prompt
+    assert "Cumulative output-token cap: 500000" in prompt
+    assert "hard evaluation limits" in prompt
+    assert "finish repository orientation within about 13 tool calls" in prompt
+    assert "reserve the remaining calls for patching and verification" in prompt
+
+
+def test_openclaw_prompt_omits_runtime_budget_when_unconfigured():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    row = sample_row()
+
+    prompt = module.build_prompt(row, max_tool_wall_seconds=120)
+
+    assert "## Runtime Budget" not in prompt
+    assert "Maximum tool calls" not in prompt
+
+
 def test_openclaw_prompt_normalizes_crlf_text_fields():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
     row = sample_row()
@@ -499,6 +563,21 @@ def test_swebench_protocol_benchmark_id_normalizes_swebench_sources():
     assert module.protocol_benchmark_id({"benchmark_id": "deepswe"}) == "deepswe"
 
 
+def test_swebench_effective_deny_tools_allows_process_control_tool():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    args = SimpleNamespace(
+        deny_tool=[
+            "web_search",
+            "process",
+            "process_log",
+            "process_*",
+            "browser",
+        ]
+    )
+
+    assert module.effective_deny_tools(args) == ["browser", "web_search"]
+
+
 def test_swebench_nemoclaw_task_agent_config_is_sandbox_visible(tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
     row = sample_row()
@@ -518,6 +597,10 @@ def test_swebench_nemoclaw_task_agent_config_is_sandbox_visible(tmp_path):
         model="openai-direct/gpt-4.1-mini-2025-04-14",
         no_local=False,
         nemoclaw_checkout_sandbox_root="/sandbox/checkouts",
+        nemoclaw_extra_path=["/sandbox/.deepswe-tools/python-bin/abc123"],
+        nemoclaw_extra_pythonpath=[
+            "/sandbox/.deepswe-tools/python-site/abc123/site-packages"
+        ],
         nemoclaw_openclaw_config_path="/sandbox/.openclaw/openclaw.json",
         nemoclaw_sandbox="nejumi-taiwan",
         openclaw_config_template=template,
@@ -599,7 +682,7 @@ def test_swebench_registers_nemoclaw_gateway_task_agent_when_no_local(tmp_path, 
     args = SimpleNamespace(
         agent="fallback-agent",
         deny_argument_pattern=None,
-        deny_tool=["web_search"],
+        deny_tool=["web_search", "process", "process_*"],
         dry_run=False,
         max_input_tokens=50000,
         max_tool_calls=40,
@@ -630,6 +713,10 @@ def test_swebench_registers_nemoclaw_gateway_task_agent_when_no_local(tmp_path, 
     assert 'exec_config["timeoutSec"] = max_tool_wall_seconds' in script
     assert "min(existing_timeout, max_tool_wall_seconds)" not in script
     assert 'target["contextTokens"]' not in script
+    assert "is_process_control_tool" in script
+    assert 'existing_budget_config.get("denyArgumentPatterns"' not in script
+    assert '"denyTools": current_deny_tools' in script
+    assert '"denyArgumentPatterns": current_deny_argument_patterns' in script
     assert command[2:5] == [
         "bash",
         "-lc",
@@ -645,6 +732,8 @@ def test_swebench_registers_nemoclaw_gateway_task_agent_when_no_local(tmp_path, 
     assert budget["max_tool_wall_seconds"] == 240
     assert budget["max_cumulative_input_tokens"] == 50000
     assert budget["max_cumulative_output_tokens"] == 0
+    assert budget["deny_tools"] == ["web_search"]
+    assert all("requests" not in pattern for pattern in budget["deny_argument_patterns"])
     assert budget["require_actual_token_usage"] is False
     metadata = json.loads((task_dir / "openclaw_task_agent.json").read_text(encoding="utf-8"))
     assert metadata["config_path"] == "/sandbox/.openclaw/openclaw.json"
@@ -738,6 +827,21 @@ def test_nemoclaw_gateway_cleanup_skips_remaining_after_total_budget(monkeypatch
     assert calls == []
     assert module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS == []
     assert "skipped 2 NeMoClaw task-agent cleanup calls" in capsys.readouterr().err
+
+
+def test_nemoclaw_gateway_cleanup_swallows_keyboard_interrupt(monkeypatch, capsys):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+
+    def fake_unregister(args, agent_id, *, timeout=60):
+        raise KeyboardInterrupt("pier shutdown")
+
+    monkeypatch.setattr(module, "unregister_nemoclaw_gateway_task_agent", fake_unregister)
+    module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS[:] = [(SimpleNamespace(), "agent-a")]
+
+    module.cleanup_registered_nemoclaw_gateway_agents()
+
+    assert module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS == []
+    assert "ignored NeMoClaw task-agent cleanup failure for agent-a" in capsys.readouterr().err
 
 
 def test_swebench_weave_sidecar_failure_is_not_patchable_success():
@@ -1030,6 +1134,10 @@ def test_swebench_nemoclaw_run_forwards_sandbox_command_args(tmp_path, monkeypat
         no_local=False,
         nemoclaw_bin="nemoclaw",
         nemoclaw_checkout_sandbox_root="/sandbox/checkouts",
+        nemoclaw_extra_path=["/sandbox/.deepswe-tools/python-bin/abc123"],
+        nemoclaw_extra_pythonpath=[
+            "/sandbox/.deepswe-tools/python-site/abc123/site-packages"
+        ],
         nemoclaw_openclaw_config_path="/sandbox/.openclaw/openclaw.json",
         nemoclaw_sandbox="nejumi-taiwan",
         nemoclaw_workdir="/sandbox",
@@ -1055,6 +1163,14 @@ def test_swebench_nemoclaw_run_forwards_sandbox_command_args(tmp_path, monkeypat
     assert metadata["nemoclaw_workdir"] == expected_checkout
     assert captured_command[captured_command.index("--nemoclaw-sandbox") + 1] == "nejumi-taiwan"
     assert captured_command[captured_command.index("--nemoclaw-workdir") + 1] == expected_checkout
+    assert (
+        captured_command[captured_command.index("--nemoclaw-extra-path") + 1]
+        == "/sandbox/.deepswe-tools/python-bin/abc123"
+    )
+    assert (
+        captured_command[captured_command.index("--nemoclaw-extra-pythonpath") + 1]
+        == "/sandbox/.deepswe-tools/python-site/abc123/site-packages"
+    )
     assert captured_command[captured_command.index("--openclaw-config-path") + 1] == expected_config
     assert captured_command[captured_command.index("--openclaw-config-source") + 1] == str(template)
     assert captured_command[captured_command.index("--live-session-dir") + 1] == str(
@@ -1682,6 +1798,56 @@ def test_swebench_returncode_zero_provider_timeout_sidecar_is_transient():
     )
 
 
+def test_swebench_live_provider_timeout_overrides_runtime_budget_violation():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    completed = subprocess.CompletedProcess(["cmd"], 125, stdout="", stderr="")
+    sidecar = {
+        "returncode": 125,
+        "stderr": "Live OpenClaw interrupt: reason=live_provider_timeout",
+        "runtime_budget": {
+            "ok": False,
+            "violations": [
+                {
+                    "type": "missing_actual_token_usage",
+                    "source": "live_runtime_budget",
+                }
+            ],
+            "live": {
+                "reason": "live_provider_timeout",
+                "live_provider_timeout_count": 1,
+                "provider_timeouts": [
+                    {
+                        "errorCode": "504",
+                        "errorMessage": "Upstream idle timeout exceeded",
+                    }
+                ],
+            },
+        },
+        "tool_policy_ok": True,
+        "tool_policy_violations": [],
+    }
+
+    assert module.sidecar_provider_timeout(sidecar)
+    assert module.is_transient_openclaw_failure(completed, sidecar)
+
+    idle_sidecar = {
+        "runtime_budget": {
+            "ok": False,
+            "violations": [{"type": "missing_actual_token_usage"}],
+            "live": {
+                "reason": "llm_response_idle_timeout",
+                "interrupt_reason": "llm_response_idle_timeout",
+                "exceeded_limits": ["llm_response_idle_timeout"],
+            },
+        },
+        "tool_policy_ok": True,
+        "tool_policy_violations": [],
+    }
+    assert not module.sidecar_provider_timeout(idle_sidecar)
+    assert module.sidecar_llm_response_idle_timeout(idle_sidecar)
+    assert not module.is_transient_openclaw_failure(completed, idle_sidecar)
+
+
 def test_swebench_transient_openclaw_failure_detects_provider_sse_rate_limit():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
     completed = subprocess.CompletedProcess(["cmd"], 1, stdout="", stderr="")
@@ -1787,7 +1953,7 @@ def test_swebench_non_scoreable_openclaw_failure_does_not_catch_transient_timeou
     assert module.non_scoreable_openclaw_failure_reason(timeout, None) is None
 
 
-def test_swebench_policy_violation_returns_disqualified_metadata(tmp_path, monkeypatch):
+def test_swebench_policy_violation_is_recorded_without_disqualification(tmp_path, monkeypatch):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
     row = sample_row()
     checkout_dir = tmp_path / "checkout"
@@ -1846,10 +2012,10 @@ def test_swebench_policy_violation_returns_disqualified_metadata(tmp_path, monke
 
     metadata = module.run_openclaw_for_task(row, checkout_dir, task_dir, args)
 
-    assert metadata["openclaw_disqualified_reason"] == "tool_policy_violation"
+    assert metadata["openclaw_disqualified_reason"] == ""
     assert metadata["tool_policy_ok"] is False
     assert metadata["tool_policy_violations"][0]["toolName"] == "exec"
-    assert module.should_force_empty_patch(metadata)
+    assert not module.should_force_empty_patch(metadata)
 
 
 def test_swebench_transient_exhaustion_returns_disqualified_metadata(tmp_path, monkeypatch):
@@ -1913,6 +2079,118 @@ def test_swebench_transient_exhaustion_returns_disqualified_metadata(tmp_path, m
     assert module.should_force_empty_patch(metadata)
     failures = (task_dir / "openclaw_transient_failures.jsonl").read_text(encoding="utf-8")
     assert '"exhausted": true' in failures
+
+
+def test_swebench_provider_timeout_runtime_budget_sidecar_retries_before_disqualifying(
+    tmp_path, monkeypatch
+):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    row = sample_row()
+    checkout_dir = tmp_path / "checkout"
+    checkout_dir.mkdir()
+    task_dir = tmp_path / "task"
+    calls = []
+
+    def fake_run_command(command, cwd=None, timeout=None, check=True):
+        calls.append(command)
+        output_dir = Path(command[command.index("--output-dir") + 1])
+        sidecar_path = module.task_sidecar_path(output_dir, row["instance_id"])
+        sidecar_path.parent.mkdir(parents=True, exist_ok=True)
+        identity = protocol_sidecar_identity(module, command, row["instance_id"])
+        if len(calls) == 1:
+            sidecar_path.write_text(
+                json.dumps(
+                    {
+                        **identity,
+                        "returncode": 125,
+                        "stderr": "Live OpenClaw interrupt: reason=live_provider_timeout",
+                        "tool_policy_ok": True,
+                        "tool_policy_violations": [],
+                        "tool_call_count": 12,
+                        "tool_error_count": 0,
+                        "runtime_budget": {
+                            "ok": False,
+                            "violations": [
+                                {
+                                    "type": "missing_actual_token_usage",
+                                    "source": "live_runtime_budget",
+                                }
+                            ],
+                            "live": {
+                                "reason": "live_provider_timeout",
+                                "live_provider_timeout_count": 1,
+                            },
+                        },
+                        "weave_sidecar": {"ok": True},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(
+                command,
+                125,
+                stdout=str(sidecar_path),
+                stderr="Live OpenClaw interrupt: reason=live_provider_timeout",
+            )
+        sidecar_path.write_text(
+            json.dumps(
+                {
+                    **identity,
+                    "returncode": 0,
+                    "stderr": "[agent] run ended with stopReason=stop",
+                    "tool_policy_ok": True,
+                    "tool_policy_violations": [],
+                    "tool_call_count": 10,
+                    "tool_error_count": 0,
+                    "runtime_budget": {"ok": True, "violations": []},
+                    "weave_sidecar": {"ok": True},
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, stdout=str(sidecar_path), stderr="")
+
+    monkeypatch.setattr(module, "run_command", fake_run_command)
+    monkeypatch.setattr(module, "ensure_nemoclaw_checkout_ready", lambda checkout_dir, task_dir, args: None)
+    args = SimpleNamespace(
+        agent="test-agent",
+        allow_failed_preflight=False,
+        deny_argument_pattern=None,
+        deny_tool=None,
+        dry_run=False,
+        max_input_tokens=1_000_000,
+        max_tool_calls=60,
+        max_agent_turns=40,
+        max_cumulative_input_tokens=1_000_000,
+        max_cumulative_output_tokens=500_000,
+        max_tool_wall_seconds=120,
+        model="openai-direct/example-model",
+        no_local=False,
+        openclaw_max_attempts=2,
+        openclaw_retry_base_seconds=0,
+        openclaw_timeout=30,
+        profile=None,
+        session_prefix=None,
+        thinking="high",
+        use_task_agent=False,
+        weave_sidecar=True,
+        weave_sidecar_strict=False,
+    )
+
+    metadata = module.run_openclaw_for_task(row, checkout_dir, task_dir, args)
+
+    assert len(calls) == 2
+    assert metadata["attempt_number"] == 2
+    assert metadata["openclaw_disqualified_reason"] == ""
+    assert metadata["openclaw_returncode"] == 0
+    failures = [
+        json.loads(line)
+        for line in (task_dir / "openclaw_transient_failures.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert failures[0]["failure_reason"] == "provider_timeout"
+    assert failures[0]["exhausted"] is False
 
 
 def test_swebench_recovers_workspace_vanished_attestation(tmp_path, monkeypatch):

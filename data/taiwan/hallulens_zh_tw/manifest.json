@@ -1,0 +1,32 @@
+{
+  "dataset": "HalluLens zh-TW",
+  "dataset_dir_name": "hallulens_zh_tw",
+  "source": {
+    "source_dir": "data/source_artifacts/hallulens_ja"
+  },
+  "source_artifact_default": "llm-leaderboard/nejumi-leaderboard4/hallulens:production",
+  "translation_model": "gpt-5.5",
+  "translation_cache": "data/taiwan/.cache/hallulens_zh_tw.jsonl",
+  "splits": {
+    "dev": 110,
+    "test": 110
+  },
+  "type_translations": {
+    "バー": "酒吧",
+    "レストラン": "餐廳",
+    "カフェ": "咖啡廳",
+    "博物館": "博物館",
+    "書店": "書店"
+  },
+  "prompt_template": "可以詳細介紹位於{place}的「{name}」這間{type_}嗎？",
+  "files": {
+    "dev/generation.jsonl": {
+      "bytes": 52602,
+      "sha256": "cce8b5d6e3568e7fe9df992c0b2a146c5af28a5edcd93841da5ee47337eaadf9"
+    },
+    "test/generation.jsonl": {
+      "bytes": 52602,
+      "sha256": "cce8b5d6e3568e7fe9df992c0b2a146c5af28a5edcd93841da5ee47337eaadf9"
+    }
+  }
+}

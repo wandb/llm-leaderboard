@@ -81,6 +81,35 @@ AGENTIC_SWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "openclaw_command_sha256",
     "openclaw_config_source",
 )
+AGENTIC_SWE_ASSORTED_OUTPUT_TABLE_REQUIRED_COLUMNS = (
+    "source_benchmark",
+    "source_dataset",
+    "source_subset",
+    "source_instance_id",
+    "agentic_swe_tier",
+    "instance_id",
+    "resolved",
+    "score",
+    "weave_agents_conversation_url",
+    "openclaw_tool_call_count",
+    "openclaw_usage",
+)
+AGENTIC_SWE_ASSORTED_REQUIRED_ARTIFACT_FILES = (
+    "summary.json",
+    "output_table.jsonl",
+    "leaderboard_table.json",
+    "report.md",
+)
+AGENTIC_SWE_ASSORTED_DEFAULT_TIER_COUNTS = {
+    "low": 36,
+    "middle": 36,
+    "high": 8,
+}
+AGENTIC_SWE_ASSORTED_TIER_SOURCES = {
+    "low": "SWE-bench Lite",
+    "middle": "SWE-bench Lite",
+    "high": "DeepSWE",
+}
 OPENCLAW_INVOCATION_EVIDENCE_COLUMNS = (
     "openclaw_result_path",
     "openclaw_invocation_path",
@@ -823,11 +852,17 @@ def _int_metric(summary: dict[str, Any], key: str | None) -> tuple[int | None, A
 def _artifact_summaries(run: Any) -> list[dict[str, Any]]:
     artifacts = []
     for artifact in run.logged_artifacts():
+        manifest_entries = None
+        manifest = getattr(artifact, "manifest", None)
+        entries = getattr(manifest, "entries", None)
+        if isinstance(entries, dict):
+            manifest_entries = sorted(str(key) for key in entries)
         artifacts.append(
             {
                 "name": getattr(artifact, "name", ""),
                 "type": getattr(artifact, "type", ""),
                 "aliases": list(getattr(artifact, "aliases", []) or []),
+                "manifest_entries": manifest_entries,
             }
         )
     return artifacts
@@ -1028,6 +1063,8 @@ def _benchmark_required_evidence(
     *,
     expected_total: int | None,
     require_nemoclaw_session_audit: bool,
+    require_agentic_swe_assorted: bool = False,
+    agentic_swe_assorted_tier_counts: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     metrics = [spec.total_metric]
     if spec.answered_metric:
@@ -1078,6 +1115,19 @@ def _benchmark_required_evidence(
         }
     else:
         required_evidence["nemoclaw_session_audit"] = {"required": False}
+    if require_agentic_swe_assorted:
+        required_evidence["agentic_swe_assorted"] = {
+            "required": True,
+            "expected_tier_counts": agentic_swe_assorted_tier_counts
+            or dict(AGENTIC_SWE_ASSORTED_DEFAULT_TIER_COUNTS),
+            "weighted_score_complete_metric": "agentic_swe/weighted_pass_at_1_complete",
+            "weighted_score_metric": "agentic_swe/weighted_pass_at_1",
+            "pass_at_1_metric": "agentic_swe/pass_at_1",
+            "output_table_required_columns": list(
+                AGENTIC_SWE_ASSORTED_OUTPUT_TABLE_REQUIRED_COLUMNS
+            ),
+            "required_artifact_files": list(AGENTIC_SWE_ASSORTED_REQUIRED_ARTIFACT_FILES),
+        }
     return required_evidence
 
 
@@ -1389,6 +1439,316 @@ def _nemoclaw_session_audit_check(
     )
 
 
+def _parse_agentic_swe_assorted_tier_counts(value: str | None) -> dict[str, int]:
+    if not value:
+        return dict(AGENTIC_SWE_ASSORTED_DEFAULT_TIER_COUNTS)
+    counts: dict[str, int] = {}
+    for part in value.split(","):
+        if not part.strip():
+            continue
+        if "=" not in part:
+            raise SystemExit(
+                "--agentic-swe-assorted-tier-counts must be comma-separated TIER=COUNT"
+            )
+        tier, raw_count = part.split("=", 1)
+        tier = tier.strip()
+        if not tier:
+            raise SystemExit("--agentic-swe-assorted-tier-counts tier must not be empty")
+        try:
+            count = int(raw_count)
+        except ValueError as exc:
+            raise SystemExit(
+                f"--agentic-swe-assorted-tier-counts count for {tier} is not an integer"
+            ) from exc
+        if count < 0:
+            raise SystemExit(
+                f"--agentic-swe-assorted-tier-counts count for {tier} must be non-negative"
+            )
+        counts[tier] = count
+    return counts
+
+
+def _artifact_files_check(
+    artifacts: list[dict[str, Any]],
+    *,
+    required_files: tuple[str, ...],
+    artifact_type: str,
+    require_production_alias: bool,
+) -> dict[str, Any]:
+    matching = [
+        artifact
+        for artifact in artifacts
+        if artifact.get("type") == artifact_type
+        and (
+            not require_production_alias
+            or "production" in (artifact.get("aliases") or [])
+        )
+    ]
+    if not matching:
+        return _fail_check(
+            "result_artifact_files",
+            "no matching result artifact is available for file manifest inspection",
+            artifact_type=artifact_type,
+            required_files=list(required_files),
+            require_production_alias=require_production_alias,
+            artifacts=artifacts,
+        )
+    uninspectable = [
+        artifact
+        for artifact in matching
+        if not isinstance(artifact.get("manifest_entries"), list)
+    ]
+    inspectable = [
+        artifact
+        for artifact in matching
+        if isinstance(artifact.get("manifest_entries"), list)
+    ]
+    for artifact in inspectable:
+        entries = set(str(entry) for entry in artifact.get("manifest_entries") or [])
+        missing = [filename for filename in required_files if filename not in entries]
+        if not missing:
+            return _ok_check(
+                "result_artifact_files",
+                "result artifact contains required files",
+                artifact=artifact,
+                required_files=list(required_files),
+                missing_files=[],
+            )
+    missing_by_artifact = [
+        {
+            "name": artifact.get("name"),
+            "missing_files": [
+                filename
+                for filename in required_files
+                if filename not in set(str(entry) for entry in artifact.get("manifest_entries") or [])
+            ],
+            "manifest_entries": artifact.get("manifest_entries"),
+        }
+        for artifact in inspectable
+    ]
+    return _fail_check(
+        "result_artifact_files",
+        "result artifact is missing required files"
+        if inspectable
+        else "result artifact manifest entries are not inspectable",
+        required_files=list(required_files),
+        missing_by_artifact=missing_by_artifact,
+        uninspectable_artifacts=uninspectable,
+    )
+
+
+def _agentic_swe_assorted_checks(
+    run: Any,
+    summary: dict[str, Any],
+    spec: BenchmarkSpec,
+    *,
+    expected_tier_counts: dict[str, int],
+    artifacts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    expected_total = sum(expected_tier_counts.values())
+    total_raw = _metric(summary, spec.total_metric)
+    try:
+        total = int(total_raw)
+    except (TypeError, ValueError):
+        total = None
+
+    complete_raw = _metric(summary, "agentic_swe/weighted_pass_at_1_complete")
+    try:
+        complete = bool(int(complete_raw))
+    except (TypeError, ValueError):
+        complete = bool(complete_raw) if isinstance(complete_raw, bool) else False
+    if complete:
+        checks.append(
+            _ok_check(
+                "agentic_swe_assorted_weighted_score_complete",
+                "Agentic SWE-Assorted weighted score is complete",
+                value=complete_raw,
+            )
+        )
+    else:
+        checks.append(
+            _fail_check(
+                "agentic_swe_assorted_weighted_score_complete",
+                "Agentic SWE-Assorted weighted score is incomplete",
+                value=complete_raw,
+                expected=True,
+            )
+        )
+
+    weighted_raw = _metric(summary, "agentic_swe/weighted_pass_at_1")
+    pass_raw = _metric(summary, "agentic_swe/pass_at_1")
+    try:
+        weighted = float(weighted_raw)
+        pass_at_1 = float(pass_raw)
+    except (TypeError, ValueError):
+        weighted = math.nan
+        pass_at_1 = math.nan
+    if not math.isfinite(weighted) or not math.isfinite(pass_at_1):
+        checks.append(
+            _fail_check(
+                "agentic_swe_assorted_weighted_score_metric",
+                "missing or invalid Agentic SWE-Assorted weighted score metrics",
+                weighted_pass_at_1=weighted_raw,
+                pass_at_1=pass_raw,
+            )
+        )
+    elif abs(weighted - pass_at_1) > 1e-12:
+        checks.append(
+            _fail_check(
+                "agentic_swe_assorted_weighted_score_metric",
+                "agentic_swe/pass_at_1 must equal agentic_swe/weighted_pass_at_1",
+                weighted_pass_at_1=weighted,
+                pass_at_1=pass_at_1,
+            )
+        )
+    else:
+        checks.append(
+            _ok_check(
+                "agentic_swe_assorted_weighted_score_metric",
+                "agentic_swe/pass_at_1 equals weighted_pass_at_1",
+                weighted_pass_at_1=weighted,
+                pass_at_1=pass_at_1,
+            )
+        )
+
+    if total == expected_total:
+        checks.append(
+            _ok_check(
+                "agentic_swe_assorted_total",
+                "Agentic SWE-Assorted total matches expected tier counts",
+                value=total,
+                expected=expected_total,
+                expected_tier_counts=expected_tier_counts,
+            )
+        )
+    else:
+        checks.append(
+            _fail_check(
+                "agentic_swe_assorted_total",
+                "Agentic SWE-Assorted total does not match expected tier counts",
+                value=total_raw,
+                expected=expected_total,
+                expected_tier_counts=expected_tier_counts,
+            )
+        )
+
+    payload, source, error = _download_table_payload_from_summary(run, summary, spec.output_table)
+    if payload is None:
+        checks.append(
+            _fail_check(
+                "agentic_swe_assorted_output_table",
+                error or "could not inspect Agentic SWE-Assorted output table",
+                table_name=spec.output_table,
+                source=source,
+            )
+        )
+    else:
+        rows, rows_error = _table_data_rows_from_payload(payload)
+        if rows is None:
+            checks.append(
+                _fail_check(
+                    "agentic_swe_assorted_output_table",
+                    rows_error or "Agentic SWE-Assorted output table has no inspectable rows",
+                    table_name=spec.output_table,
+                    source=source,
+                )
+            )
+        else:
+            columns = _table_columns_from_payload(payload) or []
+            missing_columns = [
+                column
+                for column in AGENTIC_SWE_ASSORTED_OUTPUT_TABLE_REQUIRED_COLUMNS
+                if column not in columns
+            ]
+            if missing_columns:
+                checks.append(
+                    _fail_check(
+                        "agentic_swe_assorted_output_columns",
+                        "Agentic SWE-Assorted output table is missing required columns",
+                        required_columns=list(AGENTIC_SWE_ASSORTED_OUTPUT_TABLE_REQUIRED_COLUMNS),
+                        columns=columns,
+                        missing_columns=missing_columns,
+                        source=source,
+                    )
+                )
+            else:
+                checks.append(
+                    _ok_check(
+                        "agentic_swe_assorted_output_columns",
+                        "Agentic SWE-Assorted output table contains required columns",
+                        required_columns=list(AGENTIC_SWE_ASSORTED_OUTPUT_TABLE_REQUIRED_COLUMNS),
+                        columns=columns,
+                        missing_columns=[],
+                        source=source,
+                    )
+                )
+            tier_counts: dict[str, int] = {}
+            invalid_source_examples: list[dict[str, Any]] = []
+            invalid_source_count = 0
+            for index, row in enumerate(rows, start=1):
+                tier = str(row.get("agentic_swe_tier"))
+                tier_counts[tier] = tier_counts.get(tier, 0) + 1
+                expected_source = AGENTIC_SWE_ASSORTED_TIER_SOURCES.get(tier)
+                if expected_source is not None and row.get("source_benchmark") != expected_source:
+                    invalid_source_count += 1
+                    if len(invalid_source_examples) < 5:
+                        invalid_source_examples.append(
+                            {
+                                "row_index": index,
+                                "tier": tier,
+                                "source_benchmark": row.get("source_benchmark"),
+                                "expected_source_benchmark": expected_source,
+                            }
+                        )
+            if tier_counts == expected_tier_counts:
+                checks.append(
+                    _ok_check(
+                        "agentic_swe_assorted_tier_counts",
+                        "Agentic SWE-Assorted tier counts match expected counts",
+                        tier_counts=tier_counts,
+                        expected_tier_counts=expected_tier_counts,
+                    )
+                )
+            else:
+                checks.append(
+                    _fail_check(
+                        "agentic_swe_assorted_tier_counts",
+                        "Agentic SWE-Assorted tier counts do not match expected counts",
+                        tier_counts=tier_counts,
+                        expected_tier_counts=expected_tier_counts,
+                    )
+                )
+            if invalid_source_count:
+                checks.append(
+                    _fail_check(
+                        "agentic_swe_assorted_tier_sources",
+                        "Agentic SWE-Assorted rows have unexpected source benchmark labels",
+                        invalid_row_count=invalid_source_count,
+                        invalid_examples=invalid_source_examples,
+                    )
+                )
+            else:
+                checks.append(
+                    _ok_check(
+                        "agentic_swe_assorted_tier_sources",
+                        "Agentic SWE-Assorted rows use expected source benchmark labels",
+                        invalid_row_count=0,
+                        invalid_examples=[],
+                    )
+                )
+
+    checks.append(
+        _artifact_files_check(
+            artifacts,
+            required_files=AGENTIC_SWE_ASSORTED_REQUIRED_ARTIFACT_FILES,
+            artifact_type=spec.result_artifact_type or "",
+            require_production_alias=spec.production_artifact_alias_required,
+        )
+    )
+    return checks
+
+
 def _observed_full_evidence(checks: list[dict[str, Any]]) -> dict[str, Any]:
     observed: dict[str, Any] = {
         "run_state": None,
@@ -1445,6 +1805,8 @@ def verify_run(
     expected_tags: list[str] | None = None,
     expected_group: str | None = None,
     expected_job_type: str | None = None,
+    require_agentic_swe_assorted: bool = False,
+    agentic_swe_assorted_tier_counts: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     summary = _as_summary_dict(run)
     checks: list[dict[str, Any]] = []
@@ -1627,12 +1989,26 @@ def verify_run(
             accuracy = float(accuracy_raw)
         except (TypeError, ValueError):
             accuracy = math.nan
+        accuracy_is_weighted_agentic_swe_assorted = (
+            require_agentic_swe_assorted
+            and spec.id == "agentic_swe"
+            and spec.accuracy_metric == "agentic_swe/pass_at_1"
+        )
         if not math.isfinite(accuracy):
             checks.append(
                 _fail_check(
                     "accuracy_metric",
                     f"missing or invalid {spec.accuracy_metric}",
                     value=accuracy_raw,
+                )
+            )
+        elif accuracy_is_weighted_agentic_swe_assorted:
+            checks.append(
+                _ok_check(
+                    "accuracy_metric",
+                    f"{spec.accuracy_metric} is a weighted tier macro score",
+                    value=accuracy,
+                    expected="validated by Agentic SWE-Assorted checks",
                 )
             )
         elif total is not None and correct_int is not None:
@@ -1706,6 +2082,27 @@ def verify_run(
                 )
             )
 
+    if require_agentic_swe_assorted:
+        if spec.id != "agentic_swe":
+            checks.append(
+                _fail_check(
+                    "agentic_swe_assorted_contract",
+                    "--require-agentic-swe-assorted can only be used with --benchmark agentic_swe",
+                    benchmark=spec.id,
+                )
+            )
+        else:
+            checks.extend(
+                _agentic_swe_assorted_checks(
+                    run,
+                    summary,
+                    spec,
+                    expected_tier_counts=agentic_swe_assorted_tier_counts
+                    or dict(AGENTIC_SWE_ASSORTED_DEFAULT_TIER_COUNTS),
+                    artifacts=artifacts,
+                )
+            )
+
     ok = all(check["ok"] for check in checks)
     result = {
         **_verification_header(ok),
@@ -1717,6 +2114,8 @@ def verify_run(
             spec,
             expected_total=expected_total,
             require_nemoclaw_session_audit=require_nemoclaw_session_audit,
+            require_agentic_swe_assorted=require_agentic_swe_assorted,
+            agentic_swe_assorted_tier_counts=agentic_swe_assorted_tier_counts,
         ),
         "observed_evidence": _observed_benchmark_evidence(
             checks,
@@ -2009,6 +2408,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "session audit."
         ),
     )
+    parser.add_argument(
+        "--require-agentic-swe-assorted",
+        action="store_true",
+        help=(
+            "For --benchmark agentic_swe, require the Agentic SWE-Assorted release "
+            "contract: complete weighted tier score, expected tier counts, Assorted "
+            "source columns, and required result artifact files."
+        ),
+    )
+    parser.add_argument(
+        "--agentic-swe-assorted-tier-counts",
+        default="low=36,middle=36,high=8",
+        help=(
+            "Expected Agentic SWE-Assorted tier counts as comma-separated TIER=COUNT. "
+            "Used only with --require-agentic-swe-assorted."
+        ),
+    )
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
     parser.add_argument("--json", type=Path, help="Optional path to write verifier JSON.")
     return parser.parse_args(argv)
@@ -2044,6 +2460,14 @@ def main(argv: list[str] | None = None) -> None:
             expected_tags=args.expected_run_tag,
             expected_group=args.expected_run_group,
             expected_job_type=args.expected_run_job_type,
+            require_agentic_swe_assorted=bool(args.require_agentic_swe_assorted),
+            agentic_swe_assorted_tier_counts=(
+                _parse_agentic_swe_assorted_tier_counts(
+                    args.agentic_swe_assorted_tier_counts
+                )
+                if args.require_agentic_swe_assorted
+                else None
+            ),
         )
     result["entity"] = entity
     result["project"] = project

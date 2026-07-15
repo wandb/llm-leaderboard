@@ -28,6 +28,24 @@ PRICE_PER_MILLION: dict[str, dict[str, float]] = {
         "cacheRead": 0.10,
         "cacheWrite": 0.0,
     },
+    "openai-direct/gpt-5.6-luna": {
+        "input": 1.00,
+        "output": 6.00,
+        "cacheRead": 0.10,
+        "cacheWrite": 1.25,
+    },
+    "openai-direct/gpt-5.6-terra": {
+        "input": 2.00,
+        "output": 12.00,
+        "cacheRead": 0.20,
+        "cacheWrite": 2.50,
+    },
+    "openai-direct/gpt-5.6-sol": {
+        "input": 5.00,
+        "output": 25.00,
+        "cacheRead": 0.50,
+        "cacheWrite": 5.00,
+    },
     "openrouter-direct/z-ai/glm-5.2": {
         "input": 0.95,
         "output": 3.00,

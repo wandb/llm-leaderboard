@@ -1,0 +1,8 @@
+model_pair,deepswe_model,deepswe_pass_at_1,swebench_pro_model,swebench_pro_resolve_rate,match_type,note
+gpt-5.4,gpt-5.4[xhigh],52.0,gpt-5.4 (xHigh),59.1,strict,same model family/name and reasoning tier label
+gemini-3.1-pro,gemini-3.1-pro[high],12.0,gemini-3.1-pro (thinking),46.1,strict,same model family/name; effort labels differ
+claude-opus-family,claude-opus-4.8[max],59.0,claude-opus-4-6 (thinking),51.9,family,"nearby Opus generation, not exact model"
+claude-sonnet-family,claude-sonnet-4.6[high],30.0,claude-4-5-Sonnet,43.6,family,"nearby Sonnet generation, not exact model"
+gemini-flash-family,gemini-3.5-flash[medium],37.0,gemini-3-flash,34.63,family,"same Flash family, different version"
+kimi-family,kimi-k2.7-code,31.0,kimi-k2-instruct,27.67,family,"Kimi K2 family, code vs instruct variant"
+glm-family,glm-5.2[max],44.0,glm-4.6,9.67,family,GLM family but major version mismatch; use with caution

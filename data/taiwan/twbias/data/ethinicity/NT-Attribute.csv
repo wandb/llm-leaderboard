@@ -1,0 +1,65 @@
+Content,Type,Category_C,Content_A,Category
+黑,-1,外貌/形象,黑,Appearance/Impression
+五官,-1,外貌/形象,五官輪廓,Appearance/Impression
+輪廓,-1,外貌/形象,五官輪廓,Appearance/Impression
+外貌/形象,-1,外貌/形象,其他外貌/形象,Appearance/Impression
+
+幽默,0,性格/行為,幽默,Personality/Behavior
+樂天,0,性格/行為,樂天,Personality/Behavior
+樂觀,0,性格/行為,樂天,Personality/Behavior
+好客,0,性格/行為,好客,Personality/Behavior
+義氣,0,性格/行為,義氣,Personality/Behavior
+團結,0,性格/行為,團結,Personality/Behavior
+豪邁,0,性格/行為,豪邁,Personality/Behavior
+豪爽,0,性格/行為,豪邁,Personality/Behavior
+及時行樂,0,性格/行為,及時行樂,Personality/Behavior
+好吃懶做,1,性格/行為,好吃懶做,Personality/Behavior
+性格/行為,-1,性格/行為,其他性格/行為,Personality/Behavior
+
+35,-1,制度,加分,Institutions
+1.35,-1,制度,加分,Institutions
+加分,-1,制度,加分,Institutions
+補助,-1,制度,補助,Institutions
+福利,-1,制度,福利,Institutions
+優惠,-1,制度,福利,Institutions
+賠償,-1,制度,賠償,Institutions
+改名,-1,制度,改名,Institutions
+漢化,-1,制度,漢化,Institutions
+傳統領域,-1,制度,傳統領域,Institutions
+亞泥,-1,制度,亞泥,Institutions
+
+族語,-1,文化/傳統,族語,Culture/Tradition
+部落,-1,文化/傳統,部落,Culture/Tradition
+文化,-1,文化/傳統,文化/傳統,Culture/Tradition
+豐年祭,-1,文化/傳統,豐年祭,Culture/Tradition
+織布,-1,文化/傳統,織布,Culture/Tradition
+出草,-1,文化/傳統,出草,Culture/Tradition
+檳榔,-1,文化/傳統,檳榔,Culture/Tradition
+小米酒,-1,文化/傳統,小米酒,Culture/Tradition
+打獵,-1,文化/傳統,打獵,Culture/Tradition
+獵殺,-1,文化/傳統,打獵,Culture/Tradition
+獵槍,-1,文化/傳統,打獵,Culture/Tradition
+狩獵,-1,文化/傳統,打獵,Culture/Tradition
+山豬,-1,文化/傳統,山豬,Culture/Tradition
+山羌,-1,文化/傳統,山羌,Culture/Tradition
+唱歌,-1,文化/傳統,唱歌,Culture/Tradition
+歌聲,-1,文化/傳統,唱歌,Culture/Tradition
+
+藍,-1,意識形態/政治,國民黨,Ideology/Politics
+國民黨,-1,意識形態/政治,國民黨,Ideology/Politics
+
+體力,-1,運動能力,運動能力,Athletic Ability
+運動能力,-1,運動能力,運動能力,Athletic Ability
+運動細胞,-1,運動能力,運動能力,Athletic Ability
+運動能力,-1,運動能力,其他運動能力,Athletic Ability
+
+台東,-1,居住區域,台東,Residential area
+花蓮,-1,居住區域,花蓮,Residential area
+
+喝酒,-1,飲酒,喝酒,Drinking
+酒量,-1,飲酒,喝酒,Drinking
+酒駕,1,飲酒,酒駕,Drinking
+飲酒過量,1,飲酒,飲酒過量,Drinking
+
+番膏,1,其他,番膏,Other
+其他,-1,其他,其他,Other

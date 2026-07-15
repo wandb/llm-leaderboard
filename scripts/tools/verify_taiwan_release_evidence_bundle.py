@@ -127,6 +127,10 @@ NEMOCLAW_AGENTIC_CONFIG_REQUIRED_DENIED_ARGUMENT_PATTERNS = {
     r"\b(requests|urllib|httpx)\.",
     "https?://",
 }
+NEMOCLAW_AGENTIC_SWE_CONFIG_REQUIRED_DENIED_ARGUMENT_PATTERNS = {
+    r"\b(curl|wget)\b",
+    "https?://",
+}
 NEMOCLAW_AGENTIC_CONFIG_REQUIRED_ALLOWED_LOCAL_TOOLS = {"exec"}
 NEMOCLAW_INSTALL_SCRIPT_SOURCE_TOKENS = (
     ("check-only mode", "--check-only"),
@@ -679,7 +683,7 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("NeMoClaw session audit sidecar acceptance guard", "def sidecar_nemoclaw_session_audit_matches_cache("),
             (
                 "NeMoClaw session audit fresh sidecar adoption call",
-                "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):\n        raise RuntimeError(",
+                "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):",
             ),
             ("NeMoClaw session audit cached result acceptance guard", "def cached_result_matches_cache("),
             (
@@ -750,7 +754,7 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ("NeMoClaw session audit sidecar acceptance guard", "def sidecar_nemoclaw_session_audit_matches_cache("),
             (
                 "NeMoClaw session audit fresh sidecar adoption call",
-                "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):\n        raise RuntimeError(",
+                "if not sidecar_nemoclaw_session_audit_matches_cache(sidecar, cache_key):",
             ),
             ("NeMoClaw session audit cached patch acceptance guard", "def patch_record_nemoclaw_session_audit_matches_cache("),
             (
@@ -832,14 +836,17 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
                 "BENCHMARK_NEMOCLAW_CONFIG_EXPECTATIONS",
             ),
             ("NeMoClaw batch Math deny_tool guard", '"agentic_math.deny_tool"'),
-            ("NeMoClaw batch SWE deny_tool guard", '"swebench_pro.deny_tool"'),
+            (
+                "NeMoClaw batch SWE deny_tool guard",
+                '"agentic_swe_assorted.deny_tool"',
+            ),
             (
                 "NeMoClaw batch Math deny_argument_pattern guard",
                 '"agentic_math.deny_argument_pattern"',
             ),
             (
                 "NeMoClaw batch SWE deny_argument_pattern guard",
-                '"swebench_pro.deny_argument_pattern"',
+                '"agentic_swe_assorted.deny_argument_pattern"',
             ),
             (
                 "NeMoClaw W&B Math sandbox expectation",
@@ -851,11 +858,11 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ),
             (
                 "NeMoClaw W&B SWE sandbox expectation",
-                '"swebench_pro.nemoclaw_sandbox"',
+                '"agentic_swe_assorted.nemoclaw_sandbox"',
             ),
             (
                 "NeMoClaw W&B SWE checkout transfer expectation",
-                '"swebench_pro.nemoclaw_checkout_transfer_mode"',
+                '"agentic_swe_assorted.nemoclaw_checkout_transfer_mode"',
             ),
             (
                 "Agentic production evidence requirements constant",
@@ -891,7 +898,7 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ),
             (
                 "Agentic production evidence requires SWE NeMoClaw OpenClaw config path",
-                "--swebench-pro-nemoclaw-openclaw-config-path",
+                "--agentic-swe-assorted-nemoclaw-openclaw-config-path",
             ),
             (
                 "Agentic production evidence requires tool content",
@@ -939,7 +946,7 @@ AGENTIC_RUNNER_SCRIPT_CONTRACTS = {
             ),
             (
                 "pre-run budget agentic breakdown loop",
-                'for category in ("agentic_math", "swebench_pro"):',
+                'for category in ("agentic_math", "agentic_swe_assorted"):',
             ),
             (
                 "pre-run budget historical evidence check",
@@ -9647,7 +9654,7 @@ def validate_swebench_nemoclaw_config_yaml(
         errors=errors,
         section=swebench_pro,
         field="deny_argument_pattern",
-        required_values=NEMOCLAW_AGENTIC_CONFIG_REQUIRED_DENIED_ARGUMENT_PATTERNS,
+        required_values=NEMOCLAW_AGENTIC_SWE_CONFIG_REQUIRED_DENIED_ARGUMENT_PATTERNS,
         label=f"{label} swebench_pro",
     )
 

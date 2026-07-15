@@ -1,0 +1,5 @@
+model,swebench_pro_model_id,swebench_pro_score,swerebench_model,swerebench_agent_version,swerebench_window_from,swerebench_window_to,swerebench_resolved_rate,swerebench_resolved_rate_sem,swerebench_pass_at_5,match_kind,rationale
+Qwen3-Coder-480B-A35B-Instruct,Qwen/Qwen3-Coder-480B-A35B-Instruct,38.7,Qwen3-Coder-480B-A35B-Instruct,tools,2025-09-01,2025-10-01,35.6547619047619,1.5146799289450148,44.89795918367347,exact_model,same model label
+Kimi K2 Instruct,moonshotai/Kimi-K2-Instruct,27.67,Kimi K2 Instruct 0905,tools,2025-09-01,2025-10-01,25.892857142857146,2.020788203795263,40.816326530612244,same_model_snapshot_label,SWE-rebench exposes the 0905 snapshot label; SWE-Bench Pro paper was run as of 2025-09-18
+gpt-oss-120b,openai/gpt-oss-120b,16.2,gpt-oss-120b,tools,2025-09-01,2025-10-01,28.69047619047619,1.2962040144415798,42.857142857142854,exact_model,same model label
+GLM-4.6,zai-org/GLM-4.6,9.67,GLM-4.6,tools,2025-09-01,2025-10-01,37.02380952380952,1.0016703620834846,42.857142857142854,exact_model,same model label

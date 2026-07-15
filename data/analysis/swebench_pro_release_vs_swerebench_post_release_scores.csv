@@ -1,0 +1,6 @@
+model,swebench_pro_model_id,swebench_pro_score,swerebench_model,swerebench_agent_version,swerebench_window_from,swerebench_window_to,swerebench_resolved_rate,swerebench_resolved_rate_sem,swerebench_pass_at_5,match_kind,rationale
+Claude Sonnet 4.5,Claude Sonnet 4.5,43.6,Claude Sonnet 4.5,tools,2025-09-15,2025-10-01,50.0,2.0327890704543536,59.09090909090909,exact_model,paper Table 1 model label
+Claude Sonnet 4,Claude Sonnet 4,42.7,Claude Sonnet 4,tools,2025-09-15,2025-10-01,44.54545454545455,1.7007533576245182,54.54545454545454,exact_model,paper Table 1 model label
+OpenAI GPT-5 high,OpenAI GPT-5 high,41.8,gpt-5-2025-08-07-high,tools,2025-09-15,2025-10-01,43.63636363636363,3.0828772650569385,54.54545454545454,exact_model_effort,GPT-5 high effort
+Kimi K2 Instruct,Kimi K2 Instruct,27.7,Kimi K2 Instruct 0905,tools,2025-09-15,2025-10-01,20.909090909090907,3.692744729379982,45.45454545454545,same_model_snapshot_label,SWE-rebench exposes the 0905 snapshot label
+OpenAI GPT-OSS 120B,OpenAI GPT-OSS 120B,16.2,gpt-oss-120b,tools,2025-09-15,2025-10-01,35.45454545454545,3.015113445777636,54.54545454545454,exact_model,same model label

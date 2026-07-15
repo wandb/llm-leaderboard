@@ -69,6 +69,17 @@ def _as_list(value: Any) -> list[Any]:
     return [value]
 
 
+def _json_cli_arg(value: Any) -> str:
+    try:
+        from omegaconf import OmegaConf
+
+        if OmegaConf.is_config(value):
+            value = OmegaConf.to_container(value, resolve=True)
+    except Exception:
+        pass
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
 def _run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
     print("Running:", " ".join(command))
     proc = subprocess.Popen(
@@ -265,6 +276,14 @@ def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
     )
     if model:
         command.extend(["--model", str(model)])
+    openclaw_model_params = _cfg_get(cfg.swebench_pro, "openclaw_model_params")
+    if openclaw_model_params is not None:
+        command.extend(["--openclaw-model-params-json", _json_cli_arg(openclaw_model_params)])
+    openclaw_model_overrides = _cfg_get(cfg.swebench_pro, "openclaw_model_overrides")
+    if openclaw_model_overrides is not None:
+        command.extend(
+            ["--openclaw-model-overrides-json", _json_cli_arg(openclaw_model_overrides)]
+        )
     if _cfg_get(cfg.swebench_pro, "allow_failed_preflight", False):
         command.append("--allow-failed-preflight")
     if _cfg_get(cfg.swebench_pro, "no_local", False):

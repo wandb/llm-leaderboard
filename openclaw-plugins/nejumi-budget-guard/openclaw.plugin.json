@@ -57,6 +57,20 @@
         },
         "default": []
       },
+      "denyTools": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
+      "denyArgumentPatterns": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
       "blockReasonPrefix": {
         "type": "string",
         "default": "NEJUMI_BUDGET_GUARD_BLOCKED"

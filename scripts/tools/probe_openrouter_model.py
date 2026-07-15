@@ -36,7 +36,23 @@ def _percentile(values: list[float], q: float) -> float | None:
     return sorted_values[lower] * (1 - weight) + sorted_values[upper] * weight
 
 
-def _build_payload(model: str, index: int, max_tokens: int) -> dict[str, Any]:
+def _parse_json_object(value: str | None, *, label: str) -> dict[str, Any]:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"{label} must be a JSON object: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise SystemExit(f"{label} must be a JSON object")
+    return parsed
+
+
+def _build_payload(
+    model: str,
+    index: int,
+    max_tokens: int,
+) -> dict[str, Any]:
     tool = {
         "type": "function",
         "function": {
@@ -55,7 +71,7 @@ def _build_payload(model: str, index: int, max_tokens: int) -> dict[str, Any]:
         },
     }
     city = "TPE" if index % 2 == 0 else "KHH"
-    return {
+    payload = {
         "model": model,
         "messages": [
             {
@@ -74,6 +90,7 @@ def _build_payload(model: str, index: int, max_tokens: int) -> dict[str, Any]:
         "max_tokens": max_tokens,
         "temperature": 0,
     }
+    return payload
 
 
 async def _one_request(
@@ -83,15 +100,19 @@ async def _one_request(
     index: int,
     timeout: float,
     max_tokens: int,
+    extra_body: dict[str, Any],
     semaphore: asyncio.Semaphore,
 ) -> dict[str, Any]:
     async with semaphore:
         started = time.monotonic()
         payload = _build_payload(model, index, max_tokens)
+        request_kwargs = {"timeout": timeout}
+        if extra_body:
+            request_kwargs["extra_body"] = extra_body
         try:
             response = await client.chat.completions.create(
                 **payload,
-                timeout=timeout,
+                **request_kwargs,
             )
             elapsed = time.monotonic() - started
             choice = response.choices[0] if response.choices else None
@@ -151,6 +172,7 @@ def _summarize(results: list[dict[str, Any]], *, timeout: float) -> dict[str, An
 
 
 async def _run(args: argparse.Namespace) -> dict[str, Any]:
+    extra_body = _parse_json_object(args.extra_body_json, label="--extra-body-json")
     api_key = os.environ.get(args.api_key_env)
     if not api_key and not args.dry_run:
         raise SystemExit(f"{args.api_key_env} is required unless --dry-run is set")
@@ -163,7 +185,9 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
             "request_count": args.requests,
             "timeout_sec": args.timeout,
             "max_tokens": args.max_tokens,
+            "extra_body": extra_body,
             "payload_preview": _build_payload(args.model, 0, args.max_tokens),
+            "sdk_extra_body_preview": extra_body,
         }
 
     client = openai.AsyncOpenAI(
@@ -181,6 +205,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                 index=index,
                 timeout=args.timeout,
                 max_tokens=args.max_tokens,
+                extra_body=extra_body,
                 semaphore=semaphore,
             )
             for index in range(args.requests)
@@ -188,7 +213,8 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     )
     summary = _summarize(results, timeout=args.timeout)
     gate_ok = (
-        summary["rate_limit_rate"] <= args.max_rate_limit_rate
+        summary["error_count"] == 0
+        and summary["rate_limit_rate"] <= args.max_rate_limit_rate
         and (summary["latency_p95_sec"] is None or summary["latency_p95_sec"] <= args.max_p95_sec)
         and summary["timeout_count"] == 0
     )
@@ -202,6 +228,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         "concurrency": args.concurrency,
         "timeout_sec": args.timeout,
         "max_tokens": args.max_tokens,
+        "extra_body": extra_body,
         "elapsed_sec": time.monotonic() - started,
         "gate": {
             "ok": gate_ok,
@@ -224,6 +251,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout", type=float, default=60)
     parser.add_argument("--max-retries", type=int, default=0)
     parser.add_argument("--max-tokens", type=int, default=64)
+    parser.add_argument(
+        "--extra-body-json",
+        default="",
+        help=(
+            "JSON object merged into every OpenRouter request body, for example "
+            "'{\"provider\":{\"order\":[\"provider-name\"],\"allow_fallbacks\":false}}'."
+        ),
+    )
     parser.add_argument("--max-rate-limit-rate", type=float, default=0.10)
     parser.add_argument("--max-p95-sec", type=float, default=120)
     parser.add_argument("--output", type=Path, required=True)

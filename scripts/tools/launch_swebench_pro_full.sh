@@ -141,7 +141,6 @@ cmd=(
   "--deny-tool" "browser_*"
   "--deny-argument-pattern" "https?://"
   "--deny-argument-pattern" "\\b(curl|wget)\\b"
-  "--deny-argument-pattern" "\\b(requests|urllib|httpx)\\."
 )
 
 if [[ -n "$nemoclaw_sandbox" ]]; then

@@ -1,0 +1,85 @@
+source,mode,swebench_pro_model_id,swebench_pro_model,swebench_pro_score,swerebench_model,match_kind,decision,requested_window_from,requested_window_to,swerebench_task_range_from,swerebench_task_range_to,rationale
+hf_current,fixed_window,zai-org/GLM-5.2,GLM-5.2,62.1,,different_generation_available_only,different_generation_available_only,,,,,"SWE-rebench latest has GLM-5.1, not GLM-5.2"
+hf_current,fixed_window,MiniMaxAI/MiniMax-M3,MiniMax M3,59,MiniMax M3,exact_model,included,2026-03-01,2026-05-15,2026-03-01,2026-05-15,same model label
+hf_current,fixed_window,moonshotai/Kimi-K2.6,Kimi K2.6,58.6,Kimi K2.6,exact_model,included,2026-03-01,2026-05-15,2026-03-01,2026-05-15,same model label
+hf_current,fixed_window,zai-org/GLM-5.1,GLM-5.1,58.4,GLM-5.1,exact_model,included,2026-03-01,2026-05-15,2026-03-01,2026-05-15,same model label
+hf_current,fixed_window,XiaomiMiMo/MiMo-V2.5-Pro,MiMo-V2.5-Pro,57.2,,no_swerebench_match,no_swerebench_match,,,,,no matching SWE-rebench model label
+hf_current,fixed_window,stepfun-ai/Step-3.7-Flash,Step-3.7-Flash,56.3,,different_generation_available_only,different_generation_available_only,,,,,"SWE-rebench has Step-3.5-Flash, not Step-3.7-Flash"
+hf_current,fixed_window,MiniMaxAI/MiniMax-M2.7,MiniMax M2.7,56.2,MiniMax M2.7,exact_model,inactive_for_window,2026-03-01,2026-05-15,,,same model label
+hf_current,fixed_window,XiaomiMiMo/MiMo-V2.5,MiMo-V2.5,56.1,,no_swerebench_match,no_swerebench_match,,,,,no matching SWE-rebench model label
+hf_current,fixed_window,MiniMaxAI/MiniMax-M2.5,MiniMax M2.5,55.4,MiniMax M2.5,exact_model,inactive_for_window,2026-03-01,2026-05-15,,,same model label
+hf_current,fixed_window,deepseek-ai/DeepSeek-V4-Pro,DeepSeek-V4-Pro,55.4,,different_generation_available_only,different_generation_available_only,,,,,"SWE-rebench has DeepSeek-V3.2/V3.x, not DeepSeek-V4-Pro"
+hf_current,fixed_window,Qwen/Qwen3.6-27B,Qwen3.6-27B,53.5,,different_generation_available_only,different_generation_available_only,,,,,"SWE-rebench has Qwen3.5 rows, not Qwen3.6"
+hf_current,fixed_window,moonshotai/Kimi-K2.5,Kimi K2.5,50.7,Kimi K2.5,exact_model,inactive_for_window,2026-03-01,2026-05-15,,,same model label
+hf_current,fixed_window,Qwen/Qwen3.6-35B-A3B,Qwen3.6-35B-A3B,49.5,,different_generation_available_only,different_generation_available_only,,,,,"SWE-rebench has Qwen3.5 rows, not Qwen3.6"
+hf_current,fixed_window,poolside/Laguna-M.1,Laguna-M.1,49.2,,no_swerebench_match,no_swerebench_match,,,,,no matching SWE-rebench model label
+hf_current,fixed_window,poolside/Laguna-XS.2,Laguna-XS.2,46.3,,no_swerebench_match,no_swerebench_match,,,,,no matching SWE-rebench model label
+hf_current,fixed_window,MuVeraAI/Laguna-XS.2,Laguna-XS.2,44.5,,no_swerebench_match,no_swerebench_match,,,,,no matching SWE-rebench model label
+hf_current,fixed_window,Qwen/Qwen3-Coder-Next,Qwen3-Coder-Next,44.3,Qwen3-Coder-Next,exact_model,inactive_for_window,2026-03-01,2026-05-15,,,same model label
+hf_current,fixed_window,CohereLabs/North-Mini-Code-1.0,North-Mini-Code-1.0,40.2,,no_swerebench_match,no_swerebench_match,,,,,no matching SWE-rebench model label
+hf_current,fixed_window,Qwen/Qwen3-Coder-480B-A35B-Instruct,Qwen3-Coder-480B-A35B-Instruct,38.7,Qwen3-Coder-480B-A35B-Instruct,exact_model,inactive_for_window,2026-03-01,2026-05-15,,,same model label
+hf_current,fixed_window,MiniMaxAI/MiniMax-M2.1,MiniMax M2.1,36.81,MiniMax M2.1,exact_model,inactive_for_window,2026-03-01,2026-05-15,,,same model label
+hf_current,fixed_window,moonshotai/Kimi-K2-Instruct,Kimi K2 Instruct,27.67,Kimi K2 Instruct 0905,same_model_snapshot_label,inactive_for_window,2026-03-01,2026-05-15,,,SWE-rebench exposes the 0905 snapshot label; SWE-Bench Pro paper was run as of 2025-09-18
+hf_current,fixed_window,Qwen/Qwen3-235B-A22B,Qwen3-235B-A22B,21.41,Qwen3-235B-A22B,exact_model,inactive_for_window,2026-03-01,2026-05-15,,,same model label
+hf_current,fixed_window,openai/gpt-oss-120b,gpt-oss-120b,16.2,gpt-oss-120b,exact_model,inactive_for_window,2026-03-01,2026-05-15,,,same model label
+hf_current,fixed_window,zai-org/GLM-4.6,GLM-4.6,9.67,GLM-4.6,exact_model,inactive_for_window,2026-03-01,2026-05-15,,,same model label
+hf_current,fixed_window,zai-org/GLM-5.2,GLM-5.2,62.1,,different_generation_available_only,different_generation_available_only,,,,,"SWE-rebench latest has GLM-5.1, not GLM-5.2"
+hf_current,fixed_window,MiniMaxAI/MiniMax-M3,MiniMax M3,59,MiniMax M3,exact_model,inactive_for_window,2025-09-01,2025-10-01,,,same model label
+hf_current,fixed_window,moonshotai/Kimi-K2.6,Kimi K2.6,58.6,Kimi K2.6,exact_model,inactive_for_window,2025-09-01,2025-10-01,,,same model label
+hf_current,fixed_window,zai-org/GLM-5.1,GLM-5.1,58.4,GLM-5.1,exact_model,inactive_for_window,2025-09-01,2025-10-01,,,same model label
+hf_current,fixed_window,XiaomiMiMo/MiMo-V2.5-Pro,MiMo-V2.5-Pro,57.2,,no_swerebench_match,no_swerebench_match,,,,,no matching SWE-rebench model label
+hf_current,fixed_window,stepfun-ai/Step-3.7-Flash,Step-3.7-Flash,56.3,,different_generation_available_only,different_generation_available_only,,,,,"SWE-rebench has Step-3.5-Flash, not Step-3.7-Flash"
+hf_current,fixed_window,MiniMaxAI/MiniMax-M2.7,MiniMax M2.7,56.2,MiniMax M2.7,exact_model,inactive_for_window,2025-09-01,2025-10-01,,,same model label
+hf_current,fixed_window,XiaomiMiMo/MiMo-V2.5,MiMo-V2.5,56.1,,no_swerebench_match,no_swerebench_match,,,,,no matching SWE-rebench model label
+hf_current,fixed_window,MiniMaxAI/MiniMax-M2.5,MiniMax M2.5,55.4,MiniMax M2.5,exact_model,inactive_for_window,2025-09-01,2025-10-01,,,same model label
+hf_current,fixed_window,deepseek-ai/DeepSeek-V4-Pro,DeepSeek-V4-Pro,55.4,,different_generation_available_only,different_generation_available_only,,,,,"SWE-rebench has DeepSeek-V3.2/V3.x, not DeepSeek-V4-Pro"
+hf_current,fixed_window,Qwen/Qwen3.6-27B,Qwen3.6-27B,53.5,,different_generation_available_only,different_generation_available_only,,,,,"SWE-rebench has Qwen3.5 rows, not Qwen3.6"
+hf_current,fixed_window,moonshotai/Kimi-K2.5,Kimi K2.5,50.7,Kimi K2.5,exact_model,inactive_for_window,2025-09-01,2025-10-01,,,same model label
+hf_current,fixed_window,Qwen/Qwen3.6-35B-A3B,Qwen3.6-35B-A3B,49.5,,different_generation_available_only,different_generation_available_only,,,,,"SWE-rebench has Qwen3.5 rows, not Qwen3.6"
+hf_current,fixed_window,poolside/Laguna-M.1,Laguna-M.1,49.2,,no_swerebench_match,no_swerebench_match,,,,,no matching SWE-rebench model label
+hf_current,fixed_window,poolside/Laguna-XS.2,Laguna-XS.2,46.3,,no_swerebench_match,no_swerebench_match,,,,,no matching SWE-rebench model label
+hf_current,fixed_window,MuVeraAI/Laguna-XS.2,Laguna-XS.2,44.5,,no_swerebench_match,no_swerebench_match,,,,,no matching SWE-rebench model label
+hf_current,fixed_window,Qwen/Qwen3-Coder-Next,Qwen3-Coder-Next,44.3,Qwen3-Coder-Next,exact_model,inactive_for_window,2025-09-01,2025-10-01,,,same model label
+hf_current,fixed_window,CohereLabs/North-Mini-Code-1.0,North-Mini-Code-1.0,40.2,,no_swerebench_match,no_swerebench_match,,,,,no matching SWE-rebench model label
+hf_current,fixed_window,Qwen/Qwen3-Coder-480B-A35B-Instruct,Qwen3-Coder-480B-A35B-Instruct,38.7,Qwen3-Coder-480B-A35B-Instruct,exact_model,included,2025-09-01,2025-10-01,2025-07-01,2026-03-01,same model label
+hf_current,fixed_window,MiniMaxAI/MiniMax-M2.1,MiniMax M2.1,36.81,MiniMax M2.1,exact_model,inactive_for_window,2025-09-01,2025-10-01,,,same model label
+hf_current,fixed_window,moonshotai/Kimi-K2-Instruct,Kimi K2 Instruct,27.67,Kimi K2 Instruct 0905,same_model_snapshot_label,included,2025-09-01,2025-10-01,2025-08-01,2026-02-01,SWE-rebench exposes the 0905 snapshot label; SWE-Bench Pro paper was run as of 2025-09-18
+hf_current,fixed_window,Qwen/Qwen3-235B-A22B,Qwen3-235B-A22B,21.41,Qwen3-235B-A22B,exact_model,inactive_for_window,2025-09-01,2025-10-01,,,same model label
+hf_current,fixed_window,openai/gpt-oss-120b,gpt-oss-120b,16.2,gpt-oss-120b,exact_model,included,2025-09-01,2025-10-01,2025-08-01,2026-03-01,same model label
+hf_current,fixed_window,zai-org/GLM-4.6,GLM-4.6,9.67,GLM-4.6,exact_model,included,2025-09-01,2025-10-01,2025-09-01,2026-02-01,same model label
+hf_current,model_latest,zai-org/GLM-5.2,GLM-5.2,62.1,,different_generation_available_only,different_generation_available_only,,,,,"SWE-rebench latest has GLM-5.1, not GLM-5.2"
+hf_current,model_latest,MiniMaxAI/MiniMax-M3,MiniMax M3,59,MiniMax M3,exact_model,included,2026-03-01,2026-05-15,2026-03-01,2026-05-15,same model label
+hf_current,model_latest,moonshotai/Kimi-K2.6,Kimi K2.6,58.6,Kimi K2.6,exact_model,included,2026-03-01,2026-05-15,2026-03-01,2026-05-15,same model label
+hf_current,model_latest,zai-org/GLM-5.1,GLM-5.1,58.4,GLM-5.1,exact_model,included,2026-03-01,2026-05-15,2026-03-01,2026-05-15,same model label
+hf_current,model_latest,XiaomiMiMo/MiMo-V2.5-Pro,MiMo-V2.5-Pro,57.2,,no_swerebench_match,no_swerebench_match,,,,,no matching SWE-rebench model label
+hf_current,model_latest,stepfun-ai/Step-3.7-Flash,Step-3.7-Flash,56.3,,different_generation_available_only,different_generation_available_only,,,,,"SWE-rebench has Step-3.5-Flash, not Step-3.7-Flash"
+hf_current,model_latest,MiniMaxAI/MiniMax-M2.7,MiniMax M2.7,56.2,MiniMax M2.7,exact_model,included,2026-02-01,2026-03-01,2026-02-01,2026-03-01,same model label
+hf_current,model_latest,XiaomiMiMo/MiMo-V2.5,MiMo-V2.5,56.1,,no_swerebench_match,no_swerebench_match,,,,,no matching SWE-rebench model label
+hf_current,model_latest,MiniMaxAI/MiniMax-M2.5,MiniMax M2.5,55.4,MiniMax M2.5,exact_model,included,2026-01-01,2026-03-01,2026-01-01,2026-03-01,same model label
+hf_current,model_latest,deepseek-ai/DeepSeek-V4-Pro,DeepSeek-V4-Pro,55.4,,different_generation_available_only,different_generation_available_only,,,,,"SWE-rebench has DeepSeek-V3.2/V3.x, not DeepSeek-V4-Pro"
+hf_current,model_latest,Qwen/Qwen3.6-27B,Qwen3.6-27B,53.5,,different_generation_available_only,different_generation_available_only,,,,,"SWE-rebench has Qwen3.5 rows, not Qwen3.6"
+hf_current,model_latest,moonshotai/Kimi-K2.5,Kimi K2.5,50.7,Kimi K2.5,exact_model,included,2026-01-01,2026-03-01,2026-01-01,2026-03-01,same model label
+hf_current,model_latest,Qwen/Qwen3.6-35B-A3B,Qwen3.6-35B-A3B,49.5,,different_generation_available_only,different_generation_available_only,,,,,"SWE-rebench has Qwen3.5 rows, not Qwen3.6"
+hf_current,model_latest,poolside/Laguna-M.1,Laguna-M.1,49.2,,no_swerebench_match,no_swerebench_match,,,,,no matching SWE-rebench model label
+hf_current,model_latest,poolside/Laguna-XS.2,Laguna-XS.2,46.3,,no_swerebench_match,no_swerebench_match,,,,,no matching SWE-rebench model label
+hf_current,model_latest,MuVeraAI/Laguna-XS.2,Laguna-XS.2,44.5,,no_swerebench_match,no_swerebench_match,,,,,no matching SWE-rebench model label
+hf_current,model_latest,Qwen/Qwen3-Coder-Next,Qwen3-Coder-Next,44.3,Qwen3-Coder-Next,exact_model,included,2026-01-01,2026-03-01,2026-01-01,2026-03-01,same model label
+hf_current,model_latest,CohereLabs/North-Mini-Code-1.0,North-Mini-Code-1.0,40.2,,no_swerebench_match,no_swerebench_match,,,,,no matching SWE-rebench model label
+hf_current,model_latest,Qwen/Qwen3-Coder-480B-A35B-Instruct,Qwen3-Coder-480B-A35B-Instruct,38.7,Qwen3-Coder-480B-A35B-Instruct,exact_model,included,2025-07-01,2026-03-01,2025-07-01,2026-03-01,same model label
+hf_current,model_latest,MiniMaxAI/MiniMax-M2.1,MiniMax M2.1,36.81,MiniMax M2.1,exact_model,included,2025-11-01,2026-02-01,2025-11-01,2026-02-01,same model label
+hf_current,model_latest,moonshotai/Kimi-K2-Instruct,Kimi K2 Instruct,27.67,Kimi K2 Instruct 0905,same_model_snapshot_label,included,2025-08-01,2026-02-01,2025-08-01,2026-02-01,SWE-rebench exposes the 0905 snapshot label; SWE-Bench Pro paper was run as of 2025-09-18
+hf_current,model_latest,Qwen/Qwen3-235B-A22B,Qwen3-235B-A22B,21.41,Qwen3-235B-A22B,exact_model,included,2025-08-01,2025-09-01,2025-08-01,2025-09-01,same model label
+hf_current,model_latest,openai/gpt-oss-120b,gpt-oss-120b,16.2,gpt-oss-120b,exact_model,included,2025-08-01,2026-03-01,2025-08-01,2026-03-01,same model label
+hf_current,model_latest,zai-org/GLM-4.6,GLM-4.6,9.67,GLM-4.6,exact_model,included,2025-09-01,2026-02-01,2025-09-01,2026-02-01,same model label
+paper_table1_release,fixed_window,Claude Sonnet 4.5,Claude Sonnet 4.5,43.6,Claude Sonnet 4.5,exact_model,included,2025-09-01,2025-10-01,2025-09-01,2026-03-01,paper Table 1 model label
+paper_table1_release,fixed_window,Claude Sonnet 4,Claude Sonnet 4,42.7,Claude Sonnet 4,exact_model,included,2025-09-01,2025-10-01,2025-05-01,2025-12-01,paper Table 1 model label
+paper_table1_release,fixed_window,OpenAI GPT-5 high,OpenAI GPT-5 high,41.8,gpt-5-2025-08-07-high,exact_model_effort,included,2025-09-01,2025-10-01,2025-07-01,2025-12-01,GPT-5 high effort
+paper_table1_release,fixed_window,Claude Haiku 4.5,Claude Haiku 4.5,39.5,,no_swerebench_match,no_swerebench_match,,,,,not present in SWE-rebench state
+paper_table1_release,fixed_window,Kimi K2 Instruct,Kimi K2 Instruct,27.7,Kimi K2 Instruct 0905,same_model_snapshot_label,included,2025-09-01,2025-10-01,2025-08-01,2026-02-01,SWE-rebench exposes the 0905 snapshot label
+paper_table1_release,fixed_window,OpenAI GPT-OSS 120B,OpenAI GPT-OSS 120B,16.2,gpt-oss-120b,exact_model,included,2025-09-01,2025-10-01,2025-08-01,2026-03-01,same model label
+paper_table1_release,fixed_window,Claude Sonnet 4.5,Claude Sonnet 4.5,43.6,Claude Sonnet 4.5,exact_model,included,2025-09-15,2025-10-01,2025-09-01,2026-03-01,paper Table 1 model label
+paper_table1_release,fixed_window,Claude Sonnet 4,Claude Sonnet 4,42.7,Claude Sonnet 4,exact_model,included,2025-09-15,2025-10-01,2025-05-01,2025-12-01,paper Table 1 model label
+paper_table1_release,fixed_window,OpenAI GPT-5 high,OpenAI GPT-5 high,41.8,gpt-5-2025-08-07-high,exact_model_effort,included,2025-09-15,2025-10-01,2025-07-01,2025-12-01,GPT-5 high effort
+paper_table1_release,fixed_window,Claude Haiku 4.5,Claude Haiku 4.5,39.5,,no_swerebench_match,no_swerebench_match,,,,,not present in SWE-rebench state
+paper_table1_release,fixed_window,Kimi K2 Instruct,Kimi K2 Instruct,27.7,Kimi K2 Instruct 0905,same_model_snapshot_label,included,2025-09-15,2025-10-01,2025-08-01,2026-02-01,SWE-rebench exposes the 0905 snapshot label
+paper_table1_release,fixed_window,OpenAI GPT-OSS 120B,OpenAI GPT-OSS 120B,16.2,gpt-oss-120b,exact_model,included,2025-09-15,2025-10-01,2025-08-01,2026-03-01,same model label

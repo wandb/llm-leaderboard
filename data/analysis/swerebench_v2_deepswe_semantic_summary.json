@@ -1,0 +1,69 @@
+{
+  "fetched_at": "2026-06-24T15:26:06.875480+00:00",
+  "n_matches": 7,
+  "pearson_r": 0.8375515230897782,
+  "spearman_rho": 0.8571428571428573,
+  "kendall_tau": 0.7142857142857143,
+  "sources": {
+    "swerebench_v2": {
+      "source_url": "https://swe-rebench.com/",
+      "title": "SWE-rebench Leaderboard",
+      "date_from": "01/03/2026",
+      "date_to": "15/05/2026",
+      "problem_count": 110,
+      "repo_count": 86
+    },
+    "deepswe": {
+      "source_url": "https://deepswe.datacurve.ai/",
+      "generated_at": "2026-06-20T18:00:09.904443+00:00",
+      "latest_job_name": "20260620-deep-swe-glm-5-2",
+      "latest_job_finished_at": "2026-06-20T22:09:10.110006"
+    }
+  },
+  "included_models": [
+    {
+      "canonical_model": "gpt-5.5[xhigh]",
+      "match_decision": "strict_config_match",
+      "deepswe_pass_at_1": 67.03539823008849,
+      "swerebench_resolved_rate": 62.7
+    },
+    {
+      "canonical_model": "gpt-5.5[medium]",
+      "match_decision": "strict_config_match",
+      "deepswe_pass_at_1": 53.98230088495575,
+      "swerebench_resolved_rate": 58.9
+    },
+    {
+      "canonical_model": "claude-opus-4.8[xhigh]",
+      "match_decision": "strict_config_match",
+      "deepswe_pass_at_1": 54.36241610738255,
+      "swerebench_resolved_rate": 56.5
+    },
+    {
+      "canonical_model": "gpt-5.4[swerebench medium / deepswe xhigh]",
+      "match_decision": "same_generation_effort_mismatch",
+      "deepswe_pass_at_1": 51.76991150442478,
+      "swerebench_resolved_rate": 54.9
+    },
+    {
+      "canonical_model": "claude-sonnet-4.6[deepswe high]",
+      "match_decision": "same_generation_config_uncertain",
+      "deepswe_pass_at_1": 29.933481152993345,
+      "swerebench_resolved_rate": 51.3
+    },
+    {
+      "canonical_model": "gemini-3.1-pro-preview[deepswe high]",
+      "match_decision": "same_generation_config_uncertain",
+      "deepswe_pass_at_1": 11.751662971175167,
+      "swerebench_resolved_rate": 51.1
+    },
+    {
+      "canonical_model": "gemini-3.5-flash[deepswe medium]",
+      "match_decision": "same_generation_config_uncertain",
+      "deepswe_pass_at_1": 37.389380530973455,
+      "swerebench_resolved_rate": 49.5
+    }
+  ],
+  "caveat": "Same model generation matches are included. Rows where SWE-rebench effort is missing or differs from DeepSWE are marked in match_decision.",
+  "n_semantic_matches": 7
+}

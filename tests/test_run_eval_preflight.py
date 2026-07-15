@@ -73,11 +73,14 @@ def test_run_eval_preflight_writes_no_execution_payload(tmp_path):
           agentic_math: false
           swebench_pro: false
           deepswe: false
+          agentic_swe_assorted: false
         agentic_math:
           max_tokens: 2048
         swebench_pro:
           max_tokens: 2048
         deepswe:
+          max_tokens: 2048
+        agentic_swe_assorted:
           max_tokens: 2048
         """,
     )
@@ -90,7 +93,7 @@ def test_run_eval_preflight_writes_no_execution_payload(tmp_path):
           pretrained_model_name_or_path: test-model
         run:
           agentic_math: true
-          swebench_pro: true
+          agentic_swe_assorted: true
         """,
     )
 
@@ -102,7 +105,7 @@ def test_run_eval_preflight_writes_no_execution_payload(tmp_path):
     assert payload["status"] == "passed"
     assert payload["model"] == "test-model"
     assert payload["wandb"]["run_name"] == "preflight-agentic"
-    assert payload["enabled_benchmarks"] == ["agentic_math", "swebench_pro"]
+    assert payload["enabled_benchmarks"] == ["agentic_math", "agentic_swe_assorted"]
     assert payload["will_initialize_wandb"] is False
     assert payload["will_log_wandb_artifacts"] is False
     assert payload["will_initialize_weave"] is False
@@ -136,6 +139,7 @@ def test_run_eval_preflight_schedules_taiwan_full_evaluators(tmp_path):
           swebench: false
           swebench_pro: false
           deepswe: false
+          agentic_swe_assorted: false
           mtbench: false
           jbbq: false
           toxicity: false
@@ -161,6 +165,8 @@ def test_run_eval_preflight_schedules_taiwan_full_evaluators(tmp_path):
           max_tokens: 2048
         deepswe:
           max_tokens: 2048
+        agentic_swe_assorted:
+          max_tokens: 2048
         """,
     )
     write_yaml(
@@ -169,8 +175,7 @@ def test_run_eval_preflight_schedules_taiwan_full_evaluators(tmp_path):
         run:
           agentic_math: true
           bfcl: true
-          swebench_pro: true
-          deepswe: true
+          agentic_swe_assorted: true
           mtbench: true
           hle: true
           hallulens_zh_tw: true
@@ -192,8 +197,7 @@ def test_run_eval_preflight_schedules_taiwan_full_evaluators(tmp_path):
     assert payload["scheduled_evaluators"] == [
         "bfcl",
         "agentic_math",
-        "swebench_pro",
-        "deepswe",
+        "agentic_swe_assorted",
         "mtbench",
         "script_adherence",
         "hle",

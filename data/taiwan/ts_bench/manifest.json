@@ -1,0 +1,33 @@
+{
+  "dataset": "TS-Bench",
+  "dataset_dir_name": "ts_bench",
+  "total_instances": 400,
+  "unsafe_count": 200,
+  "safe_count": 200,
+  "source_repo": "https://github.com/mtkresearch/TS-Bench",
+  "source_commit": "b53fd7fabec6e053677cdfa68cdff4d7d1fba1b4",
+  "paper": "https://arxiv.org/abs/2603.07286",
+  "license": "Apache-2.0",
+  "files": {
+    "LICENSE": {
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    "README.md": {
+      "bytes": 196,
+      "sha256": "f4b99f85980c1b15a5ed5165b4ab8658a54c6aeae609eb69a6c6ee175aa063bf"
+    },
+    "TSB400.csv": {
+      "bytes": 76509,
+      "sha256": "22d023bad5b1517ca5a1321a60635054980fed44128bce549a171020fab469b6"
+    },
+    "manifest.json": {
+      "bytes": 744,
+      "sha256": "40fe6d5b3907d1bf5f62705f695a4e0a08afe06b2c611effcd23e4115e1bba3b"
+    },
+    "ts_bench.jsonl": {
+      "bytes": 110078,
+      "sha256": "0b765ad77c74880176d5d0998f402bc8febbb6791f2f452b479fbf8722805a31"
+    }
+  }
+}

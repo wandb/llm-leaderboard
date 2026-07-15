@@ -26,6 +26,12 @@ from pathlib import Path
 PATCH_MARKER = "Nejumi patch v4: enforce budget guard turns and cumulative actual tokens"
 DIAGNOSTIC_PATCH_MARKER = "Nejumi patch v4: expose model call usage to budget guard"
 EXEC_TIMEOUT_PATCH_MARKER = "Nejumi patch v1: clamp exec tool timeout to configured max"
+EXTENDED_THINKING_PATCH_MARKER = (
+    "Nejumi patch v2: pass through explicit thinking levels to provider validation"
+)
+OLD_EXTENDED_THINKING_PATCH_MARKERS = (
+    "Nejumi patch v1: permit xhigh/max thinking levels through provider validation",
+)
 OLD_PATCH_MARKERS = (
     "Nejumi patch v3: enforce budget guard turns and cumulative actual tokens",
     "Nejumi patch v2: enforce budget guard maxAgentTurns before model stream dispatch",
@@ -440,6 +446,8 @@ def candidate_files(dist_dir: Path) -> list[Path]:
         if (
             has_any_selection_patch_marker(text)
             or has_diagnostic_patch_marker(text)
+            or EXTENDED_THINKING_PATCH_MARKER in text
+            or any(marker in text for marker in OLD_EXTENDED_THINKING_PATCH_MARKERS)
             or (
                 "let diagnosticModelCallSeq = 0;" in text
                 and "wrapStreamFnWithDiagnosticModelCallEvents(activeSession.agent.streamFn" in text
@@ -458,6 +466,22 @@ def candidate_files(dist_dir: Path) -> list[Path]:
                     or "const effectiveTimeout = nejumiEffectiveRequestedTimeoutSec ?? defaultTimeoutSec;"
                     in text
                 )
+            )
+            or (
+                "function resolveFoundryReasoningEfforts(value)" in text
+                and "function buildFoundryThinkingLevelMap(efforts)" in text
+            )
+            or (
+                "const GPT_52_REASONING_EFFORTS = [" in text
+                and "function resolveOpenAIReasoningEffortForModel(params)" in text
+            )
+            or (
+                "function resolveThinkingProfile(params)" in text
+                and "function appendProfileLevel(profile, id)" in text
+            )
+            or (
+                "function getSupportedThinkingLevels(model)" in text
+                and "const EXTENDED_THINKING_LEVELS = [" in text
             )
         ):
             files.append(path)
@@ -715,8 +739,207 @@ def patch_exec_timeout_text(text: str) -> tuple[str, bool]:
     return text, True
 
 
+def has_extended_thinking_support(text: str) -> bool:
+    """Return whether this bundle already passes explicit thinking levels through.
+
+    This intentionally accepts either the Nejumi runtime patch or an upstream
+    OpenClaw implementation with equivalent capability. Future OpenClaw builds
+    should not be forced through a local patch solely because the marker is
+    absent.
+    """
+    if EXTENDED_THINKING_PATCH_MARKER in text:
+        return True
+    if "function resolveFoundryReasoningEfforts(value)" in text:
+        return (
+            '"xhigh"' in text
+            and '"max"' in text
+            and (
+                'max: supported.has("max") ? "max" : null' in text
+                or 'max: "max"' in text
+            )
+        )
+    if "const GPT_52_REASONING_EFFORTS = [" in text:
+        return (
+            "const GENERIC_REASONING_EFFORTS = [" in text
+            and '"xhigh"' in text
+            and '"max"' in text
+        )
+    if (
+        "function resolveThinkingProfile(params)" in text
+        and "function appendProfileLevel(profile, id)" in text
+    ):
+        return (
+            "function applyNejumiThinkingProfilePassthrough(profile)" in text
+            and 'appendProfileLevel(profile, "high");' in text
+            and 'appendProfileLevel(profile, "xhigh");' in text
+            and 'appendProfileLevel(profile, "max");' in text
+        )
+    if "function getSupportedThinkingLevels(model)" in text:
+        return 'if (level === "xhigh" || level === "max") return mapped !== null;' in text
+    return False
+
+
+def patch_extended_thinking_text(text: str) -> tuple[str, bool]:
+    """Keep OpenClaw from rejecting new high-effort model levels locally.
+
+    The benchmark should send an explicit xhigh/max request to the provider and
+    let the provider/API be the source of truth. A stale OpenClaw allowlist
+    should not fail before the model is called.
+    """
+    changed = False
+
+    if has_extended_thinking_support(text):
+        return text, False
+
+    if "function resolveFoundryReasoningEfforts(value)" in text:
+        old_gpt52_block = """if (/^gpt-5\\.[2-9](?:\\.|-|$)/u.test(normalized)) return [
+\t\t\"none\",
+\t\t\"low\",
+\t\t\"medium\",
+\t\t\"high\"
+\t];"""
+        new_gpt52_block = """if (/^gpt-5\\.[2-9](?:\\.|-|$)/u.test(normalized)) return [
+\t\t\"none\",
+\t\t\"low\",
+\t\t\"medium\",
+\t\t\"high\",
+\t\t\"xhigh\",
+\t\t\"max\"
+\t];"""
+        if old_gpt52_block in text:
+            text = text.replace(old_gpt52_block, new_gpt52_block, 1)
+            changed = True
+
+        old_map = """\t\thigh: supported.has(\"high\") ? \"high\" : null,
+\t\txhigh: supported.has(\"xhigh\") ? \"xhigh\" : null,
+\t\tmax: null"""
+        new_map = """\t\thigh: supported.has(\"high\") ? \"high\" : null,
+\t\txhigh: supported.has(\"xhigh\") ? \"xhigh\" : null,
+\t\tmax: supported.has(\"max\") ? \"max\" : null"""
+        if old_map in text:
+            text = text.replace(old_map, new_map, 1)
+            changed = True
+
+    if "const GPT_52_REASONING_EFFORTS = [" in text:
+        old_gpt52_efforts = """const GPT_52_REASONING_EFFORTS = [
+\t\"none\",
+\t\"low\",
+\t\"medium\",
+\t\"high\",
+\t\"xhigh\"
+];"""
+        new_gpt52_efforts = """const GPT_52_REASONING_EFFORTS = [
+\t\"none\",
+\t\"low\",
+\t\"medium\",
+\t\"high\",
+\t\"xhigh\",
+\t\"max\"
+];"""
+        if old_gpt52_efforts in text:
+            text = text.replace(old_gpt52_efforts, new_gpt52_efforts, 1)
+            changed = True
+
+        old_generic_efforts = """const GENERIC_REASONING_EFFORTS = [
+\t\"low\",
+\t\"medium\",
+\t\"high\"
+];"""
+        new_generic_efforts = """const GENERIC_REASONING_EFFORTS = [
+\t\"low\",
+\t\"medium\",
+\t\"high\",
+\t\"xhigh\",
+\t\"max\"
+];"""
+        if old_generic_efforts in text:
+            text = text.replace(old_generic_efforts, new_generic_efforts, 1)
+            changed = True
+
+    if (
+        "function resolveThinkingProfile(params)" in text
+        and "function appendProfileLevel(profile, id)" in text
+    ):
+        helper_anchor = "function appendProfileLevel(profile, id) {"
+        helper_end_anchor = "\n/** Resolve supported thinking levels and default for a provider/model pair. */"
+        helper_block = """function applyNejumiThinkingProfilePassthrough(profile) {
+\tif (!profile || !Array.isArray(profile.levels)) return profile;
+\tappendProfileLevel(profile, \"minimal\");
+\tappendProfileLevel(profile, \"low\");
+\tappendProfileLevel(profile, \"medium\");
+\tappendProfileLevel(profile, \"high\");
+\tappendProfileLevel(profile, \"xhigh\");
+\tappendProfileLevel(profile, \"max\");
+\treturn profile;
+}
+"""
+        text, old_helper_replacements = re.subn(
+            r"\n?function applyNejumiPermissiveExtendedThinkingProfile\(profile\) \{.*?\n\}\n",
+            "\n" + helper_block,
+            text,
+            count=1,
+            flags=re.DOTALL,
+        )
+        if old_helper_replacements:
+            changed = True
+        if "function applyNejumiThinkingProfilePassthrough(profile)" not in text:
+            anchor_index = text.find(helper_end_anchor)
+            if helper_anchor in text and anchor_index >= 0:
+                text = text[:anchor_index] + "\n" + helper_block + text[anchor_index:]
+                changed = True
+
+        if "applyNejumiPermissiveExtendedThinkingProfile" in text:
+            text = text.replace(
+                "applyNejumiPermissiveExtendedThinkingProfile",
+                "applyNejumiThinkingProfilePassthrough",
+            )
+            changed = True
+
+        old_plugin_return = (
+            "if (normalized.levels.length > 0 && (context.reasoning !== false || "
+            "pluginProfile.preserveWhenCatalogReasoningFalse === true)) return normalized;"
+        )
+        new_plugin_return = (
+            "if (normalized.levels.length > 0 && (context.reasoning !== false || "
+            "pluginProfile.preserveWhenCatalogReasoningFalse === true)) return "
+            "applyNejumiThinkingProfilePassthrough(normalized);"
+        )
+        if old_plugin_return in text:
+            text = text.replace(old_plugin_return, new_plugin_return, 1)
+            changed = True
+
+        old_fallback_return = "\treturn profile;\n}\nfunction supportsThinkingLevel"
+        new_fallback_return = (
+            "\treturn applyNejumiThinkingProfilePassthrough(profile);\n"
+            "}\nfunction supportsThinkingLevel"
+        )
+        if old_fallback_return in text:
+            text = text.replace(old_fallback_return, new_fallback_return, 1)
+            changed = True
+
+    if "function getSupportedThinkingLevels(model)" in text:
+        old_extended_filter = """\t\tif (level === \"xhigh\" || level === \"max\") return mapped !== void 0;
+\t\treturn true;"""
+        new_extended_filter = """\t\tif (level === \"xhigh\" || level === \"max\") return mapped !== null;
+\t\treturn true;"""
+        if old_extended_filter in text:
+            text = text.replace(old_extended_filter, new_extended_filter, 1)
+            changed = True
+
+    if changed:
+        marker_anchor = "//#region"
+        marker = f"// {EXTENDED_THINKING_PATCH_MARKER}.\n"
+        if marker_anchor in text:
+            text = text.replace(marker_anchor, marker + marker_anchor, 1)
+        else:
+            text = marker + text
+    return text, changed
+
+
 def patch_text(text: str) -> tuple[str, bool]:
     changed = False
+    text, extended_thinking_changed = patch_extended_thinking_text(text)
+    changed = changed or extended_thinking_changed
     selection_needs_patch = (
         (
             "let diagnosticModelCallSeq = 0;" in text
@@ -745,7 +968,12 @@ def patch_text(text: str) -> tuple[str, bool]:
         changed = changed or exec_timeout_changed
     if changed:
         return text, True
-    if PATCH_MARKER in text or DIAGNOSTIC_PATCH_MARKER in text or EXEC_TIMEOUT_PATCH_MARKER in text:
+    if (
+        PATCH_MARKER in text
+        or DIAGNOSTIC_PATCH_MARKER in text
+        or EXEC_TIMEOUT_PATCH_MARKER in text
+        or has_extended_thinking_support(text)
+    ):
         return text, False
     raise ValueError("target bundle does not contain supported OpenClaw patch anchors")
 
@@ -805,6 +1033,7 @@ def main() -> None:
     verified_selection = []
     verified_diagnostic = []
     verified_exec_timeout = []
+    verified_extended_thinking = []
     for path in files:
         text = path.read_text(encoding="utf-8", errors="replace")
         if (
@@ -828,9 +1057,22 @@ def main() -> None:
             and "timeoutSec: nejumiEffectiveRequestedTimeoutSec" in text
         ):
             verified_exec_timeout.append(str(path))
-    ok = bool(verified_selection and verified_diagnostic and verified_exec_timeout)
+        if has_extended_thinking_support(text):
+            verified_extended_thinking.append(str(path))
+    ok = bool(
+        verified_selection
+        and verified_diagnostic
+        and verified_exec_timeout
+        and verified_extended_thinking
+    )
     patched_files = sorted(
-        set(patched_files + verified_selection + verified_diagnostic + verified_exec_timeout)
+        set(
+            patched_files
+            + verified_selection
+            + verified_diagnostic
+            + verified_exec_timeout
+            + verified_extended_thinking
+        )
     )
     payload = {
         "ok": ok,
@@ -841,6 +1083,7 @@ def main() -> None:
         "verified_selection": verified_selection,
         "verified_diagnostic": verified_diagnostic,
         "verified_exec_timeout": verified_exec_timeout,
+        "verified_extended_thinking": verified_extended_thinking,
         "check": args.check,
     }
     if args.json:

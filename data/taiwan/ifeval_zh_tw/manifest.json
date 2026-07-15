@@ -1,0 +1,27 @@
+{
+  "dataset_dir_name": "ifeval_zh_tw",
+  "total_instances": 24,
+  "source_urls": {
+    "ifeval": "https://huggingface.co/datasets/google/IFEval",
+    "m_ifeval": "https://github.com/lightblue-tech/M-IFEval"
+  },
+  "license_note": "Prompt family inspired by Apache-2.0 Google IFEval code/data and M-IFEval. This artifact contains newly written zh-TW prompts.",
+  "files": {
+    "README.md": {
+      "bytes": 230,
+      "sha256": "482606c2e18b772679ee20e8efcff6ea29dee4db6fbdddd3688301aab150eba0"
+    },
+    "ifeval_zh_tw.jsonl": {
+      "bytes": 10793,
+      "sha256": "db8675d691ffb32ca6e660275594eaf47abf71481a7b41af005436515cfe1773"
+    },
+    "manifest.json": {
+      "bytes": 927,
+      "sha256": "2676871c130d3a5709bb2d197db3c8379e04c71b81b3e891e11da133000202e5"
+    },
+    "reference_responses.jsonl": {
+      "bytes": 7745,
+      "sha256": "57554e7af2f3eb0e2459fdb163986e37b28b3f68babc869f3ca0c8b46a1d20b2"
+    }
+  }
+}

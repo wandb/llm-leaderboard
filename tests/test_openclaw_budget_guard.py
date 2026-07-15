@@ -140,6 +140,109 @@ console.log(JSON.stringify({{
     assert "observed=2" in result["second"]["blockReason"]
 
 
+def test_budget_guard_blocks_denied_exec_argument_before_execution() -> None:
+    source = f"""
+import plugin from {json.dumps(str(PLUGIN_ENTRY))};
+const handlers = {{}};
+const policies = {{}};
+const api = {{
+  pluginConfig: {{
+    enabled: true,
+    maxToolCalls: 60,
+    maxAgentTurns: 60,
+    agentIds: ["agent-a"],
+    sessionKeyPrefixes: ["deepswe"],
+    denyTools: ["web_search"],
+    denyArgumentPatterns: [String.raw`\\b(curl|wget)\\b`, String.raw`https?://`],
+    blockReasonPrefix: "NEJUMI_BUDGET_GUARD_BLOCKED",
+  }},
+  on(name, handler) {{ handlers[name] = handler; }},
+  registerTrustedToolPolicy(policy) {{ policies[policy.id] = policy; }},
+}};
+plugin.register(api);
+const result = await policies["budget-guard"].evaluate(
+  {{
+    toolName: "exec",
+    toolCallId: "call-remote",
+    arguments: {{ command: "curl -sL https://example.com/archive.tar.gz -o /tmp/archive.tar.gz" }},
+  }},
+  {{ agentId: "agent-a", sessionKey: "deepswe:task:attempt", runId: "run-policy" }},
+);
+console.log(JSON.stringify(result));
+"""
+    result = run_node_probe(source)
+    assert result["block"] is True
+    assert "tool_policy_violation" in result["blockReason"]
+    assert "type=denied_argument_pattern" in result["blockReason"]
+    assert "toolName=exec" in result["blockReason"]
+
+
+def test_budget_guard_does_not_block_url_text_in_non_executable_tool() -> None:
+    source = f"""
+import plugin from {json.dumps(str(PLUGIN_ENTRY))};
+const policies = {{}};
+const api = {{
+  pluginConfig: {{
+    enabled: true,
+    maxToolCalls: 60,
+    maxAgentTurns: 0,
+    agentIds: ["agent-a"],
+    sessionKeyPrefixes: ["deepswe"],
+    denyArgumentPatterns: [String.raw`https?://`],
+    blockReasonPrefix: "NEJUMI_BUDGET_GUARD_BLOCKED",
+  }},
+  on() {{}},
+  registerTrustedToolPolicy(policy) {{ policies[policy.id] = policy; }},
+}};
+plugin.register(api);
+const result = await policies["budget-guard"].evaluate(
+  {{
+    toolName: "write_file",
+    toolCallId: "call-write-url",
+    arguments: {{ path: "README.md", content: "See https://example.com/docs" }},
+  }},
+  {{ agentId: "agent-a", sessionKey: "deepswe:task:attempt", runId: "run-policy" }},
+);
+console.log(JSON.stringify({{ result: result ?? null }}));
+"""
+    result = run_node_probe(source)
+    assert result["result"] is None
+
+
+def test_budget_guard_blocks_denied_tool_by_wildcard() -> None:
+    source = f"""
+import plugin from {json.dumps(str(PLUGIN_ENTRY))};
+const handlers = {{}};
+const api = {{
+  pluginConfig: {{
+    enabled: true,
+    maxToolCalls: 0,
+    maxAgentTurns: 0,
+    agentIds: ["agent-a"],
+    sessionKeyPrefixes: ["deepswe"],
+    denyTools: ["browser_*"],
+    blockReasonPrefix: "NEJUMI_BUDGET_GUARD_BLOCKED",
+  }},
+  on(name, handler) {{ handlers[name] = handler; }},
+}};
+plugin.register(api);
+const result = await handlers.before_tool_call(
+  {{ toolName: "browser_fetch", toolCallId: "call-browser" }},
+  {{ agentId: "agent-a", sessionKey: "deepswe:task:attempt", runId: "run-policy" }},
+);
+const blockedAgentRun = await handlers.before_agent_run(
+  {{}},
+  {{ agentId: "agent-a", sessionKey: "deepswe:task:attempt", runId: "run-policy" }},
+);
+console.log(JSON.stringify({{ result, blockedAgentRun }}));
+"""
+    result = run_node_probe(source)
+    assert result["result"]["block"] is True
+    assert "type=denied_tool" in result["result"]["blockReason"]
+    assert result["blockedAgentRun"]["outcome"] == "block"
+    assert "tool_policy_limit_exceeded" in result["blockedAgentRun"]["reason"]
+
+
 def test_budget_guard_blocks_41st_agent_turn() -> None:
     source = f"""
 import plugin from {json.dumps(str(PLUGIN_ENTRY))};

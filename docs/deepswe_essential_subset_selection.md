@@ -26,6 +26,20 @@ Selection uses supervised sparse greedy task selection:
 - constrain language and repository concentration;
 - validate with leave-one-model-family-out re-selection.
 
+For Agentic SWE-Assorted High, a second budgeted selector is used:
+
+- `scripts/analysis/select_deepswe_budgeted_high_subset.py`
+- supports all-model caps such as `--max-avg-steps` and
+  `--max-avg-input-tokens`
+- supports model/effort-specific public caps such as
+  `--budget-model glm-5-2 --budget-effort max --max-model-avg-steps 100`
+- writes `public_budget_model_avg_steps` and
+  `public_budget_model_avg_input_tokens` into each selected task record
+
+This is intentionally stricter than pure correlation selection: if a task is
+already known from public DeepSWE rollouts to exceed the intended runtime cap,
+it should not be selected and then rediscovered via a paid failure.
+
 L1/PCA-style methods are useful diagnostics, but the shipped score remains an
 ordinary unweighted pass@1 over selected tasks. This keeps the leaderboard
 auditable: public data is used only to choose tasks, not to weight the metric.
@@ -39,6 +53,7 @@ auditable: public data is used only to choose tasks, not to weight the metric.
 | DeepSWE-Essential-16 | 16 | 0.992 | 0.803 | 0.038 |
 | DeepSWE-Essential-20 | 20 | 0.996 | 0.842 | 0.042 |
 | DeepSWE-Essential-30 | 30 | 0.996 | 0.925 | 0.037 |
+| Assorted GLM52Max-cap High-8 | 8 | 0.942 | 0.773 | 0.080 |
 
 Interpretation:
 
@@ -69,3 +84,19 @@ python3 scripts/analysis/select_deepswe_essential_subset.py
 
 The script writes detailed analysis CSV/JSON under
 `outputs/deepswe_subset_analysis/`.
+
+The current Agentic SWE-Assorted High-8 can be regenerated with:
+
+```bash
+python3 scripts/analysis/select_deepswe_budgeted_high_subset.py \
+  --subset-name essential_anchored_high_8_glm52max_cap100_10m_lang_balanced \
+  --no-default-must-include \
+  --max-avg-cost-usd 5.0 \
+  --max-avg-steps 75 \
+  --max-avg-input-tokens 7000000 \
+  --budget-model glm-5-2 \
+  --budget-effort max \
+  --max-model-avg-steps 100 \
+  --max-model-avg-input-tokens 10000000 \
+  --max-candidates-per-language 5
+```

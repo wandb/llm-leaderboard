@@ -46,6 +46,36 @@ _RUN_LOCK = threading.Lock()
 RUNNER_VERSION = "deepswe-openclaw-pier-2026-07-11-v1"
 
 
+class NonScoreableOpenClawPolicyBlock(RuntimeError):
+    """Raised when the benchmark policy, not model ability, prevents scoring."""
+
+
+class NonScoreableOpenClawProviderTimeout(RuntimeError):
+    """Raised when the provider fails before a scoreable model patch is produced."""
+
+
+class NonScoreableOpenClawConfigurationError(RuntimeError):
+    """Raised when the requested OpenClaw/model configuration cannot run."""
+
+
+def _sanitize_deepswe_instruction(instruction: str) -> str:
+    """Remove DeepSWE runner directives that conflict with this harness contract."""
+    kept_lines: list[str] = []
+    for line in str(instruction or "").splitlines():
+        normalized = " ".join(line.strip().lower().split())
+        if (
+            "work on this in a new branch" in normalized
+            and "commit" in normalized
+        ) or (
+            "create" in normalized
+            and "new branch" in normalized
+            and "commit" in normalized
+        ):
+            continue
+        kept_lines.append(line)
+    return "\n".join(kept_lines).strip()
+
+
 def _truthy(value: Any, default: bool = False) -> bool:
     if value is None:
         return default
@@ -86,9 +116,99 @@ def _deepswe_sandbox_checkout_root(task_id: str, logs_dir: Path) -> str:
     return f"/sandbox/checkouts/deepswe/{swe_runner.safe_id(task_id)}-{digest}"
 
 
+def _image_hash(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+
+
+def _deepswe_python_runtime_paths(task_toml: dict[str, Any]) -> tuple[list[str], list[str]]:
+    metadata = task_toml.get("metadata") if isinstance(task_toml.get("metadata"), dict) else {}
+    language = str(metadata.get("language") or "").strip().lower()
+    if language != "python":
+        return [], []
+    environment = (
+        task_toml.get("environment") if isinstance(task_toml.get("environment"), dict) else {}
+    )
+    image = str(environment.get("docker_image") or "").strip()
+    if not image:
+        return [], []
+    image_hash = _image_hash(image)
+    return (
+        [f"/sandbox/.deepswe-tools/python-bin/{image_hash}"],
+        [f"/sandbox/.deepswe-tools/python-site/{image_hash}/site-packages"],
+    )
+
+
 def _sidecar_usage(metadata: dict[str, Any]) -> dict[str, int]:
     usage = metadata.get("openclaw_usage")
     return usage if isinstance(usage, dict) else {}
+
+
+def _metadata_has_non_scoreable_policy_block(metadata: dict[str, Any]) -> bool:
+    # Denied tools/arguments are part of the benchmark interaction contract:
+    # the model receives a tool error and may recover with an allowed approach.
+    # They should be audited in metadata, but they must not make the trial
+    # unscoreable. Provider timeouts and harness configuration failures remain
+    # non-scoreable below.
+    return False
+
+
+def _metadata_has_non_scoreable_provider_timeout(metadata: dict[str, Any]) -> bool:
+    if metadata.get("deepswe_non_scoreable_reason") == "provider_timeout":
+        return True
+    runtime_budget = metadata.get("runtime_budget")
+    if not isinstance(runtime_budget, dict):
+        return False
+    live = runtime_budget.get("live")
+    if not isinstance(live, dict):
+        return False
+    try:
+        provider_timeout_count = int(live.get("live_provider_timeout_count") or 0)
+    except (TypeError, ValueError):
+        provider_timeout_count = 0
+    if provider_timeout_count > 0:
+        return True
+    if live.get("reason") == "live_provider_timeout":
+        return True
+    if live.get("interrupt_reason") == "live_provider_timeout":
+        return True
+    exceeded_limits = live.get("exceeded_limits")
+    if isinstance(exceeded_limits, list) and "live_provider_timeout" in exceeded_limits:
+        return True
+    return False
+
+
+def _metadata_has_llm_response_idle_timeout(metadata: dict[str, Any]) -> bool:
+    runtime_budget = metadata.get("runtime_budget")
+    if not isinstance(runtime_budget, dict):
+        return False
+    live = runtime_budget.get("live")
+    if not isinstance(live, dict):
+        return False
+    if live.get("reason") == "llm_response_idle_timeout":
+        return True
+    if live.get("interrupt_reason") == "llm_response_idle_timeout":
+        return True
+    exceeded_limits = live.get("exceeded_limits")
+    if isinstance(exceeded_limits, list) and "llm_response_idle_timeout" in exceeded_limits:
+        return True
+    return False
+
+
+def _metadata_has_scoreable_runtime_budget_failure(metadata: dict[str, Any]) -> bool:
+    if metadata.get("openclaw_disqualified_reason") != "runtime_budget_exceeded":
+        return False
+    return not _metadata_has_non_scoreable_provider_timeout(metadata)
+
+
+def _deepswe_should_force_empty_patch(metadata: dict[str, Any]) -> bool:
+    if _metadata_has_scoreable_runtime_budget_failure(metadata):
+        return False
+    return swe_runner.should_force_empty_patch(metadata)
+
+
+def _metadata_has_unsupported_model_thinking(metadata: dict[str, Any]) -> bool:
+    stderr = str(metadata.get("stderr") or "")
+    return "Thinking level" in stderr and "is not supported for" in stderr
 
 
 def _assert_gateway_task_agent_metadata(
@@ -130,6 +250,8 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
         output_root: str | None = None,
         prefix: str = "deepswe-openclaw",
         openclaw_model: str | None = None,
+        openclaw_model_params_json: str | None = None,
+        openclaw_model_overrides_json: str | None = None,
         thinking: str = "high",
         agent: str = "main",
         openclaw_timeout: str | int = 3600,
@@ -141,6 +263,8 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
         max_tool_calls: str | int = 40,
         max_agent_turns: str | int = 40,
         max_tool_wall_seconds: str | int = 300,
+        final_assistant_idle_salvage_seconds: str | float = 60.0,
+        llm_response_idle_timeout_seconds: str | float = 900.0,
         require_actual_token_usage: str | bool = True,
         nemoclaw_bin: str = "nemoclaw",
         nemoclaw_sandbox: str = "nejumi-taiwan",
@@ -171,6 +295,8 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
         self.output_root = Path(output_root or (self.logs_dir / "openclaw_runs")).resolve()
         self.prefix = prefix
         self.openclaw_model = openclaw_model or model_name
+        self.openclaw_model_params_json = openclaw_model_params_json
+        self.openclaw_model_overrides_json = openclaw_model_overrides_json
         self.thinking = thinking
         self.agent = agent
         self.openclaw_timeout = _int(openclaw_timeout, 3600)
@@ -182,6 +308,14 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
         self.max_tool_calls = _int(max_tool_calls, 40)
         self.max_agent_turns = _int(max_agent_turns, 40)
         self.max_tool_wall_seconds = _int(max_tool_wall_seconds, 300)
+        self.final_assistant_idle_salvage_seconds = _float(
+            final_assistant_idle_salvage_seconds,
+            60.0,
+        )
+        self.llm_response_idle_timeout_seconds = _float(
+            llm_response_idle_timeout_seconds,
+            900.0,
+        )
         self.require_actual_token_usage = _truthy(require_actual_token_usage, True)
         self.nemoclaw_bin = nemoclaw_bin
         self.nemoclaw_sandbox = nemoclaw_sandbox
@@ -235,6 +369,8 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
             {
                 "prefix": self.prefix,
                 "model": self.openclaw_model,
+                "openclaw_model_params_json": self.openclaw_model_params_json,
+                "openclaw_model_overrides_json": self.openclaw_model_overrides_json,
                 "thinking": self.thinking,
                 "agent": self.agent,
                 "profile": None,
@@ -263,6 +399,12 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
                 "max_tool_calls": self.max_tool_calls,
                 "max_agent_turns": self.max_agent_turns,
                 "max_tool_wall_seconds": self.max_tool_wall_seconds,
+                "final_assistant_idle_salvage_seconds": (
+                    self.final_assistant_idle_salvage_seconds
+                ),
+                "llm_response_idle_timeout_seconds": (
+                    self.llm_response_idle_timeout_seconds
+                ),
                 "dry_run": False,
                 "no_local": self.no_local,
                 "allow_failed_preflight": self.allow_failed_preflight,
@@ -295,7 +437,7 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
             "base_commit": metadata.get("base_commit"),
             "repo_language": metadata.get("language"),
             "dockerhub_tag": environment.get("docker_image"),
-            "problem_statement": instruction,
+            "problem_statement": _sanitize_deepswe_instruction(instruction),
             "requirements": "Follow the task instruction. Keep the fix minimal.",
             "interface": "",
             "issue_specificity": "deep-swe",
@@ -310,6 +452,9 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
                 task_id,
                 self.logs_dir,
             )
+        extra_path, extra_pythonpath = _deepswe_python_runtime_paths(task_toml)
+        args.nemoclaw_extra_path = extra_path
+        args.nemoclaw_extra_pythonpath = extra_pythonpath
         row = self._row(task_id, task_toml, instruction)
         task_dir = self.output_root / swe_runner.safe_id(task_id)
         task_dir.mkdir(parents=True, exist_ok=True)
@@ -354,7 +499,55 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
                     agent_id=swe_runner.safe_agent_id(task_id, self.task_agent_prefix),
                     canonical_config_path=self.nemoclaw_openclaw_config_path,
                 )
-            if swe_runner.should_force_empty_patch(metadata):
+            if _metadata_has_non_scoreable_provider_timeout(metadata):
+                patch_path = task_dir / "model.patch"
+                patch_path.write_text("", encoding="utf-8")
+                metadata = dict(metadata)
+                metadata.update(
+                    {
+                        "runner_version": RUNNER_VERSION,
+                        "deepswe_task_id": task_id,
+                        "deepswe_initial_nemoclaw_checkout_transfer": initial_checkout_transfer,
+                        "deepswe_patch_path": str(patch_path),
+                        "deepswe_patch_bytes": 0,
+                        "deepswe_non_scoreable_reason": "provider_timeout",
+                    }
+                )
+                (task_dir / "deepswe_openclaw_metadata.json").write_text(
+                    json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+                raise NonScoreableOpenClawProviderTimeout(
+                    "non_scoreable_provider_timeout: OpenClaw provider timed out before "
+                    f"a scoreable patch could be produced; task_id={task_id}"
+                )
+            if _metadata_has_llm_response_idle_timeout(metadata):
+                metadata = dict(metadata)
+                metadata.setdefault("openclaw_disqualified_reason", "runtime_budget_exceeded")
+                metadata["deepswe_scoreable_failure_reason"] = "llm_response_idle_timeout"
+            if _metadata_has_unsupported_model_thinking(metadata):
+                patch_path = task_dir / "model.patch"
+                patch_path.write_text("", encoding="utf-8")
+                metadata = dict(metadata)
+                metadata.update(
+                    {
+                        "runner_version": RUNNER_VERSION,
+                        "deepswe_task_id": task_id,
+                        "deepswe_initial_nemoclaw_checkout_transfer": initial_checkout_transfer,
+                        "deepswe_patch_path": str(patch_path),
+                        "deepswe_patch_bytes": 0,
+                        "deepswe_non_scoreable_reason": "unsupported_model_thinking",
+                    }
+                )
+                (task_dir / "deepswe_openclaw_metadata.json").write_text(
+                    json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+                raise NonScoreableOpenClawConfigurationError(
+                    "non_scoreable_configuration_error: requested OpenClaw thinking level "
+                    f"is unsupported by the model; task_id={task_id}"
+                )
+            if _deepswe_should_force_empty_patch(metadata):
                 patch = ""
             elif self.nemoclaw_sandbox and self.nemoclaw_checkout_transfer_mode == "copy":
                 patch = swe_runner.capture_patch_nemoclaw(checkout_dir, args, [])

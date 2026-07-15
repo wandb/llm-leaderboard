@@ -912,6 +912,39 @@ def test_live_tool_budget_status_does_not_count_budget_guard_block_as_executed(t
     assert status["budget_guard_block_count"] == 1
 
 
+def test_live_tool_budget_status_classifies_policy_block_as_non_budget_guard(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path / "empty-openclaw-state"))
+    session_dir = tmp_path / "task-agent" / "sessions"
+    session_dir.mkdir(parents=True)
+    session = session_dir / "session-1.jsonl"
+    session.write_text(
+        "NEJUMI_BUDGET_GUARD_BLOCKED tool_policy_violation "
+        "type=denied_argument_pattern pattern=https?:// tool=exec\n",
+        encoding="utf-8",
+    )
+    args = Namespace(
+        agent="agent-a",
+        profile=None,
+        max_input_tokens=0,
+        max_tool_calls=0,
+        max_agent_turns=0,
+        max_tool_wall_seconds=0,
+        live_session_dir=[session_dir],
+    )
+
+    status = module.live_tool_budget_status(args, time.time() - 1)
+
+    assert status["exceeded"] is False
+    assert status["interrupt"] is False
+    assert status["reason"] is None
+    assert status["interrupt_reason"] is None
+    assert status["exceeded_limits"] == []
+    assert status["budget_guard_policy_block_count"] == 1
+    assert status["non_policy_budget_guard_block_count"] == 0
+    assert status["live_tool_policy_observed"] is True
+
+
 def test_live_tool_budget_status_detects_estimated_input_token_overage(tmp_path, monkeypatch):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path / "empty-openclaw-state"))
@@ -1057,6 +1090,101 @@ def test_live_tool_budget_status_checks_nemoclaw_sandbox_session_dir(monkeypatch
     assert captured["env"] == {"PATH": "/bin"}
 
 
+def test_run_openclaw_command_salvages_final_assistant_idle(monkeypatch, tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    status_calls = []
+
+    class FakeProcess:
+        pid = 12345
+        returncode = None
+
+        def communicate(self, timeout=None):
+            raise subprocess.TimeoutExpired(["openclaw"], timeout)
+
+    fake_process = FakeProcess()
+
+    def fake_popen(*args, **kwargs):
+        return fake_process
+
+    def fake_live_status(args, started_at, env):
+        status_calls.append((args, started_at, env))
+        return {
+            "final_assistant_idle_done": True,
+            "final_assistant_idle_seconds": 75.0,
+            "final_assistant_session_file": "/sandbox/.openclaw/agents/a/sessions/s.jsonl",
+            "interrupt": False,
+        }
+
+    terminated = {}
+
+    def fake_terminate(process):
+        terminated["process"] = process
+        return ("stdout text", "stderr text")
+
+    monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(module, "live_tool_budget_status", fake_live_status)
+    monkeypatch.setattr(module, "terminate_process", fake_terminate)
+    args = Namespace(cwd=tmp_path, final_assistant_idle_salvage_seconds=60.0)
+
+    result, live_status = module.run_openclaw_command_with_live_budget(
+        ["openclaw", "agent"],
+        args,
+        {"PATH": "/bin"},
+        time.time() - 120,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == "stdout text"
+    assert "final assistant idle salvage" in result.stderr
+    assert live_status["final_assistant_idle_salvaged"] is True
+    assert live_status["interrupted"] is False
+    assert terminated["process"] is fake_process
+    assert status_calls
+
+
+def test_run_openclaw_command_interrupts_llm_response_idle(monkeypatch, tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+
+    class FakeProcess:
+        pid = 12345
+        returncode = None
+
+        def communicate(self, timeout=None):
+            raise subprocess.TimeoutExpired(["openclaw"], timeout)
+
+    fake_process = FakeProcess()
+
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *args, **kwargs: fake_process)
+    monkeypatch.setattr(
+        module,
+        "live_tool_budget_status",
+        lambda args, started_at, env: {
+            "interrupt": True,
+            "interrupt_reason": "llm_response_idle_timeout",
+            "reason": "llm_response_idle_timeout",
+            "llm_response_idle_seconds": 901.0,
+            "llm_response_idle_timeout_seconds": 900.0,
+            "llm_response_idle_session_file": "/sandbox/.openclaw/agents/a/sessions/s.jsonl",
+            "live_provider_timeout_count": 0,
+            "live_provider_timeouts": [],
+        },
+    )
+    monkeypatch.setattr(module, "terminate_process", lambda process: ("stdout text", "stderr text"))
+    args = Namespace(cwd=tmp_path, final_assistant_idle_salvage_seconds=60.0)
+
+    result, live_status = module.run_openclaw_command_with_live_budget(
+        ["openclaw", "agent"],
+        args,
+        {"PATH": "/bin"},
+        time.time() - 120,
+    )
+
+    assert result.returncode == 125
+    assert live_status["interrupted"] is True
+    assert live_status["reason"] == "llm_response_idle_timeout"
+    assert "llm_response_idle_seconds=901.0" in result.stderr
+
+
 def test_live_tool_budget_status_interrupts_for_provider_timeout(monkeypatch, tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path / "empty-openclaw-state"))
@@ -1113,6 +1241,156 @@ def test_live_tool_budget_status_interrupts_for_provider_timeout(monkeypatch, tm
     assert status["live_provider_timeouts"][0]["errorCode"] == "504"
 
 
+def test_live_tool_budget_status_interrupts_for_llm_response_idle(monkeypatch, tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path / "empty-openclaw-state"))
+
+    def fake_run(command, text, capture_output, check, env):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                {
+                    "ok": True,
+                    "sessions": [
+                        {
+                            "path": "/sandbox/tasks/deepswe/sessions/session-1.jsonl",
+                            "mtime": 123.0,
+                            "idle_seconds": 901.0,
+                            "lock_exists": True,
+                            "last_message_role": "toolResult",
+                            "tool_call_count": 3,
+                            "executed_tool_call_count": 3,
+                            "agent_turn_count": 2,
+                        }
+                    ],
+                }
+            )
+            + "\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    args = Namespace(
+        agent="agent-a",
+        profile=None,
+        max_tool_calls=40,
+        max_input_tokens=1_000_000,
+        max_agent_turns=40,
+        llm_response_idle_timeout_seconds=900.0,
+        live_session_dir=[],
+        live_sandbox_session_dir=["/sandbox/tasks/deepswe/sessions"],
+        nemoclaw_bin="nemoclaw",
+        nemoclaw_sandbox="nejumi-taiwan",
+    )
+
+    status = module.live_tool_budget_status(args, time.time() - 1, env={"PATH": "/bin"})
+
+    assert status["enabled"] is True
+    assert status["exceeded"] is True
+    assert status["interrupt"] is True
+    assert status["reason"] == "llm_response_idle_timeout"
+    assert status["interrupt_reason"] == "llm_response_idle_timeout"
+    assert status["exceeded_limits"] == ["llm_response_idle_timeout"]
+    assert status["llm_response_idle_seconds"] == 901.0
+    assert status["llm_response_idle_session_file"] == "/sandbox/tasks/deepswe/sessions/session-1.jsonl"
+
+
+def test_live_tool_budget_status_interrupts_for_initial_user_response_idle(monkeypatch, tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path / "empty-openclaw-state"))
+
+    def fake_run(command, text, capture_output, check, env):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                {
+                    "ok": True,
+                    "sessions": [
+                        {
+                            "path": "/sandbox/tasks/deepswe/sessions/session-1.jsonl",
+                            "mtime": 123.0,
+                            "idle_seconds": 901.0,
+                            "lock_exists": True,
+                            "last_message_role": "user",
+                            "tool_call_count": 0,
+                            "executed_tool_call_count": 0,
+                            "agent_turn_count": 0,
+                        }
+                    ],
+                }
+            )
+            + "\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    args = Namespace(
+        agent="agent-a",
+        profile=None,
+        max_tool_calls=40,
+        max_input_tokens=1_000_000,
+        max_agent_turns=40,
+        llm_response_idle_timeout_seconds=900.0,
+        live_session_dir=[],
+        live_sandbox_session_dir=["/sandbox/tasks/deepswe/sessions"],
+        nemoclaw_bin="nemoclaw",
+        nemoclaw_sandbox="nejumi-taiwan",
+    )
+
+    status = module.live_tool_budget_status(args, time.time() - 1, env={"PATH": "/bin"})
+
+    assert status["enabled"] is True
+    assert status["exceeded"] is True
+    assert status["interrupt"] is True
+    assert status["reason"] == "llm_response_idle_timeout"
+    assert status["interrupt_reason"] == "llm_response_idle_timeout"
+    assert status["exceeded_limits"] == ["llm_response_idle_timeout"]
+    assert status["llm_response_idle_last_message_role"] == "user"
+    assert status["llm_response_idle_seconds"] == 901.0
+
+
+def test_live_tool_budget_status_interrupts_when_no_session_appears(monkeypatch, tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path / "empty-openclaw-state"))
+    monkeypatch.setattr(module.time, "time", lambda: 1201.0)
+
+    def fake_run(command, text, capture_output, check, env):
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps({"ok": True, "sessions": []}) + "\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    args = Namespace(
+        agent="agent-a",
+        profile=None,
+        max_tool_calls=40,
+        max_input_tokens=1_000_000,
+        max_agent_turns=40,
+        llm_response_idle_timeout_seconds=180.0,
+        live_session_dir=[],
+        live_sandbox_session_dir=["/sandbox/tasks/deepswe/sessions"],
+        nemoclaw_bin="nemoclaw",
+        nemoclaw_sandbox="nejumi-taiwan",
+    )
+
+    status = module.live_tool_budget_status(args, 1000.0, env={"PATH": "/bin"})
+
+    assert status["enabled"] is True
+    assert status["exceeded"] is True
+    assert status["interrupt"] is True
+    assert status["reason"] == "llm_response_idle_timeout"
+    assert status["interrupt_reason"] == "llm_response_idle_timeout"
+    assert status["exceeded_limits"] == ["llm_response_idle_timeout"]
+    assert status["llm_response_idle_seconds"] == 201.0
+    assert status["llm_response_idle_session_file"] is None
+    assert status["llm_response_idle_session_source"] == "no_session_observed"
+
+
 def test_live_tool_budget_status_interrupts_for_interactive_exec_policy(monkeypatch, tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     monkeypatch.setenv("OPENCLAW_STATE_DIR", str(tmp_path / "empty-openclaw-state"))
@@ -1160,10 +1438,11 @@ def test_live_tool_budget_status_interrupts_for_interactive_exec_policy(monkeypa
 
     status = module.live_tool_budget_status(args, time.time() - 1, env={"PATH": "/bin"})
 
-    assert status["exceeded"] is True
-    assert status["reason"] == "live_tool_policy_violation"
+    assert status["exceeded"] is False
+    assert status["reason"] is None
     assert status["live_tool_policy_violation_count"] == 1
     assert status["live_tool_policy_violations"][0]["type"] == "forbidden_interactive_exec_pty"
+    assert status["live_tool_policy_observed"] is True
 
 
 def test_runtime_budget_status_uses_live_nemoclaw_tool_overage():
@@ -2185,7 +2464,7 @@ def test_tool_policy_violations_catch_web_search_and_http_arguments():
             "type": "tool_call",
             "toolCallId": "call_2",
             "toolName": "code_execution",
-            "arguments": {"task": "import requests\nrequests.get('https://example.com')"},
+            "arguments": {"task": "curl https://example.com/data"},
             "index": 1,
         },
         {
@@ -2198,7 +2477,7 @@ def test_tool_policy_violations_catch_web_search_and_http_arguments():
     ]
     policy = {
         "deny_tools": ["code_execution", "web_*", "*search*"],
-        "deny_argument_patterns": [r"https?://", r"\b(requests|urllib|httpx)\."],
+        "deny_argument_patterns": [r"https?://", r"\b(curl|wget)\b"],
     }
 
     violations = module.tool_policy_violations(events, policy)
@@ -2215,6 +2494,84 @@ def test_tool_policy_violations_catch_web_search_and_http_arguments():
         violation["type"] == "denied_tool" and violation["toolName"] == "code_execution"
         for violation in violations
     )
+
+
+def test_live_tool_policy_allows_process_control_tool(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    session_dir = tmp_path / "sessions"
+    session_dir.mkdir()
+    session = session_dir / "session-1.jsonl"
+    session.write_text(
+        json.dumps(
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "toolCall",
+                            "name": "process",
+                            "arguments": {"session_id": "wild-dune", "action": "poll"},
+                        }
+                    ],
+                }
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", module.SANDBOX_LIVE_SESSION_SCAN_SCRIPT, "0", str(session_dir)],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    scan = json.loads(result.stdout)
+
+    assert scan["sessions"][0]["live_tool_policy_violation_count"] == 0
+    assert scan["sessions"][0]["live_tool_policy_violations"] == []
+
+
+def test_live_tool_policy_still_blocks_interactive_exec_pty(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    session_dir = tmp_path / "sessions"
+    session_dir.mkdir()
+    session = session_dir / "session-1.jsonl"
+    session.write_text(
+        json.dumps(
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "toolCall",
+                            "name": "exec",
+                            "arguments": {"cmd": "bash", "pty": True},
+                        }
+                    ],
+                }
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", module.SANDBOX_LIVE_SESSION_SCAN_SCRIPT, "0", str(session_dir)],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    scan = json.loads(result.stdout)
+    violations = scan["sessions"][0]["live_tool_policy_violations"]
+
+    assert violations == [
+        {
+            "type": "forbidden_interactive_exec_pty",
+            "toolName": "exec",
+            "source": "content:0",
+        }
+    ]
 
 
 def test_tool_policy_argument_patterns_do_not_block_static_file_writes():
@@ -2237,17 +2594,26 @@ def test_tool_policy_argument_patterns_do_not_block_static_file_writes():
             "arguments": {"cmd": "python - <<'PY'\nimport requests\nrequests.get('https://example.com')\nPY"},
             "index": 1,
         },
+        {
+            "type": "tool_call",
+            "toolCallId": "call_fetch",
+            "toolName": "exec",
+            "arguments": {"cmd": "curl https://example.com/data"},
+            "index": 2,
+        },
     ]
     policy = {
         "deny_tools": ["web_*", "*search*"],
-        "deny_argument_patterns": [r"https?://", r"\b(requests|urllib|httpx)\."],
+        "deny_argument_patterns": [r"https?://", r"\b(curl|wget)\b"],
     }
 
     violations = module.tool_policy_violations(events, policy)
 
     assert not any(violation["toolName"] == "write" for violation in violations)
+    assert not any(violation["toolCallId"] == "call_exec" for violation in violations)
     assert any(
-        violation["type"] == "denied_argument_pattern" and violation["toolName"] == "exec"
+        violation["type"] == "denied_argument_pattern"
+        and violation["toolCallId"] == "call_fetch"
         for violation in violations
     )
 
@@ -2274,17 +2640,13 @@ def test_tool_policy_bare_url_pattern_does_not_block_local_url_literals_in_exec(
     ]
     policy = {
         "deny_tools": ["web_*", "*search*"],
-        "deny_argument_patterns": [r"https?://", r"\b(requests|urllib|httpx)\."],
+        "deny_argument_patterns": [r"https?://"],
     }
 
     violations = module.tool_policy_violations(events, policy)
 
     assert not any(violation["toolCallId"] == "call_exec_literal" for violation in violations)
-    assert any(
-        violation["toolCallId"] == "call_exec_network"
-        and violation["type"] == "denied_argument_pattern"
-        for violation in violations
-    )
+    assert not any(violation["toolCallId"] == "call_exec_network" for violation in violations)
 
 
 def test_build_openclaw_command_defaults_sandbox_visible_config_path_for_nemoclaw(monkeypatch):
@@ -2327,7 +2689,10 @@ def test_build_openclaw_command_defaults_sandbox_visible_config_path_for_nemocla
         "OPENCLAW_MESSAGE_B64=aGVsbG8=",
     ]
     assert command[13:15] == ["bash", "-c"]
-    assert "export PATH=/sandbox/.npm-global/bin:$PATH;" in command[15]
+    assert (
+        "export PATH=/sandbox/.deepswe-tools/go/bin:/sandbox/.npm-global/bin:$PATH;"
+        in command[15]
+    )
     assert "openclaw agent" in command[15]
     assert '--message "$OPENCLAW_MESSAGE"' in command[15]
     assert "hello" not in command
@@ -2365,7 +2730,10 @@ def test_build_openclaw_command_passes_sandbox_visible_config_path_for_nemoclaw(
         "OPENCLAW_MESSAGE_B64=aGVsbG8=",
     ]
     assert command[13:15] == ["bash", "-c"]
-    assert "export PATH=/sandbox/.npm-global/bin:$PATH;" in command[15]
+    assert (
+        "export PATH=/sandbox/.deepswe-tools/go/bin:/sandbox/.npm-global/bin:$PATH;"
+        in command[15]
+    )
     assert "openclaw agent" in command[15]
 
 
@@ -2431,3 +2799,41 @@ def test_build_openclaw_command_uses_sandbox_message_file_when_provided(monkeypa
     assert 'OPENCLAW_MESSAGE="$(cat "$OPENCLAW_MESSAGE_FILE")"' in shell
     assert '--message "$OPENCLAW_MESSAGE"' in shell
     assert not any("x" * 1000 in part for part in command)
+
+
+def test_build_openclaw_command_injects_extra_sandbox_runtime_paths(monkeypatch):
+    monkeypatch.delenv("OPENCLAW_GATEWAY_URL", raising=False)
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    args = Namespace(
+        openclaw_bin="openclaw",
+        nemoclaw_bin="nemoclaw",
+        nemoclaw_sandbox="nejumi-taiwan",
+        nemoclaw_workdir="/sandbox/repo",
+        nemoclaw_extra_path=["/sandbox/.deepswe-tools/python-bin/abc123"],
+        nemoclaw_extra_pythonpath=[
+            "/sandbox/.deepswe-tools/python-site/abc123/site-packages"
+        ],
+        profile=None,
+        agent="main",
+        session_key="deepswe:task",
+        benchmark_id="deepswe",
+        task_id="task",
+        timeout=120,
+        local=False,
+        model="openrouter-direct/z-ai/glm-5.2",
+        thinking="max",
+        openclaw_config_path=None,
+    )
+
+    command = module.build_openclaw_command(args, "hello", None)
+
+    shell = command[-1]
+    assert (
+        "export PATH=/sandbox/.deepswe-tools/go/bin:"
+        "/sandbox/.deepswe-tools/python-bin/abc123:"
+        "/sandbox/.npm-global/bin:$PATH;"
+    ) in shell
+    assert (
+        "export PYTHONPATH=/sandbox/.deepswe-tools/python-site/abc123/site-packages:"
+        "${PYTHONPATH:-};"
+    ) in shell

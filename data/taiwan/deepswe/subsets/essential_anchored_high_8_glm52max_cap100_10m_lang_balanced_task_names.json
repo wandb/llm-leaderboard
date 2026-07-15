@@ -1,0 +1,10 @@
+[
+  "go-genai-streamed-function-args",
+  "etree-xml-diff-patch",
+  "termenv-preserve-ansi-resets",
+  "bandit-interprocedural-taint-checks",
+  "langchain-request-coalescing",
+  "superjson-error-stack-serialization",
+  "true-myth-iterable-collection-combinators",
+  "ts-pattern-match-each"
+]

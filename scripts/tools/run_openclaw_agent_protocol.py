@@ -41,6 +41,7 @@ DEFAULT_NATIVE_WEAVE_AGENT_NAME = "nejumi-taiwan-openclaw"
 DEFAULT_DIAGNOSTIC_WEAVE_AGENT_NAME = "nejumi-taiwan-sidecar-diagnostic"
 DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH = Path("/sandbox/.openclaw/openclaw.json")
 DEFAULT_NEMOCLAW_PATCHED_OPENCLAW_BIN_DIR = "/sandbox/.npm-global/bin"
+DEFAULT_NEMOCLAW_DEEPSWE_TOOL_BIN_DIR = "/sandbox/.deepswe-tools/go/bin"
 SANDBOX_OPENCLAW_ENV_PASSTHROUGH = ("OPENCLAW_GATEWAY_URL",)
 AGENTS_API_BASE_URL = "https://trace.wandb.ai"
 AGENTS_QUERY_ENDPOINT = "/agents/query"
@@ -53,11 +54,32 @@ BUDGET_GUARD_BLOCK_MARKER = "NEJUMI_BUDGET_GUARD_BLOCKED"
 SANDBOX_LIVE_SESSION_SCAN_SCRIPT = r"""
 import json
 import sys
+import time
 from pathlib import Path
 
 threshold = float(sys.argv[1])
 rows = []
 BUDGET_GUARD_BLOCK_MARKER = "NEJUMI_BUDGET_GUARD_BLOCKED"
+
+
+def budget_guard_block_kind(text):
+    if "tool_policy_violation" in text:
+        return "tool_policy_violation"
+    if "agent_turn_limit_exceeded" in text:
+        return "agent_turn"
+    if "tool_call_limit_exceeded" in text:
+        return "tool_call"
+    if "cumulative_input_tokens_limit_exceeded" in text:
+        return "cumulative_input_tokens"
+    if "cumulative_output_tokens_limit_exceeded" in text:
+        return "cumulative_output_tokens"
+    if "missing_actual_input_tokens" in text:
+        return "missing_actual_input_tokens"
+    if "missing_actual_output_tokens" in text:
+        return "missing_actual_output_tokens"
+    if "missing_actual_token_usage" in text:
+        return "missing_actual_token_usage"
+    return "unknown"
 
 
 def tool_call_count(message):
@@ -133,10 +155,8 @@ def forbidden_live_tool_policy_violations(message):
         name = tool_name(value)
         arguments = tool_arguments(value)
         name_norm = name.lower()
-        if name_norm == "process" or name_norm.startswith("process_"):
-            violations.append({"type": "forbidden_process_tool", "toolName": name, "source": source})
         if name_norm == "exec" and arguments.get("pty") is True:
-                violations.append({"type": "forbidden_interactive_exec_pty", "toolName": name, "source": source})
+            violations.append({"type": "forbidden_interactive_exec_pty", "toolName": name, "source": source})
     return violations
 
 
@@ -198,6 +218,7 @@ def estimated_tokens(text):
     return cjk + int((non_cjk + 3) // 4)
 
 
+now = time.time()
 for raw_dir in sys.argv[2:]:
     sessions_dir = Path(raw_dir)
     if not sessions_dir.exists() or not sessions_dir.is_dir():
@@ -223,12 +244,17 @@ for raw_dir in sys.argv[2:]:
         policy_violations = []
         budget_guard_blocks = []
         provider_timeouts = []
+        last_message_role = None
+        last_assistant_tool_call_count = None
+        last_assistant_text_length = 0
         for line_index, raw in enumerate(lines):
             if BUDGET_GUARD_BLOCK_MARKER in raw:
                 budget_guard_blocks.append(
                     {
                         "line_index": line_index,
                         "marker": BUDGET_GUARD_BLOCK_MARKER,
+                        "kind": budget_guard_block_kind(raw),
+                        "text": raw[:1000],
                     }
                 )
             try:
@@ -240,9 +266,14 @@ for raw_dir in sys.argv[2:]:
                 continue
             estimated_input_tokens += estimated_tokens(text_from_value(message.get("content")))
             role = message.get("role")
+            if isinstance(role, str):
+                last_message_role = role
             if role == "assistant":
+                assistant_tool_calls = tool_call_count(message)
                 agent_turn_count += 1
-                tool_calls += tool_call_count(message)
+                tool_calls += assistant_tool_calls
+                last_assistant_tool_call_count = assistant_tool_calls
+                last_assistant_text_length = len(text_from_value(message.get("content")).strip())
                 policy_violations.extend(forbidden_live_tool_policy_violations(message))
                 provider_timeout = live_provider_timeout_error(message)
                 if provider_timeout is not None:
@@ -259,10 +290,24 @@ for raw_dir in sys.argv[2:]:
                     blocked_tool_results += 1
                 else:
                     executed_tool_results += 1
+        lock_exists = Path(str(path) + ".lock").exists()
+        idle_seconds = max(0.0, now - stat.st_mtime)
+        final_assistant_idle_done = (
+            not lock_exists
+            and last_message_role == "assistant"
+            and last_assistant_tool_call_count == 0
+            and last_assistant_text_length > 0
+        )
         rows.append(
             {
                 "path": str(path),
                 "mtime": stat.st_mtime,
+                "idle_seconds": idle_seconds,
+                "lock_exists": lock_exists,
+                "last_message_role": last_message_role,
+                "last_assistant_tool_call_count": last_assistant_tool_call_count,
+                "last_assistant_text_length": last_assistant_text_length,
+                "final_assistant_idle_done": final_assistant_idle_done,
                 "tool_call_count": tool_calls,
                 "blocked_tool_call_count": blocked_tool_results,
                 "executed_tool_call_count": executed_tool_results,
@@ -763,8 +808,35 @@ def build_openclaw_command_with_message_source(
         message_loader = 'OPENCLAW_MESSAGE="$(cat "$OPENCLAW_MESSAGE_FILE")"; '
     else:
         message_loader = 'OPENCLAW_MESSAGE="$(printf %s "$OPENCLAW_MESSAGE_B64" | base64 -d)"; '
+    deepswe_tool_bin_dir = DEFAULT_NEMOCLAW_DEEPSWE_TOOL_BIN_DIR
+    extra_path_entries = [
+        str(item)
+        for item in (getattr(args, "nemoclaw_extra_path", None) or [])
+        if str(item).strip()
+    ]
+    extra_pythonpath_entries = [
+        str(item)
+        for item in (getattr(args, "nemoclaw_extra_pythonpath", None) or [])
+        if str(item).strip()
+    ]
+    path_entries = [
+        deepswe_tool_bin_dir,
+        *extra_path_entries,
+        patched_openclaw_bin_dir,
+    ]
+    export_parts = [
+        "export PATH="
+        + ":".join(shlex.quote(item) for item in path_entries)
+        + ":$PATH; "
+    ]
+    if extra_pythonpath_entries:
+        export_parts.append(
+            "export PYTHONPATH="
+            + ":".join(shlex.quote(item) for item in extra_pythonpath_entries)
+            + ":${PYTHONPATH:-}; "
+        )
     shell_command = (
-        f"export PATH={shlex.quote(patched_openclaw_bin_dir)}:$PATH; "
+        "".join(export_parts)
         + message_loader
         + "exec "
         + " ".join(shell_parts)
@@ -981,6 +1053,8 @@ def session_budget_guard_blocks(path: Path) -> list[dict[str, Any]]:
 
 
 def budget_guard_block_kind(text: str) -> str:
+    if "tool_policy_violation" in text:
+        return "tool_policy_violation"
     if "agent_turn_limit_exceeded" in text:
         return "agent_turn"
     if "tool_call_limit_exceeded" in text:
@@ -1150,13 +1224,23 @@ def live_tool_budget_status(
     started_at: float,
     env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    now = time.time()
     max_input_tokens = int(getattr(args, "max_input_tokens", 0) or 0)
     max_tool_calls = int(getattr(args, "max_tool_calls", 0) or 0)
     max_agent_turns = int(getattr(args, "max_agent_turns", 0) or 0)
     max_tool_wall_seconds = int(getattr(args, "max_tool_wall_seconds", 0) or 0)
+    llm_response_idle_timeout_seconds = max(
+        0.0,
+        float(getattr(args, "llm_response_idle_timeout_seconds", 0.0) or 0.0),
+    )
     session_dirs = [str(path) for path in configured_live_session_dirs(args)]
     sandbox_session_dirs = configured_live_sandbox_session_dirs(args)
-    budget_enabled = max_tool_calls > 0 or max_input_tokens > 0 or max_agent_turns > 0
+    budget_enabled = (
+        max_tool_calls > 0
+        or max_input_tokens > 0
+        or max_agent_turns > 0
+        or llm_response_idle_timeout_seconds > 0
+    )
     observations: list[dict[str, Any]] = []
     for path in live_session_candidates(args, started_at):
         observations.append(session_budget_observation(path))
@@ -1175,6 +1259,11 @@ def live_tool_budget_status(
             budget_guard_blocks = session.get("budget_guard_blocks")
             live_provider_timeout_count = session.get("live_provider_timeout_count")
             live_provider_timeouts = session.get("live_provider_timeouts")
+            final_assistant_idle_done = session.get("final_assistant_idle_done")
+            final_assistant_idle_seconds = session.get("idle_seconds")
+            session_lock_exists = session.get("lock_exists")
+            session_idle_seconds = session.get("idle_seconds")
+            last_message_role = session.get("last_message_role")
             if isinstance(count, (int, float)) and isinstance(path, str) and path:
                 blocked_count_int = (
                     int(blocked_count)
@@ -1237,6 +1326,21 @@ def live_tool_budget_status(
                             if isinstance(live_provider_timeouts, list)
                             else []
                         ),
+                        "final_assistant_idle_done": bool(final_assistant_idle_done),
+                        "final_assistant_idle_seconds": (
+                            float(final_assistant_idle_seconds)
+                            if isinstance(final_assistant_idle_seconds, (int, float))
+                            else None
+                        ),
+                        "session_lock_exists": bool(session_lock_exists),
+                        "session_idle_seconds": (
+                            float(session_idle_seconds)
+                            if isinstance(session_idle_seconds, (int, float))
+                            else None
+                        ),
+                        "last_message_role": (
+                            str(last_message_role) if isinstance(last_message_role, str) else None
+                        ),
                     }
                 )
     tool_observations = sorted(
@@ -1275,6 +1379,55 @@ def live_tool_budget_status(
         reverse=True,
     )
     best_provider_timeout = provider_timeout_observations[0] if provider_timeout_observations else {}
+    final_assistant_observations = [
+        item for item in observations if item.get("final_assistant_idle_done") is True
+    ]
+    final_assistant_observations = sorted(
+        final_assistant_observations,
+        key=lambda item: float(item.get("final_assistant_idle_seconds") or 0.0),
+        reverse=True,
+    )
+    best_final_assistant = (
+        final_assistant_observations[0] if final_assistant_observations else {}
+    )
+    response_idle_observations = [
+        item
+        for item in observations
+        if item.get("last_message_role") in {"user", "tool", "toolResult"}
+        and isinstance(item.get("session_idle_seconds"), (int, float))
+    ]
+    response_idle_observations = sorted(
+        response_idle_observations,
+        key=lambda item: float(item.get("session_idle_seconds") or 0.0),
+        reverse=True,
+    )
+    best_response_idle = response_idle_observations[0] if response_idle_observations else {}
+    no_session_response_idle_exceeded = bool(
+        llm_response_idle_timeout_seconds > 0
+        and not observations
+        and now - started_at >= llm_response_idle_timeout_seconds
+    )
+    best_budget_guard_blocks = (
+        best_budget_guard.get("budget_guard_blocks", [])
+        if best_budget_guard
+        else []
+    )
+    if not isinstance(best_budget_guard_blocks, list):
+        best_budget_guard_blocks = []
+    budget_guard_policy_blocks = [
+        block
+        for block in best_budget_guard_blocks
+        if isinstance(block, dict)
+        and (
+            block.get("kind") == "tool_policy_violation"
+            or "tool_policy_violation" in str(block.get("text") or "")
+        )
+    ]
+    non_policy_budget_guard_blocks = [
+        block
+        for block in best_budget_guard_blocks
+        if isinstance(block, dict) and block not in budget_guard_policy_blocks
+    ]
     best_count = int(best_tool.get("tool_call_count") or 0) if best_tool else None
     best_executed_count = (
         int(best_tool.get("executed_tool_call_count") or 0) if best_tool else None
@@ -1315,7 +1468,7 @@ def live_tool_budget_status(
     policy_violation_count = (
         int(best_policy.get("live_tool_policy_violation_count") or 0) if best_policy else 0
     )
-    policy_exceeded = policy_violation_count > 0
+    policy_observed = policy_violation_count > 0 or bool(budget_guard_policy_blocks)
     budget_guard_block_count = (
         int(best_budget_guard.get("budget_guard_block_count") or 0)
         if best_budget_guard
@@ -1338,14 +1491,23 @@ def live_tool_budget_status(
         exceeded_limits.append("max_tool_calls_exceeded")
     if turn_exceeded:
         exceeded_limits.append("max_agent_turns_exceeded")
-    if policy_exceeded:
-        exceeded_limits.append("live_tool_policy_violation")
-    budget_guard_exceeded = budget_guard_block_count > 0
+    budget_guard_exceeded = bool(non_policy_budget_guard_blocks)
     if budget_guard_exceeded:
         exceeded_limits.append("budget_guard_blocked")
     provider_timeout_exceeded = provider_timeout_count > 0
     if provider_timeout_exceeded:
         exceeded_limits.append("live_provider_timeout")
+    response_idle_exceeded = bool(
+        no_session_response_idle_exceeded
+        or (
+            llm_response_idle_timeout_seconds > 0
+            and best_response_idle
+            and float(best_response_idle.get("session_idle_seconds") or 0.0)
+            >= llm_response_idle_timeout_seconds
+        )
+    )
+    if response_idle_exceeded:
+        exceeded_limits.append("llm_response_idle_timeout")
     interrupt_limits = list(exceeded_limits)
     if turn_limit_reached and "max_agent_turns_exceeded" not in interrupt_limits:
         interrupt_limits.append("max_agent_turns_reached")
@@ -1364,6 +1526,7 @@ def live_tool_budget_status(
         "max_input_tokens": max_input_tokens or None,
         "max_tool_calls": max_tool_calls or None,
         "max_agent_turns": max_agent_turns or None,
+        "llm_response_idle_timeout_seconds": llm_response_idle_timeout_seconds or None,
         "estimated_input_tokens": best_input_tokens,
         "tool_call_count": best_count,
         "executed_tool_call_count": best_executed_count,
@@ -1383,15 +1546,57 @@ def live_tool_budget_status(
         "live_tool_policy_violations": best_policy.get("live_tool_policy_violations", [])
         if best_policy
         else [],
+        "live_tool_policy_observed": policy_observed,
+        "budget_guard_policy_block_count": len(budget_guard_policy_blocks),
+        "budget_guard_policy_blocks": budget_guard_policy_blocks[:10],
         "budget_guard_block_count": budget_guard_block_count,
-        "budget_guard_blocks": best_budget_guard.get("budget_guard_blocks", [])
-        if best_budget_guard
-        else [],
+        "budget_guard_blocks": best_budget_guard_blocks,
+        "non_policy_budget_guard_block_count": len(non_policy_budget_guard_blocks),
+        "non_policy_budget_guard_blocks": non_policy_budget_guard_blocks[:10],
         "live_provider_timeout_count": provider_timeout_count,
         "live_provider_timeouts": provider_timeouts if isinstance(provider_timeouts, list) else [],
         "session_dirs": session_dirs,
         "sandbox_session_dirs": sandbox_session_dirs,
         "sandbox_scan": sandbox_scan,
+        "final_assistant_idle_done": bool(best_final_assistant),
+        "final_assistant_idle_seconds": (
+            float(best_final_assistant.get("final_assistant_idle_seconds") or 0.0)
+            if best_final_assistant
+            else None
+        ),
+        "final_assistant_session_file": (
+            best_final_assistant.get("session_file") if best_final_assistant else None
+        ),
+        "final_assistant_session_source": (
+            best_final_assistant.get("source") if best_final_assistant else None
+        ),
+        "final_assistant_session_lock_exists": (
+            bool(best_final_assistant.get("session_lock_exists")) if best_final_assistant else None
+        ),
+        "llm_response_idle_exceeded": response_idle_exceeded,
+        "llm_response_idle_seconds": (
+            float(now - started_at)
+            if no_session_response_idle_exceeded
+            else
+            float(best_response_idle.get("session_idle_seconds") or 0.0)
+            if best_response_idle
+            else None
+        ),
+        "llm_response_idle_session_file": (
+            best_response_idle.get("session_file") if best_response_idle else None
+        ),
+        "llm_response_idle_session_source": (
+            "no_session_observed"
+            if no_session_response_idle_exceeded
+            else
+            best_response_idle.get("source") if best_response_idle else None
+        ),
+        "llm_response_idle_last_message_role": (
+            best_response_idle.get("last_message_role") if best_response_idle else None
+        ),
+        "llm_response_idle_session_lock_exists": (
+            bool(best_response_idle.get("session_lock_exists")) if best_response_idle else None
+        ),
         "exceeded": bool(exceeded_limits),
         "exceeded_limits": exceeded_limits,
         "reason": reason,
@@ -1442,6 +1647,10 @@ def run_openclaw_command_with_live_budget(
         if configured_live_sandbox_session_dirs(args)
         else 1.0
     )
+    final_idle_salvage_seconds = max(
+        0.0,
+        float(getattr(args, "final_assistant_idle_salvage_seconds", 0.0) or 0.0),
+    )
     while True:
         try:
             stdout, stderr = process.communicate(timeout=poll_seconds)
@@ -1455,6 +1664,30 @@ def run_openclaw_command_with_live_budget(
             )
         except subprocess.TimeoutExpired:
             last_status = live_tool_budget_status(args, started_at, env)
+            final_idle_seconds = last_status.get("final_assistant_idle_seconds")
+            if (
+                final_idle_salvage_seconds > 0
+                and last_status.get("final_assistant_idle_done") is True
+                and isinstance(final_idle_seconds, (int, float))
+                and float(final_idle_seconds) >= final_idle_salvage_seconds
+            ):
+                stdout, stderr = terminate_process(process)
+                reason = (
+                    "Live OpenClaw final assistant idle salvage: "
+                    f"session_file={last_status.get('final_assistant_session_file')} "
+                    f"idle_seconds={float(final_idle_seconds):.1f} "
+                    f"threshold_seconds={final_idle_salvage_seconds:.1f}"
+                )
+                stderr = (stderr or "") + "\n" + reason
+                return (
+                    subprocess.CompletedProcess(command, 0, stdout=stdout, stderr=stderr),
+                    {
+                        **last_status,
+                        "interrupted": False,
+                        "final_assistant_idle_salvaged": True,
+                        "final_assistant_idle_salvage_seconds": final_idle_salvage_seconds,
+                    },
+                )
             if not last_status.get("interrupt"):
                 continue
             stdout, stderr = terminate_process(process)
@@ -1474,7 +1707,10 @@ def run_openclaw_command_with_live_budget(
                 f"agent_turn_count={last_status.get('agent_turn_count')} "
                 f"max_agent_turns={last_status.get('max_agent_turns')} "
                 f"provider_timeout_count={last_status.get('live_provider_timeout_count')} "
-                f"provider_timeouts={json.dumps(last_status.get('live_provider_timeouts') or [], ensure_ascii=False)[:2000]}"
+                f"provider_timeouts={json.dumps(last_status.get('live_provider_timeouts') or [], ensure_ascii=False)[:2000]} "
+                f"llm_response_idle_seconds={last_status.get('llm_response_idle_seconds')} "
+                f"llm_response_idle_timeout_seconds={last_status.get('llm_response_idle_timeout_seconds')} "
+                f"llm_response_idle_session_file={last_status.get('llm_response_idle_session_file')}"
             )
             stderr = (stderr or "") + "\n" + reason
             return (
@@ -1600,7 +1836,6 @@ def run_agent(args: argparse.Namespace) -> None:
         sidecar_path.write_text(json.dumps(sidecar, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if violations:
         print(json.dumps({"tool_policy_violations": violations}, ensure_ascii=False, indent=2), file=sys.stderr)
-        raise SystemExit("Tool policy violation")
     gateway_transport = sidecar.get("gateway_transport")
     if isinstance(gateway_transport, dict) and gateway_transport.get("ok") is False:
         print(json.dumps({"gateway_transport": gateway_transport}, ensure_ascii=False, indent=2), file=sys.stderr)
@@ -2144,7 +2379,7 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
     live_estimated_input_tokens = None
     live_input_exceeded = False
     live_turn_exceeded = False
-    live_policy_exceeded = False
+    live_policy_observed = False
     live_policy_violation_count = 0
     live_policy_violations: list[Any] = []
     live_budget_guard_exceeded = False
@@ -2195,7 +2430,10 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
             or "max_agent_turns_reached" in exceeded_limit_set
             or reason in {"max_agent_turns_exceeded", "max_agent_turns_reached"}
         )
-        live_policy_exceeded = "live_tool_policy_violation" in exceeded_limit_set or reason == "live_tool_policy_violation"
+        live_policy_observed = (
+            "live_tool_policy_violation" in exceeded_limit_set
+            or reason == "live_tool_policy_violation"
+        )
         live_policy_count = live_budget.get("live_tool_policy_violation_count")
         if isinstance(live_policy_count, (int, float)):
             live_policy_violation_count = int(live_policy_count)
@@ -2378,16 +2616,6 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
                 "block": block,
             }
         )
-    if live_policy_exceeded:
-        violations.append(
-            {
-                "type": "live_tool_policy_violation",
-                "observed": live_policy_violation_count,
-                "limit": 0,
-                "source": "live_runtime_budget",
-                "violations": live_policy_violations,
-            }
-        )
     return {
         "ok": not violations,
         "enforced": bool(
@@ -2423,6 +2651,9 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
             "blocked": bool(live_budget_guard_exceeded or blocked_tool_call_count),
             "block_count": max(blocked_tool_call_count, live_budget_guard_block_count),
             "blocks": live_budget_guard_blocks,
+            "policy_observed": live_policy_observed,
+            "policy_violation_count": live_policy_violation_count,
+            "policy_violations": live_policy_violations,
         },
         "live": live_budget if isinstance(live_budget, dict) else {},
         "violations": violations,
@@ -3623,6 +3854,18 @@ def build_parser() -> argparse.ArgumentParser:
             "Prepended to PATH for NeMoClaw runs."
         ),
     )
+    run_parser.add_argument(
+        "--nemoclaw-extra-path",
+        action="append",
+        default=[],
+        help="Extra sandbox PATH entry to prepend for this OpenClaw invocation.",
+    )
+    run_parser.add_argument(
+        "--nemoclaw-extra-pythonpath",
+        action="append",
+        default=[],
+        help="Extra sandbox PYTHONPATH entry to prepend for this OpenClaw invocation.",
+    )
     run_parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
     run_parser.add_argument("--agent", default="main")
     run_parser.add_argument("--profile")
@@ -3702,6 +3945,28 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "OpenClaw session JSONL directory inside the NeMoClaw sandbox to "
             "poll for live tool-call budget enforcement. Can be supplied multiple times."
+        ),
+    )
+    run_parser.add_argument(
+        "--final-assistant-idle-salvage-seconds",
+        type=float,
+        default=60.0,
+        help=(
+            "If OpenClaw has emitted a final assistant message with no tool call, "
+            "the session lock is gone, and the live session has been idle this "
+            "many seconds, terminate the stuck OpenClaw process and write a "
+            "scoreable sidecar. 0 disables this salvage path."
+        ),
+    )
+    run_parser.add_argument(
+        "--llm-response-idle-timeout-seconds",
+        type=float,
+        default=0.0,
+        help=(
+            "If the live session's last message is a tool result and no assistant "
+            "response is recorded for this many seconds, terminate OpenClaw as a "
+            "provider-side response idle timeout so the caller can retry. "
+            "0 disables this watchdog."
         ),
     )
     run_parser.add_argument("--local", action=argparse.BooleanOptionalAction, default=True)

@@ -175,6 +175,234 @@ def test_patch_text_clamps_exec_tool_timeout_once():
     assert patched.count("timeoutSec: nejumiEffectiveRequestedTimeoutSec") == 2
 
 
+def test_patch_text_permits_extended_openai_foundry_thinking_levels():
+    module = load_patch_module()
+    source = (
+        "function resolveFoundryReasoningEfforts(value) {\n"
+        "\tconst normalized = normalizeFoundryModelName(value);\n"
+        "\tif (/^gpt-5\\.[2-9](?:\\.|-|$)/u.test(normalized)) return [\n"
+        "\t\t\"none\",\n"
+        "\t\t\"low\",\n"
+        "\t\t\"medium\",\n"
+        "\t\t\"high\"\n"
+        "\t];\n"
+        "}\n"
+        "function buildFoundryThinkingLevelMap(efforts) {\n"
+        "\tconst supported = new Set(efforts);\n"
+        "\treturn {\n"
+        "\t\toff: supported.has(\"none\") ? \"none\" : null,\n"
+        "\t\tminimal: supported.has(\"minimal\") ? \"minimal\" : null,\n"
+        "\t\tlow: supported.has(\"low\") ? \"low\" : null,\n"
+        "\t\tmedium: supported.has(\"medium\") ? \"medium\" : null,\n"
+        "\t\thigh: supported.has(\"high\") ? \"high\" : null,\n"
+        "\t\txhigh: supported.has(\"xhigh\") ? \"xhigh\" : null,\n"
+        "\t\tmax: null\n"
+        "\t};\n"
+        "}\n"
+    )
+
+    patched, changed = module.patch_text(source)
+    repatched, changed_again = module.patch_text(patched)
+
+    assert changed is True
+    assert changed_again is False
+    assert patched == repatched
+    assert module.EXTENDED_THINKING_PATCH_MARKER in patched
+    assert '"xhigh",' in patched
+    assert '"max"' in patched
+    assert 'max: supported.has("max") ? "max" : null' in patched
+
+
+def test_patch_text_accepts_native_extended_openai_foundry_thinking_levels():
+    module = load_patch_module()
+    source = (
+        "function resolveFoundryReasoningEfforts(value) {\n"
+        "\tconst normalized = normalizeFoundryModelName(value);\n"
+        "\tif (/^gpt-5\\.[2-9](?:\\.|-|$)/u.test(normalized)) return [\n"
+        "\t\t\"none\",\n"
+        "\t\t\"low\",\n"
+        "\t\t\"medium\",\n"
+        "\t\t\"high\",\n"
+        "\t\t\"xhigh\",\n"
+        "\t\t\"max\"\n"
+        "\t];\n"
+        "}\n"
+        "function buildFoundryThinkingLevelMap(efforts) {\n"
+        "\tconst supported = new Set(efforts);\n"
+        "\treturn {\n"
+        "\t\toff: supported.has(\"none\") ? \"none\" : null,\n"
+        "\t\tminimal: supported.has(\"minimal\") ? \"minimal\" : null,\n"
+        "\t\tlow: supported.has(\"low\") ? \"low\" : null,\n"
+        "\t\tmedium: supported.has(\"medium\") ? \"medium\" : null,\n"
+        "\t\thigh: supported.has(\"high\") ? \"high\" : null,\n"
+        "\t\txhigh: supported.has(\"xhigh\") ? \"xhigh\" : null,\n"
+        "\t\tmax: supported.has(\"max\") ? \"max\" : null\n"
+        "\t};\n"
+        "}\n"
+    )
+
+    patched, changed = module.patch_text(source)
+
+    assert changed is False
+    assert patched == source
+    assert module.EXTENDED_THINKING_PATCH_MARKER not in patched
+    assert module.has_extended_thinking_support(patched) is True
+
+
+def test_patch_text_permits_extended_generic_openai_compatible_efforts():
+    module = load_patch_module()
+    source = (
+        "const GPT_52_REASONING_EFFORTS = [\n"
+        "\t\"none\",\n"
+        "\t\"low\",\n"
+        "\t\"medium\",\n"
+        "\t\"high\",\n"
+        "\t\"xhigh\"\n"
+        "];\n"
+        "const GENERIC_REASONING_EFFORTS = [\n"
+        "\t\"low\",\n"
+        "\t\"medium\",\n"
+        "\t\"high\"\n"
+        "];\n"
+        "function resolveOpenAIReasoningEffortForModel(params) {\n"
+        "\treturn params.effort;\n"
+        "}\n"
+    )
+
+    patched, changed = module.patch_text(source)
+
+    assert changed is True
+    assert module.EXTENDED_THINKING_PATCH_MARKER in patched
+    assert 'const GPT_52_REASONING_EFFORTS = [\n\t"none",\n\t"low",\n\t"medium",\n\t"high",\n\t"xhigh",\n\t"max"\n];' in patched
+    assert 'const GENERIC_REASONING_EFFORTS = [\n\t"low",\n\t"medium",\n\t"high",\n\t"xhigh",\n\t"max"\n];' in patched
+
+
+def test_patch_text_accepts_native_extended_generic_openai_compatible_efforts():
+    module = load_patch_module()
+    source = (
+        "const GPT_52_REASONING_EFFORTS = [\n"
+        "\t\"none\",\n"
+        "\t\"low\",\n"
+        "\t\"medium\",\n"
+        "\t\"high\",\n"
+        "\t\"xhigh\",\n"
+        "\t\"max\"\n"
+        "];\n"
+        "const GENERIC_REASONING_EFFORTS = [\n"
+        "\t\"low\",\n"
+        "\t\"medium\",\n"
+        "\t\"high\",\n"
+        "\t\"xhigh\",\n"
+        "\t\"max\"\n"
+        "];\n"
+        "function resolveOpenAIReasoningEffortForModel(params) {\n"
+        "\treturn params.effort;\n"
+        "}\n"
+    )
+
+    patched, changed = module.patch_text(source)
+
+    assert changed is False
+    assert patched == source
+    assert module.EXTENDED_THINKING_PATCH_MARKER not in patched
+    assert module.has_extended_thinking_support(patched) is True
+
+
+def test_patch_text_passes_explicit_thinking_levels_through_off_only_profiles():
+    module = load_patch_module()
+    source = (
+        "function appendProfileLevel(profile, id) {\n"
+        "\tif (profile.levels.some((level) => level.id === id)) return;\n"
+        "\tprofile.levels.push({ id });\n"
+        "}\n"
+        "/** Resolve supported thinking levels and default for a provider/model pair. */\n"
+        "function resolveThinkingProfile(params) {\n"
+        "\tconst pluginProfile = params.pluginProfile;\n"
+        "\tif (pluginProfile) {\n"
+        "\t\tconst normalized = normalizeThinkingProfile(pluginProfile);\n"
+        "\t\tif (normalized.levels.length > 0 && (context.reasoning !== false || pluginProfile.preserveWhenCatalogReasoningFalse === true)) return normalized;\n"
+        "\t}\n"
+        "\tconst profile = buildBaseThinkingProfile();\n"
+        "\treturn profile;\n"
+        "}\n"
+        "function supportsThinkingLevel(provider, model, level, catalog) {\n"
+        "\treturn true;\n"
+        "}\n"
+    )
+
+    patched, changed = module.patch_text(source)
+
+    assert changed is True
+    assert module.EXTENDED_THINKING_PATCH_MARKER in patched
+    assert "function applyNejumiThinkingProfilePassthrough(profile)" in patched
+    assert 'appendProfileLevel(profile, "minimal");' in patched
+    assert 'appendProfileLevel(profile, "low");' in patched
+    assert 'appendProfileLevel(profile, "medium");' in patched
+    assert 'appendProfileLevel(profile, "high");' in patched
+    assert 'appendProfileLevel(profile, "xhigh");' in patched
+    assert 'appendProfileLevel(profile, "max");' in patched
+    assert "return applyNejumiThinkingProfilePassthrough(normalized);" in patched
+    assert "return applyNejumiThinkingProfilePassthrough(profile);" in patched
+
+
+def test_patch_text_upgrades_old_extended_thinking_profile_patch():
+    module = load_patch_module()
+    source = (
+        "// Nejumi patch v1: permit xhigh/max thinking levels through provider validation.\n"
+        "function appendProfileLevel(profile, id) {\n"
+        "\tif (profile.levels.some((level) => level.id === id)) return;\n"
+        "\tprofile.levels.push({ id });\n"
+        "}\n"
+        "function applyNejumiPermissiveExtendedThinkingProfile(profile) {\n"
+        "\tif (!profile || !Array.isArray(profile.levels)) return profile;\n"
+        "\tconst hasNonOffLevel = profile.levels.some((level) => level?.id && level.id !== \"off\");\n"
+        "\tif (!hasNonOffLevel) return profile;\n"
+        "\tappendProfileLevel(profile, \"xhigh\");\n"
+        "\tappendProfileLevel(profile, \"max\");\n"
+        "\treturn profile;\n"
+        "}\n"
+        "/** Resolve supported thinking levels and default for a provider/model pair. */\n"
+        "function resolveThinkingProfile(params) {\n"
+        "\tconst profile = buildBaseThinkingProfile();\n"
+        "\treturn applyNejumiPermissiveExtendedThinkingProfile(profile);\n"
+        "}\n"
+        "function supportsThinkingLevel(provider, model, level, catalog) {\n"
+        "\treturn true;\n"
+        "}\n"
+    )
+
+    patched, changed = module.patch_text(source)
+
+    assert changed is True
+    assert module.EXTENDED_THINKING_PATCH_MARKER in patched
+    assert module.OLD_EXTENDED_THINKING_PATCH_MARKERS[0] in patched
+    assert "applyNejumiPermissiveExtendedThinkingProfile" not in patched
+    assert "function applyNejumiThinkingProfilePassthrough(profile)" in patched
+    assert 'appendProfileLevel(profile, "high");' in patched
+    assert "return applyNejumiThinkingProfilePassthrough(profile);" in patched
+
+
+def test_patch_text_treats_absent_extended_level_map_as_provider_authoritative():
+    module = load_patch_module()
+    source = (
+        "const EXTENDED_THINKING_LEVELS = [\"off\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\"];\n"
+        "function getSupportedThinkingLevels(model) {\n"
+        "\treturn EXTENDED_THINKING_LEVELS.filter((level) => {\n"
+        "\t\tconst mapped = thinkingLevelMap?.[level];\n"
+        "\t\tif (mapped === null) return false;\n"
+        "\t\tif (level === \"xhigh\" || level === \"max\") return mapped !== void 0;\n"
+        "\t\treturn true;\n"
+        "\t});\n"
+        "}\n"
+    )
+
+    patched, changed = module.patch_text(source)
+
+    assert changed is True
+    assert module.EXTENDED_THINKING_PATCH_MARKER in patched
+    assert 'if (level === "xhigh" || level === "max") return mapped !== null;' in patched
+
+
 def test_nemoclaw_runtime_patch_selects_openshell_sandbox_container():
     module = load_nemoclaw_patch_module()
     containers = module.parse_docker_ps_lines(
