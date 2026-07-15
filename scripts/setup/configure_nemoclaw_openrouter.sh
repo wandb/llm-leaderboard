@@ -65,6 +65,16 @@ if [[ ! "$OPENROUTER_KEY_ENV" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
   echo "Invalid --openrouter-key-env: $OPENROUTER_KEY_ENV" >&2
   exit 2
 fi
+python3 - "$OPENCLAW_MODEL_PARAMS_JSON" <<'PY'
+import json
+import sys
+try:
+    value = json.loads(sys.argv[1])
+except json.JSONDecodeError as exc:
+    raise SystemExit(f"Invalid --openclaw-model-params-json: {exc}") from exc
+if not isinstance(value, dict):
+    raise SystemExit("--openclaw-model-params-json must be a JSON object")
+PY
 
 if [ -f "$ENV_FILE" ]; then
   set -a
