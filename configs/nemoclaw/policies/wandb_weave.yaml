@@ -33,6 +33,20 @@ network_policies:
           - allow:
               method: PUT
               path: /**
+      - host: api.inference.wandb.ai
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow:
+              method: GET
+              path: /v1/models
+          - allow:
+              method: GET
+              path: /v1/models/**
+          - allow:
+              method: POST
+              path: /v1/chat/completions
       - host: wandb.ai
         port: 443
         protocol: rest

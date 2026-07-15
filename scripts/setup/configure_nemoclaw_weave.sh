@@ -19,6 +19,21 @@ Options:
   --agent-version VALUE       Weave agent version. Default: nejumi-agent-protocol-2026.04.
   --service-name NAME         Weave service name. Default: openclaw-agent.
   --openai-key-env NAME       Env var containing the OpenAI API key. Default: OPENAI_API_KEY.
+  --wandb-inference-model-id ID
+                              Also register a W&B Inference OpenClaw model. No default;
+                              pass an ID confirmed by the W&B Inference /v1/models API.
+  --wandb-inference-provider-id ID
+                              OpenClaw provider ID for W&B Inference. Default: wandb-inference.
+  --wandb-inference-base-url URL
+                              W&B Inference base URL. Default: https://api.inference.wandb.ai/v1.
+  --wandb-inference-max-tokens N
+                              Model maxTokens field for OpenClaw. Default: 4096.
+  --wandb-inference-context-window N
+                              Optional model contextWindow field for OpenClaw.
+  --wandb-inference-reasoning true|false
+                              Model reasoning flag for OpenClaw. Default: true.
+  --wandb-inference-model-params-json JSON
+                              JSON object merged into the model params field.
   --policy-file PATH          NeMoClaw W&B egress policy YAML.
   --secret-file PATH          Sandbox secret JSON path. Default: /sandbox/.openclaw/nejumi_secrets.json.
   --openclaw-config PATH      Sandbox OpenClaw config path. Default: /sandbox/.openclaw/openclaw.json.
@@ -43,6 +58,13 @@ NEMOCLAW_BIN="nemoclaw"
 ENV_FILE="$REPO_ROOT/.env"
 WANDB_KEY_ENV="WANDB_API_KEY"
 OPENAI_KEY_ENV="OPENAI_API_KEY"
+WANDB_INFERENCE_MODEL_ID=""
+WANDB_INFERENCE_PROVIDER_ID="wandb-inference"
+WANDB_INFERENCE_BASE_URL="https://api.inference.wandb.ai/v1"
+WANDB_INFERENCE_MAX_TOKENS="4096"
+WANDB_INFERENCE_CONTEXT_WINDOW=""
+WANDB_INFERENCE_REASONING="true"
+WANDB_INFERENCE_MODEL_PARAMS_JSON="{}"
 ENTITY="llm-leaderboard"
 PROJECT="tc-leaderboard"
 AGENT_NAME="nejumi-taiwan-openclaw"
@@ -73,6 +95,13 @@ while [ "$#" -gt 0 ]; do
     --agent-version) AGENT_VERSION="$2"; shift 2 ;;
     --service-name) SERVICE_NAME="$2"; shift 2 ;;
     --openai-key-env) OPENAI_KEY_ENV="$2"; shift 2 ;;
+    --wandb-inference-model-id) WANDB_INFERENCE_MODEL_ID="$2"; shift 2 ;;
+    --wandb-inference-provider-id) WANDB_INFERENCE_PROVIDER_ID="$2"; shift 2 ;;
+    --wandb-inference-base-url) WANDB_INFERENCE_BASE_URL="$2"; shift 2 ;;
+    --wandb-inference-max-tokens) WANDB_INFERENCE_MAX_TOKENS="$2"; shift 2 ;;
+    --wandb-inference-context-window) WANDB_INFERENCE_CONTEXT_WINDOW="$2"; shift 2 ;;
+    --wandb-inference-reasoning) WANDB_INFERENCE_REASONING="$2"; shift 2 ;;
+    --wandb-inference-model-params-json) WANDB_INFERENCE_MODEL_PARAMS_JSON="$2"; shift 2 ;;
     --policy-file) POLICY_FILE="$2"; shift 2 ;;
     --secret-file) SECRET_FILE="$2"; shift 2 ;;
     --openclaw-config) OPENCLAW_CONFIG="$2"; shift 2 ;;
@@ -97,6 +126,28 @@ if [[ ! "$OPENAI_KEY_ENV" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
   echo "Invalid --openai-key-env: $OPENAI_KEY_ENV" >&2
   exit 2
 fi
+if [[ ! "$WANDB_INFERENCE_MAX_TOKENS" =~ ^[0-9]+$ ]] || [ "$WANDB_INFERENCE_MAX_TOKENS" -le 0 ]; then
+  echo "Invalid --wandb-inference-max-tokens: $WANDB_INFERENCE_MAX_TOKENS" >&2
+  exit 2
+fi
+if [ -n "$WANDB_INFERENCE_CONTEXT_WINDOW" ] && { [[ ! "$WANDB_INFERENCE_CONTEXT_WINDOW" =~ ^[0-9]+$ ]] || [ "$WANDB_INFERENCE_CONTEXT_WINDOW" -le 0 ]; }; then
+  echo "Invalid --wandb-inference-context-window: $WANDB_INFERENCE_CONTEXT_WINDOW" >&2
+  exit 2
+fi
+case "$WANDB_INFERENCE_REASONING" in
+  true|false) ;;
+  *) echo "Invalid --wandb-inference-reasoning: $WANDB_INFERENCE_REASONING" >&2; exit 2 ;;
+esac
+python3 - "$WANDB_INFERENCE_MODEL_PARAMS_JSON" <<'PY'
+import json
+import sys
+try:
+    value = json.loads(sys.argv[1])
+except json.JSONDecodeError as exc:
+    raise SystemExit(f"Invalid --wandb-inference-model-params-json: {exc}") from exc
+if not isinstance(value, dict):
+    raise SystemExit("--wandb-inference-model-params-json must be a JSON object")
+PY
 
 case "$WEAVE_PLUGIN_SOURCE" in
   auto|local|npm) ;;
@@ -174,6 +225,10 @@ policy_probe() {
   local status
   status="$("$NEMOCLAW_BIN" sandbox status "$SANDBOX" 2>/dev/null || true)"
   if ! grep -q "host: api.wandb.ai" <<<"$status"; then
+    printf false
+    return
+  fi
+  if [ -n "$WANDB_INFERENCE_MODEL_ID" ] && ! grep -q "host: api.inference.wandb.ai" <<<"$status"; then
     printf false
     return
   fi
@@ -288,6 +343,48 @@ print(str(bool(
 PY
 }
 
+wandb_inference_config_probe() {
+  if [ -z "$WANDB_INFERENCE_MODEL_ID" ]; then
+    printf true
+    return 0
+  fi
+  "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 - \
+    "$OPENCLAW_CONFIG" "$WANDB_INFERENCE_PROVIDER_ID" "$WANDB_INFERENCE_BASE_URL" "$WANDB_INFERENCE_MODEL_ID" "$WANDB_INFERENCE_MODEL_PARAMS_JSON" <<'PY' 2>/dev/null || printf false
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+provider_id, base_url, model_id, params_json = sys.argv[2:6]
+expected_params = json.loads(params_json)
+if not path.exists():
+    print("false")
+    raise SystemExit
+data = json.loads(path.read_text(encoding="utf-8"))
+provider = data.get("models", {}).get("providers", {}).get(provider_id)
+api_key = provider.get("apiKey") if isinstance(provider, dict) else None
+models = provider.get("models") if isinstance(provider, dict) else None
+model = next(
+    (
+        item
+        for item in models or []
+        if isinstance(item, dict) and str(item.get("id")) == model_id
+    ),
+    None,
+)
+print(str(bool(
+    isinstance(provider, dict)
+    and provider.get("baseUrl") == base_url
+    and isinstance(api_key, dict)
+    and api_key.get("source") == "file"
+    and api_key.get("provider") == "nejumi-wandb"
+    and api_key.get("id") == "/wandb/apiKey"
+    and isinstance(model, dict)
+    and (model.get("params") or {}) == expected_params
+)).lower())
+PY
+}
+
 policy_added=false
 plugin_install_attempted=false
 plugin_install_method="none"
@@ -328,13 +425,27 @@ if [ "$CHECK_ONLY" -eq 0 ]; then
   fi
 
   "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 - \
-    "$OPENCLAW_CONFIG" "$SECRET_FILE" "$ENTITY" "$PROJECT" "$SERVICE_NAME" "$AGENT_NAME" "$AGENT_VERSION" "$SKIP_OPENAI_DIRECT" <<'PY'
+    "$OPENCLAW_CONFIG" "$SECRET_FILE" "$ENTITY" "$PROJECT" "$SERVICE_NAME" "$AGENT_NAME" "$AGENT_VERSION" "$SKIP_OPENAI_DIRECT" \
+    "$WANDB_INFERENCE_PROVIDER_ID" "$WANDB_INFERENCE_BASE_URL" "$WANDB_INFERENCE_MODEL_ID" "$WANDB_INFERENCE_MAX_TOKENS" \
+    "$WANDB_INFERENCE_CONTEXT_WINDOW" "$WANDB_INFERENCE_REASONING" "$WANDB_INFERENCE_MODEL_PARAMS_JSON" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 config_path = Path(sys.argv[1])
 secret_file, entity, project, service_name, agent_name, agent_version, skip_openai_direct = sys.argv[2:9]
+(
+    wandb_inference_provider_id,
+    wandb_inference_base_url,
+    wandb_inference_model_id,
+    wandb_inference_max_tokens,
+    wandb_inference_context_window,
+    wandb_inference_reasoning,
+    wandb_inference_model_params_json,
+) = sys.argv[9:16]
+wandb_inference_model_params = json.loads(wandb_inference_model_params_json)
+if not isinstance(wandb_inference_model_params, dict):
+    raise SystemExit("W&B Inference model params JSON must be an object")
 data = json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
 
 
@@ -387,8 +498,39 @@ if skip_openai_direct != "1":
     }
 defaults = secrets.setdefault("defaults", {})
 defaults.setdefault("file", "nejumi-wandb")
+model_providers = data.setdefault("models", {}).setdefault("providers", {})
+if wandb_inference_model_id:
+    wandb_inference = model_providers.setdefault(wandb_inference_provider_id, {})
+    wandb_inference.pop("agentRuntime", None)
+    wandb_inference.update(
+        {
+            "baseUrl": wandb_inference_base_url,
+            "apiKey": {
+                "source": "file",
+                "provider": "nejumi-wandb",
+                "id": "/wandb/apiKey",
+            },
+            "auth": "api-key",
+            "api": "openai-completions",
+        }
+    )
+    model_entry = {
+        "id": wandb_inference_model_id,
+        "name": wandb_inference_model_id,
+        "api": "openai-completions",
+        "reasoning": wandb_inference_reasoning == "true",
+        "input": ["text"],
+        "maxTokens": int(wandb_inference_max_tokens),
+    }
+    if wandb_inference_context_window:
+        model_entry["contextWindow"] = int(wandb_inference_context_window)
+    if wandb_inference_model_params:
+        model_entry["params"] = wandb_inference_model_params
+    wandb_inference["models"] = merge_models(
+        wandb_inference.get("models"),
+        [model_entry],
+    )
 if skip_openai_direct != "1":
-    model_providers = data.setdefault("models", {}).setdefault("providers", {})
     openai_direct = model_providers.setdefault("openai-direct", {})
     openai_direct.pop("agentRuntime", None)
     openai_direct.update(
@@ -442,17 +584,19 @@ policy_ok="$(policy_probe)"
 secret_ok="$(secret_probe)"
 openai_direct_config_ok="$(openai_direct_config_probe)"
 openai_secret_ok="$(openai_secret_probe)"
+wandb_inference_config_ok="$(wandb_inference_config_probe)"
 ok=false
 if [ "$plugin_installed" = true ] \
   && [ "$config_ok" = true ] \
   && [ "$policy_ok" = true ] \
   && [ "$openai_direct_config_ok" = true ] \
+  && [ "$wandb_inference_config_ok" = true ] \
   && [ "$openai_secret_ok" = true ] \
   && { [ "$credential_available" = false ] || [ "$secret_ok" = true ]; }; then
   ok=true
 fi
 
-report_json="$(python3 - "$SANDBOX" "$WANDB_KEY_ENV" "$OPENAI_KEY_ENV" "$credential_available" "$openai_credential_available" "$policy_added" "$plugin_install_attempted" "$plugin_install_method" "$secret_written" "$openai_secret_written" "$config_written" "$plugin_installed" "$config_ok" "$policy_ok" "$secret_ok" "$openai_direct_config_ok" "$openai_secret_ok" "$ok" "$SECRET_FILE" "$OPENCLAW_CONFIG" "$POLICY_FILE" "$WEAVE_PLUGIN_SOURCE" "$LOCAL_WEAVE_PROJECT" "$SKIP_OPENAI_DIRECT" "$FORCE_PLUGIN_INSTALL" <<'PY'
+report_json="$(python3 - "$SANDBOX" "$WANDB_KEY_ENV" "$OPENAI_KEY_ENV" "$credential_available" "$openai_credential_available" "$policy_added" "$plugin_install_attempted" "$plugin_install_method" "$secret_written" "$openai_secret_written" "$config_written" "$plugin_installed" "$config_ok" "$policy_ok" "$secret_ok" "$openai_direct_config_ok" "$openai_secret_ok" "$wandb_inference_config_ok" "$ok" "$SECRET_FILE" "$OPENCLAW_CONFIG" "$POLICY_FILE" "$WEAVE_PLUGIN_SOURCE" "$LOCAL_WEAVE_PROJECT" "$SKIP_OPENAI_DIRECT" "$FORCE_PLUGIN_INSTALL" "$WANDB_INFERENCE_PROVIDER_ID" "$WANDB_INFERENCE_BASE_URL" "$WANDB_INFERENCE_MODEL_ID" "$WANDB_INFERENCE_MAX_TOKENS" "$WANDB_INFERENCE_CONTEXT_WINDOW" "$WANDB_INFERENCE_REASONING" "$WANDB_INFERENCE_MODEL_PARAMS_JSON" <<'PY'
 import json
 import sys
 
@@ -474,6 +618,7 @@ keys = [
     "secret_ok",
     "openai_direct_config_ok",
     "openai_secret_ok",
+    "wandb_inference_config_ok",
     "ok",
     "secret_file",
     "openclaw_config",
@@ -482,6 +627,13 @@ keys = [
     "local_weave_project",
     "skip_openai_direct",
     "force_plugin_install",
+    "wandb_inference_provider_id",
+    "wandb_inference_base_url",
+    "wandb_inference_model_id",
+    "wandb_inference_max_tokens",
+    "wandb_inference_context_window",
+    "wandb_inference_reasoning",
+    "wandb_inference_model_params_json",
 ]
 payload = dict(zip(keys, sys.argv[1:]))
 for key in [
@@ -498,6 +650,7 @@ for key in [
     "secret_ok",
     "openai_direct_config_ok",
     "openai_secret_ok",
+    "wandb_inference_config_ok",
     "ok",
     "skip_openai_direct",
     "force_plugin_install",
@@ -506,6 +659,10 @@ for key in [
 payload["secret_value_in_report"] = False
 payload["openai_secret_value_in_report"] = False
 payload["weave_agent_name"] = "nejumi-taiwan-openclaw"
+payload["wandb_inference_enabled"] = bool(payload.get("wandb_inference_model_id"))
+payload["wandb_inference_model_params"] = json.loads(
+    payload.pop("wandb_inference_model_params_json")
+)
 print(json.dumps(payload, ensure_ascii=False, indent=2))
 PY
 )"
