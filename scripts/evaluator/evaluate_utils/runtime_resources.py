@@ -41,7 +41,7 @@ def file_descriptor_snapshot() -> FileDescriptorSnapshot:
 
 
 def ensure_file_descriptor_capacity(
-    minimum_soft_limit: int = 8192,
+    minimum_soft_limit: int = 65536,
 ) -> FileDescriptorSnapshot:
     """Raise a low process FD soft limit without exceeding the host hard limit."""
     target = max(0, int(minimum_soft_limit))

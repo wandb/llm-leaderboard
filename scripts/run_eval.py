@@ -147,10 +147,30 @@ def load_runtime_resource_helpers():
     )
 
 
+def load_weave_compatibility_helper():
+    helper_path = (
+        Path(__file__).resolve().parent
+        / "evaluator"
+        / "evaluate_utils"
+        / "weave_compat.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "_nejumi_weave_compat",
+        helper_path,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Failed to load Weave compatibility helper: {helper_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module.configure_openai_responses_input_sanitization
+
+
 (
     ensure_file_descriptor_capacity,
     log_file_descriptor_snapshot,
 ) = load_runtime_resource_helpers()
+configure_openai_responses_input_sanitization = load_weave_compatibility_helper()
 
 
 def _run_flags_dict(cfg) -> dict:
@@ -999,6 +1019,26 @@ if run:
     except Exception as e:
         print(f"Warning: Failed to initialize Weave: {e}")
         print("Continuing without Weave...")
+    else:
+        try:
+            weave_openai_compat = configure_openai_responses_input_sanitization()
+        except Exception as e:
+            raise SystemExit(
+                "Failed to configure safe Weave tracing for OpenAI Responses. "
+                "Refusing to continue because trace inputs may retain HTTP clients.\n"
+                f"Original error: {type(e).__name__}: {e}"
+            ) from e
+        print(
+            "Weave OpenAI Responses compatibility: "
+            f"{weave_openai_compat['status']}",
+            flush=True,
+        )
+        run.summary["weave_openai_responses_compat_status"] = (
+            weave_openai_compat["status"]
+        )
+        run.summary["weave_openai_responses_compat_patch_applied"] = bool(
+            weave_openai_compat["applied"]
+        )
 
 WandbConfigSingleton.initialize(run, llm=None, config_override=cfg_dict)
 cfg = WandbConfigSingleton.get_instance().config
@@ -1006,7 +1046,7 @@ minimum_fd_limit = int(
     OmegaConf.select(
         cfg,
         "runtime.minimum_file_descriptor_limit",
-        default=8192,
+        default=65536,
     )
 )
 fd_snapshot = ensure_file_descriptor_capacity(minimum_fd_limit)

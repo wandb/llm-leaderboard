@@ -33,11 +33,11 @@ def test_ensure_file_descriptor_capacity_raises_soft_limit(monkeypatch):
         lambda: 17,
     )
 
-    snapshot = runtime_resources.ensure_file_descriptor_capacity(8192)
+    snapshot = runtime_resources.ensure_file_descriptor_capacity(65536)
 
-    assert calls == [(8192, 65536)]
+    assert calls == [(65536, 65536)]
     assert snapshot.open_count == 17
-    assert snapshot.soft_limit == 8192
+    assert snapshot.soft_limit == 65536
     assert snapshot.hard_limit == 65536
 
 
@@ -59,7 +59,7 @@ def test_ensure_file_descriptor_capacity_respects_hard_limit(monkeypatch):
         lambda: 9,
     )
 
-    snapshot = runtime_resources.ensure_file_descriptor_capacity(8192)
+    snapshot = runtime_resources.ensure_file_descriptor_capacity(65536)
 
     assert snapshot.soft_limit == 4096
     assert snapshot.hard_limit == 4096

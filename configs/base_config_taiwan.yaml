@@ -8,9 +8,9 @@ testmode: false
 inference_interval: 0
 
 runtime:
-  # Full runs combine W&B/Weave and parallel HTTP clients. A 1024 soft limit is
-  # too low for a long-lived evaluator even when each client closes correctly.
-  minimum_file_descriptor_limit: 8192
+  # Full runs combine W&B/Weave and parallel HTTP clients. Keep ample headroom
+  # while transport/resource lifecycle regressions are caught by FD telemetry.
+  minimum_file_descriptor_limit: 65536
 
 output:
   allow_legacy_benchmark_checkpoint_migration: false
