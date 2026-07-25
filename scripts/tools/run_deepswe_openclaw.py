@@ -645,11 +645,34 @@ def posthoc_trace_budget_violations(
     return violations
 
 
-def collect_results(job_dir: Path, output_dir: Path, *, command: list[str], elapsed: float) -> None:
-    job_result = read_json(job_dir / "result.json")
+def collect_results(
+    job_dir: Path,
+    output_dir: Path,
+    *,
+    command: list[str],
+    elapsed: float,
+    started_after: float | None = None,
+) -> None:
+    job_result_path = job_dir / "result.json"
+    job_result = (
+        read_json(job_result_path)
+        if started_after is None
+        or (
+            job_result_path.exists()
+            and job_result_path.stat().st_mtime >= started_after
+        )
+        else {}
+    )
     rows: list[dict[str, Any]] = []
     for trial_dir in sorted(path for path in job_dir.iterdir() if path.is_dir()):
-        result = read_json(trial_dir / "result.json")
+        result_path = trial_dir / "result.json"
+        if (
+            started_after is not None
+            and result_path.exists()
+            and result_path.stat().st_mtime < started_after
+        ):
+            continue
+        result = read_json(result_path)
         if not result:
             continue
         agent_result = result.get("agent_result") if isinstance(result.get("agent_result"), dict) else {}
@@ -716,7 +739,7 @@ def collect_results(job_dir: Path, output_dir: Path, *, command: list[str], elap
                 ),
                 "nemoclaw_session_audit_ok": openclaw.get("nemoclaw_session_audit_ok"),
                 "patch_apply": patch_apply,
-                "result_path": str(trial_dir / "result.json"),
+                "result_path": str(result_path),
             }
         )
     scored = [row for row in rows if row["score"] is not None]
@@ -1752,7 +1775,14 @@ def start_environment_failure_watchdog(
     watch_trace_evidence: bool = True,
 ) -> tuple[threading.Thread, dict[str, Any]]:
     state: dict[str, Any] = {"failure": None}
-    seen: set[Path] = set()
+    seen: dict[Path, tuple[int, int]] = {}
+    if job_dir.exists():
+        for result_path in job_dir.glob("*/result.json"):
+            try:
+                stat = result_path.stat()
+            except OSError:
+                continue
+            seen[result_path] = (stat.st_mtime_ns, stat.st_size)
 
     def run() -> None:
         while not stop_event.wait(max(0.2, poll_seconds)):
@@ -1761,13 +1791,18 @@ def start_environment_failure_watchdog(
             if not job_dir.exists():
                 continue
             for result_path in sorted(job_dir.glob("*/result.json")):
-                if result_path in seen:
+                try:
+                    stat = result_path.stat()
+                except OSError:
+                    continue
+                fingerprint = (stat.st_mtime_ns, stat.st_size)
+                if seen.get(result_path) == fingerprint:
                     continue
                 try:
                     result = json.loads(result_path.read_text(encoding="utf-8"))
                 except (OSError, json.JSONDecodeError):
                     continue
-                seen.add(result_path)
+                seen[result_path] = fingerprint
                 failure_reason = None
                 if watch_environment_setup and is_environment_setup_failure(result):
                     failure_reason = "environment_setup_failure"
@@ -2123,7 +2158,13 @@ def main() -> None:
     elapsed = time.time() - started_at
     args.output_dir.mkdir(parents=True, exist_ok=True)
     (args.output_dir / "pier_stdout.log").write_text("".join(stdout_parts), encoding="utf-8")
-    collect_results(args.jobs_dir / job_name, args.output_dir, command=command, elapsed=elapsed)
+    collect_results(
+        args.jobs_dir / job_name,
+        args.output_dir,
+        command=command,
+        elapsed=elapsed,
+        started_after=started_at,
+    )
     if watchdog_state.get("failure"):
         failure = watchdog_state["failure"]
         reason = failure.get("reason") or "unknown_failure"

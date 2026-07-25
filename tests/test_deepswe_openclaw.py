@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 import threading
+import time
 import types
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -1119,6 +1120,44 @@ def test_collect_results_uses_openclaw_metadata_fallback_for_exception_rows(tmp_
     assert rows[0]["agent_result"]["metadata"]["openclaw"]["openclaw_usage"]["inputTokens"] == 100
 
 
+def test_collect_results_excludes_results_older_than_current_run(tmp_path):
+    job_dir = tmp_path / "jobs" / "job-a"
+    trial_dir = job_dir / "trial-1"
+    trial_dir.mkdir(parents=True)
+    job_result_path = job_dir / "result.json"
+    trial_result_path = trial_dir / "result.json"
+    job_result_path.write_text(json.dumps({"ok": False}) + "\n", encoding="utf-8")
+    trial_result_path.write_text(
+        json.dumps(
+            {
+                "task_name": "datacurve/stale-task",
+                "trial_name": "trial-1",
+                "agent_result": {"metadata": {}},
+                "verifier_result": {"rewards": {"reward": 0}},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    started_after = max(
+        job_result_path.stat().st_mtime,
+        trial_result_path.stat().st_mtime,
+    ) + 1.0
+
+    run_deepswe_openclaw.collect_results(
+        job_dir,
+        tmp_path / "out",
+        command=["pier", "run"],
+        elapsed=1.0,
+        started_after=started_after,
+    )
+
+    summary = json.loads((tmp_path / "out" / "summary.json").read_text(encoding="utf-8"))
+    assert summary["pier_job_result"] == {}
+    assert summary["total_trials"] == 0
+    assert (tmp_path / "out" / "results.jsonl").read_text(encoding="utf-8") == ""
+
+
 def test_collect_results_falls_back_to_weave_agents_trace_usage(tmp_path):
     job_dir = tmp_path / "jobs" / "job-a"
     trial_dir = job_dir / "trial-1"
@@ -2031,6 +2070,69 @@ def test_collect_results_counts_scoreable_llm_response_idle_timeout(tmp_path):
     assert summary["non_scoreable_llm_response_idle_timeouts"] == 0
     assert summary["llm_response_idle_timeouts"] == 1
     assert summary["non_scoreable_policy_blocks"] == 0
+
+
+def test_environment_failure_watchdog_ignores_stale_result_until_rewritten(
+    monkeypatch,
+    tmp_path,
+):
+    job_dir = tmp_path / "jobs" / "job-a"
+    trial_dir = job_dir / "trial-1"
+    trial_dir.mkdir(parents=True)
+    result_path = trial_dir / "result.json"
+    stale_failure = {
+        "task_name": "datacurve/stale-task",
+        "trial_name": "trial-1",
+        "agent_result": {
+            "metadata": {
+                "openclaw": {
+                    "weave_agents_required": True,
+                    "weave_agents_ok": False,
+                }
+            }
+        },
+        "verifier_result": None,
+        "exception_info": None,
+    }
+    result_path.write_text(json.dumps(stale_failure) + "\n", encoding="utf-8")
+
+    class RunningProcess:
+        pid = 12345
+
+        @staticmethod
+        def poll():
+            return None
+
+    terminated = threading.Event()
+    monkeypatch.setattr(
+        run_deepswe_openclaw,
+        "terminate_process_tree",
+        lambda proc: terminated.set(),
+    )
+    stop_event = threading.Event()
+    thread, state = run_deepswe_openclaw.start_environment_failure_watchdog(
+        job_dir=job_dir,
+        proc=RunningProcess(),
+        stop_event=stop_event,
+        poll_seconds=0.01,
+    )
+
+    time.sleep(0.3)
+    assert state["failure"] is None
+    assert terminated.is_set() is False
+
+    updated_failure = dict(stale_failure)
+    updated_failure["current_run_update"] = True
+    result_path.write_text(json.dumps(updated_failure) + "\n", encoding="utf-8")
+    deadline = time.monotonic() + 2.0
+    while state["failure"] is None and time.monotonic() < deadline:
+        time.sleep(0.05)
+
+    stop_event.set()
+    thread.join(timeout=2.0)
+    assert state["failure"]["reason"] == "required_trace_evidence_failure"
+    assert state["failure"]["task_name"] == "datacurve/stale-task"
+    assert terminated.is_set() is True
 
 
 def test_deepswe_patch_apply_falls_back_when_index_hashes_differ():
