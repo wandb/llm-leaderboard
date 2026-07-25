@@ -717,9 +717,18 @@ class _LoopLocalAsyncClientMixin:
         client = getattr(self, "async_client", None)
         is_closed = bool(getattr(client, "is_closed", False)) if client else True
         owner_loop = getattr(self, "_async_client_loop", None)
-        if client is None or is_closed or (
-            owner_loop is not None and owner_loop is not loop
+        if (
+            client is not None
+            and not is_closed
+            and owner_loop is not None
+            and owner_loop is not loop
         ):
+            raise RuntimeError(
+                "Async API client was reused on a different event loop before "
+                "being closed. Close the evaluator-owned LLMAsyncProcessor on "
+                "its original event loop before starting another evaluator."
+            )
+        if client is None or is_closed:
             client = self._async_client_factory()
             self.async_client = client
         self._async_client_loop = loop

@@ -4,6 +4,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_DIR = ROOT / "scripts"
@@ -339,3 +341,26 @@ def test_loop_local_async_client_reopens_cleanly_across_event_loops():
     assert first is not second
     assert first.is_closed
     assert second.is_closed
+
+
+def test_loop_local_async_client_rejects_unclosed_cross_loop_reuse():
+    class FakeAsyncClient:
+        is_closed = False
+
+        async def close(self):
+            self.is_closed = True
+
+    class Holder(_LoopLocalAsyncClientMixin):
+        def __init__(self):
+            self._initialize_loop_local_async_client(FakeAsyncClient)
+
+    holder = Holder()
+
+    async def use_without_close():
+        return holder._get_async_client()
+
+    first = asyncio.run(use_without_close())
+    with pytest.raises(RuntimeError, match="different event loop"):
+        asyncio.run(use_without_close())
+
+    assert not first.is_closed

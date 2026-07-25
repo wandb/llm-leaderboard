@@ -19,6 +19,7 @@ from .evaluate_utils.llm_response_checkpoint import (
     LLMResponseCheckpointStore,
     default_checkpoint_root,
 )
+from .evaluate_utils.runtime_resources import log_file_descriptor_snapshot
 
 
 SYSTEM_PROMPT = """回答は以下の形式で行ってください：
@@ -50,6 +51,59 @@ class ExtractedAnswer(BaseModel):
     correct: Literal["yes", "no"]
     confidence: int
     strict: Literal[True] = True  # 100% reliability
+
+
+async def _bounded_map(
+    items: List[Dict[str, Any]],
+    worker,
+    *,
+    concurrency: int,
+    desc: str,
+    fd_telemetry_interval: int = 0,
+) -> None:
+    """Process a fixed-size input with a bounded number of live tasks."""
+    queue: asyncio.Queue = asyncio.Queue()
+    for item in items:
+        queue.put_nowait(item)
+
+    progress = atqdm(total=len(items), desc=desc)
+    completed = 0
+
+    async def consume() -> None:
+        nonlocal completed
+        while True:
+            try:
+                item = queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+            try:
+                await worker(item)
+                progress.update(1)
+                completed += 1
+                if (
+                    fd_telemetry_interval > 0
+                    and completed % fd_telemetry_interval == 0
+                ):
+                    log_file_descriptor_snapshot(
+                        f"{desc}/{completed}_completed"
+                    )
+            finally:
+                queue.task_done()
+
+    tasks = [
+        asyncio.create_task(consume())
+        for _ in range(min(max(1, int(concurrency)), len(items)))
+    ]
+    try:
+        await asyncio.gather(*tasks)
+    except BaseException:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
+    finally:
+        progress.close()
 
 def load_questions(file_path: Path) -> List[Dict[str, Any]]:
     """Load questions from a JSONL file."""
@@ -290,10 +344,15 @@ async def evaluate_async():
                 }
                 return q
 
-            await atqdm.gather(
-                *(generate_answer(q) for q in questions),
+            log_file_descriptor_snapshot(f"hle/{subset}/before_answers")
+            await _bounded_map(
+                questions,
+                generate_answer,
+                concurrency=llm_ap.batch_size,
                 desc="Generating HLE answers",
+                fd_telemetry_interval=50,
             )
+            log_file_descriptor_snapshot(f"hle/{subset}/after_answers")
             print(f"Generated {len(predictions)} model responses for {subset}")
             if len(predictions) != len(questions):
                 raise RuntimeError(
@@ -334,10 +393,14 @@ async def evaluate_async():
                 judge_store.save(key, prediction, request=request)
                 judged_predictions[q["id"]] = prediction
 
-            await atqdm.gather(
-                *(judge(q) for q in questions),
+            await _bounded_map(
+                questions,
+                judge,
+                concurrency=judge_parallel,
                 desc="Judging HLE",
+                fd_telemetry_interval=50,
             )
+            log_file_descriptor_snapshot(f"hle/{subset}/after_judgments")
             print(f"Judged {len(judged_predictions)} responses for {subset}")
             if len(judged_predictions) != len(questions):
                 raise RuntimeError(

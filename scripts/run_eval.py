@@ -7,6 +7,7 @@ os.environ["NEJUMI_MAIN_STARTED"] = "1"
 import json
 import hashlib
 import signal
+import sys
 import time
 from pathlib import Path
 from argparse import ArgumentParser
@@ -122,6 +123,34 @@ def load_validate_all_benchmarks():
 
 
 validate_all_benchmarks = load_validate_all_benchmarks()
+
+
+def load_runtime_resource_helpers():
+    helper_path = (
+        Path(__file__).resolve().parent
+        / "evaluator"
+        / "evaluate_utils"
+        / "runtime_resources.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "_nejumi_runtime_resources",
+        helper_path,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Failed to load runtime resource helper: {helper_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return (
+        module.ensure_file_descriptor_capacity,
+        module.log_file_descriptor_snapshot,
+    )
+
+
+(
+    ensure_file_descriptor_capacity,
+    log_file_descriptor_snapshot,
+) = load_runtime_resource_helpers()
 
 
 def _run_flags_dict(cfg) -> dict:
@@ -973,6 +1002,22 @@ if run:
 
 WandbConfigSingleton.initialize(run, llm=None, config_override=cfg_dict)
 cfg = WandbConfigSingleton.get_instance().config
+minimum_fd_limit = int(
+    OmegaConf.select(
+        cfg,
+        "runtime.minimum_file_descriptor_limit",
+        default=8192,
+    )
+)
+fd_snapshot = ensure_file_descriptor_capacity(minimum_fd_limit)
+print(
+    "Process file-descriptor capacity initialized: "
+    f"{fd_snapshot.format()}",
+    flush=True,
+)
+if run is not None:
+    run.summary["runtime_file_descriptor_soft_limit"] = fd_snapshot.soft_limit
+    run.summary["runtime_file_descriptor_hard_limit"] = fd_snapshot.hard_limit
 
 # Resolve remote datasets and validate mutable runtime prerequisites before the
 # inference engine or any paid benchmark request starts.
@@ -1390,6 +1435,11 @@ def _execute_tracked_benchmark(benchmark_name, callback):
 
     start_benchmark_tracking(benchmark_name)
     benchmark_checkpoints.mark_started(benchmark_name)
+    start_fd_snapshot = log_file_descriptor_snapshot(f"{benchmark_name}/start")
+    if run is not None and not _wandb_run_finished:
+        run.summary[
+            f"runtime_file_descriptors_{benchmark_name}_start"
+        ] = start_fd_snapshot.open_count
     try:
         result = callback()
     except BaseException as exc:
@@ -1400,6 +1450,12 @@ def _execute_tracked_benchmark(benchmark_name, callback):
                 f"{type(exc).__name__}: {exc}"
             )
         raise
+    finally:
+        end_fd_snapshot = log_file_descriptor_snapshot(f"{benchmark_name}/end")
+        if run is not None and not _wandb_run_finished:
+            run.summary[
+                f"runtime_file_descriptors_{benchmark_name}_end"
+            ] = end_fd_snapshot.open_count
     if run is not None and not _wandb_run_finished:
         run.summary[f"benchmark_completed_{benchmark_name}"] = True
         run.summary[f"benchmark_error_{benchmark_name}"] = None
