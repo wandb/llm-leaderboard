@@ -894,6 +894,71 @@ def test_swebench_effective_deny_tools_allows_process_control_tool():
     assert module.effective_deny_tools(args) == ["browser", "web_search"]
 
 
+def test_swebench_safe_agent_id_preserves_digest_within_openclaw_limit():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    instance_id = "matplotlib__matplotlib-26020"
+    prefix = "tw-swe-assorted-gpt-5-6-luna-openai-direct-high-lite"
+
+    agent_id = module.safe_agent_id(instance_id, prefix)
+
+    expected_digest = module.hashlib.sha1(instance_id.encode("utf-8")).hexdigest()[
+        : module.TASK_AGENT_DIGEST_LENGTH
+    ]
+    assert len(agent_id) <= module.OPENCLAW_MAX_AGENT_ID_LENGTH
+    assert agent_id.endswith(f"-{expected_digest}")
+    assert agent_id == "tw-swe-assorted-gpt-5-6-luna-openai-direct-high-lit-f2a5a25f3109"
+
+
+def test_swebench_registered_agent_id_from_pretty_json_output():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    stdout = (
+        '{\n  "agentId": "normalized-agent",\n  "name": "requested-agent"\n}\n'
+        '{"ok": true, "agent_id": "requested-agent"}\n'
+    )
+
+    assert module.registered_agent_id_from_stdout(stdout) == "normalized-agent"
+
+
+def test_swebench_rejects_openclaw_agent_id_rewrite(monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+
+    def fake_run_nemoclaw_text_command(*_args, **_kwargs):
+        return subprocess.CompletedProcess(
+            [],
+            0,
+            stdout='{"agentId": "normalized-agent"}\n',
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        module,
+        "run_nemoclaw_text_command",
+        fake_run_nemoclaw_text_command,
+    )
+    args = SimpleNamespace(
+        deny_argument_pattern=None,
+        deny_tool=None,
+        dry_run=False,
+        max_agent_turns=40,
+        max_input_tokens=1_000_000,
+        max_tool_calls=40,
+        max_tool_wall_seconds=120,
+        model="openai-direct/gpt-5.6-luna",
+        nemoclaw_openclaw_config_path="/sandbox/.openclaw/openclaw.json",
+        openclaw_tool_profile="coding",
+        require_actual_token_usage=True,
+        session_prefix="test-session",
+    )
+
+    with pytest.raises(RuntimeError, match="trace identity mismatch"):
+        module.register_nemoclaw_gateway_task_agent(
+            args,
+            agent_id="requested-agent",
+            workspace="/sandbox/checkouts/task",
+            agent_dir="/sandbox/checkouts/task/.agent",
+        )
+
+
 def test_swebench_nemoclaw_task_agent_config_is_sandbox_visible(tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
     row = sample_row()

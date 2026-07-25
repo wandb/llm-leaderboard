@@ -68,12 +68,14 @@ from subprocess_runner import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROTOCOL_RUNNER = REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py"
-RUNNER_VERSION = "swebench-pro-openclaw-2026-07-24-task-fs-isolation-v11"
+RUNNER_VERSION = "swebench-pro-openclaw-2026-07-25-agent-id-contract-v12"
 PATCH_CAPTURE_VERSION = "git-diff-head-with-untracked-excluding-selected-tests-v4"
 DEFAULT_MAX_INPUT_TOKENS = 1_000_000
 DEFAULT_MAX_TOOL_CALLS = 40
 DEFAULT_MAX_AGENT_TURNS = 40
 DEFAULT_MAX_TOOL_WALL_SECONDS = 300
+OPENCLAW_MAX_AGENT_ID_LENGTH = 64
+TASK_AGENT_DIGEST_LENGTH = 12
 OPENCLAW_BUDGET_GUARD_PLUGIN_ID = "nejumi-budget-guard"
 OPENCLAW_BUDGET_GUARD_PLUGIN_VERSION = "0.3.0"
 OPENCLAW_BUDGET_GUARD_BLOCK_PREFIX = "NEJUMI_BUDGET_GUARD_BLOCKED"
@@ -286,11 +288,39 @@ def safe_id(instance_id: str) -> str:
 
 
 def safe_agent_id(instance_id: str, prefix: str) -> str:
-    digest = hashlib.sha1(instance_id.encode("utf-8")).hexdigest()[:12]
-    normalized_prefix = "".join(
-        ch.lower() if ch.isalnum() else "-" for ch in prefix.strip()
+    digest = hashlib.sha1(instance_id.encode("utf-8")).hexdigest()[
+        :TASK_AGENT_DIGEST_LENGTH
+    ]
+    normalized_prefix = re.sub(
+        r"-+",
+        "-",
+        "".join(ch.lower() if ch.isalnum() else "-" for ch in prefix.strip()),
     ).strip("-")
-    return f"{normalized_prefix or 'nejumi-swe'}-{digest}"
+    normalized_prefix = normalized_prefix or "nejumi-swe"
+    prefix_limit = OPENCLAW_MAX_AGENT_ID_LENGTH - len(digest) - 1
+    normalized_prefix = normalized_prefix[:prefix_limit].rstrip("-") or "agent"
+    return f"{normalized_prefix}-{digest}"
+
+
+def registered_agent_id_from_stdout(stdout: str) -> str:
+    decoder = json.JSONDecoder()
+    cursor = 0
+    while cursor < len(stdout):
+        next_object = stdout.find("{", cursor)
+        if next_object < 0:
+            break
+        try:
+            payload, cursor = decoder.raw_decode(stdout, next_object)
+        except json.JSONDecodeError:
+            cursor = next_object + 1
+            continue
+        if not isinstance(payload, dict):
+            continue
+        for key in ("agentId", "agent_id"):
+            value = payload.get(key)
+            if isinstance(value, str) and value:
+                return value
+    return ""
 
 
 def sha256_text(text: str) -> str:
@@ -1195,6 +1225,13 @@ PY
         ],
         timeout=60,
     )
+    registered_agent_id = registered_agent_id_from_stdout(result.stdout)
+    if registered_agent_id and registered_agent_id != agent_id:
+        raise RuntimeError(
+            "OpenClaw registered a different task-agent id; refusing to run with "
+            "a trace identity mismatch: "
+            f"requested={agent_id!r}, registered={registered_agent_id!r}"
+        )
     _REGISTERED_NEMOCLAW_GATEWAY_AGENTS[:] = [
         item for item in _REGISTERED_NEMOCLAW_GATEWAY_AGENTS if item[1] != agent_id
     ]
@@ -1205,6 +1242,7 @@ PY
         "workspace": workspace,
         "agent_dir": agent_dir,
         "config_path": config_path,
+        "registered_agent_id": registered_agent_id or agent_id,
         "stdout": result.stdout,
         "stderr": result.stderr,
     }
