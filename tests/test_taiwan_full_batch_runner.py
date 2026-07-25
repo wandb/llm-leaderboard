@@ -24,6 +24,33 @@ def load_module():
     return module
 
 
+def test_normalize_run_eval_base_config_arg_accepts_repository_relative_path(
+    tmp_path, monkeypatch
+):
+    module = load_module()
+    config_dir = tmp_path / "configs"
+    config_dir.mkdir()
+    base_config = config_dir / "base.yaml"
+    base_config.write_text("run: {}\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    normalized = module.normalize_run_eval_base_config_arg("configs/base.yaml")
+
+    assert normalized == str(base_config.resolve())
+
+
+def test_normalize_run_eval_base_config_arg_preserves_config_dir_relative_name(
+    tmp_path, monkeypatch
+):
+    module = load_module()
+    monkeypatch.chdir(tmp_path)
+
+    assert (
+        module.normalize_run_eval_base_config_arg("base_config_taiwan.yaml")
+        == "base_config_taiwan.yaml"
+    )
+
+
 def write_budget_estimate(
     path: Path,
     *,

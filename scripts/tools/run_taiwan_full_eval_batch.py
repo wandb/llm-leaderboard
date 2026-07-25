@@ -1489,6 +1489,16 @@ def build_run_eval_command(
     return command
 
 
+def normalize_run_eval_base_config_arg(value: str) -> str:
+    """Accept either config-dir-relative or repository-relative base config paths."""
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        return str(path)
+    if path.exists():
+        return str(path.resolve())
+    return value
+
+
 def build_run_eval_preflight_command(
     *,
     python: str,
@@ -1813,6 +1823,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    args.base_config = normalize_run_eval_base_config_arg(args.base_config)
     if args.weave_content_canary_max_age_seconds < 0:
         args.weave_content_canary_max_age_seconds = None
     args.output_root.mkdir(parents=True, exist_ok=True)
