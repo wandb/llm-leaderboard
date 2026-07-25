@@ -1024,6 +1024,20 @@ def test_deepswe_setup_tracks_go_cache_per_immutable_task_image():
     assert 'find /sandbox/go/pkg/mod -type d -name "*@v*"' not in script
 
 
+def test_deepswe_setup_normalizes_uploaded_runtime_permissions_for_reruns():
+    script = (
+        ROOT / "scripts" / "setup" / "install_deepswe_sandbox_deps.sh"
+    ).read_text(encoding="utf-8")
+
+    assert "normalize_mutable_runtime_permissions()" in script
+    assert 'owner="$(stat -c "%u:%g" /sandbox)"' in script
+    assert (
+        "for path in /sandbox/.deepswe-tools /sandbox/.npm-global /sandbox/go"
+        in script
+    )
+    assert script.count("normalize_mutable_runtime_permissions") >= 3
+
+
 def test_build_job_config_rejects_native_trace_without_gateway_mode(tmp_path):
     task_names_file = tmp_path / "pilot_2_task_names.json"
     task_names_file.write_text(json.dumps(["task-a", "task-b"]) + "\n", encoding="utf-8")

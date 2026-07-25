@@ -181,6 +181,24 @@ sandbox_container_id() {
     | awk -v prefix="openshell-${sandbox}-" '$2 ~ "^" prefix { print $1; exit }'
 }
 
+normalize_mutable_runtime_permissions() {
+  local container_id
+  container_id="$(sandbox_container_id)"
+  if [[ -z "$container_id" ]]; then
+    echo "Could not find OpenShell Docker container for sandbox: $sandbox" >&2
+    return 1
+  fi
+  docker exec --user root "$container_id" sh -lc '
+    set -eu
+    owner="$(stat -c "%u:%g" /sandbox)"
+    for path in /sandbox/.deepswe-tools /sandbox/.npm-global /sandbox/go; do
+      [ -e "$path" ] || continue
+      chown -R "$owner" "$path"
+      chmod -R u+rwX "$path"
+    done
+  '
+}
+
 install_standard_path_wrappers() {
   local container_id
   container_id="$(sandbox_container_id)"
@@ -323,6 +341,10 @@ if [[ "$check_only" -eq 1 ]]; then
   check_python_overlays || check_status=1
   exit "$check_status"
 fi
+
+# Sandbox uploads and source-image archives can leave root-owned directories.
+# Normalize before inspection so repeated installs remain idempotent.
+normalize_mutable_runtime_permissions
 
 tools_ok=0
 go_toolchain_ok=0
@@ -521,3 +543,4 @@ check_go_toolchain
 check_go_module_cache
 check_python_overlays
 sandbox_exec 120 sh -lc 'export PATH=/sandbox/.deepswe-tools/go/bin:/sandbox/.npm-global/bin:$PATH; go version; node --version; python3 --version'
+normalize_mutable_runtime_permissions
