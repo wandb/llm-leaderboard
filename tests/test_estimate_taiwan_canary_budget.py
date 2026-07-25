@@ -181,3 +181,24 @@ def test_usage_scan_skips_swebench_checkouts(tmp_path):
 
     assert len(rows) == 1
     assert rows[0]["source"].endswith("swebench_pro/row1.json")
+
+
+def test_usage_scan_skips_json_that_exceeds_decoder_recursion_limit(
+    tmp_path, capsys
+):
+    module = load_usage_module()
+    deep_json = tmp_path / "deep.json"
+    deep_json.write_text("[" * 2000 + "0" + "]" * 2000, encoding="utf-8")
+    write_usage(
+        tmp_path / "valid.json",
+        category="agentic_math",
+        model="openai-direct/gpt-4.1-mini-2025-04-14",
+        input_tokens=10,
+        output_tokens=5,
+    )
+
+    rows = module.scan(tmp_path)
+
+    assert len(rows) == 1
+    assert rows[0]["source"].endswith("valid.json")
+    assert "skipping unreadable JSON file" in capsys.readouterr().err

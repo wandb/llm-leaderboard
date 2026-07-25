@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -98,18 +99,24 @@ EXCLUDED_SCAN_DIR_NAMES = {
     ".venv",
     "__pycache__",
     "node_modules",
+    "openclaw_checkout",
     "swebench_pro_checkouts",
 }
 
 
 def iter_json_records(path: Path) -> Any:
     if path.suffix == ".jsonl":
-        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError as exc:
+            print(f"WARNING: skipping unreadable JSONL file {path}: {exc}", file=sys.stderr)
+            return
+        for line in lines:
             if not line.strip():
                 continue
             try:
                 record = json.loads(line)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, RecursionError):
                 continue
             if isinstance(record, dict):
                 yield record, path
@@ -119,6 +126,9 @@ def iter_json_records(path: Path) -> Any:
         try:
             record = json.loads(path.read_text(encoding="utf-8", errors="replace"))
         except json.JSONDecodeError:
+            return
+        except (OSError, RecursionError) as exc:
+            print(f"WARNING: skipping unreadable JSON file {path}: {exc}", file=sys.stderr)
             return
         if isinstance(record, dict):
             yield record, path
