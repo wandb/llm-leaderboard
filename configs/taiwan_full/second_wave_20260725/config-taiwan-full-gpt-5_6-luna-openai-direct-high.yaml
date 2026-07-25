@@ -4,6 +4,11 @@ wandb:
   project: tc-leaderboard
   expected_entity: llm-leaderboard
   expected_project: tc-leaderboard
+output:
+  # This run completed BFCL before checkpoint fingerprints separated code drift
+  # from execution config. Trust only that audited legacy completion marker.
+  trust_completed_checkpoint_fingerprint_mismatch:
+  - bfcl
 api: openai_responses
 batch_size: 8
 model:

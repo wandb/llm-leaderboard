@@ -879,6 +879,9 @@ from evaluator.evaluate_utils.progress_tracker import (
     complete_benchmark_tracking, finish_progress_tracking
 )
 from evaluator.evaluate_utils.benchmark_checkpoint import BenchmarkCheckpointStore
+from evaluator.evaluate_utils.benchmark_completion_evidence import (
+    validate_agentic_math_completion,
+)
 
 # 環境変数からAPIキーを取得
 def get_api_key_from_env(service_name):
@@ -936,6 +939,7 @@ except Exception as e:
     ) from e
 
 _wandb_run_finished = False
+_wandb_terminating = False
 
 
 def _finish_wandb_run(exit_code: int = 0) -> None:
@@ -946,6 +950,8 @@ def _finish_wandb_run(exit_code: int = 0) -> None:
 
 
 def _finish_wandb_run_on_signal(signum, frame) -> None:
+    global _wandb_terminating
+    _wandb_terminating = True
     print(
         f"Received signal {signum}; finishing W&B run before exit.",
         flush=True,
@@ -1147,9 +1153,8 @@ def _benchmark_config_fingerprint(cfg, benchmark_name):
         "num_few_shots",
     )
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
         "benchmark": benchmark_name,
-        "code": _benchmark_code_fingerprint(benchmark_name),
         "common": {
             key: _plain_config_value(
                 OmegaConf.select(cfg, key, default=None)
@@ -1192,6 +1197,10 @@ benchmark_checkpoints = BenchmarkCheckpointStore(
         benchmark_name: _benchmark_config_fingerprint(cfg, benchmark_name)
         for benchmark_name in BENCHMARK_MAP
     },
+    code_fingerprints={
+        benchmark_name: _benchmark_code_fingerprint(benchmark_name)
+        for benchmark_name in BENCHMARK_MAP
+    },
 )
 allow_legacy_benchmark_checkpoint_migration = bool(
     OmegaConf.select(
@@ -1211,19 +1220,104 @@ trusted_fingerprint_mismatch_benchmarks = set(
 
 
 def _benchmark_is_resumable(benchmark_name):
-    if not benchmark_checkpoints.is_completed(benchmark_name):
-        raw_checkpoint = benchmark_checkpoints.load_raw(benchmark_name)
-        remote_completed = bool(
-            run is not None
-            and run.summary.get(
-                f"benchmark_completed_{benchmark_name}",
-                False,
-            )
+    raw_checkpoint = benchmark_checkpoints.load_raw(benchmark_name)
+    remote_completed = bool(
+        run is not None
+        and run.summary.get(
+            f"benchmark_completed_{benchmark_name}",
+            False,
         )
+    )
+
+    if (
+        benchmark_checkpoints.completed_snapshot_matches_config(benchmark_name)
+        and raw_checkpoint
+        and raw_checkpoint.get("status") != "completed"
+    ):
+        benchmark_checkpoints.mark_completed(benchmark_name)
+        if run is not None and not _wandb_run_finished:
+            run.summary[f"benchmark_completed_{benchmark_name}"] = True
+            run.summary[f"benchmark_error_{benchmark_name}"] = None
+            run.summary[f"benchmark_checkpoint_restored_{benchmark_name}"] = True
+        print(
+            "Restored the last matching completed checkpoint after an "
+            f"interrupted resume: {benchmark_name}",
+            flush=True,
+        )
+        return True
+
+    if not benchmark_checkpoints.is_completed(benchmark_name):
+        if benchmark_name == "agentic_math" and allow_wandb_resume:
+            math_output_dir = Path(
+                str(
+                    OmegaConf.select(
+                        cfg,
+                        "agentic_math.output_dir",
+                        default=checkpoint_run_root / "agentic_math",
+                    )
+                )
+            )
+            math_limit = int(
+                OmegaConf.select(cfg, "agentic_math.limit", default=0) or 0
+            )
+            math_model = str(
+                OmegaConf.select(
+                    cfg,
+                    "agentic_math.openclaw_model",
+                    default="",
+                )
+                or ""
+            )
+            evidence = (
+                validate_agentic_math_completion(
+                    math_output_dir,
+                    expected_count=math_limit,
+                    expected_model=math_model,
+                    require_weave_agents=bool(
+                        OmegaConf.select(
+                            cfg,
+                            "agentic_math.verify_weave_agents",
+                            default=False,
+                        )
+                    ),
+                    require_nemoclaw_session_audit=bool(
+                        OmegaConf.select(
+                            cfg,
+                            "agentic_math.no_local",
+                            default=False,
+                        )
+                    ),
+                )
+                if math_limit > 0 and math_model
+                else {
+                    "ok": False,
+                    "errors": [
+                        "agentic_math.limit and openclaw_model are required "
+                        "for automatic completion recovery"
+                    ],
+                }
+            )
+            if evidence["ok"]:
+                benchmark_checkpoints.mark_completed(benchmark_name)
+                if run is not None and not _wandb_run_finished:
+                    run.summary[f"benchmark_completed_{benchmark_name}"] = True
+                    run.summary[f"benchmark_error_{benchmark_name}"] = None
+                    run.summary[
+                        f"benchmark_checkpoint_recovered_{benchmark_name}"
+                    ] = True
+                print(
+                    "Recovered completed Agentic Math checkpoint from validated "
+                    f"run-scoped evidence ({math_limit} tasks): {benchmark_name}",
+                    flush=True,
+                )
+                return True
         legacy_completed = bool(
             raw_checkpoint
             and raw_checkpoint.get("status") == "completed"
-            and "config_fingerprint" not in raw_checkpoint
+            and (
+                "config_fingerprint" not in raw_checkpoint
+                or int(raw_checkpoint.get("schema_version") or 1) < 2
+            )
         )
         if (
             allow_legacy_benchmark_checkpoint_migration
@@ -1264,11 +1358,16 @@ def _benchmark_is_resumable(benchmark_name):
             )
             return True
         return False
+    if benchmark_checkpoints.code_drifted(benchmark_name):
+        print(
+            "Completed benchmark code changed after execution; preserving the "
+            f"validated paid result and recording code drift: {benchmark_name}",
+            flush=True,
+        )
+        if run is not None and not _wandb_run_finished:
+            run.summary[f"benchmark_code_drift_{benchmark_name}"] = True
     if run is None:
         return True
-    remote_completed = bool(
-        run.summary.get(f"benchmark_completed_{benchmark_name}", False)
-    )
     if not remote_completed:
         print(
             "Local completion marker exists but W&B completion evidence is "
@@ -1280,7 +1379,7 @@ def _benchmark_is_resumable(benchmark_name):
 
 def _execute_tracked_benchmark(benchmark_name, callback):
     if _benchmark_is_resumable(benchmark_name):
-        if run is not None:
+        if run is not None and not _wandb_run_finished:
             run.summary[f"benchmark_error_{benchmark_name}"] = None
         print(
             f"Skipping completed benchmark on explicit resume: {benchmark_name}",
@@ -1295,13 +1394,13 @@ def _execute_tracked_benchmark(benchmark_name, callback):
         result = callback()
     except BaseException as exc:
         benchmark_checkpoints.mark_failed(benchmark_name, exc)
-        if run is not None:
+        if run is not None and not _wandb_run_finished and not _wandb_terminating:
             run.summary[f"benchmark_completed_{benchmark_name}"] = False
             run.summary[f"benchmark_error_{benchmark_name}"] = (
                 f"{type(exc).__name__}: {exc}"
             )
         raise
-    if run is not None:
+    if run is not None and not _wandb_run_finished:
         run.summary[f"benchmark_completed_{benchmark_name}"] = True
         run.summary[f"benchmark_error_{benchmark_name}"] = None
     benchmark_checkpoints.mark_completed(benchmark_name)
