@@ -85,6 +85,10 @@ def apply_run_scoped_outputs(
         if _as_bool(agentic_math.get("run_openclaw", True)):
             agentic_math["results_dir"] = None
 
+    if _as_bool(run_cfg.get("agentic_swe_assorted")):
+        agentic_swe = _section(resolved, "agentic_swe_assorted")
+        agentic_swe["output_dir"] = str(root / "agentic_swe_assorted")
+
     if _as_bool(run_cfg.get("swebench_pro")):
         swebench_pro = _section(resolved, "swebench_pro")
         swebench_pro["output_dir"] = str(root / "swebench_pro")
@@ -100,8 +104,13 @@ def apply_run_scoped_outputs(
 
     if _as_bool(run_cfg.get("bfcl")):
         bfcl = _section(resolved, "bfcl")
-        bfcl["result_dir"] = str(root / "bfcl" / "result")
+        if _as_bool(bfcl.get("run_generation", True)):
+            bfcl["result_dir"] = str(root / "bfcl" / "result")
+            bfcl["allow_overwrite"] = True
         bfcl["score_dir"] = str(root / "bfcl" / "score")
-        bfcl["allow_overwrite"] = True
+
+    if _as_bool(run_cfg.get("mtbench")):
+        mtbench = _section(resolved, "mtbench")
+        mtbench["checkpoint_dir"] = str(root / "mtbench")
 
     return resolved, {"applied": True, "run_id": run_id, "run_root": str(root)}

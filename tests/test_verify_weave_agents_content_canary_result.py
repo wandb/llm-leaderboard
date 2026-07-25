@@ -38,6 +38,16 @@ def test_request_model_aliases_include_direct_provider_remainder():
     ]
 
 
+def test_request_model_aliases_include_canonical_openrouter_remainder():
+    module = load_module()
+
+    assert module.request_model_aliases("openrouter/z-ai/glm-5.2") == [
+        "openrouter/z-ai/glm-5.2",
+        "z-ai/glm-5.2",
+        "glm-5.2",
+    ]
+
+
 def test_request_model_aliases_include_wandb_inference_remainder():
     module = load_module()
 

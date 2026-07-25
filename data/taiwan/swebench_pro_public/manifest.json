@@ -1,0 +1,162 @@
+{
+  "dataset": "ScaleAI/SWE-bench_Pro",
+  "split": "test",
+  "dataset_dir_name": "swebench_pro_public",
+  "total_instances": 731,
+  "leaderboard_size": 80,
+  "smoke_size": 10,
+  "compact_subset_sizes": {
+    "leaderboard_compact_80": 80,
+    "leaderboard_compact_40": 40
+  },
+  "seed": 45,
+  "sampling": {
+    "method": "deterministic stratified sample",
+    "strata": [
+      "repo_language",
+      "issue_specificity",
+      "first issue_categories"
+    ]
+  },
+  "compact_sampling": {
+    "leaderboard_compact_80": {
+      "method": "deterministic cost-capped stratified sample",
+      "size": 80,
+      "candidate_pool_size": 511,
+      "max_cost_percentile": 0.7,
+      "max_per_repo": 11,
+      "max_tracked_total_bytes": null,
+      "max_tracked_file_count": null,
+      "strata": [
+        "repo_language",
+        "issue_specificity",
+        "first issue_categories"
+      ],
+      "cost_proxy": "static repository tree metadata; model-independent",
+      "score_min": 95.588753,
+      "score_median": 129.310887,
+      "score_max": 142.053312
+    },
+    "leaderboard_compact_40": {
+      "method": "deterministic cost-capped stratified sample",
+      "size": 40,
+      "candidate_pool_size": 511,
+      "max_cost_percentile": 0.7,
+      "max_per_repo": 6,
+      "max_tracked_total_bytes": null,
+      "max_tracked_file_count": null,
+      "strata": [
+        "repo_language",
+        "issue_specificity",
+        "first issue_categories"
+      ],
+      "cost_proxy": "static repository tree metadata; model-independent",
+      "score_min": 95.505092,
+      "score_median": 127.858498,
+      "score_max": 141.795576
+    }
+  },
+  "taiwan_recommended_runtime": {
+    "subset": "leaderboard_compact_80",
+    "max_input_tokens": 1000000,
+    "max_tool_calls": 60,
+    "max_agent_turns": 60,
+    "static_risk_control": "cost-capped compact subset with per-repo cap",
+    "primary_cost_control": "runtime input-token, tool-call, and agent-turn budgets"
+  },
+  "repo_static_cost_metadata": {
+    "included": true,
+    "schema_version": 1,
+    "measurement_method": "git-ls-tree-v1",
+    "path": "repo_metadata.jsonl",
+    "record_count": 731
+  },
+  "agentic_prompt": {
+    "code_embedded": false,
+    "field": "agentic_prompt",
+    "text_alias_code_embedded": false
+  },
+  "offline_repo_artifact": {
+    "included": false,
+    "note": "Future on-prem mode should store repository checkouts or bare mirrors, not prompt-embedded source."
+  },
+  "license_note": "The source GitHub repository scaleapi/SWE-bench_Pro-os is MIT licensed; verify downstream use against the current dataset card before release.",
+  "source_urls": {
+    "dataset": "https://huggingface.co/datasets/ScaleAI/SWE-bench_Pro",
+    "code": "https://github.com/scaleapi/SWE-bench_Pro-os"
+  },
+  "files": {
+    "README.md": {
+      "bytes": 1645,
+      "sha256": "dc134e284ef5ac89e0e477e722fab3ceb721bc4862d04fb5d1ae930d2810a99a"
+    },
+    "hf_dataset/data-00000-of-00001.arrow": {
+      "bytes": 29623464,
+      "sha256": "ede1692038dbec5d51ba23162bd066847d661e0c2dbe0e38a2597c8931daaba9"
+    },
+    "hf_dataset/dataset_info.json": {
+      "bytes": 3145,
+      "sha256": "7ba0aabd550f8cd62f78919592f5a2cca1fd650e8b402f05de6f41339210bba2"
+    },
+    "hf_dataset/state.json": {
+      "bytes": 247,
+      "sha256": "3e7f0eebe5eda5e215972d2dcadc24628f470e4e65b8e9eebbbb54e48a9827af"
+    },
+    "manifest.json": {
+      "bytes": 5381,
+      "sha256": "8d5aa4b7a1a0491743a87a7a917c83b011eae4d192007e017ac9d5777c59d0bb"
+    },
+    "repo_metadata.jsonl": {
+      "bytes": 423055,
+      "sha256": "9b613569f0119da2a3e04f87db0c327ac084445a4f6c4bf0377adfffad4b721f"
+    },
+    "subsets/full_public.csv": {
+      "bytes": 23964410,
+      "sha256": "6a64af136f1c2b741467bf72e9c53194ac62872b38f36c7d0b7ad56eb0b8a9c5"
+    },
+    "subsets/full_public.jsonl": {
+      "bytes": 31163847,
+      "sha256": "e5e50261145b239fc3d85a23001bf20efbb91fb1241df43470908a02cd4998ca"
+    },
+    "subsets/leaderboard_80.csv": {
+      "bytes": 2478520,
+      "sha256": "ff0aaadbd600fc822ce6550b66ca8463d22a9b8a84f509a8f7bd239e94ae231a"
+    },
+    "subsets/leaderboard_80.jsonl": {
+      "bytes": 3223241,
+      "sha256": "54b14e8c181e1909ec6708e00ee1753d05312daca3e445bbf5e3209e65927c05"
+    },
+    "subsets/leaderboard_compact_40.csv": {
+      "bytes": 906499,
+      "sha256": "9f523f84506044d5ae2d828e4f581ce80fe04344411b1d5ce26f32e7b44bd75d"
+    },
+    "subsets/leaderboard_compact_40.jsonl": {
+      "bytes": 1271207,
+      "sha256": "88ce32e9560129361f6451ef8890c1fa5832a9fdc291ffcb81514ea3a5d2a701"
+    },
+    "subsets/leaderboard_compact_80.csv": {
+      "bytes": 3269310,
+      "sha256": "cfe62fd88f750329f5a6726b18a2f17f8fe8066242f3e019482297043c8ac5e7"
+    },
+    "subsets/leaderboard_compact_80.jsonl": {
+      "bytes": 3987424,
+      "sha256": "ef3a3a7adb26a6b92f73b554d9428d10f51ab8339ebca4f37e5efe912d1d28eb"
+    },
+    "subsets/smoke.csv": {
+      "bytes": 269949,
+      "sha256": "10c46c6dde235ca9d1a3a5381b4e8e743efbcaa0bacaa76b164abdea008a09c8"
+    },
+    "subsets/smoke.jsonl": {
+      "bytes": 366799,
+      "sha256": "e5d2e8c938dd05e774a126e76865aebe947d50db9cf12a57322a7b5d952f0648"
+    },
+    "test.csv": {
+      "bytes": 23964410,
+      "sha256": "6a64af136f1c2b741467bf72e9c53194ac62872b38f36c7d0b7ad56eb0b8a9c5"
+    },
+    "test.jsonl": {
+      "bytes": 31163847,
+      "sha256": "e5e50261145b239fc3d85a23001bf20efbb91fb1241df43470908a02cd4998ca"
+    }
+  }
+}

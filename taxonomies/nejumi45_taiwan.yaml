@@ -59,9 +59,9 @@ units:
     column: pass_at_1
     scale: fraction
     required: true
-  - id: bfcl_v3
+  - id: bfcl_v4
     category: GLP
-    display_name: BFCL v3
+    display_name: BFCL v4
     table_name: bfcl_leaderboard_table
     column: Overall Acc
     scale: fraction

@@ -7,6 +7,23 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "tools" / "run_taiwan_release_gate.py"
 
 
+def isolated_release_gate_args(tmp_path: Path) -> list[str]:
+    existing_results = tmp_path / "existing-results"
+    completions = tmp_path / "wandb-completion"
+    existing_results.mkdir(exist_ok=True)
+    completions.mkdir(exist_ok=True)
+    return [
+        "--no-default-evidence-discovery",
+        "--no-require-nemoclaw",
+        "--existing-results-output-root",
+        str(existing_results),
+        "--existing-results-wandb-completion-dir",
+        str(completions),
+        "--existing-results-archive-manifest",
+        str(tmp_path / "missing-archive-manifest.json"),
+    ]
+
+
 def write_fake_nemoclaw_check(path: Path) -> Path:
     path.write_text(
         """#!/usr/bin/env sh
@@ -189,10 +206,26 @@ payloads = {
             },
             {"name": "NeMoClaw sandbox OpenClaw openai-direct provider exists", "ok": True},
             {
+                "name": "NeMoClaw sandbox OpenClaw openai-direct provider apiKey uses file SecretRef",
+                "ok": True,
+            },
+            {
+                "name": "NeMoClaw sandbox OpenClaw openai-direct provider SecretRef resolves",
+                "ok": True,
+            },
+            {
                 "name": "NeMoClaw sandbox OpenClaw model is registered: openai-direct/gpt-4.1-mini-2025-04-14",
                 "ok": True,
             },
             {"name": "NeMoClaw sandbox OpenClaw Weave plugin is enabled", "ok": True},
+            {
+                "name": "NeMoClaw sandbox OpenClaw Weave apiKey uses file SecretRef",
+                "ok": True,
+            },
+            {
+                "name": "NeMoClaw sandbox OpenClaw Weave SecretRef resolves",
+                "ok": True,
+            },
             {
                 "name": "agentic Math denies remote lookup via deny_tool",
                 "ok": True,
@@ -497,6 +530,7 @@ def test_release_gate_writes_report_bundle_and_verification(tmp_path):
             str(fake_check),
             "--nemoclaw-post-install-verify-script",
             str(fake_post_install),
+            *isolated_release_gate_args(tmp_path),
             "--no-require-metadata-readiness",
             "--no-require-weave-content-canary",
             "--no-require-nemoclaw",
@@ -700,6 +734,7 @@ def test_release_gate_writes_report_bundle_and_verification(tmp_path):
 
 def test_release_gate_defaults_release_gate_json_and_latest_pointer(tmp_path):
     output_dir = tmp_path / "out"
+    fake_check = write_fake_nemoclaw_check(tmp_path / "fake_install_nemoclaw.sh")
     fake_post_install = write_fake_post_install(tmp_path / "fake_post_install.py")
     timestamp = "20260628T040000Z"
     release_json = output_dir / f"taiwan_release_gate_{timestamp}.json"
@@ -716,9 +751,11 @@ def test_release_gate_defaults_release_gate_json_and_latest_pointer(tmp_path):
             str(output_dir),
             "--timestamp",
             timestamp,
-            "--skip-nemoclaw-check",
+            "--nemoclaw-check-script",
+            str(fake_check),
             "--nemoclaw-post-install-verify-script",
             str(fake_post_install),
+            *isolated_release_gate_args(tmp_path),
             "--quiet",
         ],
         cwd=REPO_ROOT,
@@ -761,6 +798,7 @@ def test_release_gate_defaults_release_gate_json_and_latest_pointer(tmp_path):
 
 def test_release_gate_does_not_regress_latest_pointer_to_older_formal_timestamp(tmp_path):
     output_dir = tmp_path / "out"
+    fake_check = write_fake_nemoclaw_check(tmp_path / "fake_install_nemoclaw.sh")
     fake_post_install = write_fake_post_install(tmp_path / "fake_post_install.py")
     newer_timestamp = "20260628T050000Z"
     older_timestamp = "20260628T040000Z"
@@ -779,9 +817,11 @@ def test_release_gate_does_not_regress_latest_pointer_to_older_formal_timestamp(
             str(output_dir),
             "--timestamp",
             newer_timestamp,
-            "--skip-nemoclaw-check",
+            "--nemoclaw-check-script",
+            str(fake_check),
             "--nemoclaw-post-install-verify-script",
             str(fake_post_install),
+            *isolated_release_gate_args(tmp_path),
             "--quiet",
         ],
         cwd=REPO_ROOT,
@@ -803,9 +843,11 @@ def test_release_gate_does_not_regress_latest_pointer_to_older_formal_timestamp(
             str(output_dir),
             "--timestamp",
             older_timestamp,
-            "--skip-nemoclaw-check",
+            "--nemoclaw-check-script",
+            str(fake_check),
             "--nemoclaw-post-install-verify-script",
             str(fake_post_install),
+            *isolated_release_gate_args(tmp_path),
             "--quiet",
         ],
         cwd=REPO_ROOT,
@@ -835,6 +877,7 @@ def test_release_gate_does_not_regress_latest_pointer_to_older_formal_timestamp(
 
 def test_release_gate_require_ready_fails_for_not_ready_bundle(tmp_path):
     output_dir = tmp_path / "out"
+    fake_check = write_fake_nemoclaw_check(tmp_path / "fake_install_nemoclaw.sh")
     fake_post_install = write_fake_post_install(tmp_path / "fake_post_install.py")
     release_json = output_dir / "release_gate.json"
 
@@ -848,9 +891,11 @@ def test_release_gate_require_ready_fails_for_not_ready_bundle(tmp_path):
             "REQUIRE_READY",
             "--release-gate-json",
             str(release_json),
-            "--skip-nemoclaw-check",
+            "--nemoclaw-check-script",
+            str(fake_check),
             "--nemoclaw-post-install-verify-script",
             str(fake_post_install),
+            *isolated_release_gate_args(tmp_path),
             "--require-ready",
             "--quiet",
         ],
@@ -888,6 +933,7 @@ def test_release_gate_require_ready_fails_for_not_ready_bundle(tmp_path):
 
 def test_release_gate_prints_operator_next_steps_summary(tmp_path):
     output_dir = tmp_path / "out"
+    fake_check = write_fake_nemoclaw_check(tmp_path / "fake_install_nemoclaw.sh")
     fake_post_install = write_fake_post_install(tmp_path / "fake_post_install.py")
     release_json = output_dir / "release_gate.json"
 
@@ -901,9 +947,11 @@ def test_release_gate_prints_operator_next_steps_summary(tmp_path):
             "OPERATOR_SUMMARY",
             "--release-gate-json",
             str(release_json),
-            "--skip-nemoclaw-check",
+            "--nemoclaw-check-script",
+            str(fake_check),
             "--nemoclaw-post-install-verify-script",
             str(fake_post_install),
+            *isolated_release_gate_args(tmp_path),
         ],
         cwd=REPO_ROOT,
         text=True,
@@ -924,6 +972,7 @@ def test_release_gate_prints_operator_next_steps_summary(tmp_path):
 
 def test_release_gate_can_skip_latest_pointer(tmp_path):
     output_dir = tmp_path / "out"
+    fake_check = write_fake_nemoclaw_check(tmp_path / "fake_install_nemoclaw.sh")
     fake_post_install = write_fake_post_install(tmp_path / "fake_post_install.py")
     release_json = output_dir / "release_gate.json"
 
@@ -937,9 +986,11 @@ def test_release_gate_can_skip_latest_pointer(tmp_path):
             "NO_POINTER",
             "--release-gate-json",
             str(release_json),
-            "--skip-nemoclaw-check",
+            "--nemoclaw-check-script",
+            str(fake_check),
             "--nemoclaw-post-install-verify-script",
             str(fake_post_install),
+            *isolated_release_gate_args(tmp_path),
             "--no-latest-pointer",
             "--quiet",
         ],
@@ -958,6 +1009,7 @@ def test_release_gate_can_skip_latest_pointer(tmp_path):
 
 def test_release_gate_auto_verifies_latest_pointer_for_formal_gate(tmp_path):
     output_dir = tmp_path / "out"
+    fake_check = write_fake_nemoclaw_check(tmp_path / "fake_install_nemoclaw.sh")
     fake_post_install = write_fake_post_install(tmp_path / "fake_post_install.py")
     timestamp = "20260627T212500Z"
     release_json = output_dir / f"taiwan_release_gate_{timestamp}.json"
@@ -977,9 +1029,11 @@ def test_release_gate_auto_verifies_latest_pointer_for_formal_gate(tmp_path):
             timestamp,
             "--release-gate-json",
             str(release_json),
-            "--skip-nemoclaw-check",
+            "--nemoclaw-check-script",
+            str(fake_check),
             "--nemoclaw-post-install-verify-script",
             str(fake_post_install),
+            *isolated_release_gate_args(tmp_path),
             "--quiet",
         ],
         cwd=REPO_ROOT,

@@ -9,6 +9,7 @@ import wandb
 import weave
 
 from config_singleton import WandbConfigSingleton
+from evaluator.evaluate_utils.subprocess_runner import run_streaming_command
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -19,6 +20,10 @@ DEFAULT_MAX_TOOL_CALLS = 40
 DEFAULT_MAX_AGENT_TURNS = 40
 DEFAULT_MAX_TOOL_WALL_SECONDS = 120
 AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS = (
+    "billable_openclaw_usage",
+    "billable_openclaw_attempt_count",
+    "billable_openclaw_attempts",
+    "billable_openclaw_wall_seconds",
     "nemoclaw_session_audit_ok",
     "nemoclaw_session_audit",
     "nemoclaw_session_copy_source",
@@ -78,44 +83,12 @@ def _json_cli_arg(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
-def _run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
-    print("Running:", " ".join(command))
-    proc = subprocess.Popen(
-        command,
-        cwd=str(REPO_ROOT),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        bufsize=1,
-        start_new_session=True,
-    )
-    stdout_parts: list[str] = []
-    assert proc.stdout is not None
-    while True:
-        try:
-            line = proc.stdout.readline()
-        except KeyboardInterrupt:
-            if proc.poll() is None:
-                print(
-                    "Received KeyboardInterrupt while Agentic Math runner is still active; "
-                    "continuing to wait for the isolated child process.",
-                    flush=True,
-                )
-                continue
-            raise
-        if line:
-            print(line, end="", flush=True)
-            stdout_parts.append(line)
-            continue
-        if proc.poll() is not None:
-            break
-    returncode = proc.wait()
-    stdout = "".join(stdout_parts)
-    if returncode != 0:
-        raise RuntimeError(
-            f"Command failed with return code {returncode}: {command}\n{stdout[-4000:]}"
-        )
-    return subprocess.CompletedProcess(command, returncode, stdout=stdout, stderr="")
+def _run_command(
+    command: list[str],
+    *,
+    timeout: float | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return run_streaming_command(command, cwd=REPO_ROOT, timeout=timeout)
 
 
 def _dataset_path(cfg, run) -> Path:
@@ -137,9 +110,19 @@ def _dataset_path(cfg, run) -> Path:
     return jsonl_path
 
 
-def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
+def _build_openclaw_command(cfg, jsonl_path: Path, output_dir: Path) -> list[str]:
     use_task_agent = _cfg_get(cfg.agentic_math, "use_task_agent", True)
     nemoclaw_sandbox = _cfg_get(cfg.agentic_math, "nemoclaw_sandbox")
+    no_local = bool(_cfg_get(cfg.agentic_math, "no_local", False))
+    if no_local and (
+        nemoclaw_sandbox is None
+        or not str(nemoclaw_sandbox).strip()
+        or str(nemoclaw_sandbox).strip().lower() in {"none", "null"}
+    ):
+        raise ValueError(
+            "agentic_math.nemoclaw_sandbox must name an isolated NeMoClaw "
+            "sandbox when agentic_math.no_local is true"
+        )
     command = [
         sys.executable,
         str(OPENCLAW_RUNNER),
@@ -159,6 +142,10 @@ def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
         str(_cfg_get(cfg.agentic_math, "openclaw_max_attempts", 3)),
         "--openclaw-retry-base-seconds",
         str(_cfg_get(cfg.agentic_math, "openclaw_retry_base_seconds", 15)),
+        "--provider-recovery-rounds",
+        str(_cfg_get(cfg.agentic_math, "provider_recovery_rounds", 2)),
+        "--provider-recovery-base-seconds",
+        str(_cfg_get(cfg.agentic_math, "provider_recovery_base_seconds", 60)),
         "--num-workers",
         str(_cfg_get(cfg.agentic_math, "num_workers", 1)),
         "--task-start-min-interval-seconds",
@@ -228,7 +215,7 @@ def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
         command.extend(["--nemoclaw-openclaw-config-path", str(nemoclaw_openclaw_config_path)])
     if _cfg_get(cfg.agentic_math, "allow_failed_preflight", False):
         command.append("--allow-failed-preflight")
-    if _cfg_get(cfg.agentic_math, "no_local", False):
+    if no_local:
         command.append("--no-local")
     if _cfg_get(cfg.agentic_math, "weave_sidecar", False) or _cfg_get(
         cfg.agentic_math, "weave_sidecar_strict", False
@@ -267,8 +254,140 @@ def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
         limit = _cfg_get(cfg.agentic_math, "limit")
         if limit is not None:
             command.extend(["--limit", str(limit)])
-    _run_command(command)
+    return command
+
+
+def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
+    command = _build_openclaw_command(cfg, jsonl_path, output_dir)
+    _run_command(
+        command,
+        timeout=float(
+            _cfg_get(cfg.agentic_math, "benchmark_timeout_seconds", 21_600)
+        ),
+    )
     return output_dir / "openclaw"
+
+
+def preflight(cfg, run, output_dir: Path) -> dict[str, Any]:
+    """Resolve the real dataset and validate the Math runtime without model calls."""
+    jsonl_path = _dataset_path(cfg, run)
+    selected_rows = [
+        json.loads(line)
+        for line in jsonl_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    limit = _cfg_get(cfg.agentic_math, "limit")
+    if limit is not None:
+        selected_rows = selected_rows[: int(limit)]
+    selected_task_ids = [str(row.get("task_id") or "") for row in selected_rows]
+
+    if not _cfg_get(cfg.agentic_math, "run_openclaw", True):
+        results_dir = _cfg_get(cfg.agentic_math, "results_dir")
+        if not results_dir:
+            raise ValueError(
+                "agentic_math.results_dir is required when run_openclaw is false"
+            )
+        reused_dir = Path(str(results_dir)).resolve()
+        summary, output_df = _load_results(reused_dir)
+        _validate_output_table_columns(output_df)
+        actual_task_ids = [str(value) for value in output_df["task_id"].tolist()]
+        errors = []
+        if len(actual_task_ids) != len(set(actual_task_ids)):
+            errors.append("reused results contain duplicate task_id values")
+        if set(actual_task_ids) != set(selected_task_ids):
+            missing = sorted(set(selected_task_ids) - set(actual_task_ids))
+            extra = sorted(set(actual_task_ids) - set(selected_task_ids))
+            errors.append(
+                f"reused task coverage mismatch (missing={missing}, extra={extra})"
+            )
+        if int(summary.get("total_instances") or -1) != len(selected_task_ids):
+            errors.append(
+                "reused summary total_instances does not match selected dataset "
+                f"({summary.get('total_instances')} != {len(selected_task_ids)})"
+            )
+        report = {
+            "schema_version": 1,
+            "benchmark": "agentic_math",
+            "ok": not errors,
+            "mode": "reuse",
+            "dataset_jsonl": str(jsonl_path.resolve()),
+            "results_dir": str(reused_dir),
+            "selected_task_count": len(selected_task_ids),
+            "result_task_count": len(actual_task_ids),
+            "errors": errors,
+            "will_run_model": False,
+            "will_run_gateway": False,
+            "will_run_weave_verification": False,
+        }
+        report_path = output_dir / "preflight.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        return {
+            "benchmark": "agentic_math",
+            "ok": not errors,
+            "returncode": 0 if not errors else 2,
+            "command": None,
+            "report_path": str(report_path),
+            "report": report,
+            "error": None if not errors else "; ".join(errors),
+            "will_run_model": False,
+            "will_run_gateway": False,
+            "will_run_grading": False,
+            "will_initialize_wandb": False,
+        }
+
+    command = _build_openclaw_command(cfg, jsonl_path, output_dir)
+    command.append("--preflight-only")
+    try:
+        result = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=float(
+                _cfg_get(cfg.agentic_math, "preflight_timeout_seconds", 180)
+            ),
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "benchmark": "agentic_math",
+            "ok": False,
+            "returncode": 124,
+            "command": command,
+            "report_path": None,
+            "report": None,
+            "error": f"Agentic Math preflight timed out after {exc.timeout}s",
+            "will_run_model": False,
+            "will_run_gateway": False,
+            "will_run_grading": False,
+            "will_initialize_wandb": False,
+        }
+    report_path = output_dir / "openclaw" / "preflight.json"
+    report = None
+    if report_path.exists():
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            report = None
+    ok = result.returncode == 0 and isinstance(report, dict) and report.get("ok") is True
+    error_text = (result.stderr or result.stdout).strip()
+    return {
+        "benchmark": "agentic_math",
+        "ok": ok,
+        "returncode": result.returncode,
+        "command": command,
+        "report_path": str(report_path),
+        "report": report,
+        "error": None if ok else error_text[-4000:],
+        "will_run_model": False,
+        "will_run_gateway": False,
+        "will_run_grading": False,
+        "will_initialize_wandb": False,
+    }
 
 
 def _load_results(output_dir: Path) -> tuple[dict[str, Any], pd.DataFrame]:
@@ -417,6 +536,24 @@ def _log_summary(
             "agentic_math/correct_instances": int(summary["correct_instances"]),
             "agentic_math/total_instances": int(summary["total_instances"]),
             "agentic_math/answered_instances": int(summary["answered_instances"]),
+            "agentic_math/billable_attempt_count": int(
+                summary.get("billable_openclaw_attempt_count") or 0
+            ),
+            "agentic_math/billable_retry_count": int(
+                summary.get("billable_openclaw_retry_count") or 0
+            ),
+            "agentic_math/billable_wall_seconds": float(
+                summary.get("billable_openclaw_wall_seconds") or 0.0
+            ),
+            "agentic_math/billable_input_tokens": float(
+                (summary.get("billable_openclaw_usage") or {}).get("inputTokens") or 0.0
+            ),
+            "agentic_math/billable_output_tokens": float(
+                (summary.get("billable_openclaw_usage") or {}).get("outputTokens") or 0.0
+            ),
+            "agentic_math/billable_cost_usd": float(
+                (summary.get("billable_openclaw_usage") or {}).get("costUsd") or 0.0
+            ),
             "agentic_math/max_input_tokens": max_input_tokens,
             "agentic_math/max_tool_calls": max_tool_calls,
             "agentic_math/max_agent_turns": max_agent_turns,

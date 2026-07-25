@@ -1800,3 +1800,23 @@ def test_nemoclaw_adoption_doctor_rejects_mismatched_swebench_nemoclaw_sandbox(t
     )
     assert swebench_guard["status"] == "swebench_pro_invalid_nemoclaw_config"
     assert swebench_guard["offending_records"][0]["swebench_pro_nemoclaw_sandbox"] == "other-sandbox"
+
+
+def test_nemoclaw_adoption_doctor_can_disable_repository_evidence_discovery():
+    result = subprocess.run(
+        [
+            "python3",
+            str(SCRIPT),
+            "--no-default-evidence-discovery",
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["setup_paths"] == []
+    assert payload["readiness_paths"] == []
+    assert payload["agentic_config_paths"] == []

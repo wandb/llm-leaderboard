@@ -14,13 +14,18 @@ def test_taiwan_full_outputs_are_scoped_to_wandb_run_id():
         "run": {
             "aggregate_taiwan": True,
             "agentic_math": True,
+            "agentic_swe_assorted": True,
             "swebench_pro": True,
             "bfcl": True,
+            "mtbench": True,
         },
         "agentic_math": {
             "output_dir": "outputs/old/agentic_math",
             "results_dir": "outputs/old/agentic_math/openclaw",
             "run_openclaw": True,
+        },
+        "agentic_swe_assorted": {
+            "output_dir": "outputs/old/agentic_swe_assorted",
         },
         "swebench_pro": {
             "output_dir": "outputs/old/swebench_pro",
@@ -31,6 +36,7 @@ def test_taiwan_full_outputs_are_scoped_to_wandb_run_id():
         "bfcl": {
             "allow_overwrite": False,
         },
+        "mtbench": {},
     }
 
     resolved, record = apply_run_scoped_outputs(cfg, run_id="abc123")
@@ -44,6 +50,10 @@ def test_taiwan_full_outputs_are_scoped_to_wandb_run_id():
     assert resolved["output"]["resolved_run_root"] == "outputs/taiwan_full_eval_runs/abc123"
     assert resolved["agentic_math"]["output_dir"] == "outputs/taiwan_full_eval_runs/abc123/agentic_math"
     assert resolved["agentic_math"]["results_dir"] is None
+    assert (
+        resolved["agentic_swe_assorted"]["output_dir"]
+        == "outputs/taiwan_full_eval_runs/abc123/agentic_swe_assorted"
+    )
     assert resolved["swebench_pro"]["output_dir"] == "outputs/taiwan_full_eval_runs/abc123/swebench_pro"
     assert (
         resolved["swebench_pro"]["checkout_root"]
@@ -53,6 +63,10 @@ def test_taiwan_full_outputs_are_scoped_to_wandb_run_id():
     assert resolved["bfcl"]["result_dir"] == "outputs/taiwan_full_eval_runs/abc123/bfcl/result"
     assert resolved["bfcl"]["score_dir"] == "outputs/taiwan_full_eval_runs/abc123/bfcl/score"
     assert resolved["bfcl"]["allow_overwrite"] is True
+    assert (
+        resolved["mtbench"]["checkpoint_dir"]
+        == "outputs/taiwan_full_eval_runs/abc123/mtbench"
+    )
 
 
 def test_non_taiwan_config_is_not_scoped_by_default():
@@ -66,6 +80,28 @@ def test_non_taiwan_config_is_not_scoped_by_default():
 
     assert record["applied"] is False
     assert resolved == cfg
+
+
+def test_bfcl_reuse_preserves_result_source_and_scopes_only_scores():
+    cfg = {
+        "wandb": {"project": "tc-leaderboard"},
+        "run": {"aggregate_taiwan": True, "bfcl": True},
+        "bfcl": {
+            "run_generation": False,
+            "result_dir": "outputs/completed-run/bfcl/result",
+            "score_dir": "outputs/completed-run/bfcl/score",
+            "allow_overwrite": False,
+        },
+    }
+
+    resolved, _ = apply_run_scoped_outputs(cfg, run_id="recovery123")
+
+    assert resolved["bfcl"]["result_dir"] == "outputs/completed-run/bfcl/result"
+    assert (
+        resolved["bfcl"]["score_dir"]
+        == "outputs/taiwan_full_eval_runs/recovery123/bfcl/score"
+    )
+    assert resolved["bfcl"]["allow_overwrite"] is False
 
 
 def test_explicit_output_root_template_is_supported():

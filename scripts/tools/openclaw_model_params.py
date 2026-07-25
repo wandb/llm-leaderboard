@@ -1,13 +1,10 @@
 """Helpers for applying per-model OpenClaw configuration.
 
 OpenClaw stores provider-specific request extensions on a model entry's
-``params`` object. For OpenRouter, ``params.provider`` is injected into the
-request body as the OpenRouter provider-routing object.
-
-Some OpenClaw settings are model-entry fields instead of request ``params``.
-For example, OpenClaw derives the provider ``max_tokens`` request field from
-the model entry's top-level ``maxTokens`` value. Keep these two override
-surfaces separate so provider routing does not get mixed with model metadata.
+``params`` object. Recent OpenClaw versions also derive stream options such as
+``maxTokens`` from that object, while the top-level model ``maxTokens`` remains
+the model metadata cap. The helpers therefore mirror a top-level maxTokens
+override into request params when no explicit request value was supplied.
 """
 
 from __future__ import annotations
@@ -50,7 +47,13 @@ def openclaw_model_params_from_args(args: Any) -> dict[str, Any]:
         getattr(args, "openclaw_model_params_json", None),
         label="--openclaw-model-params-json",
     )
-    return deep_merge_dict(params, params_json)
+    merged = deep_merge_dict(params, params_json)
+    overrides = openclaw_model_overrides_from_args(args)
+    if "maxTokens" not in merged and "max_tokens" not in merged:
+        max_tokens = overrides.get("maxTokens")
+        if max_tokens is not None:
+            merged["maxTokens"] = copy.deepcopy(max_tokens)
+    return merged
 
 
 def openclaw_model_overrides_from_args(args: Any) -> dict[str, Any]:
@@ -63,6 +66,17 @@ def openclaw_model_overrides_from_args(args: Any) -> dict[str, Any]:
         label="--openclaw-model-overrides-json",
     )
     return deep_merge_dict(overrides, overrides_json)
+
+
+def openclaw_max_output_tokens_from_args(args: Any) -> int | None:
+    """Resolve the effective per-response output cap communicated to the model."""
+    params = openclaw_model_params_from_args(args)
+    raw_value = params.get("maxTokens", params.get("max_tokens"))
+    try:
+        value = int(raw_value or 0)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
 
 
 def apply_openclaw_model_overrides(

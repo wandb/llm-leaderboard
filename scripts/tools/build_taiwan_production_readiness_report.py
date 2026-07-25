@@ -723,9 +723,16 @@ def discover_paths(patterns: list[str] | tuple[str, ...]) -> list[Path]:
     return sorted(paths, key=lambda path: str(path))
 
 
-def normalize_paths(explicit: list[Path] | None, patterns: list[str] | tuple[str, ...]) -> list[Path]:
+def normalize_paths(
+    explicit: list[Path] | None,
+    patterns: list[str] | tuple[str, ...],
+    *,
+    discover_defaults: bool = True,
+) -> list[Path]:
     if explicit:
         return [repo_path(path) for path in explicit]
+    if not discover_defaults:
+        return []
     return discover_paths(patterns)
 
 
@@ -4842,13 +4849,23 @@ def benchmark_evidence_matrix(
 
 
 def build_report(args: argparse.Namespace) -> dict[str, Any]:
+    discover_defaults = not getattr(args, "no_default_evidence_discovery", False)
     readiness_paths = filter_canary_readiness_paths(
-        normalize_paths(args.readiness_json, DEFAULT_READINESS_GLOBS)
+        normalize_paths(
+            args.readiness_json,
+            DEFAULT_READINESS_GLOBS,
+            discover_defaults=discover_defaults,
+        )
     )
-    nemoclaw_setup_paths = normalize_paths(args.nemoclaw_setup_json, (DEFAULT_NEMOCLAW_SETUP_GLOB,))
+    nemoclaw_setup_paths = normalize_paths(
+        args.nemoclaw_setup_json,
+        (DEFAULT_NEMOCLAW_SETUP_GLOB,),
+        discover_defaults=discover_defaults,
+    )
     nemoclaw_installer_review_paths = normalize_paths(
         getattr(args, "nemoclaw_installer_review_json", None),
         (DEFAULT_NEMOCLAW_INSTALLER_REVIEW_GLOB,),
+        discover_defaults=discover_defaults,
     )
     require_nemoclaw_operator_docs = not getattr(
         args,
@@ -4860,17 +4877,31 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         normalize_paths(
             explicit_nemoclaw_operator_docs,
             (DEFAULT_NEMOCLAW_OPERATOR_DOCS_GLOB,),
+            discover_defaults=discover_defaults,
         )
         if require_nemoclaw_operator_docs or explicit_nemoclaw_operator_docs
         else []
     )
-    weave_gate_paths = normalize_paths(args.weave_content_canary_gate, (DEFAULT_WEAVE_GATE_GLOB,))
-    wandb_completion_paths = normalize_paths(args.wandb_completion_json, (DEFAULT_WANDB_COMPLETION_GLOB,))
+    weave_gate_paths = normalize_paths(
+        args.weave_content_canary_gate,
+        (DEFAULT_WEAVE_GATE_GLOB,),
+        discover_defaults=discover_defaults,
+    )
+    wandb_completion_paths = normalize_paths(
+        args.wandb_completion_json,
+        (DEFAULT_WANDB_COMPLETION_GLOB,),
+        discover_defaults=discover_defaults,
+    )
     existing_results_audit_paths = normalize_paths(
         getattr(args, "existing_results_audit_json", None),
         (DEFAULT_EXISTING_RESULTS_AUDIT_GLOB,),
+        discover_defaults=discover_defaults,
     )
-    review_paths = normalize_paths(args.batch_review_json, (str(args.output_root / "*paid_run_review.json"),))
+    review_paths = normalize_paths(
+        args.batch_review_json,
+        (str(args.output_root / "*paid_run_review.json"),),
+        discover_defaults=discover_defaults,
+    )
     required_wandb_benchmarks = args.required_wandb_benchmark or list(DEFAULT_REQUIRED_WANDB_BENCHMARKS)
     required_wandb_run_ids = parse_required_wandb_run_ids(
         args.required_wandb_run_id,
@@ -4972,6 +5003,15 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
+    parser.add_argument(
+        "--no-default-evidence-discovery",
+        action="store_true",
+        help=(
+            "Use only explicitly supplied evidence paths. This prevents historical "
+            "outputs in the repository from being mixed into a reproducible release "
+            "bundle. Runner-generated evidence is still supplied explicitly."
+        ),
+    )
     parser.add_argument("--readiness-json", type=Path, action="append")
     parser.add_argument("--nemoclaw-setup-json", type=Path, action="append")
     parser.add_argument("--nemoclaw-installer-review-json", type=Path, action="append")

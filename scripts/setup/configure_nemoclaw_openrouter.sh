@@ -141,7 +141,12 @@ if not path.exists():
     print("false")
     raise SystemExit
 data = json.loads(path.read_text(encoding="utf-8"))
-provider = data.get("models", {}).get("providers", {}).get("openrouter-direct")
+plugins = data.get("plugins", {})
+plugin_allow = plugins.get("allow") if isinstance(plugins, dict) else None
+plugin_entry = plugins.get("entries", {}).get("openrouter") if isinstance(plugins, dict) else None
+model_providers = data.get("models", {}).get("providers", {})
+provider = model_providers.get("openrouter")
+legacy_provider = model_providers.get("openrouter-direct")
 api_key = provider.get("apiKey") if isinstance(provider, dict) else None
 models = provider.get("models") if isinstance(provider, dict) else None
 glm = next(
@@ -153,7 +158,11 @@ glm = next(
     None,
 )
 print(str(bool(
-    isinstance(provider, dict)
+    isinstance(plugin_allow, list)
+    and "openrouter" in plugin_allow
+    and isinstance(plugin_entry, dict)
+    and plugin_entry.get("enabled") is True
+    and isinstance(provider, dict)
     and provider.get("baseUrl") == "https://openrouter.ai/api/v1"
     and isinstance(api_key, dict)
     and api_key.get("source") == "file"
@@ -161,6 +170,9 @@ print(str(bool(
     and api_key.get("id") == "/openrouter/apiKey"
     and isinstance(glm, dict)
     and (glm.get("params") or {}) == expected_params
+    and (provider.get("params") or {}) == expected_params
+    and isinstance(legacy_provider, dict)
+    and legacy_provider.get("baseUrl") == "https://openrouter.ai/api/v1"
 )).lower())
 PY
 }
@@ -193,6 +205,12 @@ if not isinstance(model_params, dict):
     raise SystemExit("OpenClaw model params JSON must be an object")
 data = json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
 
+plugins = data.setdefault("plugins", {})
+plugin_allow = plugins.setdefault("allow", [])
+if "openrouter" not in plugin_allow:
+    plugin_allow.append("openrouter")
+plugins.setdefault("entries", {}).setdefault("openrouter", {})["enabled"] = True
+
 secrets = data.setdefault("secrets", {})
 providers = secrets.setdefault("providers", {})
 providers["nejumi-openrouter"] = {
@@ -203,28 +221,15 @@ providers["nejumi-openrouter"] = {
 }
 
 model_providers = data.setdefault("models", {}).setdefault("providers", {})
-openrouter_direct = model_providers.setdefault("openrouter-direct", {})
-openrouter_direct.pop("agentRuntime", None)
-openrouter_direct.update(
-    {
-        "baseUrl": "https://openrouter.ai/api/v1",
-        "apiKey": {
-            "source": "file",
-            "provider": "nejumi-openrouter",
-            "id": "/openrouter/apiKey",
-        },
-        "auth": "api-key",
-        "api": "openai-completions",
-    }
-)
-
 models = []
 seen = set()
-for model in openrouter_direct.get("models") or []:
-    if isinstance(model, dict) and model.get("id") and model["id"] != "z-ai/glm-5.2":
-        if model["id"] not in seen:
-            models.append(model)
-            seen.add(model["id"])
+for provider_id in ("openrouter", "openrouter-direct"):
+    provider = model_providers.get(provider_id)
+    for model in provider.get("models") or [] if isinstance(provider, dict) else []:
+        if isinstance(model, dict) and model.get("id") and model["id"] != "z-ai/glm-5.2":
+            if model["id"] not in seen:
+                models.append(model)
+                seen.add(model["id"])
 glm = {
     "id": "z-ai/glm-5.2",
     "name": "Z.ai GLM 5.2 via OpenRouter",
@@ -242,7 +247,26 @@ glm = {
 if model_params:
     glm["params"] = model_params
 models.append(glm)
-openrouter_direct["models"] = models
+for provider_id in ("openrouter", "openrouter-direct"):
+    provider = model_providers.setdefault(provider_id, {})
+    provider.pop("agentRuntime", None)
+    provider.update(
+        {
+            "baseUrl": "https://openrouter.ai/api/v1",
+            "apiKey": {
+                "source": "file",
+                "provider": "nejumi-openrouter",
+                "id": "/openrouter/apiKey",
+            },
+            "auth": "api-key",
+            "api": "openai-completions",
+            "models": [dict(model) for model in models],
+        }
+    )
+    if model_params:
+        provider["params"] = model_params
+    else:
+        provider.pop("params", None)
 
 tmp = config_path.with_suffix(config_path.suffix + ".tmp")
 tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -294,7 +318,10 @@ for key in [
 ]:
     payload[key] = str(payload[key]).lower() in {"1", "true", "yes", "on"}
 payload["secret_value_in_report"] = False
-payload["registered_models"] = ["openrouter-direct/z-ai/glm-5.2"]
+payload["registered_models"] = [
+    "openrouter/z-ai/glm-5.2",
+    "openrouter-direct/z-ai/glm-5.2",
+]
 payload["openclaw_model_params"] = json.loads(payload.pop("openclaw_model_params_json"))
 print(json.dumps(payload, ensure_ascii=False, indent=2))
 PY

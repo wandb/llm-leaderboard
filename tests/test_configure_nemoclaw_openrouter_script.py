@@ -112,7 +112,9 @@ def test_configure_nemoclaw_openrouter_registers_pinned_glm_model(tmp_path):
     assert report["secret_value_in_report"] is False
 
     config = json.loads(config_file.read_text(encoding="utf-8"))
-    provider = config["models"]["providers"]["openrouter-direct"]
+    assert "openrouter" in config["plugins"]["allow"]
+    assert config["plugins"]["entries"]["openrouter"]["enabled"] is True
+    provider = config["models"]["providers"]["openrouter"]
     assert provider["baseUrl"] == "https://openrouter.ai/api/v1"
     assert provider["api"] == "openai-completions"
     assert provider["apiKey"] == {
@@ -122,7 +124,18 @@ def test_configure_nemoclaw_openrouter_registers_pinned_glm_model(tmp_path):
     }
     glm = next(item for item in provider["models"] if item["id"] == "z-ai/glm-5.2")
     assert glm["params"] == model_params
+    assert provider["params"] == model_params
     assert glm["maxTokens"] == 32768
+    legacy_provider = config["models"]["providers"]["openrouter-direct"]
+    legacy_glm = next(
+        item for item in legacy_provider["models"] if item["id"] == "z-ai/glm-5.2"
+    )
+    assert legacy_glm["params"] == model_params
+    assert legacy_provider["params"] == model_params
+    assert report["registered_models"] == [
+        "openrouter/z-ai/glm-5.2",
+        "openrouter-direct/z-ai/glm-5.2",
+    ]
 
     secrets = json.loads(secret_file.read_text(encoding="utf-8"))
     assert secrets["openrouter"]["apiKey"] == "or-test"

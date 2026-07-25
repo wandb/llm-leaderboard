@@ -923,6 +923,28 @@ write_if_changed(tool_path, tool_text, original_tool)
 plugin_path = plugin_dir / "dist" / "src" / "plugin.js"
 plugin_text = plugin_path.read_text(encoding="utf-8")
 original_plugin = plugin_text
+if "Nejumi patch: preserve active traces across duplicate service starts" not in plugin_text:
+    plugin_text = replace_once(
+        plugin_text,
+        """        async start(ctx) {
+            logger = ctx.logger;
+            if (lifecycle === "running")
+                resetTransientState();
+            resolved = undefined;
+""",
+        """        async start(ctx) {
+            logger = ctx.logger;
+            // Nejumi patch: preserve active traces across duplicate service starts.
+            // OpenClaw re-registers this shared service when another task agent is
+            // added. Clearing process-wide registries here drops concurrent runs.
+            if (lifecycle === "running") {
+                ctx.logger.info("weave: shared service already running; preserving active trace state");
+                return;
+            }
+            resolved = undefined;
+""",
+        f"{plugin_path}: idempotent shared service start",
+    )
 if "Nejumi patch: expose explicit OTel flush" not in plugin_text:
     plugin_text = replace_once(
         plugin_text,
@@ -1121,6 +1143,7 @@ for path, needle in (
     (llm_state_path, 'setJsonAttr(handle.llm.span, "gen_ai.input.messages"'),
     (tool_path, "toolContent?.toolOutput ?? captured?.result"),
     (plugin_path, "async function flush(reason, ctx)"),
+    (plugin_path, "preserve active traces across duplicate service starts"),
     (plugin_path, "return { service, registries, getStatus, flush, handlers };"),
     (index_path, "resolveTrustedInternalDiagnosticEvent"),
     (index_path, 'plugin.flush?.("agent_end"'),

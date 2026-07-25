@@ -1,0 +1,10 @@
+[
+  "go-genai-streamed-function-args",
+  "etree-xml-diff-patch",
+  "ytt-jsonpath-query-api",
+  "mnamer-daemon-watch-lifecycle",
+  "langchain-request-coalescing",
+  "ofetch-per-origin-circuit-breaker",
+  "kea-atomic-signal-selectors",
+  "happy-dom-deterministic-intersectionobserver"
+]

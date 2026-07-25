@@ -19,6 +19,7 @@ Options:
   --agent-version VALUE       Weave agent version. Default: nejumi-agent-protocol-2026.04.
   --service-name NAME         Weave service name. Default: openclaw-agent.
   --openai-key-env NAME       Env var containing the OpenAI API key. Default: OPENAI_API_KEY.
+  --anthropic-key-env NAME    Env var containing the Anthropic API key. Default: ANTHROPIC_API_KEY.
   --wandb-inference-model-id ID
                               Also register a W&B Inference OpenClaw model. No default;
                               pass an ID confirmed by the W&B Inference /v1/models API.
@@ -44,6 +45,7 @@ Options:
   --skip-policy               Do not add the W&B egress policy.
   --skip-plugin-install       Do not install weave-openclaw.
   --skip-openai-direct        Do not merge the OpenAI-direct canary provider.
+  --skip-anthropic-direct     Do not merge the Anthropic-direct provider.
   --json PATH                 Write a machine-readable report.
   -h, --help                  Show this help.
 
@@ -58,6 +60,7 @@ NEMOCLAW_BIN="nemoclaw"
 ENV_FILE="$REPO_ROOT/.env"
 WANDB_KEY_ENV="WANDB_API_KEY"
 OPENAI_KEY_ENV="OPENAI_API_KEY"
+ANTHROPIC_KEY_ENV="ANTHROPIC_API_KEY"
 WANDB_INFERENCE_MODEL_ID=""
 WANDB_INFERENCE_PROVIDER_ID="wandb-inference"
 WANDB_INFERENCE_BASE_URL="https://api.inference.wandb.ai/v1"
@@ -80,6 +83,7 @@ CHECK_ONLY=0
 SKIP_POLICY=0
 SKIP_PLUGIN_INSTALL=0
 SKIP_OPENAI_DIRECT=0
+SKIP_ANTHROPIC_DIRECT=0
 FORCE_PLUGIN_INSTALL=0
 JSON_OUT=""
 
@@ -95,6 +99,7 @@ while [ "$#" -gt 0 ]; do
     --agent-version) AGENT_VERSION="$2"; shift 2 ;;
     --service-name) SERVICE_NAME="$2"; shift 2 ;;
     --openai-key-env) OPENAI_KEY_ENV="$2"; shift 2 ;;
+    --anthropic-key-env) ANTHROPIC_KEY_ENV="$2"; shift 2 ;;
     --wandb-inference-model-id) WANDB_INFERENCE_MODEL_ID="$2"; shift 2 ;;
     --wandb-inference-provider-id) WANDB_INFERENCE_PROVIDER_ID="$2"; shift 2 ;;
     --wandb-inference-base-url) WANDB_INFERENCE_BASE_URL="$2"; shift 2 ;;
@@ -112,6 +117,7 @@ while [ "$#" -gt 0 ]; do
     --skip-policy) SKIP_POLICY=1; shift ;;
     --skip-plugin-install) SKIP_PLUGIN_INSTALL=1; shift ;;
     --skip-openai-direct) SKIP_OPENAI_DIRECT=1; shift ;;
+    --skip-anthropic-direct) SKIP_ANTHROPIC_DIRECT=1; shift ;;
     --json) JSON_OUT="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -124,6 +130,10 @@ if [[ ! "$WANDB_KEY_ENV" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
 fi
 if [[ ! "$OPENAI_KEY_ENV" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
   echo "Invalid --openai-key-env: $OPENAI_KEY_ENV" >&2
+  exit 2
+fi
+if [[ ! "$ANTHROPIC_KEY_ENV" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+  echo "Invalid --anthropic-key-env: $ANTHROPIC_KEY_ENV" >&2
   exit 2
 fi
 if [[ ! "$WANDB_INFERENCE_MAX_TOKENS" =~ ^[0-9]+$ ]] || [ "$WANDB_INFERENCE_MAX_TOKENS" -le 0 ]; then
@@ -181,6 +191,11 @@ openai_credential_available=false
 if [ -n "$OPENAI_KEY_VALUE" ]; then
   openai_credential_available=true
 fi
+ANTHROPIC_KEY_VALUE="${!ANTHROPIC_KEY_ENV:-}"
+anthropic_credential_available=false
+if [ -n "$ANTHROPIC_KEY_VALUE" ]; then
+  anthropic_credential_available=true
+fi
 
 run_nemoclaw() {
   "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout "${2:-120}" -- bash -lc "$1"
@@ -233,6 +248,10 @@ policy_probe() {
     return
   fi
   if [ "$SKIP_OPENAI_DIRECT" -eq 0 ] && ! grep -q "host: api.openai.com" <<<"$status"; then
+    printf false
+    return
+  fi
+  if [ "$SKIP_ANTHROPIC_DIRECT" -eq 0 ] && ! grep -q "host: api.anthropic.com" <<<"$status"; then
     printf false
     return
   fi
@@ -339,6 +358,60 @@ print(str(bool(
     and api_key.get("id") == "/openai/apiKey"
     and "gpt-4.1-nano-2025-04-14" in model_ids
     and "gpt-4.1-mini-2025-04-14" in model_ids
+    and "gpt-5.6-luna" in model_ids
+)).lower())
+PY
+}
+
+anthropic_secret_probe() {
+  if [ "$SKIP_ANTHROPIC_DIRECT" -eq 1 ]; then
+    printf true
+    return 0
+  fi
+  "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 - "$SECRET_FILE" <<'PY' 2>/dev/null || printf false
+import json
+import stat
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists():
+    print("false")
+    raise SystemExit
+mode = stat.S_IMODE(path.stat().st_mode)
+data = json.loads(path.read_text(encoding="utf-8"))
+print(str(bool(data.get("anthropic", {}).get("apiKey")) and mode & 0o007 == 0).lower())
+PY
+}
+
+anthropic_direct_config_probe() {
+  if [ "$SKIP_ANTHROPIC_DIRECT" -eq 1 ]; then
+    printf true
+    return 0
+  fi
+  "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 - "$OPENCLAW_CONFIG" <<'PY' 2>/dev/null || printf false
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists():
+    print("false")
+    raise SystemExit
+data = json.loads(path.read_text(encoding="utf-8"))
+provider = data.get("models", {}).get("providers", {}).get("anthropic")
+api_key = provider.get("apiKey") if isinstance(provider, dict) else None
+models = provider.get("models") if isinstance(provider, dict) else None
+model_ids = {str(model.get("id")) for model in models or [] if isinstance(model, dict)}
+print(str(bool(
+    isinstance(provider, dict)
+    and provider.get("baseUrl") == "https://api.anthropic.com"
+    and provider.get("api") == "anthropic-messages"
+    and isinstance(api_key, dict)
+    and api_key.get("source") == "file"
+    and api_key.get("provider") == "nejumi-anthropic"
+    and api_key.get("id") == "/anthropic/apiKey"
+    and "claude-fable-5" in model_ids
 )).lower())
 PY
 }
@@ -390,6 +463,7 @@ plugin_install_attempted=false
 plugin_install_method="none"
 secret_written=false
 openai_secret_written=false
+anthropic_secret_written=false
 config_written=false
 
 if [ "$CHECK_ONLY" -eq 0 ]; then
@@ -423,9 +497,13 @@ if [ "$CHECK_ONLY" -eq 0 ]; then
     printf '%s' "$OPENAI_KEY_VALUE" | "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 -c 'import json, os, sys; from pathlib import Path; path = Path(sys.argv[1]); secret = sys.stdin.read().strip(); path.parent.mkdir(parents=True, exist_ok=True); data = {}; data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}; data.setdefault("openai", {})["apiKey"] = secret; tmp = path.with_suffix(path.suffix + ".tmp"); tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"); os.chmod(tmp, 0o600); tmp.replace(path); os.chmod(path, 0o600)' "$SECRET_FILE"
     openai_secret_written=true
   fi
+  if [ "$SKIP_ANTHROPIC_DIRECT" -eq 0 ] && [ "$anthropic_credential_available" = true ]; then
+    printf '%s' "$ANTHROPIC_KEY_VALUE" | "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 -c 'import json, os, sys; from pathlib import Path; path = Path(sys.argv[1]); secret = sys.stdin.read().strip(); path.parent.mkdir(parents=True, exist_ok=True); data = {}; data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}; data.setdefault("anthropic", {})["apiKey"] = secret; tmp = path.with_suffix(path.suffix + ".tmp"); tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"); os.chmod(tmp, 0o600); tmp.replace(path); os.chmod(path, 0o600)' "$SECRET_FILE"
+    anthropic_secret_written=true
+  fi
 
   "$NEMOCLAW_BIN" sandbox exec "$SANDBOX" --workdir /sandbox --no-tty --timeout 60 -- python3 - \
-    "$OPENCLAW_CONFIG" "$SECRET_FILE" "$ENTITY" "$PROJECT" "$SERVICE_NAME" "$AGENT_NAME" "$AGENT_VERSION" "$SKIP_OPENAI_DIRECT" \
+    "$OPENCLAW_CONFIG" "$SECRET_FILE" "$ENTITY" "$PROJECT" "$SERVICE_NAME" "$AGENT_NAME" "$AGENT_VERSION" "$SKIP_OPENAI_DIRECT" "$SKIP_ANTHROPIC_DIRECT" \
     "$WANDB_INFERENCE_PROVIDER_ID" "$WANDB_INFERENCE_BASE_URL" "$WANDB_INFERENCE_MODEL_ID" "$WANDB_INFERENCE_MAX_TOKENS" \
     "$WANDB_INFERENCE_CONTEXT_WINDOW" "$WANDB_INFERENCE_REASONING" "$WANDB_INFERENCE_MODEL_PARAMS_JSON" <<'PY'
 import json
@@ -433,7 +511,7 @@ import sys
 from pathlib import Path
 
 config_path = Path(sys.argv[1])
-secret_file, entity, project, service_name, agent_name, agent_version, skip_openai_direct = sys.argv[2:9]
+secret_file, entity, project, service_name, agent_name, agent_version, skip_openai_direct, skip_anthropic_direct = sys.argv[2:10]
 (
     wandb_inference_provider_id,
     wandb_inference_base_url,
@@ -442,7 +520,7 @@ secret_file, entity, project, service_name, agent_name, agent_version, skip_open
     wandb_inference_context_window,
     wandb_inference_reasoning,
     wandb_inference_model_params_json,
-) = sys.argv[9:16]
+) = sys.argv[10:17]
 wandb_inference_model_params = json.loads(wandb_inference_model_params_json)
 if not isinstance(wandb_inference_model_params, dict):
     raise SystemExit("W&B Inference model params JSON must be an object")
@@ -491,6 +569,13 @@ providers["nejumi-wandb"] = {
 }
 if skip_openai_direct != "1":
     providers["nejumi-openai"] = {
+        "source": "file",
+        "path": secret_file,
+        "mode": "json",
+        "allowInsecurePath": True,
+    }
+if skip_anthropic_direct != "1":
+    providers["nejumi-anthropic"] = {
         "source": "file",
         "path": secret_file,
         "mode": "json",
@@ -566,9 +651,59 @@ if skip_openai_direct != "1":
                 "contextWindow": 1047576,
                 "maxTokens": 32768,
             },
+            {
+                "id": "gpt-5.6-luna",
+                "name": "gpt-5.6-luna",
+                "api": "openai-responses",
+                "reasoning": True,
+                "input": ["text", "image"],
+                "contextWindow": 1000000,
+                "maxTokens": 65536,
+            },
         ],
     )
     for model in openai_direct.get("models") or []:
+        if isinstance(model, dict):
+            model.pop("agentRuntime", None)
+if skip_anthropic_direct != "1":
+    anthropic_direct = model_providers.setdefault("anthropic", {})
+    anthropic_direct.pop("agentRuntime", None)
+    anthropic_direct.update(
+        {
+            "baseUrl": "https://api.anthropic.com",
+            "apiKey": {
+                "source": "file",
+                "provider": "nejumi-anthropic",
+                "id": "/anthropic/apiKey",
+            },
+            "auth": "api-key",
+            "api": "anthropic-messages",
+        }
+    )
+    anthropic_direct["models"] = merge_models(
+        anthropic_direct.get("models"),
+        [
+            {
+                "id": "claude-sonnet-4-6",
+                "name": "claude-sonnet-4-6",
+                "api": "anthropic-messages",
+                "reasoning": True,
+                "input": ["text", "image"],
+                "contextWindow": 1_000_000,
+                "maxTokens": 64_000,
+            },
+            {
+                "id": "claude-fable-5",
+                "name": "claude-fable-5",
+                "api": "anthropic-messages",
+                "reasoning": True,
+                "input": ["text", "image"],
+                "contextWindow": 1000000,
+                "maxTokens": 128000,
+            },
+        ],
+    )
+    for model in anthropic_direct.get("models") or []:
         if isinstance(model, dict):
             model.pop("agentRuntime", None)
 tmp = config_path.with_suffix(config_path.suffix + ".tmp")
@@ -584,6 +719,8 @@ policy_ok="$(policy_probe)"
 secret_ok="$(secret_probe)"
 openai_direct_config_ok="$(openai_direct_config_probe)"
 openai_secret_ok="$(openai_secret_probe)"
+anthropic_direct_config_ok="$(anthropic_direct_config_probe)"
+anthropic_secret_ok="$(anthropic_secret_probe)"
 wandb_inference_config_ok="$(wandb_inference_config_probe)"
 ok=false
 if [ "$plugin_installed" = true ] \
@@ -592,11 +729,13 @@ if [ "$plugin_installed" = true ] \
   && [ "$openai_direct_config_ok" = true ] \
   && [ "$wandb_inference_config_ok" = true ] \
   && [ "$openai_secret_ok" = true ] \
+  && [ "$anthropic_direct_config_ok" = true ] \
+  && [ "$anthropic_secret_ok" = true ] \
   && { [ "$credential_available" = false ] || [ "$secret_ok" = true ]; }; then
   ok=true
 fi
 
-report_json="$(python3 - "$SANDBOX" "$WANDB_KEY_ENV" "$OPENAI_KEY_ENV" "$credential_available" "$openai_credential_available" "$policy_added" "$plugin_install_attempted" "$plugin_install_method" "$secret_written" "$openai_secret_written" "$config_written" "$plugin_installed" "$config_ok" "$policy_ok" "$secret_ok" "$openai_direct_config_ok" "$openai_secret_ok" "$wandb_inference_config_ok" "$ok" "$SECRET_FILE" "$OPENCLAW_CONFIG" "$POLICY_FILE" "$WEAVE_PLUGIN_SOURCE" "$LOCAL_WEAVE_PROJECT" "$SKIP_OPENAI_DIRECT" "$FORCE_PLUGIN_INSTALL" "$WANDB_INFERENCE_PROVIDER_ID" "$WANDB_INFERENCE_BASE_URL" "$WANDB_INFERENCE_MODEL_ID" "$WANDB_INFERENCE_MAX_TOKENS" "$WANDB_INFERENCE_CONTEXT_WINDOW" "$WANDB_INFERENCE_REASONING" "$WANDB_INFERENCE_MODEL_PARAMS_JSON" <<'PY'
+report_json="$(python3 - "$SANDBOX" "$WANDB_KEY_ENV" "$OPENAI_KEY_ENV" "$ANTHROPIC_KEY_ENV" "$credential_available" "$openai_credential_available" "$anthropic_credential_available" "$policy_added" "$plugin_install_attempted" "$plugin_install_method" "$secret_written" "$openai_secret_written" "$anthropic_secret_written" "$config_written" "$plugin_installed" "$config_ok" "$policy_ok" "$secret_ok" "$openai_direct_config_ok" "$openai_secret_ok" "$anthropic_direct_config_ok" "$anthropic_secret_ok" "$wandb_inference_config_ok" "$ok" "$SECRET_FILE" "$OPENCLAW_CONFIG" "$POLICY_FILE" "$WEAVE_PLUGIN_SOURCE" "$LOCAL_WEAVE_PROJECT" "$SKIP_OPENAI_DIRECT" "$SKIP_ANTHROPIC_DIRECT" "$FORCE_PLUGIN_INSTALL" "$WANDB_INFERENCE_PROVIDER_ID" "$WANDB_INFERENCE_BASE_URL" "$WANDB_INFERENCE_MODEL_ID" "$WANDB_INFERENCE_MAX_TOKENS" "$WANDB_INFERENCE_CONTEXT_WINDOW" "$WANDB_INFERENCE_REASONING" "$WANDB_INFERENCE_MODEL_PARAMS_JSON" <<'PY'
 import json
 import sys
 
@@ -604,13 +743,16 @@ keys = [
     "sandbox",
     "wandb_key_env",
     "openai_key_env",
+    "anthropic_key_env",
     "credential_available",
     "openai_credential_available",
+    "anthropic_credential_available",
     "policy_added",
     "plugin_install_attempted",
     "plugin_install_method",
     "secret_written",
     "openai_secret_written",
+    "anthropic_secret_written",
     "config_written",
     "plugin_installed",
     "config_ok",
@@ -618,6 +760,8 @@ keys = [
     "secret_ok",
     "openai_direct_config_ok",
     "openai_secret_ok",
+    "anthropic_direct_config_ok",
+    "anthropic_secret_ok",
     "wandb_inference_config_ok",
     "ok",
     "secret_file",
@@ -626,6 +770,7 @@ keys = [
     "weave_plugin_source",
     "local_weave_project",
     "skip_openai_direct",
+    "skip_anthropic_direct",
     "force_plugin_install",
     "wandb_inference_provider_id",
     "wandb_inference_base_url",
@@ -639,10 +784,12 @@ payload = dict(zip(keys, sys.argv[1:]))
 for key in [
     "credential_available",
     "openai_credential_available",
+    "anthropic_credential_available",
     "policy_added",
     "plugin_install_attempted",
     "secret_written",
     "openai_secret_written",
+    "anthropic_secret_written",
     "config_written",
     "plugin_installed",
     "config_ok",
@@ -650,14 +797,18 @@ for key in [
     "secret_ok",
     "openai_direct_config_ok",
     "openai_secret_ok",
+    "anthropic_direct_config_ok",
+    "anthropic_secret_ok",
     "wandb_inference_config_ok",
     "ok",
     "skip_openai_direct",
+    "skip_anthropic_direct",
     "force_plugin_install",
 ]:
     payload[key] = str(payload[key]).lower() in {"1", "true", "yes", "on"}
 payload["secret_value_in_report"] = False
 payload["openai_secret_value_in_report"] = False
+payload["anthropic_secret_value_in_report"] = False
 payload["weave_agent_name"] = "nejumi-taiwan-openclaw"
 payload["wandb_inference_enabled"] = bool(payload.get("wandb_inference_model_id"))
 payload["wandb_inference_model_params"] = json.loads(

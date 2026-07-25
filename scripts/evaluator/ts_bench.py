@@ -13,6 +13,11 @@ from config_singleton import WandbConfigSingleton
 
 try:
     from .evaluate_utils import LLMAsyncProcessor
+    from .evaluate_utils.llm_response_checkpoint import (
+        LLMResponseCheckpointStore,
+        default_checkpoint_root,
+        run_checkpointed_batch,
+    )
 except ImportError:
     LLMAsyncProcessor = None
 
@@ -208,7 +213,16 @@ def evaluate():
         all_inputs.append([messages, generator_config])
         evaluation_results.append({"id": data["id"], "response": ""})
 
-    responses = LLMAsyncProcessor(llm=llm, inputs=all_inputs).get_results()
+    responses = run_checkpointed_batch(
+        llm=llm,
+        inputs=all_inputs,
+        keys=(str(row["id"]) for row in evaluation_results),
+        checkpoint_store=LLMResponseCheckpointStore(
+            default_checkpoint_root(run, dataset_name),
+            model_name=cfg.model.pretrained_model_name_or_path,
+        ),
+        label="TS-Bench",
+    )
     for response, row in zip(responses, evaluation_results):
         row["response"] = getattr(response, "content", str(response))
 

@@ -153,6 +153,20 @@ AGENTIC_ROW_POSITIVE_INT_COLUMNS = (
     "nemoclaw_session_copied_bytes",
 )
 NEMOCLAW_SESSION_COPY_SOURCES = ("stdout_agent_meta", "live_runtime_budget")
+BFCL_OUTPUT_TABLE_REQUIRED_COLUMNS = (
+    "model",
+    "id",
+    "category",
+    "prompt",
+    "output",
+    "accuracy",
+    "possible_answer",
+    "reasoning_content",
+    "input_token_count",
+    "output_token_count",
+    "timeout",
+    "error",
+)
 
 
 @dataclass(frozen=True)
@@ -161,6 +175,7 @@ class BenchmarkSpec:
     leaderboard_table: str
     output_table: str
     total_metric: str
+    output_total_metric: str | None = None
     answered_metric: str | None = None
     correct_metric: str | None = None
     accuracy_metric: str | None = None
@@ -173,6 +188,14 @@ class BenchmarkSpec:
 
 
 BENCHMARK_SPECS: dict[str, BenchmarkSpec] = {
+    "bfcl": BenchmarkSpec(
+        id="bfcl",
+        leaderboard_table="bfcl_leaderboard_table",
+        output_table="bfcl_output_table",
+        total_metric="bfcl_profile_case_count",
+        output_total_metric="bfcl_runtime_case_count",
+        output_table_required_columns=BFCL_OUTPUT_TABLE_REQUIRED_COLUMNS,
+    ),
     "agentic_math": BenchmarkSpec(
         id="agentic_math",
         leaderboard_table="agentic_math_leaderboard_table",
@@ -212,8 +235,103 @@ AGGREGATE_TABLES = (
     "taiwan_glp_radar_table",
     "taiwan_alt_radar_table",
 )
+TAIWAN_AGGREGATE_SCORE_METRICS = ("GLP", "ALT", "Overall")
 BFCL_TIMEOUT_METRIC = "bfcl_timeout_count"
 BFCL_INFERENCE_ERROR_METRIC = "bfcl_inference_error_count"
+BFCL_RELEASE_PROFILE = "full"
+BFCL_RELEASE_CASE_COUNT = 496
+
+
+def _bfcl_completion_checks(
+    summary: dict[str, Any],
+    *,
+    total: int | None,
+) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    for metric_name in (BFCL_TIMEOUT_METRIC, BFCL_INFERENCE_ERROR_METRIC):
+        raw_value = _metric(summary, metric_name)
+        try:
+            value = int(raw_value)
+        except (TypeError, ValueError):
+            value = None
+        if value == 0:
+            checks.append(
+                _ok_check(
+                    "bfcl_runtime_error_metric",
+                    f"{metric_name} is zero",
+                    metric=metric_name,
+                    value=value,
+                    expected=0,
+                )
+            )
+        else:
+            checks.append(
+                _fail_check(
+                    "bfcl_runtime_error_metric",
+                    f"{metric_name} must be 0",
+                    metric=metric_name,
+                    value=raw_value,
+                    expected=0,
+                )
+            )
+
+    version = _metric(summary, "bfcl_version")
+    if version == "v4":
+        checks.append(
+            _ok_check("bfcl_version", "BFCL version is v4", value=version)
+        )
+    else:
+        checks.append(
+            _fail_check(
+                "bfcl_version",
+                "BFCL version must be v4",
+                value=version,
+                expected="v4",
+            )
+        )
+
+    profile_total_raw = _metric(summary, "bfcl_profile_case_count")
+    try:
+        profile_total = int(profile_total_raw)
+    except (TypeError, ValueError):
+        profile_total = None
+    if total is not None and profile_total == total:
+        checks.append(
+            _ok_check(
+                "bfcl_profile_case_count",
+                "BFCL logical case count matches the verified total",
+                value=profile_total,
+                expected=total,
+            )
+        )
+    else:
+        checks.append(
+            _fail_check(
+                "bfcl_profile_case_count",
+                "BFCL logical case count must match the verified total",
+                value=profile_total_raw,
+                expected=total,
+            )
+        )
+
+    upstream_commit = _metric(summary, "bfcl_upstream_commit")
+    if isinstance(upstream_commit, str) and len(upstream_commit) == 40:
+        checks.append(
+            _ok_check(
+                "bfcl_upstream_commit",
+                "BFCL upstream commit is recorded",
+                value=upstream_commit,
+            )
+        )
+    else:
+        checks.append(
+            _fail_check(
+                "bfcl_upstream_commit",
+                "BFCL upstream commit is missing or invalid",
+                value=upstream_commit,
+            )
+        )
+    return checks
 
 
 def load_env_file(env: dict[str, str], path: Path | None) -> tuple[dict[str, str], bool]:
@@ -1067,6 +1185,11 @@ def _benchmark_required_evidence(
     agentic_swe_assorted_tier_counts: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     metrics = [spec.total_metric]
+    if (
+        spec.output_total_metric
+        and spec.output_total_metric != spec.total_metric
+    ):
+        metrics.append(spec.output_total_metric)
     if spec.answered_metric:
         metrics.append(spec.answered_metric)
     if spec.correct_metric:
@@ -1083,6 +1206,19 @@ def _benchmark_required_evidence(
                 else [],
             }
         )
+    output_table_evidence = {
+        "name": spec.output_table,
+        "row_count": (
+            "must equal "
+            f"{spec.output_total_metric or spec.total_metric}"
+        ),
+        "required_columns": list(spec.output_table_required_columns),
+    }
+    if spec.nemoclaw_audit_required_metric:
+        output_table_evidence["row_observability"] = (
+            "all required audit/tool/order/native Weave Agents row checks must pass"
+        )
+
     required_evidence = {
         "run_state": "finished",
         "expected_total": expected_total,
@@ -1092,14 +1228,7 @@ def _benchmark_required_evidence(
                 "name": spec.leaderboard_table,
                 "row_count": ">=1",
             },
-            {
-                "name": spec.output_table,
-                "row_count": "must equal total metric",
-                "required_columns": list(spec.output_table_required_columns),
-                "row_observability": (
-                    "all required audit/tool/order/native Weave Agents row checks must pass"
-                ),
-            },
+            output_table_evidence,
         ],
         "artifacts": artifacts,
     }
@@ -1170,6 +1299,13 @@ def _full_required_evidence(
         ]
         if require_aggregate
         else [],
+        "aggregate_summary_metrics": [
+            *TAIWAN_AGGREGATE_SCORE_METRICS,
+            "taiwan_missing_required_count",
+            "taiwan_pending_count",
+        ]
+        if require_aggregate
+        else [],
     }
 
 
@@ -1181,6 +1317,7 @@ def _observed_benchmark_evidence(
 ) -> dict[str, Any]:
     metric_names = {
         "total_metric": spec.total_metric,
+        "output_total_metric": spec.output_total_metric,
         "answered_metric": spec.answered_metric,
         "correct_metric": spec.correct_metric,
         "accuracy_metric": spec.accuracy_metric,
@@ -1439,10 +1576,34 @@ def _nemoclaw_session_audit_check(
     )
 
 
+def _normalize_agentic_swe_assorted_tier_counts(
+    raw_counts: dict[str, int],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for raw_tier, raw_count in raw_counts.items():
+        tier = str(raw_tier).strip().casefold()
+        if not tier:
+            raise ValueError("Agentic SWE-Assorted tier must not be empty")
+        if tier in counts:
+            raise ValueError(f"duplicate Agentic SWE-Assorted tier {tier!r}")
+        try:
+            count = int(raw_count)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Agentic SWE-Assorted count for {tier} is not an integer"
+            ) from exc
+        if count < 0:
+            raise ValueError(
+                f"Agentic SWE-Assorted count for {tier} must be non-negative"
+            )
+        counts[tier] = count
+    return counts
+
+
 def _parse_agentic_swe_assorted_tier_counts(value: str | None) -> dict[str, int]:
     if not value:
         return dict(AGENTIC_SWE_ASSORTED_DEFAULT_TIER_COUNTS)
-    counts: dict[str, int] = {}
+    raw_counts: dict[str, str] = {}
     for part in value.split(","):
         if not part.strip():
             continue
@@ -1451,21 +1612,16 @@ def _parse_agentic_swe_assorted_tier_counts(value: str | None) -> dict[str, int]
                 "--agentic-swe-assorted-tier-counts must be comma-separated TIER=COUNT"
             )
         tier, raw_count = part.split("=", 1)
-        tier = tier.strip()
-        if not tier:
-            raise SystemExit("--agentic-swe-assorted-tier-counts tier must not be empty")
-        try:
-            count = int(raw_count)
-        except ValueError as exc:
+        if tier.strip() in raw_counts:
             raise SystemExit(
-                f"--agentic-swe-assorted-tier-counts count for {tier} is not an integer"
-            ) from exc
-        if count < 0:
-            raise SystemExit(
-                f"--agentic-swe-assorted-tier-counts count for {tier} must be non-negative"
+                "--agentic-swe-assorted-tier-counts contains duplicate tier "
+                f"{tier.strip()!r}"
             )
-        counts[tier] = count
-    return counts
+        raw_counts[tier] = raw_count
+    try:
+        return _normalize_agentic_swe_assorted_tier_counts(raw_counts)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 def _artifact_files_check(
@@ -1687,7 +1843,7 @@ def _agentic_swe_assorted_checks(
             invalid_source_examples: list[dict[str, Any]] = []
             invalid_source_count = 0
             for index, row in enumerate(rows, start=1):
-                tier = str(row.get("agentic_swe_tier"))
+                tier = str(row.get("agentic_swe_tier")).strip().casefold()
                 tier_counts[tier] = tier_counts.get(tier, 0) + 1
                 expected_source = AGENTIC_SWE_ASSORTED_TIER_SOURCES.get(tier)
                 if expected_source is not None and row.get("source_benchmark") != expected_source:
@@ -1754,6 +1910,7 @@ def _observed_full_evidence(checks: list[dict[str, Any]]) -> dict[str, Any]:
         "run_state": None,
         "taxonomy_tables": [],
         "aggregate_tables": [],
+        "aggregate_summary_metrics": {},
         "skipped_pending_units": [],
         "bfcl_runtime_error_metrics": {},
     }
@@ -1779,6 +1936,20 @@ def _observed_full_evidence(checks: list[dict[str, Any]]) -> dict[str, Any]:
                     "nrows": check.get("nrows"),
                 }
             )
+        elif name in {
+            "aggregate_score_metric",
+            "aggregate_missing_required_metric",
+            "aggregate_pending_metric",
+        }:
+            metric = check.get("metric") or {
+                "aggregate_missing_required_metric": "taiwan_missing_required_count",
+                "aggregate_pending_metric": "taiwan_pending_count",
+            }.get(name)
+            observed["aggregate_summary_metrics"][metric] = {
+                "ok": bool(check.get("ok")),
+                "value": check.get("value"),
+                "expected": check.get("expected"),
+            }
         elif name == "taxonomy_unit_pending_skipped":
             observed["skipped_pending_units"].append(
                 {
@@ -1810,6 +1981,12 @@ def verify_run(
 ) -> dict[str, Any]:
     summary = _as_summary_dict(run)
     checks: list[dict[str, Any]] = []
+    if agentic_swe_assorted_tier_counts is not None:
+        agentic_swe_assorted_tier_counts = (
+            _normalize_agentic_swe_assorted_tier_counts(
+                agentic_swe_assorted_tier_counts
+            )
+        )
 
     state = getattr(run, "state", None)
     if state == "finished":
@@ -1839,6 +2016,30 @@ def verify_run(
         checks.append(
             _ok_check("total_metric", f"{spec.total_metric} is present", value=total)
         )
+
+    output_total = total
+    if spec.output_total_metric and spec.output_total_metric != spec.total_metric:
+        output_total_raw = _metric(summary, spec.output_total_metric)
+        try:
+            output_total = int(output_total_raw)
+        except (TypeError, ValueError):
+            output_total = None
+        if output_total is None:
+            checks.append(
+                _fail_check(
+                    "output_total_metric",
+                    f"missing or invalid {spec.output_total_metric}",
+                    value=output_total_raw,
+                )
+            )
+        else:
+            checks.append(
+                _ok_check(
+                    "output_total_metric",
+                    f"{spec.output_total_metric} is present",
+                    value=output_total,
+                )
+            )
 
     leaderboard_rows = _table_nrows(summary, spec.leaderboard_table)
     if leaderboard_rows is None:
@@ -1873,20 +2074,22 @@ def verify_run(
                 f"missing or invalid W&B table summary for {spec.output_table}",
             )
         )
-    elif total is not None and output_rows != total:
+    elif output_total is not None and output_rows != output_total:
         checks.append(
             _fail_check(
                 "output_table",
-                f"{spec.output_table} row count does not match total metric",
+                f"{spec.output_table} row count does not match "
+                f"{spec.output_total_metric or spec.total_metric}",
                 nrows=output_rows,
-                expected=total,
+                expected=output_total,
             )
         )
     else:
         checks.append(
             _ok_check(
                 "output_table",
-                f"{spec.output_table} row count matches total metric",
+                f"{spec.output_table} row count matches "
+                f"{spec.output_total_metric or spec.total_metric}",
                 nrows=output_rows,
             )
         )
@@ -2048,6 +2251,9 @@ def verify_run(
     if nemoclaw_audit_check is not None:
         checks.append(nemoclaw_audit_check)
 
+    if spec.id == "bfcl":
+        checks.extend(_bfcl_completion_checks(summary, total=total))
+
     artifacts = _artifact_summaries(run)
     if spec.result_artifact_type:
         matching = [
@@ -2199,6 +2405,121 @@ def verify_full_taiwan_run(
     if require_aggregate:
         for table_name in AGGREGATE_TABLES:
             checks.append(_table_check(summary, table_name, name="aggregate_table"))
+        for metric_name in TAIWAN_AGGREGATE_SCORE_METRICS:
+            raw_value = _metric(summary, metric_name)
+            try:
+                value = float(raw_value)
+            except (TypeError, ValueError):
+                value = float("nan")
+            if math.isfinite(value):
+                checks.append(
+                    _ok_check(
+                        "aggregate_score_metric",
+                        f"{metric_name} is a finite aggregate score",
+                        metric=metric_name,
+                        value=value,
+                    )
+                )
+            else:
+                checks.append(
+                    _fail_check(
+                        "aggregate_score_metric",
+                        f"{metric_name} is missing or invalid",
+                        metric=metric_name,
+                        value=raw_value,
+                    )
+                )
+
+        missing_required_raw = _metric(summary, "taiwan_missing_required_count")
+        pending_raw = _metric(summary, "taiwan_pending_count")
+        try:
+            missing_required_count = int(missing_required_raw)
+        except (TypeError, ValueError):
+            missing_required_count = None
+        try:
+            pending_count = int(pending_raw)
+        except (TypeError, ValueError):
+            pending_count = None
+        if missing_required_count == 0:
+            checks.append(
+                _ok_check(
+                    "aggregate_missing_required_metric",
+                    "Taiwan aggregate has zero missing required units",
+                    value=missing_required_count,
+                    expected=0,
+                )
+            )
+        else:
+            checks.append(
+                _fail_check(
+                    "aggregate_missing_required_metric",
+                    "Taiwan aggregate must have zero missing required units",
+                    value=missing_required_raw,
+                    expected=0,
+                )
+            )
+        if pending_count is not None and pending_count >= 0:
+            checks.append(
+                _ok_check(
+                    "aggregate_pending_metric",
+                    "Taiwan aggregate pending count is present",
+                    value=pending_count,
+                    expected="integer >= 0",
+                )
+            )
+        else:
+            checks.append(
+                _fail_check(
+                    "aggregate_pending_metric",
+                    "Taiwan aggregate pending count is missing or invalid",
+                    value=pending_raw,
+                    expected="integer >= 0",
+                )
+            )
+
+    bfcl_profile = _metric(summary, "bfcl_profile")
+    if bfcl_profile == BFCL_RELEASE_PROFILE:
+        checks.append(
+            _ok_check(
+                "bfcl_release_profile",
+                "BFCL release profile is full",
+                value=bfcl_profile,
+                expected=BFCL_RELEASE_PROFILE,
+            )
+        )
+    else:
+        checks.append(
+            _fail_check(
+                "bfcl_release_profile",
+                "Taiwan full completion requires the BFCL full profile",
+                value=bfcl_profile,
+                expected=BFCL_RELEASE_PROFILE,
+            )
+        )
+
+    bfcl_case_count_raw = _metric(summary, "bfcl_profile_case_count")
+    try:
+        bfcl_case_count = int(bfcl_case_count_raw)
+    except (TypeError, ValueError):
+        bfcl_case_count = None
+    if bfcl_case_count == BFCL_RELEASE_CASE_COUNT:
+        checks.append(
+            _ok_check(
+                "bfcl_release_case_count",
+                "BFCL release profile contains 496 logical cases",
+                value=bfcl_case_count,
+                expected=BFCL_RELEASE_CASE_COUNT,
+            )
+        )
+    else:
+        checks.append(
+            _fail_check(
+                "bfcl_release_case_count",
+                "Taiwan full completion requires 496 BFCL logical cases",
+                value=bfcl_case_count_raw,
+                expected=BFCL_RELEASE_CASE_COUNT,
+            )
+        )
 
     raw_timeout_value = _metric(summary, BFCL_TIMEOUT_METRIC)
     try:
@@ -2354,8 +2675,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=int,
         default=None,
         help=(
-            "Expected number of evaluated instances. Agentic Math full is 100; "
-            "the current SWE-Bench Pro leaderboard subset is 80."
+            "Expected number of evaluated instances. Taiwan BFCL v4 full is "
+            "496 (diagnostic core is 346); "
+            "Agentic Math full is 100; the current Agentic SWE-Assorted set is 50."
         ),
     )
     parser.add_argument(

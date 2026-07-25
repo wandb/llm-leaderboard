@@ -21,6 +21,11 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
 from config_singleton import WandbConfigSingleton
+from .evaluate_utils.llm_response_checkpoint import (
+    LLMResponseCheckpointStore,
+    default_checkpoint_root,
+    run_checkpointed_batch,
+)
 from .evaluate_utils.llm_async_processor import LLMAsyncProcessor
 from swebench.inference.make_datasets.utils import repair_patch
 from swebench.inference.make_datasets.utils import extract_minimal_patch as _official_min_patch
@@ -395,11 +400,16 @@ def generate_predictions(samples: List[Dict], llm, generator_config, output_file
         })
     
     # 並列処理でLLM呼び出し
-    llm_ap = LLMAsyncProcessor(
+    responses = run_checkpointed_batch(
         llm=llm,
         inputs=all_inputs,
+        keys=(row["instance_id"] for row in sample_data),
+        checkpoint_store=LLMResponseCheckpointStore(
+            default_checkpoint_root(instance.run, "swebench_generation"),
+            model_name=model_name,
+        ),
+        label="SWE-bench generation",
     )
-    responses = llm_ap.get_results()
     
     # 結果を処理
     for i, (response, sample_info) in enumerate(zip(responses, sample_data)):

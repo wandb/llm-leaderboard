@@ -43,7 +43,24 @@ swe_runner = _load_swe_runner()
 
 
 _RUN_LOCK = threading.Lock()
-RUNNER_VERSION = "deepswe-openclaw-pier-2026-07-11-v1"
+RUNNER_VERSION = "deepswe-openclaw-pier-2026-07-23-v5"
+DEEPSWE_SUBMIT_MARKER = "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
+DEEPSWE_RECOVERABLE_COMPLETION_REASONS = {
+    "runtime_budget_exceeded",
+    "time_up",
+    "model_output_truncated",
+    "openclaw_no_response",
+}
+DEEPSWE_COMPLETION_REQUIREMENTS = "\n".join(
+    [
+        "Follow the task instruction. Keep the fix minimal.",
+        "Do not stop after only describing a plan; implement the change in the working checkout.",
+        "Before the final response, run `git diff HEAD --check` and inspect `git diff HEAD --stat`; staged changes are allowed.",
+        "If `git diff HEAD --stat` is empty, continue editing instead of finishing unless the task is impossible; if it is impossible, state the concrete blocker.",
+        "When the implementation and checks are complete, submit it by running this exact command as its own final shell action: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.",
+        "Do not run more tools after that submit command. The harness scores all changes relative to HEAD.",
+    ]
+)
 
 
 class NonScoreableOpenClawPolicyBlock(RuntimeError):
@@ -110,9 +127,9 @@ def _read_task_toml(task_dir: Path) -> dict[str, Any]:
         return tomllib.load(f)
 
 
-def _deepswe_sandbox_checkout_root(task_id: str, logs_dir: Path) -> str:
+def _deepswe_sandbox_checkout_root(task_id: str, output_root: Path) -> str:
     """Return a task/trial-scoped sandbox root for copied DeepSWE checkouts."""
-    digest = hashlib.sha256(str(logs_dir.parent.resolve()).encode("utf-8")).hexdigest()[:10]
+    digest = hashlib.sha256(str(output_root.resolve()).encode("utf-8")).hexdigest()[:10]
     return f"/sandbox/checkouts/deepswe/{swe_runner.safe_id(task_id)}-{digest}"
 
 
@@ -136,6 +153,126 @@ def _deepswe_python_runtime_paths(task_toml: dict[str, Any]) -> tuple[list[str],
         [f"/sandbox/.deepswe-tools/python-bin/{image_hash}"],
         [f"/sandbox/.deepswe-tools/python-site/{image_hash}/site-packages"],
     )
+
+
+def _deepswe_checkout_preflight_command(task_toml: dict[str, Any]) -> tuple[str, list[str]]:
+    metadata = task_toml.get("metadata") if isinstance(task_toml.get("metadata"), dict) else {}
+    language = str(metadata.get("language") or "").strip().lower()
+    if language == "go":
+        return language, [
+            "bash",
+            "-lc",
+            "set -euo pipefail; test -f go.mod; "
+            "export GOPROXY=off GOSUMDB=off; go test -run '^$' ./...",
+        ]
+    if language == "python":
+        repository_url = str(metadata.get("repository_url") or "").rstrip("/")
+        repository_name = repository_url.rsplit("/", 1)[-1].removesuffix(".git").lower()
+        package_import, local_source = {
+            "mnamer": ("mnamer", None),
+            "langchain": ("langchain_core", "libs/core"),
+        }.get(repository_name, (None, None))
+        import_check = "import pytest, setuptools"
+        if package_import:
+            import_check += f", {package_import}"
+        source_setup = ""
+        if local_source:
+            source_setup = (
+                f"test -d {local_source}; "
+                f"export PYTHONPATH=\"$PWD/{local_source}:${{PYTHONPATH:-}}\"; "
+            )
+        return language, [
+            "bash",
+            "-lc",
+            f"set -euo pipefail; {source_setup}python3 -c '{import_check}'",
+        ]
+    if language in {"typescript", "javascript"}:
+        return language, [
+            "bash",
+            "-lc",
+            "set -euo pipefail; test -f package.json; test -d node_modules; "
+            "node -e \"JSON.parse(require('fs').readFileSync('package.json', 'utf8'))\"",
+        ]
+    return language or "unknown", ["bash", "-lc", "git status --short >/dev/null"]
+
+
+def _docker_image_identity(task_toml: dict[str, Any]) -> tuple[str | None, str | None]:
+    environment = (
+        task_toml.get("environment") if isinstance(task_toml.get("environment"), dict) else {}
+    )
+    image = str(environment.get("docker_image") or "").strip() or None
+    if image is None:
+        return None, None
+    result = subprocess.run(
+        ["docker", "image", "inspect", "--format", "{{.Id}}", image],
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    image_id = result.stdout.strip() if result.returncode == 0 else None
+    return image, image_id or None
+
+
+def _preflight_deepswe_agent_checkout(
+    task_id: str,
+    task_toml: dict[str, Any],
+    checkout_dir: Path,
+    task_dir: Path,
+    args: Any,
+) -> dict[str, Any]:
+    language, command = _deepswe_checkout_preflight_command(task_toml)
+    exports: list[str] = []
+    extra_path = [str(path) for path in (getattr(args, "nemoclaw_extra_path", None) or [])]
+    extra_pythonpath = [
+        str(path) for path in (getattr(args, "nemoclaw_extra_pythonpath", None) or [])
+    ]
+    if extra_path:
+        exports.append(f"export PATH={':'.join(extra_path)!r}:\"$PATH\"")
+    if extra_pythonpath:
+        exports.append(
+            f"export PYTHONPATH={':'.join(extra_pythonpath)!r}:\"${{PYTHONPATH:-}}\""
+        )
+    if exports and command[:2] == ["bash", "-lc"]:
+        command = [*command[:2], "; ".join([*exports, command[2]])]
+    image, image_id = _docker_image_identity(task_toml)
+    sandbox_dir = swe_runner.sandbox_checkout_dir(checkout_dir, args)
+    started_at = time.monotonic()
+    result = swe_runner.run_nemoclaw_text_command(
+        args,
+        command,
+        timeout=max(300, int(getattr(args, "max_tool_wall_seconds", 300) or 300)),
+        check=False,
+        workdir=str(sandbox_dir),
+    )
+    evidence = {
+        "ok": result.returncode == 0,
+        "task_id": task_id,
+        "language": language,
+        "environment_mode": "nemoclaw_dependency_overlay",
+        "task_docker_image": image,
+        "task_docker_image_id": image_id,
+        "sandbox_checkout": str(sandbox_dir),
+        "command": command,
+        "extra_path": extra_path,
+        "extra_pythonpath": extra_pythonpath,
+        "returncode": result.returncode,
+        "duration_seconds": round(time.monotonic() - started_at, 3),
+        "stdout": (result.stdout or "")[-20_000:],
+        "stderr": (result.stderr or "")[-20_000:],
+    }
+    evidence_path = task_dir / "deepswe_checkout_preflight.json"
+    evidence_path.write_text(
+        json.dumps(evidence, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    if not evidence["ok"]:
+        raise NonScoreableOpenClawConfigurationError(
+            "non_scoreable_environment_error: copied DeepSWE checkout failed the "
+            f"offline {language} preflight before model execution; task_id={task_id}; "
+            f"evidence={evidence_path}"
+        )
+    return evidence
 
 
 def _sidecar_usage(metadata: dict[str, Any]) -> dict[str, int]:
@@ -177,6 +314,13 @@ def _metadata_has_non_scoreable_provider_timeout(metadata: dict[str, Any]) -> bo
     return False
 
 
+def _metadata_has_required_trace_failure(metadata: dict[str, Any]) -> bool:
+    return (
+        metadata.get("weave_agents_required") is True
+        and metadata.get("weave_agents_ok") is False
+    )
+
+
 def _metadata_has_llm_response_idle_timeout(metadata: dict[str, Any]) -> bool:
     runtime_budget = metadata.get("runtime_budget")
     if not isinstance(runtime_budget, dict):
@@ -201,9 +345,142 @@ def _metadata_has_scoreable_runtime_budget_failure(metadata: dict[str, Any]) -> 
 
 
 def _deepswe_should_force_empty_patch(metadata: dict[str, Any]) -> bool:
+    if _metadata_has_non_scoreable_provider_timeout(metadata):
+        return True
     if _metadata_has_scoreable_runtime_budget_failure(metadata):
         return False
+    reason = str(metadata.get("openclaw_disqualified_reason") or "")
+    if reason in DEEPSWE_RECOVERABLE_COMPLETION_REASONS:
+        return False
     return swe_runner.should_force_empty_patch(metadata)
+
+
+def _openclaw_sidecar(metadata: dict[str, Any]) -> dict[str, Any]:
+    raw_path = str(metadata.get("openclaw_result_path") or "").strip()
+    return _read_json(Path(raw_path)) if raw_path else {}
+
+
+def _submission_trace(sidecar: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
+    timeline = sidecar.get("timeline_events")
+    if not isinstance(timeline, list):
+        timeline = []
+
+    assistant_messages: list[str] = []
+    reasoning_chunks: list[str] = []
+    explicit_submit = False
+    for event in timeline:
+        if not isinstance(event, dict):
+            continue
+        event_type = event.get("type")
+        content = event.get("content")
+        if event_type == "assistant_message" and isinstance(content, str) and content.strip():
+            assistant_messages.append(content.strip())
+        elif event_type == "assistant_reasoning" and isinstance(content, str) and content.strip():
+            reasoning_chunks.append(content.strip())
+        elif event_type == "tool_call":
+            try:
+                arguments = json.dumps(event.get("arguments"), ensure_ascii=False, sort_keys=True)
+            except TypeError:
+                arguments = str(event.get("arguments") or "")
+            if DEEPSWE_SUBMIT_MARKER in arguments:
+                explicit_submit = True
+
+    usage = _sidecar_usage(metadata)
+    try:
+        reasoning_tokens = int(usage.get("reasoningTokens") or 0)
+    except (TypeError, ValueError):
+        reasoning_tokens = 0
+    if reasoning_chunks:
+        reasoning_source = "openclaw_session_jsonl"
+    elif reasoning_tokens > 0:
+        reasoning_source = "provider_usage_only"
+    else:
+        reasoning_source = "not_observed"
+    final_assistant_text = assistant_messages[-1] if assistant_messages else ""
+    return {
+        "explicit_submit_marker_seen": explicit_submit,
+        "final_assistant_text": final_assistant_text[-20_000:],
+        "final_assistant_character_count": len(final_assistant_text),
+        "assistant_message_count": len(assistant_messages),
+        "reasoning_trace_present": bool(reasoning_chunks),
+        "reasoning_trace_source": reasoning_source,
+        "reasoning_event_count": len(reasoning_chunks),
+        "reasoning_character_count": sum(len(chunk) for chunk in reasoning_chunks),
+        "reasoning_tokens": reasoning_tokens,
+    }
+
+
+def _validate_captured_patch(checkout_dir: Path, patch: str) -> dict[str, Any]:
+    if not patch.strip():
+        return {
+            "patch_nonempty": False,
+            "patch_apply_check_ok": None,
+            "patch_apply_check_returncode": None,
+            "patch_stat": "",
+            "patch_apply_check_stderr": "",
+        }
+    check = subprocess.run(
+        ["git", "apply", "--check", "--whitespace=nowarn", "-"],
+        cwd=checkout_dir,
+        input=patch,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=60,
+    )
+    stat = subprocess.run(
+        ["git", "apply", "--stat", "-"],
+        cwd=checkout_dir,
+        input=patch,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=60,
+    )
+    return {
+        "patch_nonempty": True,
+        "patch_apply_check_ok": check.returncode == 0,
+        "patch_apply_check_returncode": check.returncode,
+        "patch_stat": (stat.stdout or "")[-20_000:],
+        "patch_apply_check_stderr": (check.stderr or "")[-20_000:],
+    }
+
+
+def _deepswe_submission_evidence(
+    task_id: str,
+    task_dir: Path,
+    checkout_dir: Path,
+    metadata: dict[str, Any],
+    patch: str,
+) -> dict[str, Any]:
+    trace = _submission_trace(_openclaw_sidecar(metadata), metadata)
+    validation = _validate_captured_patch(checkout_dir, patch)
+    reason = str(metadata.get("openclaw_disqualified_reason") or "")
+    if not validation["patch_nonempty"]:
+        mode = "empty_submission"
+    elif validation["patch_apply_check_ok"] is False:
+        mode = "invalid_patch_submission"
+    elif trace["explicit_submit_marker_seen"]:
+        mode = "explicit_submit"
+    elif reason in DEEPSWE_RECOVERABLE_COMPLETION_REASONS:
+        mode = "interrupted_patch_recovery"
+    else:
+        mode = "implicit_final_submit_recovery"
+    evidence = {
+        "task_id": task_id,
+        "submit_marker": DEEPSWE_SUBMIT_MARKER,
+        "mode": mode,
+        "accepted": bool(
+            validation["patch_nonempty"] and validation["patch_apply_check_ok"]
+        ),
+        "completion_reason": reason or None,
+        **trace,
+        **validation,
+    }
+    path = task_dir / "deepswe_submission.json"
+    path.write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    evidence["evidence_path"] = str(path)
+    return evidence
 
 
 def _metadata_has_unsupported_model_thinking(metadata: dict[str, Any]) -> bool:
@@ -257,6 +534,10 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
         openclaw_timeout: str | int = 3600,
         openclaw_max_attempts: str | int = 1,
         openclaw_retry_base_seconds: str | float = 15.0,
+        provider_recovery_rounds: str | int = 2,
+        provider_recovery_base_seconds: str | float = 60.0,
+        native_trace_recovery_attempts: str | int = 1,
+        native_trace_recovery_base_seconds: str | float = 15.0,
         max_input_tokens: str | int = 1_000_000,
         max_cumulative_input_tokens: str | int = 1_000_000,
         max_cumulative_output_tokens: str | int = 500_000,
@@ -264,6 +545,7 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
         max_agent_turns: str | int = 40,
         max_tool_wall_seconds: str | int = 300,
         final_assistant_idle_salvage_seconds: str | float = 60.0,
+        final_assistant_shutdown_grace_seconds: str | float = 30.0,
         llm_response_idle_timeout_seconds: str | float = 900.0,
         require_actual_token_usage: str | bool = True,
         nemoclaw_bin: str = "nemoclaw",
@@ -285,6 +567,7 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
         weave_agents_limit: str | int = 50,
         weave_agents_verification_timeout: str | float = 120.0,
         weave_agents_poll_seconds: str | float = 5.0,
+        fail_fast_trace_evidence: str | bool = True,
         deny_tool: str | None = None,
         deny_argument_pattern: str | None = None,
         allow_failed_preflight: str | bool = False,
@@ -302,6 +585,19 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
         self.openclaw_timeout = _int(openclaw_timeout, 3600)
         self.openclaw_max_attempts = _int(openclaw_max_attempts, 1)
         self.openclaw_retry_base_seconds = _float(openclaw_retry_base_seconds, 15.0)
+        self.provider_recovery_rounds = max(0, _int(provider_recovery_rounds, 2))
+        self.provider_recovery_base_seconds = max(
+            0.0,
+            _float(provider_recovery_base_seconds, 60.0),
+        )
+        self.native_trace_recovery_attempts = max(
+            0,
+            _int(native_trace_recovery_attempts, 1),
+        )
+        self.native_trace_recovery_base_seconds = max(
+            0.0,
+            _float(native_trace_recovery_base_seconds, 15.0),
+        )
         self.max_input_tokens = _int(max_input_tokens, 1_000_000)
         self.max_cumulative_input_tokens = _int(max_cumulative_input_tokens, self.max_input_tokens)
         self.max_cumulative_output_tokens = _int(max_cumulative_output_tokens, 500_000)
@@ -311,6 +607,10 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
         self.final_assistant_idle_salvage_seconds = _float(
             final_assistant_idle_salvage_seconds,
             60.0,
+        )
+        self.final_assistant_shutdown_grace_seconds = _float(
+            final_assistant_shutdown_grace_seconds,
+            30.0,
         )
         self.llm_response_idle_timeout_seconds = _float(
             llm_response_idle_timeout_seconds,
@@ -336,6 +636,7 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
         self.weave_agents_limit = _int(weave_agents_limit, 50)
         self.weave_agents_verification_timeout = _float(weave_agents_verification_timeout, 120.0)
         self.weave_agents_poll_seconds = _float(weave_agents_poll_seconds, 5.0)
+        self.fail_fast_trace_evidence = _truthy(fail_fast_trace_evidence, True)
         self.deny_tool = [item for item in (deny_tool or "").split(",") if item]
         self.deny_argument_pattern = [
             item for item in (deny_argument_pattern or "").split("\n") if item
@@ -402,6 +703,9 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
                 "final_assistant_idle_salvage_seconds": (
                     self.final_assistant_idle_salvage_seconds
                 ),
+                "final_assistant_shutdown_grace_seconds": (
+                    self.final_assistant_shutdown_grace_seconds
+                ),
                 "llm_response_idle_timeout_seconds": (
                     self.llm_response_idle_timeout_seconds
                 ),
@@ -420,6 +724,7 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
                 "weave_agents_limit": self.weave_agents_limit,
                 "weave_agents_verification_timeout": self.weave_agents_verification_timeout,
                 "weave_agents_poll_seconds": self.weave_agents_poll_seconds,
+                "fail_fast_trace_evidence": self.fail_fast_trace_evidence,
                 "skip_agent": False,
             },
         )()
@@ -438,7 +743,7 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
             "repo_language": metadata.get("language"),
             "dockerhub_tag": environment.get("docker_image"),
             "problem_statement": _sanitize_deepswe_instruction(instruction),
-            "requirements": "Follow the task instruction. Keep the fix minimal.",
+            "requirements": DEEPSWE_COMPLETION_REQUIREMENTS,
             "interface": "",
             "issue_specificity": "deep-swe",
             "issue_categories": [metadata.get("language")] if metadata.get("language") else [],
@@ -450,7 +755,7 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
         if self.nemoclaw_sandbox and self.nemoclaw_checkout_transfer_mode == "copy":
             args.nemoclaw_checkout_sandbox_root = _deepswe_sandbox_checkout_root(
                 task_id,
-                self.logs_dir,
+                self.output_root,
             )
         extra_path, extra_pythonpath = _deepswe_python_runtime_paths(task_toml)
         args.nemoclaw_extra_path = extra_path
@@ -459,6 +764,7 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
         task_dir = self.output_root / swe_runner.safe_id(task_id)
         task_dir.mkdir(parents=True, exist_ok=True)
         initial_checkout_transfer: dict[str, Any] | None = None
+        checkout_preflight: dict[str, Any] | None = None
         with _RUN_LOCK:
             swe_runner.ensure_nemoclaw_openclaw_permissions(args)
             initial_checkout_transfer = swe_runner.ensure_nemoclaw_checkout_ready(
@@ -492,13 +798,100 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
                     canonical_config_path=self.nemoclaw_openclaw_config_path,
                 )
                 swe_runner.restart_nemoclaw_gateway_after_task_agent_registration(args, label="DeepSWE")
-            metadata = swe_runner.run_openclaw_for_task(row, checkout_dir, task_dir, args)
-            if gateway_task_agent:
-                _assert_gateway_task_agent_metadata(
-                    task_dir,
-                    agent_id=swe_runner.safe_agent_id(task_id, self.task_agent_prefix),
-                    canonical_config_path=self.nemoclaw_openclaw_config_path,
+            checkout_preflight = _preflight_deepswe_agent_checkout(
+                task_id,
+                task_toml,
+                checkout_dir,
+                task_dir,
+                args,
+            )
+        provider_recovery_log: list[dict[str, Any]] = []
+        metadata: dict[str, Any] = {}
+        for recovery_round in range(self.provider_recovery_rounds + 1):
+            if recovery_round > 0:
+                cooldown = self.provider_recovery_base_seconds * (2 ** (recovery_round - 1))
+                recovery_entry = {
+                    "recovery_round": recovery_round,
+                    "max_recovery_rounds": self.provider_recovery_rounds,
+                    "cooldown_seconds": cooldown,
+                    "started_at": time.time(),
+                }
+                provider_recovery_log.append(recovery_entry)
+                (task_dir / "provider_recovery.json").write_text(
+                    json.dumps(provider_recovery_log, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
                 )
+                if cooldown:
+                    time.sleep(cooldown)
+            current_metadata = swe_runner.run_openclaw_for_task(
+                row,
+                checkout_dir,
+                task_dir,
+                args,
+            )
+            metadata = swe_runner.merge_prior_billable_openclaw_usage(
+                current_metadata,
+                metadata or None,
+            )
+            if not _metadata_has_non_scoreable_provider_timeout(metadata):
+                break
+            if recovery_round < self.provider_recovery_rounds:
+                print(
+                    f"DeepSWE provider recovery deferred for {task_id}: round "
+                    f"{recovery_round + 1}/{self.provider_recovery_rounds}",
+                    flush=True,
+                )
+        if provider_recovery_log:
+            metadata = dict(metadata)
+            metadata["provider_recovery"] = provider_recovery_log
+        native_trace_recovery_log: list[dict[str, Any]] = []
+        for recovery_round in range(1, self.native_trace_recovery_attempts + 1):
+            if not _metadata_has_required_trace_failure(metadata):
+                break
+            cooldown = self.native_trace_recovery_base_seconds
+            recovery_entry = {
+                "recovery_round": recovery_round,
+                "max_recovery_attempts": self.native_trace_recovery_attempts,
+                "cooldown_seconds": cooldown,
+                "started_at": time.time(),
+            }
+            native_trace_recovery_log.append(recovery_entry)
+            (task_dir / "native_trace_recovery.json").write_text(
+                json.dumps(
+                    native_trace_recovery_log,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            print(
+                f"DeepSWE isolated native trace recovery for {task_id}: "
+                f"round {recovery_round}/{self.native_trace_recovery_attempts}",
+                flush=True,
+            )
+            if cooldown:
+                time.sleep(cooldown)
+            current_metadata = swe_runner.run_openclaw_for_task(
+                row,
+                checkout_dir,
+                task_dir,
+                args,
+            )
+            metadata = swe_runner.merge_prior_billable_openclaw_usage(
+                current_metadata,
+                metadata or None,
+            )
+        if native_trace_recovery_log:
+            metadata = dict(metadata)
+            metadata["native_trace_recovery"] = native_trace_recovery_log
+        if gateway_task_agent:
+            _assert_gateway_task_agent_metadata(
+                task_dir,
+                agent_id=swe_runner.safe_agent_id(task_id, self.task_agent_prefix),
+                canonical_config_path=self.nemoclaw_openclaw_config_path,
+            )
+        with _RUN_LOCK:
             if _metadata_has_non_scoreable_provider_timeout(metadata):
                 patch_path = task_dir / "model.patch"
                 patch_path.write_text("", encoding="utf-8")
@@ -508,6 +901,7 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
                         "runner_version": RUNNER_VERSION,
                         "deepswe_task_id": task_id,
                         "deepswe_initial_nemoclaw_checkout_transfer": initial_checkout_transfer,
+                        "deepswe_checkout_preflight": checkout_preflight,
                         "deepswe_patch_path": str(patch_path),
                         "deepswe_patch_bytes": 0,
                         "deepswe_non_scoreable_reason": "provider_timeout",
@@ -534,6 +928,7 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
                         "runner_version": RUNNER_VERSION,
                         "deepswe_task_id": task_id,
                         "deepswe_initial_nemoclaw_checkout_transfer": initial_checkout_transfer,
+                        "deepswe_checkout_preflight": checkout_preflight,
                         "deepswe_patch_path": str(patch_path),
                         "deepswe_patch_bytes": 0,
                         "deepswe_non_scoreable_reason": "unsupported_model_thinking",
@@ -553,6 +948,13 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
                 patch = swe_runner.capture_patch_nemoclaw(checkout_dir, args, [])
             else:
                 patch = swe_runner.capture_patch(checkout_dir, [])
+            submission = _deepswe_submission_evidence(
+                task_id,
+                task_dir,
+                checkout_dir,
+                metadata,
+                patch,
+            )
         patch_path = task_dir / "model.patch"
         patch_path.write_text(patch, encoding="utf-8")
         metadata = dict(metadata)
@@ -561,8 +963,10 @@ class NejumiDeepSWEOpenClawAgent(BaseAgent):
                 "runner_version": RUNNER_VERSION,
                 "deepswe_task_id": task_id,
                 "deepswe_initial_nemoclaw_checkout_transfer": initial_checkout_transfer,
+                "deepswe_checkout_preflight": checkout_preflight,
                 "deepswe_patch_path": str(patch_path),
                 "deepswe_patch_bytes": len(patch.encode("utf-8")),
+                "deepswe_submission": submission,
             }
         )
         (task_dir / "deepswe_openclaw_metadata.json").write_text(

@@ -31,22 +31,28 @@ def test_swebench_lite_low_middle_subsets_are_manifested():
     assert manifest["subsets"]["low_v2_36"]["count"] == 36
     assert manifest["subsets"]["middle_v2_36"]["count"] == 36
     assert manifest["subsets"]["low_middle_v2_72"]["count"] == 72
+    assert manifest["subsets"]["low_v3_20"]["count"] == 20
+    assert manifest["subsets"]["middle_v3_20"]["count"] == 20
+    assert manifest["subsets"]["low_middle_v3_40"]["count"] == 40
     expected_plan_fields = {
-        "low": 36,
-        "middle": 36,
-        "high": 8,
-        "low_middle_jsonl_path": "subsets/low_middle_v2_72.jsonl",
-        "legacy_low_middle_jsonl_path": "subsets/low_middle_72.jsonl",
-        "high_subset": "data/taiwan/deepswe/subsets/essential_8.jsonl",
+        "low": 20,
+        "middle": 20,
+        "high": 10,
+        "low_middle_jsonl_path": "subsets/low_middle_v3_40.jsonl",
+        "high_subset": (
+            "data/taiwan/deepswe/subsets/"
+            "essential_anchored_high_10_model_fidelity_cost_balanced.jsonl"
+        ),
     }
     for key, value in expected_plan_fields.items():
-        assert manifest["assorted_80_plan"][key] == value
-    assert manifest["assorted_80_plan"]["score_weights"] == {
+        assert manifest["assorted_50_plan"][key] == value
+    assert manifest["assorted_50_plan"]["score_weights"] == {
         "low": 1 / 3,
         "middle": 1 / 3,
         "high": 1 / 3,
     }
-    assert "Low Pass@1 + Middle Pass@1 + High Pass@1" in manifest["assorted_80_plan"]["score_definition"]
+    assert "F2P^2 * P2P" in manifest["assorted_50_plan"]["score_definition"]
+    assert manifest["assorted_80_plan"]["status"] == "historical_v2"
 
 
 def test_swebench_lite_low_middle_rows_have_source_and_runner_fields():
@@ -120,6 +126,30 @@ def test_swebench_lite_v2_uses_public_prior_and_excludes_pilot_cost_risk():
     assert max(middle_rates) <= 0.72
     assert sum(low_rates) / len(low_rates) > sum(middle_rates) / len(middle_rates)
     assert max(Counter(row["repo"] for row in low).values()) <= 6
-    assert max(Counter(row["repo"] for row in middle).values()) <= 6
+    assert max(Counter(row["repo"] for row in middle).values()) <= 7
+    assert "sympy__sympy-14817" not in middle_ids
+    assert max(len(row.get("pass_to_pass") or []) for row in middle) <= 150
     assert not any(row.get("pilot_glm52_lm12m12_runtime_budget_exceeded") for row in low)
     assert not any(row.get("pilot_glm52_lm12m12_runtime_budget_exceeded") for row in middle)
+
+
+def test_swebench_lite_v3_preserves_tier_difficulty_with_repo_cap_four():
+    low_v2 = _read_jsonl(ASSORTED_DIR / "subsets" / "low_v2_36.jsonl")
+    middle_v2 = _read_jsonl(ASSORTED_DIR / "subsets" / "middle_v2_36.jsonl")
+    low = _read_jsonl(ASSORTED_DIR / "subsets" / "low_v3_20.jsonl")
+    middle = _read_jsonl(ASSORTED_DIR / "subsets" / "middle_v3_20.jsonl")
+    combined = _read_jsonl(ASSORTED_DIR / "subsets" / "low_middle_v3_40.jsonl")
+
+    assert len(low) == len(middle) == 20
+    assert combined == low + middle
+    assert {row["source_subset"] for row in low} == {"low_v3_20"}
+    assert {row["source_subset"] for row in middle} == {"middle_v3_20"}
+    assert max(Counter(row["repo"] for row in low).values()) <= 4
+    assert max(Counter(row["repo"] for row in middle).values()) <= 4
+
+    for source, selected in ((low_v2, low), (middle_v2, middle)):
+        source_mean = sum(row["public_lite_resolve_rate"] for row in source) / len(source)
+        selected_mean = sum(row["public_lite_resolve_rate"] for row in selected) / len(
+            selected
+        )
+        assert abs(source_mean - selected_mean) < 0.001

@@ -143,18 +143,36 @@ def test_deepswe_essential3_high_subset_is_manifested():
     assert subset["selection_metrics"]["spearman"] >= 0.90
 
 
-def test_deepswe_glm52max_cap_aware_high_subset_is_manifested():
+def test_deepswe_wandb_glm52_cap_aware_high_subset_is_manifested():
     manifest = _read_json(DEEPSWE_DIR / "manifest.json")
-    name = "essential_anchored_high_8_glm52max_cap100_10m_lang_balanced"
+    name = "essential_anchored_high_8_wandb_glm52_cap100_10m_lang_balanced"
     subset = manifest["subsets"][name]
     task_names = _read_json(DEEPSWE_DIR / subset["task_names_path"])
     records = _read_jsonl(DEEPSWE_DIR / subset["metadata_jsonl_path"])
+    expected_task_names = [
+        "go-genai-streamed-function-args",
+        "etree-xml-diff-patch",
+        "ytt-jsonpath-query-api",
+        "mnamer-daemon-watch-lifecycle",
+        "langchain-request-coalescing",
+        "ofetch-per-origin-circuit-breaker",
+        "kea-atomic-signal-selectors",
+        "happy-dom-deterministic-intersectionobserver",
+    ]
 
     assert (
-        subset["display_name"]
-        == "DeepSWE-Essential-Anchored-High-8-GLM52Max-Cap100-10M-Lang-Balanced"
+        manifest["agentic_swe_assorted_default_high_subset"]
+        == "essential_anchored_high_10_model_fidelity_cost_balanced"
     )
+    assert manifest["agentic_swe_assorted_default_high_status"]["status"] == "frozen"
+    assert (
+        subset["display_name"]
+        == "DeepSWE-Essential-Anchored-High-8-WandB-GLM52-Cap100-10M-Lang-Balanced"
+    )
+    assert subset["status"] == "historical_frozen"
+    assert subset["default_for_agentic_swe_assorted"] is False
     assert subset["count"] == 8
+    assert task_names == expected_task_names
     assert len(task_names) == 8
     assert [record["task_name"] for record in records] == task_names
     assert subset["language_distribution"] == {"go": 3, "python": 2, "typescript": 3}
@@ -169,3 +187,35 @@ def test_deepswe_glm52max_cap_aware_high_subset_is_manifested():
         assert stats["public_budget_model_avg_input_tokens"] <= 10_000_000.0
     assert subset["selection_metrics"]["pearson"] >= 0.90
     assert subset["selection_metrics"]["spearman"] >= 0.90
+
+
+def test_deepswe_high10_is_the_frozen_agentic_swe_default():
+    manifest = _read_json(DEEPSWE_DIR / "manifest.json")
+    name = "essential_anchored_high_10_model_fidelity_cost_balanced"
+    subset = manifest["subsets"][name]
+    task_names = _read_json(DEEPSWE_DIR / subset["task_names_path"])
+    records = _read_jsonl(DEEPSWE_DIR / subset["metadata_jsonl_path"])
+
+    assert manifest["agentic_swe_assorted_default_high_subset"] == name
+    assert subset["status"] == "frozen_default"
+    assert subset["default_for_agentic_swe_assorted"] is True
+    assert subset["count"] == 10
+    assert len(task_names) == 10
+    assert [record["task_name"] for record in records] == task_names
+    assert subset["language_distribution"] == {
+        "go": 4,
+        "python": 3,
+        "typescript": 3,
+    }
+    assert {
+        "participle-grammar-conflict-analysis",
+        "bandit-incremental-cache-control",
+    } <= set(task_names)
+    assert subset["selection_metrics"]["pearson"] >= 0.94
+    assert subset["selection_metrics"]["spearman"] >= 0.93
+    assert (
+        subset["selection_metrics"]["selection_aware_leave_one_model_family_out"][
+            "spearman"
+        ]
+        >= 0.89
+    )

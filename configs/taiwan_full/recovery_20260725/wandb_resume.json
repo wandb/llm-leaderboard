@@ -1,0 +1,7 @@
+{
+  "allow_wandb_resume": true,
+  "wandb_run_id_prefix": "tw-first-wave-20260725",
+  "phase": "full",
+  "explicit_user_instruction": true,
+  "purpose": "Resume the failed first-wave Taiwan full evaluation after strict validation and reuse of complete BFCL v4 and Agentic Math results."
+}

@@ -9,6 +9,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_ENTRY = REPO_ROOT / "openclaw-plugins" / "nejumi-budget-guard" / "dist" / "index.js"
+LANDLOCK_LAUNCHER = (
+    REPO_ROOT / "openclaw-plugins" / "nejumi-budget-guard" / "landlock_exec.py"
+)
 
 
 def run_node_probe(source: str) -> dict:
@@ -275,6 +278,82 @@ console.log(JSON.stringify(blocked));
     assert "agent_turn_limit_exceeded" in blocked["result"]["reason"]
     assert "observed=41" in blocked["result"]["reason"]
     assert "limit=40" in blocked["result"]["reason"]
+
+
+def test_budget_guard_injects_staged_english_warnings_into_tool_results() -> None:
+    source = f"""
+import plugin from {json.dumps(str(PLUGIN_ENTRY))};
+const handlers = {{}};
+const api = {{
+  pluginConfig: {{
+    enabled: true,
+    maxToolCalls: 40,
+    maxAgentTurns: 40,
+    agentIds: ["agent-a"],
+    sessionKeyPrefixes: ["swebench-lite"],
+    blockReasonPrefix: "NEJUMI_BUDGET_GUARD_BLOCKED",
+  }},
+  on(name, handler) {{ handlers[name] = handler; }},
+}};
+plugin.register(api);
+const ctx = {{ agentId: "agent-a", sessionKey: "swebench-lite:task:attempt", runId: "run-main" }};
+const warnings = [];
+for (let i = 1; i <= 38; i++) {{
+  await handlers.before_tool_call(
+    {{ toolName: "exec", toolCallId: `tool-${{i}}` }},
+    ctx,
+  );
+  const result = handlers.tool_result_persist(
+    {{
+      toolName: "exec",
+      toolCallId: `tool-${{i}}`,
+      message: {{ role: "toolResult", content: [{{ type: "text", text: "ok" }}] }},
+    }},
+    ctx,
+  );
+  if (result instanceof Promise) throw new Error("tool_result_persist must be synchronous");
+  if (result?.message) warnings.push({{ i, text: result.message.content.at(-1).text }});
+}}
+console.log(JSON.stringify(warnings));
+"""
+    warnings = run_node_probe(source)
+    assert [item["i"] for item in warnings] == [20, 30, 35, 38]
+    assert all("NEJUMI RUNTIME BUDGET WARNING" in item["text"] for item in warnings)
+    assert "20 remain" in warnings[0]["text"]
+    assert "2 remain" in warnings[-1]["text"]
+    assert "current git diff is submitted" in warnings[-1]["text"]
+    assert "No extra cleanup turn is guaranteed" in warnings[-1]["text"]
+
+
+def test_budget_guard_injects_staged_agent_turn_warnings() -> None:
+    source = f"""
+import plugin from {json.dumps(str(PLUGIN_ENTRY))};
+const handlers = {{}};
+const api = {{
+  pluginConfig: {{
+    enabled: true,
+    maxToolCalls: 0,
+    maxAgentTurns: 40,
+    agentIds: ["agent-a"],
+    sessionKeyPrefixes: ["agentic-math"],
+  }},
+  on(name, handler) {{ handlers[name] = handler; }},
+}};
+plugin.register(api);
+const ctx = {{ agentId: "agent-a", sessionKey: "agentic-math:task:attempt", runId: "run-main" }};
+const warnings = [];
+for (let i = 1; i <= 38; i++) {{
+  const prepared = await handlers.agent_turn_prepare({{ prompt: "solve", messages: [] }}, ctx);
+  if (prepared?.appendContext) warnings.push({{ i, text: prepared.appendContext }});
+  await handlers.before_agent_run({{}}, ctx);
+}}
+console.log(JSON.stringify(warnings));
+"""
+    warnings = run_node_probe(source)
+    assert [item["i"] for item in warnings] == [20, 30, 35, 38]
+    assert "20 turns remain after this one" in warnings[0]["text"]
+    assert "2 turns remain after this one" in warnings[-1]["text"]
+    assert "current answer is submitted" in warnings[-1]["text"]
 
 
 def test_budget_guard_audits_before_agent_reply_hook_coverage() -> None:
@@ -645,3 +724,300 @@ console.log(JSON.stringify(second ?? null));
     blocked = json.loads(result.stdout)
     assert blocked["block"] is True
     assert "tool_call_limit_exceeded" in blocked["blockReason"]
+
+
+def test_budget_guard_reads_live_config_from_openclaw_state_dir(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".openclaw"
+    state_dir.mkdir()
+    config_path = state_dir / "openclaw.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "plugins": {
+                    "entries": {
+                        "nejumi-budget-guard": {
+                            "enabled": True,
+                            "config": {
+                                "enabled": True,
+                                "maxToolCalls": 1,
+                                "maxAgentTurns": 0,
+                                "agentIds": ["agent-current"],
+                            },
+                        }
+                    }
+                }
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    source = f"""
+import plugin from {json.dumps(str(PLUGIN_ENTRY))};
+const handlers = {{}};
+const staleConfig = {{
+  enabled: true,
+  maxToolCalls: 10,
+  maxAgentTurns: 0,
+  agentIds: ["agent-stale"],
+}};
+const api = {{
+  pluginConfig: staleConfig,
+  on(name, handler) {{ handlers[name] = handler; }},
+}};
+plugin.register(api);
+const ctx = {{ agentId: "agent-current", sessionKey: "agent:agent-current:test", runId: "run-main" }};
+await handlers.before_tool_call(
+  {{ toolName: "read", toolCallId: "call-1" }},
+  {{ ...ctx, config: {{ plugins: {{ entries: {{ "nejumi-budget-guard": {{ config: staleConfig }} }} }} }} }},
+);
+const second = await handlers.before_tool_call(
+  {{ toolName: "read", toolCallId: "call-2" }},
+  {{ ...ctx, config: {{ plugins: {{ entries: {{ "nejumi-budget-guard": {{ config: staleConfig }} }} }} }} }},
+);
+console.log(JSON.stringify(second ?? null));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", source],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+        env={
+            **dict(os.environ),
+            "OPENCLAW_HOME": str(tmp_path / "different-home"),
+            "OPENCLAW_STATE_DIR": str(state_dir),
+            "OPENCLAW_NEJUMI_BUDGET_GUARD_STATE_DIR": str(tmp_path / "guard-state"),
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    blocked = json.loads(result.stdout)
+    assert blocked["block"] is True
+    assert "tool_call_limit_exceeded" in blocked["blockReason"]
+
+
+def test_budget_guard_reads_explicit_live_config_path_from_stale_config(tmp_path: Path) -> None:
+    live_dir = tmp_path / "sandbox" / ".openclaw"
+    live_dir.mkdir(parents=True)
+    config_path = live_dir / "openclaw.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "plugins": {
+                    "entries": {
+                        "nejumi-budget-guard": {
+                            "config": {
+                                "enabled": True,
+                                "liveConfigPath": str(config_path),
+                                "maxToolCalls": 1,
+                                "agentIds": ["agent-current"],
+                            }
+                        }
+                    }
+                }
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    source = f"""
+import plugin from {json.dumps(str(PLUGIN_ENTRY))};
+const handlers = {{}};
+const staleConfig = {{
+  enabled: true,
+  liveConfigPath: {json.dumps(str(config_path))},
+  maxToolCalls: 10,
+  agentIds: ["agent-stale"],
+}};
+const api = {{
+  pluginConfig: staleConfig,
+  on(name, handler) {{ handlers[name] = handler; }},
+}};
+plugin.register(api);
+const ctx = {{ agentId: "agent-current", sessionKey: "agent:agent-current:test", runId: "run-main" }};
+await handlers.before_tool_call({{ toolName: "read", toolCallId: "call-1" }}, ctx);
+const second = await handlers.before_tool_call({{ toolName: "read", toolCallId: "call-2" }}, ctx);
+console.log(JSON.stringify(second ?? null));
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", source],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+        env={
+            **dict(os.environ),
+            "OPENCLAW_HOME": str(tmp_path / "wrong-home"),
+            "OPENCLAW_NEJUMI_BUDGET_GUARD_STATE_DIR": str(tmp_path / "guard-state"),
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    blocked = json.loads(result.stdout)
+    assert blocked["block"] is True
+    assert "tool_call_limit_exceeded" in blocked["blockReason"]
+
+
+def test_workspace_guard_blocks_sibling_path_but_allows_next_workspace_read(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "task-a"
+    sibling = tmp_path / "task-b"
+    private_tmp = tmp_path / "task-a-tmp"
+    private_home = tmp_path / "task-a-home"
+    for directory in (workspace, sibling, private_tmp, private_home):
+        directory.mkdir()
+    (workspace / "visible.txt").write_text("own task\n", encoding="utf-8")
+    (sibling / "secret.txt").write_text("other task\n", encoding="utf-8")
+    source = f"""
+import plugin from {json.dumps(str(PLUGIN_ENTRY))};
+const handlers = {{}};
+const api = {{
+  pluginConfig: {{
+    enabled: true,
+    maxToolCalls: 10,
+    maxAgentTurns: 0,
+    agentIds: ["agent-a"],
+    workspaceIsolationEnabled: true,
+    agentWorkspaces: {{
+      "agent-a": {{
+        workspace: {json.dumps(str(workspace))},
+        tmp: {json.dumps(str(private_tmp))},
+        home: {json.dumps(str(private_home))},
+        readOnlyRoots: [],
+      }},
+    }},
+  }},
+  on(name, handler) {{ handlers[name] = handler; }},
+}};
+plugin.register(api);
+const ctx = {{ agentId: "agent-a", sessionKey: "swe:task-a", runId: "run-a" }};
+const blocked = await handlers.before_tool_call(
+  {{ toolName: "read", toolCallId: "read-other", params: {{ path: {json.dumps(str(sibling / "secret.txt"))} }} }},
+  ctx,
+);
+const allowed = await handlers.before_tool_call(
+  {{ toolName: "read", toolCallId: "read-own", params: {{ path: "visible.txt" }} }},
+  ctx,
+);
+console.log(JSON.stringify({{ blocked, allowed: allowed ?? null }}));
+"""
+    result = run_node_probe(source)
+    assert result["blocked"]["block"] is True
+    assert "cross_task_filesystem_access" in result["blocked"]["blockReason"]
+    assert result["allowed"] is None
+
+
+def test_workspace_guard_rewrites_exec_through_landlock_launcher(tmp_path: Path) -> None:
+    workspace = tmp_path / "task-a"
+    private_tmp = tmp_path / "task-a-tmp"
+    private_home = tmp_path / "task-a-home"
+    workspace.mkdir()
+    source = f"""
+import plugin from {json.dumps(str(PLUGIN_ENTRY))};
+const handlers = {{}};
+const api = {{
+  pluginConfig: {{
+    enabled: true,
+    maxToolCalls: 10,
+    maxAgentTurns: 0,
+    agentIds: ["agent-a"],
+    workspaceIsolationEnabled: true,
+    agentWorkspaces: {{
+      "agent-a": {{
+        workspace: {json.dumps(str(workspace))},
+        tmp: {json.dumps(str(private_tmp))},
+        home: {json.dumps(str(private_home))},
+        readOnlyRoots: [],
+      }},
+    }},
+  }},
+  on(name, handler) {{ handlers[name] = handler; }},
+}};
+plugin.register(api);
+const result = await handlers.before_tool_call(
+  {{ toolName: "exec", toolCallId: "exec-own", params: {{ command: "pwd && git status --short" }} }},
+  {{ agentId: "agent-a", sessionKey: "swe:task-a", runId: "run-a" }},
+);
+console.log(JSON.stringify(result));
+"""
+    result = run_node_probe(source)
+    command = result["params"]["command"]
+    assert str(LANDLOCK_LAUNCHER) in command
+    assert f"--workspace {workspace!s}" not in command  # shell-quoted arguments
+    assert str(workspace) in command
+    assert str(private_tmp) in command
+    assert "pwd && git status --short" in command
+
+
+def test_landlock_launcher_denies_sibling_and_shared_tmp_reads(tmp_path: Path) -> None:
+    workspace = tmp_path / "task-a"
+    sibling = tmp_path / "task-b"
+    private_tmp = tmp_path / "private-tmp"
+    private_home = tmp_path / "private-home"
+    for directory in (workspace, sibling, private_tmp, private_home):
+        directory.mkdir()
+    own_file = workspace / "own.txt"
+    sibling_file = sibling / "secret.txt"
+    shared_tmp_file = Path("/tmp") / f"nejumi-cross-task-{os.getpid()}.txt"
+    own_file.write_text("own\n", encoding="utf-8")
+    sibling_file.write_text("other\n", encoding="utf-8")
+    shared_tmp_file.write_text("shared\n", encoding="utf-8")
+    try:
+        allowed = subprocess.run(
+            [
+                "python3",
+                str(LANDLOCK_LAUNCHER),
+                "--workspace",
+                str(workspace),
+                "--tmp",
+                str(private_tmp),
+                "--home",
+                str(private_home),
+                "--",
+                "/bin/bash",
+                "-lc",
+                "cat own.txt; printf private > \"$TMPDIR/result.txt\"",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+            env={
+                **os.environ,
+                "HOME": str(private_home),
+                "TMPDIR": str(private_tmp),
+            },
+        )
+        assert allowed.returncode == 0, allowed.stderr
+        assert allowed.stdout == "own\n"
+        assert (private_tmp / "result.txt").read_text(encoding="utf-8") == "private"
+
+        for forbidden in (sibling_file, shared_tmp_file):
+            denied = subprocess.run(
+                [
+                    "python3",
+                    str(LANDLOCK_LAUNCHER),
+                    "--workspace",
+                    str(workspace),
+                    "--tmp",
+                    str(private_tmp),
+                    "--home",
+                    str(private_home),
+                    "--",
+                    "/bin/bash",
+                    "-lc",
+                    f"cat {forbidden}",
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+                env={
+                    **os.environ,
+                    "HOME": str(private_home),
+                    "TMPDIR": str(private_tmp),
+                },
+            )
+            assert denied.returncode != 0
+            assert "Permission denied" in denied.stderr
+            assert "other" not in denied.stdout
+            assert "shared" not in denied.stdout
+    finally:
+        shared_tmp_file.unlink(missing_ok=True)

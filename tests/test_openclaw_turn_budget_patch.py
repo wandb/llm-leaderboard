@@ -48,6 +48,9 @@ def test_patch_text_wraps_diagnostic_stream_once():
     assert "observeNejumiBudgetGuardModelCallUsage(event)" in patched
     assert "latestNejumiAssistantUsageFromMessages" in patched
     assert "latestNejumiAssistantUsageFromSessionFile" in patched
+    assert "allNejumiAssistantUsagesFromSessionFile" in patched
+    assert "reconcileNejumiBudgetGuardUsageFromSession();" in patched
+    assert 'source: "session_reconciliation"' in patched
     assert "recoverNejumiPendingUsageViolation();" in patched
     assert "cumulative_input_tokens_limit_exceeded" in patched
 

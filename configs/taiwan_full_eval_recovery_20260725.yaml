@@ -1,0 +1,20 @@
+models:
+  - slug: gpt-4_1-mini-openai-direct
+    source_config: config-gpt-4.1-mini-2025-04-14.yaml
+    run_name: "taiwan/full/openai/gpt-4.1-mini: direct"
+    japanese_runname: "openai/gpt-4.1-mini-2025-04-14"
+    openclaw_model: "openai-direct/gpt-4.1-mini-2025-04-14"
+    reasoning_effort: null
+    agentic_thinking: "off"
+    swe_thinking: "off"
+    math_limit: 50
+    math_openclaw_timeout: 900
+    swe_subset: "leaderboard_compact_40"
+    agentic_math_run_openclaw: false
+    agentic_math_results_dir: "outputs/taiwan_full_eval_runs/tw-first-wave-20260725-gpt-4_1-mini-openai-direct/agentic_math/openclaw"
+    bfcl_run_generation: false
+    bfcl_result_dir: "outputs/taiwan_full_eval_runs/tw-first-wave-20260725-gpt-4_1-mini-openai-direct/bfcl/result"
+    notes: >-
+      Explicit recovery of the failed first-wave full run. BFCL generation and
+      Agentic Math inference are disabled; their complete run-scoped artifacts
+      must pass strict validation before evaluation continues.

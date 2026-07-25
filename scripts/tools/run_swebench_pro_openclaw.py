@@ -4,7 +4,7 @@ Generate SWE-bench Pro patches with OpenClaw on real repository checkouts.
 
 The runner creates or resets a checkout for each SWE-bench Pro instance at
 `base_commit`, runs the Nejumi OpenClaw protocol in that checkout, then captures
-`git diff --binary` plus untracked intent-to-add files as the model patch.
+`git diff --binary HEAD` plus untracked intent-to-add files as the model patch.
 The output JSON is compatible with Scale's `swe_bench_pro_eval.py`.
 """
 
@@ -30,6 +30,9 @@ from typing import Any
 TOOLS_DIR = Path(__file__).resolve().parent
 if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
+EVALUATE_UTILS_DIR = TOOLS_DIR.parent / "evaluator" / "evaluate_utils"
+if str(EVALUATE_UTILS_DIR) not in sys.path:
+    sys.path.insert(0, str(EVALUATE_UTILS_DIR))
 
 from weave_agents_native_trace import (
     DEFAULT_AGENT_NAME as DEFAULT_WEAVE_AGENTS_AGENT_NAME,
@@ -42,26 +45,51 @@ from weave_agents_native_trace import (
 from openclaw_model_params import (
     apply_openclaw_model_overrides,
     apply_openclaw_model_params,
+    openclaw_max_output_tokens_from_args,
     openclaw_model_overrides_from_args,
     openclaw_model_params_from_args,
+)
+from nemoclaw_gateway_restart import (
+    NeMoClawGatewayRestartError,
+    reload_nemoclaw_gateway_process,
+)
+from openclaw_usage import (
+    attach_billable_openclaw_usage,
+    ensure_billable_openclaw_usage,
+    merge_prior_billable_openclaw_usage,
+    summarize_billable_openclaw_records,
+)
+from subprocess_runner import (
+    CancellableCommandRunner,
+    nemoclaw_sandbox_from_command,
+    nemoclaw_sandbox_lease,
 )
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROTOCOL_RUNNER = REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py"
-RUNNER_VERSION = "swebench-pro-openclaw-2026-07-10-timeup-parallel-v2"
-PATCH_CAPTURE_VERSION = "git-diff-with-untracked-excluding-selected-tests-v2"
+RUNNER_VERSION = "swebench-pro-openclaw-2026-07-24-task-fs-isolation-v11"
+PATCH_CAPTURE_VERSION = "git-diff-head-with-untracked-excluding-selected-tests-v4"
 DEFAULT_MAX_INPUT_TOKENS = 1_000_000
 DEFAULT_MAX_TOOL_CALLS = 40
 DEFAULT_MAX_AGENT_TURNS = 40
 DEFAULT_MAX_TOOL_WALL_SECONDS = 300
 OPENCLAW_BUDGET_GUARD_PLUGIN_ID = "nejumi-budget-guard"
-OPENCLAW_BUDGET_GUARD_PLUGIN_VERSION = "0.1.0"
+OPENCLAW_BUDGET_GUARD_PLUGIN_VERSION = "0.3.0"
 OPENCLAW_BUDGET_GUARD_BLOCK_PREFIX = "NEJUMI_BUDGET_GUARD_BLOCKED"
+TASK_AGENT_REGISTRATION_SCHEMA_VERSION = 1
 SCOREABLE_OPENCLAW_DISQUALIFIED_REASONS = {
     "runtime_budget_exceeded",
     "conversation_order_violation",
     "time_up",
+    "model_output_truncated",
+    "openclaw_no_response",
+}
+PATCH_PRESERVING_OPENCLAW_STOP_REASONS = {
+    "runtime_budget_exceeded",
+    "time_up",
+    "model_output_truncated",
+    "openclaw_no_response",
 }
 OPENCLAW_RUNTIME_DIR = ".nejumi_openclaw"
 RUNTIME_EXCLUDED_PATHS = [OPENCLAW_RUNTIME_DIR]
@@ -80,6 +108,99 @@ DEFAULT_DENIED_ARGUMENT_PATTERNS = [
     r"\bgit\s+(?:clone|fetch|pull|ls-remote)\b",
     r"\b(curl|wget)\b",
 ]
+
+CHECKOUT_BASELINE_REBUILD_SCRIPT = r"""
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+checkout = Path(sys.argv[1])
+expected_tree = sys.argv[2]
+entries = json.load(sys.stdin)
+tracked_paths = checkout / ".git" / "nejumi-tracked-paths"
+
+regular_paths = [
+    entry["path"]
+    for entry in entries
+    if entry["type"] == "blob"
+]
+with tracked_paths.open("wb") as stream:
+    for path in regular_paths:
+        stream.write(path.encode("utf-8", "surrogateescape"))
+        stream.write(b"\0")
+
+if regular_paths:
+    subprocess.run(
+        [
+            "git",
+            "add",
+            "-f",
+            f"--pathspec-from-file={tracked_paths}",
+            "--pathspec-file-nul",
+        ],
+        cwd=checkout,
+        check=True,
+    )
+
+for entry in entries:
+    if entry["type"] != "commit":
+        continue
+    subprocess.run(
+        [
+            "git",
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            entry["mode"],
+            entry["object"],
+            entry["path"],
+        ],
+        cwd=checkout,
+        check=True,
+    )
+
+actual_tree = subprocess.run(
+    ["git", "write-tree"],
+    cwd=checkout,
+    check=True,
+    capture_output=True,
+    text=True,
+).stdout.strip()
+if actual_tree != expected_tree:
+    raise RuntimeError(
+        "reconstructed checkout tree mismatch: "
+        f"expected={expected_tree} actual={actual_tree or '<missing>'}"
+    )
+
+subprocess.run(
+    ["git", "commit", "-q", "--allow-empty", "-m", "baseline"],
+    cwd=checkout,
+    check=True,
+)
+status = subprocess.run(
+    ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+    cwd=checkout,
+    check=True,
+    capture_output=True,
+    text=True,
+).stdout.strip()
+if status:
+    raise RuntimeError(f"reconstructed checkout is dirty:\n{status}")
+print(actual_tree)
+"""
+
+
+class RequiredWeaveAgentsTraceError(RuntimeError):
+    """Raised before scoring when mandatory native trace evidence is absent."""
+
+
+class ProviderRecoveryExhaustedError(RuntimeError):
+    """Raised after all healthy tasks finish and provider recovery remains pending."""
+
+
+class NativeTraceRecoveryError(RuntimeError):
+    """Raised when required native trace evidence cannot be recovered safely."""
 
 
 def is_process_control_tool_name(value: Any) -> bool:
@@ -114,30 +235,23 @@ NEMOCLAW_PERMISSION_CLEANUP_RE = re.compile(
 )
 
 
+def nemoclaw_gateway_agent_registered_in_current_process(agent_id: str) -> bool:
+    return any(
+        registered_agent_id == agent_id
+        for _registered_args, registered_agent_id in _REGISTERED_NEMOCLAW_GATEWAY_AGENTS
+    )
+
+
+_COMMAND_RUNNER = CancellableCommandRunner()
+
+
 def run_command(
     command: list[str],
     cwd: Path | None = None,
     timeout: int | None = None,
     check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
-    try:
-        result = subprocess.run(
-            command,
-            cwd=str(cwd) if cwd else None,
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-        stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
-        result = subprocess.CompletedProcess(
-            command,
-            124,
-            stdout=stdout,
-            stderr=stderr + f"\nCommand timed out after {timeout} seconds",
-        )
+    result = _COMMAND_RUNNER.run(command, cwd=cwd, timeout=timeout)
     if check and result.returncode != 0:
         raise RuntimeError(
             "Command failed\n"
@@ -157,6 +271,14 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
             if line.strip():
                 rows.append(json.loads(line))
     return rows
+
+
+def write_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def safe_id(instance_id: str) -> str:
@@ -202,6 +324,7 @@ def build_cache_key(row: dict[str, Any], prompt_text: str, args: argparse.Namesp
         "deny_argument_patterns": effective_deny_argument_patterns(args),
         "openclaw_config_source": openclaw_config_cache_source(args),
         "openclaw_model_params": openclaw_model_params_from_args(args),
+        "openclaw_model_overrides": openclaw_model_overrides_from_args(args),
         "max_input_tokens": int(getattr(args, "max_input_tokens", 0) or 0),
         "max_cumulative_input_tokens": resolved_max_cumulative_input_tokens(args),
         "max_cumulative_output_tokens": resolved_max_cumulative_output_tokens(args),
@@ -400,6 +523,9 @@ def load_cached_patch_record(
         return None
     if record.get("instance_id") != cache_key["instance_id"] or "patch" not in record:
         return None
+    disqualified_reason = str(record.get("openclaw_disqualified_reason") or "")
+    if disqualified_reason and not patch_record_scoreable_disqualification(record):
+        return None
     if not patch_record_nemoclaw_session_audit_matches_cache(record, cache_key):
         return None
     if not patch_record_conversation_order_allows_reuse(record):
@@ -439,7 +565,15 @@ def load_cached_patch_record(
                         )
                     except OSError:
                         pass
+    cached = ensure_billable_openclaw_usage(cached)
     cached["prefix"] = prefix
+    try:
+        record_path.write_text(
+            json.dumps(cached, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
     return cached
 
 
@@ -669,28 +803,22 @@ def restart_nemoclaw_gateway_after_task_agent_registration(
         or not bool(getattr(args, "restart_gateway_after_task_agent_registration", True))
     ):
         return
-    command = [
-        str(getattr(args, "nemoclaw_bin", "nemoclaw")),
-        "sandbox",
-        "gateway",
-        "restart",
-        str(getattr(args, "nemoclaw_sandbox")),
-        "--quiet",
-    ]
     print(
         f"Restarting NeMoClaw Gateway after {label} task-agent registration.",
         flush=True,
     )
-    with _NEMOCLAW_EXEC_LOCK:
-        result = run_nemoclaw_subprocess(command, timeout=timeout)
-    if result.returncode != 0:
+    try:
+        with _NEMOCLAW_EXEC_LOCK:
+            reload_nemoclaw_gateway_process(
+                sandbox=str(getattr(args, "nemoclaw_sandbox")),
+                timeout_seconds=timeout,
+            )
+    except NeMoClawGatewayRestartError as exc:
         raise RuntimeError(
             "NeMoClaw Gateway restart failed after task-agent registration\n"
-            f"cmd: {' '.join(shlex.quote(part) for part in command)}\n"
-            f"returncode: {result.returncode}\n"
-            f"stdout:\n{result.stdout}\n"
-            f"stderr:\n{result.stderr}"
-        )
+            f"error: {exc}\n"
+            f"evidence: {json.dumps(exc.evidence, ensure_ascii=False)}"
+        ) from exc
     print(
         f"NeMoClaw Gateway restarted after {label} task-agent registration.",
         flush=True,
@@ -723,6 +851,12 @@ def register_nemoclaw_gateway_task_agent(
             "deny_argument_patterns": effective_deny_argument_patterns(args),
             "openclaw_model_overrides": openclaw_model_overrides_from_args(args),
             "openclaw_model_params": openclaw_model_params_from_args(args),
+            "workspace_isolation_enabled": True,
+            "workspace_read_only_roots": [
+                "/sandbox/.deepswe-tools/go/bin",
+                *(getattr(args, "nemoclaw_extra_path", None) or []),
+                *(getattr(args, "nemoclaw_extra_pythonpath", None) or []),
+            ],
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -765,6 +899,12 @@ if not isinstance(openclaw_model_params, dict):
 openclaw_model_overrides = budget.get("openclaw_model_overrides")
 if not isinstance(openclaw_model_overrides, dict):
     openclaw_model_overrides = {}
+workspace_isolation_enabled = bool(budget.get("workspace_isolation_enabled"))
+workspace_read_only_roots = [
+    str(item)
+    for item in budget.get("workspace_read_only_roots", [])
+    if isinstance(item, str) and item
+]
 deny_argument_patterns = [
     str(item)
     for item in budget.get("deny_argument_patterns", [])
@@ -914,6 +1054,21 @@ existing_session_key_prefixes = [
 for prefix in session_key_prefixes:
     if prefix and prefix not in existing_session_key_prefixes:
         existing_session_key_prefixes.append(prefix)
+existing_agent_workspaces = (
+    dict(existing_budget_config.get("agentWorkspaces"))
+    if isinstance(existing_budget_config.get("agentWorkspaces"), dict)
+    else {}
+)
+private_tmp = str(Path(agent_dir) / "runtime_tmp")
+private_home = str(Path(agent_dir) / "runtime_home")
+Path(private_tmp).mkdir(parents=True, exist_ok=True)
+Path(private_home).mkdir(parents=True, exist_ok=True)
+existing_agent_workspaces[agent_id] = {
+    "workspace": workspace,
+    "tmp": private_tmp,
+    "home": private_home,
+    "readOnlyRoots": workspace_read_only_roots,
+}
 
 def is_process_control_tool(value):
     normalized = str(value).strip().lower()
@@ -928,6 +1083,7 @@ current_deny_argument_patterns = list(deny_argument_patterns)
 
 budget_guard["config"] = {
     "enabled": True,
+    "liveConfigPath": str(config_path),
     "maxToolCalls": max_tool_calls,
     "maxAgentTurns": max_agent_turns,
     "maxCumulativeInputTokens": max_cumulative_input_tokens,
@@ -938,6 +1094,8 @@ budget_guard["config"] = {
     "denyTools": current_deny_tools,
     "denyArgumentPatterns": current_deny_argument_patterns,
     "blockReasonPrefix": "NEJUMI_BUDGET_GUARD_BLOCKED",
+    "workspaceIsolationEnabled": workspace_isolation_enabled,
+    "agentWorkspaces": existing_agent_workspaces,
 }
 budget_guard["hooks"] = {
     "allowConversationAccess": True,
@@ -1037,6 +1195,9 @@ PY
         ],
         timeout=60,
     )
+    _REGISTERED_NEMOCLAW_GATEWAY_AGENTS[:] = [
+        item for item in _REGISTERED_NEMOCLAW_GATEWAY_AGENTS if item[1] != agent_id
+    ]
     _REGISTERED_NEMOCLAW_GATEWAY_AGENTS.append((args, agent_id))
     return {
         "ok": True,
@@ -1416,7 +1577,86 @@ def verify_weave_agents_for_attempt(
             error=error,
         )
         evidence["weave_agents_ok"] = False
+        if bool(getattr(args, "fail_fast_trace_evidence", False)):
+            raise RequiredWeaveAgentsTraceError(
+                "required_trace_evidence_failure: native weave-openclaw trace "
+                f"verification failed for {row['instance_id']}: {error}"
+            ) from exc
         return evidence
+
+
+def reverify_cached_native_trace(
+    row: dict[str, Any],
+    task_dir: Path,
+    args: argparse.Namespace,
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    """Refresh delayed native trace evidence without another model invocation."""
+    if (
+        record.get("weave_agents_required") is not True
+        or record.get("weave_agents_ok") is not False
+    ):
+        return record
+    conversation_id = str(
+        record.get("weave_agents_conversation_id_contains")
+        or record.get("weave_agents_conversation_id")
+        or ""
+    ).strip()
+    if not conversation_id:
+        return record
+    verifier_json = (
+        task_dir
+        / "weave_agents_verifications"
+        / f"{safe_id(conversation_id)}-cached-reverification.json"
+    )
+    try:
+        evidence = verify_native_weave_agents_trace(
+            entity=str(
+                getattr(args, "weave_agents_entity", "") or env_default_entity()
+            ),
+            project=str(
+                getattr(args, "weave_agents_project", "") or env_default_project()
+            ),
+            agent_name=str(
+                getattr(args, "weave_agents_agent_name", "")
+                or DEFAULT_WEAVE_AGENTS_AGENT_NAME
+            ),
+            conversation_id_contains=conversation_id,
+            verifier_json=verifier_json,
+            env_file=Path(
+                getattr(args, "weave_agents_env_file", DEFAULT_WEAVE_AGENTS_ENV_FILE)
+            ),
+            expected_model=str(getattr(args, "model", "") or ""),
+            required_texts=[f"instance_id: {row['instance_id']}"],
+            require_tool_trace=int(record.get("openclaw_tool_call_count") or 0) > 0,
+            require_usage=True,
+            limit=int(getattr(args, "weave_agents_limit", 50) or 50),
+            timeout_seconds=float(
+                getattr(args, "native_trace_cached_reverification_timeout", 0.0)
+                or 0.0
+            ),
+            poll_seconds=float(
+                getattr(args, "weave_agents_poll_seconds", 5.0) or 5.0
+            ),
+        )
+    except Exception as exc:
+        print(
+            "Cached native trace still unavailable for "
+            f"{row['instance_id']}: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return record
+    refreshed = {**record, **evidence}
+    (task_dir / "patch_record.json").write_text(
+        json.dumps(refreshed, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print(
+        f"Recovered delayed native trace without a paid rerun: {row['instance_id']}",
+        flush=True,
+    )
+    return refreshed
 
 
 def is_runtime_budget_exceeded(sidecar: dict[str, Any] | None) -> bool:
@@ -1479,16 +1719,24 @@ WORKSPACE_VANISHED_RE = re.compile(
 )
 
 
+def sidecar_explicit_error_text(sidecar: dict[str, Any] | None) -> str:
+    if not isinstance(sidecar, dict):
+        return ""
+    parts = [str(sidecar.get(key) or "") for key in ("stderr", "error")]
+    stdout_json = sidecar.get("stdout_json")
+    if isinstance(stdout_json, dict):
+        parts.extend(
+            str(stdout_json.get(key) or "")
+            for key in ("error", "errorMessage", "errorCode", "errorBody", "rawError")
+        )
+    return "\n".join(part for part in parts if part)
+
+
 def openclaw_failure_text(result: subprocess.CompletedProcess[str], sidecar: dict[str, Any] | None) -> str:
     parts = [result.stdout or "", result.stderr or ""]
-    if isinstance(sidecar, dict):
-        parts.extend(
-            [
-                str(sidecar.get("stderr") or ""),
-                str(sidecar.get("error") or ""),
-                sidecar_stdout_json_text(sidecar),
-            ]
-        )
+    explicit_sidecar_error = sidecar_explicit_error_text(sidecar)
+    if explicit_sidecar_error:
+        parts.append(explicit_sidecar_error)
     return "\n".join(part for part in parts if part)
 
 
@@ -1554,7 +1802,15 @@ def sidecar_provider_timeout(sidecar: dict[str, Any] | None) -> bool:
     timeout_phase = str(stdout_json.get("timeoutPhase") or "").lower()
     if status == "timeout" or timeout_phase == "provider":
         return True
-    text = sidecar_stdout_json_text(sidecar)
+    # A successful OpenClaw JSON result contains the full prompt, assistant
+    # messages, and tool output. Those routinely mention words such as
+    # "timed out" as task instructions or test diagnostics, so searching the
+    # entire payload turns valid completions into provider failures. Restrict
+    # fallback matching to fields that OpenClaw explicitly designates as
+    # errors.
+    text = sidecar_explicit_error_text(sidecar)
+    if not text.strip():
+        return False
     return any(
         re.search(pattern, text, flags=re.IGNORECASE)
         for pattern in TRANSIENT_OPENCLAW_FAILURE_PATTERNS
@@ -1725,6 +1981,7 @@ def _runtime_budget_lines(
     max_input_tokens: int | None,
     max_cumulative_input_tokens: int | None,
     max_cumulative_output_tokens: int | None,
+    max_output_tokens_per_response: int | None = None,
 ) -> list[str]:
     limits: list[str] = []
     if max_tool_calls:
@@ -1733,6 +1990,8 @@ def _runtime_budget_lines(
         limits.append(f"- Maximum agent turns: {max_agent_turns}")
     if max_input_tokens:
         limits.append(f"- Per-turn input-token cap: {max_input_tokens}")
+    if max_output_tokens_per_response:
+        limits.append(f"- Per-response output-token cap: {max_output_tokens_per_response}")
     if max_cumulative_input_tokens:
         limits.append(f"- Cumulative input-token cap: {max_cumulative_input_tokens}")
     if max_cumulative_output_tokens:
@@ -1747,6 +2006,8 @@ def _runtime_budget_lines(
         *limits,
         "",
         "Treat these as hard evaluation limits. Spend the early part of the run on targeted orientation, then edit files before exhausting the tool budget.",
+        "When any runtime budget is exhausted, execution stops immediately and the current `git diff` is submitted for evaluation, even if the work is incomplete. No extra cleanup turn is guaranteed.",
+        "Create a viable minimal patch early, then use the remaining budget to test and improve it.",
         "Prefer high-signal searches and focused file reads. Avoid repeated broad searches after you have identified the relevant implementation and tests.",
     ]
     if max_tool_calls:
@@ -1769,6 +2030,7 @@ def build_prompt(
     max_input_tokens: int | None = None,
     max_cumulative_input_tokens: int | None = None,
     max_cumulative_output_tokens: int | None = None,
+    max_output_tokens_per_response: int | None = None,
 ) -> str:
     benchmark_name = str(row.get("benchmark_name") or "SWE-bench Pro")
     issue_categories = list_text(row.get("issue_categories"))
@@ -1783,7 +2045,7 @@ def build_prompt(
         "",
         "You are running inside a checkout of the target repository at the base commit.",
         "Inspect the repository, edit files as needed, and leave the working tree with the minimal fix.",
-        "Do not create commits. The harness will collect `git diff --binary` after you finish.",
+        "Do not create commits. The harness will collect `git diff --binary HEAD` after you finish; staged changes are allowed.",
         "",
         "## Metadata",
         "",
@@ -1816,6 +2078,7 @@ def build_prompt(
             max_input_tokens=_positive_int_or_none(max_input_tokens),
             max_cumulative_input_tokens=_positive_int_or_none(max_cumulative_input_tokens),
             max_cumulative_output_tokens=_positive_int_or_none(max_cumulative_output_tokens),
+            max_output_tokens_per_response=_positive_int_or_none(max_output_tokens_per_response),
         )
     )
     parts.extend(
@@ -1829,6 +2092,7 @@ def build_prompt(
             "Run the relevant local tests when practical after making changes.",
             f"Each shell execution has a wall-clock limit of {wall_limit_text}.",
             "Keep commands targeted: prefer `rg`, focused file reads, selected tests, and small verification commands.",
+            "For substantial new files or large rewrites, use several bounded edits instead of generating one very large write or patch tool call.",
             "Do not run broad repository-wide builds, servers, notebooks, or background jobs unless required by the issue.",
             "Language runtimes and common tools required by the selected task are preinstalled on PATH by the harness.",
             "Do not download or install language runtimes, compilers, or toolchains during the task.",
@@ -1897,7 +2161,9 @@ def capture_patch(checkout_dir: Path, excluded_paths: list[str] | None = None) -
     ]
     for start in range(0, len(paths), 200):
         run_command(["git", "add", "-N", "--", *paths[start : start + 200]], cwd=checkout_dir)
-    diff_command = ["git", "diff", "--binary"]
+    # Diff against HEAD so model-staged and unstaged changes are both captured.
+    # Intent-to-add above makes otherwise-untracked files visible to this diff.
+    diff_command = ["git", "diff", "--binary", "HEAD"]
     if excluded_paths:
         diff_command.extend(["--", ".", *[f":(exclude){path}" for path in excluded_paths]])
     result = run_command(diff_command, cwd=checkout_dir)
@@ -1956,27 +2222,53 @@ def capture_patch_nemoclaw(
         diff_paths.extend([f":(exclude){path}" for path in excluded_paths])
     result = run_nemoclaw_text_command(
         args,
-        ["bash", "-lc", 'git diff --binary -- "$@"', "git-diff", *diff_paths],
+        ["bash", "-lc", 'git diff --binary HEAD -- "$@"', "git-diff", *diff_paths],
         workdir=sandbox_dir,
     )
     return result.stdout
 
 
 def should_force_empty_patch(openclaw_metadata: dict[str, Any]) -> bool:
-    return bool(openclaw_metadata.get("openclaw_disqualified_reason"))
+    reason = str(openclaw_metadata.get("openclaw_disqualified_reason") or "")
+    if reason in PATCH_PRESERVING_OPENCLAW_STOP_REASONS:
+        return False
+    return bool(reason)
+
+
+def sidecar_model_failure_reason(sidecar: dict[str, Any] | None) -> str | None:
+    if not isinstance(sidecar, dict):
+        return None
+    status = sidecar.get("model_completion")
+    if not isinstance(status, dict) or status.get("failure_category") != "model":
+        return None
+    reason = str(status.get("reason") or "").strip()
+    return reason or None
 
 
 def default_openclaw_config_template() -> Path:
     return Path(os.environ.get("OPENCLAW_CONFIG_PATH", "~/.openclaw/openclaw.json")).expanduser()
 
 
+def run_scoped_sandbox_checkout_name(
+    checkout_dir: Path,
+    args: argparse.Namespace,
+) -> str:
+    output_dir = getattr(args, "output_dir", None)
+    if output_dir is None:
+        return checkout_dir.name
+    run_scope = str(Path(output_dir).expanduser().resolve())
+    digest = hashlib.sha256(run_scope.encode("utf-8")).hexdigest()[:12]
+    return f"{checkout_dir.name}-{digest}"
+
+
 def sandbox_checkout_dir(checkout_dir: Path, args: argparse.Namespace) -> Path:
+    checkout_name = run_scoped_sandbox_checkout_name(checkout_dir, args)
     sandbox_root = getattr(args, "nemoclaw_checkout_sandbox_root", None)
     if sandbox_root:
-        return Path(str(sandbox_root)) / checkout_dir.name
+        return Path(str(sandbox_root)) / checkout_name
     transfer_mode = str(getattr(args, "nemoclaw_checkout_transfer_mode", "visible") or "visible")
     if getattr(args, "nemoclaw_sandbox", None) and transfer_mode == "copy":
-        return Path("/sandbox/checkouts") / checkout_dir.name
+        return Path("/sandbox/checkouts") / checkout_name
     return checkout_dir.resolve()
 
 
@@ -2030,6 +2322,7 @@ def create_checkout_archive(checkout_dir: Path, archive_path: Path) -> None:
             "tar",
             "-C",
             str(checkout_dir),
+            "--hard-dereference",
             "--exclude",
             "./.git",
             "--exclude",
@@ -2040,6 +2333,101 @@ def create_checkout_archive(checkout_dir: Path, archive_path: Path) -> None:
         ],
         cwd=REPO_ROOT,
     )
+
+
+def create_checkout_tracked_archive(checkout_dir: Path, archive_path: Path) -> None:
+    with tempfile.TemporaryDirectory(dir=archive_path.parent) as staging_name:
+        staging_dir = Path(staging_name)
+        run_command(
+            [
+                "git",
+                "checkout-index",
+                "--all",
+                "--force",
+                f"--prefix={staging_dir}{os.sep}",
+            ],
+            cwd=checkout_dir,
+        )
+        run_command(
+            [
+                "tar",
+                "-C",
+                str(staging_dir),
+                "-czf",
+                str(archive_path),
+                ".",
+            ],
+            cwd=REPO_ROOT,
+        )
+
+
+def assert_clean_checkout_for_sandbox_copy(checkout_dir: Path) -> dict[str, str]:
+    result = run_command(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+        cwd=checkout_dir,
+    )
+    if result.stdout.strip():
+        preview = "\n".join(result.stdout.strip().splitlines()[:20])
+        raise RuntimeError(
+            "Refusing to create a NeMoClaw sandbox baseline from a dirty host "
+            f"checkout: {checkout_dir}\n"
+            "The checkout must be reset to the task base commit before transfer. "
+            "Copying model or reference changes into the baseline would leak them "
+            f"into the evaluation.\nDirty paths:\n{preview}"
+        )
+    head_commit = run_command(
+        ["git", "rev-parse", "HEAD"],
+        cwd=checkout_dir,
+    ).stdout.strip()
+    head_tree = run_command(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=checkout_dir,
+    ).stdout.strip()
+    index_tree = run_command(
+        ["git", "write-tree"],
+        cwd=checkout_dir,
+    ).stdout.strip()
+    if index_tree != head_tree:
+        raise RuntimeError(
+            "Refusing to create a NeMoClaw sandbox baseline from a host checkout "
+            "whose Git index differs from HEAD: "
+            f"checkout={checkout_dir} head={head_tree} index={index_tree}"
+        )
+    return {
+        "host_head_commit": head_commit,
+        "host_head_tree": head_tree,
+        "host_index_tree": index_tree,
+        "host_status": "clean",
+    }
+
+
+def checkout_head_tree_manifest(checkout_dir: Path) -> list[dict[str, str]]:
+    result = subprocess.run(
+        ["git", "ls-tree", "-r", "-z", "--full-tree", "HEAD"],
+        cwd=checkout_dir,
+        check=True,
+        capture_output=True,
+    )
+    entries: list[dict[str, str]] = []
+    for raw_entry in result.stdout.split(b"\0"):
+        if not raw_entry:
+            continue
+        metadata, raw_path = raw_entry.split(b"\t", 1)
+        mode, object_type, object_id = metadata.decode("ascii").split()
+        if object_type not in {"blob", "commit"}:
+            raise RuntimeError(
+                "Unsupported Git tree entry while preparing NeMoClaw checkout: "
+                f"type={object_type} path={os.fsdecode(raw_path)!r}"
+            )
+        entries.append(
+            {
+                "mode": mode,
+                "type": object_type,
+                "object": object_id,
+                "path": os.fsdecode(raw_path),
+            }
+        )
+    return entries
 
 
 def upload_file_to_nemoclaw(
@@ -2081,19 +2469,44 @@ def upload_file_to_nemoclaw(
     }
 
 
+def sandbox_checkout_archive_paths(
+    checkout_dir: Path,
+    sandbox_dir: str,
+) -> tuple[str, str]:
+    scope = hashlib.sha256(sandbox_dir.encode("utf-8")).hexdigest()[:16]
+    archive_stem = f"{safe_id(checkout_dir.name)}-{scope}"
+    archive_root = "/sandbox/tmp/nejumi_swe_checkout"
+    return (
+        f"{archive_root}/{archive_stem}.tgz",
+        f"{archive_root}/{archive_stem}-tracked.tgz",
+    )
+
+
 def sync_checkout_to_nemoclaw_copy(
     checkout_dir: Path,
     task_dir: Path,
     args: argparse.Namespace,
 ) -> dict[str, Any]:
     sandbox_dir = str(sandbox_checkout_dir(checkout_dir, args))
+    baseline = assert_clean_checkout_for_sandbox_copy(checkout_dir)
+    tracked_tree_manifest = checkout_head_tree_manifest(checkout_dir)
     transfer_dir = task_dir / "nemoclaw_checkout_transfer"
     transfer_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=transfer_dir) as tmp_name:
         archive_path = Path(tmp_name) / "checkout.tgz"
+        tracked_archive_path = Path(tmp_name) / "checkout-tracked.tgz"
         create_checkout_archive(checkout_dir, archive_path)
-        sandbox_archive = f"/sandbox/tmp/nejumi_swe_checkout/{safe_id(checkout_dir.name)}.tgz"
+        create_checkout_tracked_archive(checkout_dir, tracked_archive_path)
+        sandbox_archive, sandbox_tracked_archive = sandbox_checkout_archive_paths(
+            checkout_dir,
+            sandbox_dir,
+        )
         upload = upload_file_to_nemoclaw(archive_path, sandbox_archive, args)
+        tracked_upload = upload_file_to_nemoclaw(
+            tracked_archive_path,
+            sandbox_tracked_archive,
+            args,
+        )
     run_nemoclaw_text_command(
         args,
         [
@@ -2101,21 +2514,66 @@ def sync_checkout_to_nemoclaw_copy(
             "-lc",
             (
                 'rm -rf "$1" && mkdir -p "$1" && tar -xzf "$2" -C "$1" '
+                '&& tar -xzf "$3" -C "$1" '
                 '&& cd "$1" && git init -q '
                 '&& git config user.email "nejumi-swe@example.local" '
-                '&& git config user.name "Nejumi SWE Harness" '
-                '&& git add -f -A '
-                '&& git commit -q -m baseline'
+                '&& git config user.name "Nejumi SWE Harness"'
             ),
             "extract-checkout",
             sandbox_dir,
             sandbox_archive,
+            sandbox_tracked_archive,
         ],
         timeout=max(60, int(getattr(args, "nemoclaw_checkout_transfer_timeout", 300))),
     )
+    run_nemoclaw_text_command(
+        args,
+        [
+            "python3",
+            "-c",
+            (
+                "import base64,sys;"
+                "code=base64.b64decode(sys.argv[1]);"
+                "sys.argv=sys.argv[1:];"
+                "exec(compile(code,"
+                "'<nejumi-checkout-baseline>','exec'))"
+            ),
+            base64.b64encode(
+                CHECKOUT_BASELINE_REBUILD_SCRIPT.encode("utf-8")
+            ).decode("ascii"),
+            sandbox_dir,
+            baseline["host_head_tree"],
+        ],
+        input_text=json.dumps(tracked_tree_manifest, ensure_ascii=True),
+        timeout=max(60, int(getattr(args, "nemoclaw_checkout_transfer_timeout", 300))),
+    )
+    sandbox_tree = run_nemoclaw_text_command(
+        args,
+        [
+            "bash",
+            "-lc",
+            (
+                'test -z "$(git -C "$1" status --porcelain=v1 --untracked-files=all)" '
+                '&& git -C "$1" rev-parse "HEAD^{tree}"'
+            ),
+            "verify-checkout-baseline",
+            sandbox_dir,
+        ],
+        timeout=60,
+    ).stdout.strip()
+    if sandbox_tree != baseline["host_head_tree"]:
+        raise RuntimeError(
+            "NeMoClaw sandbox baseline tree does not match the clean host checkout: "
+            f"host={baseline['host_head_tree']} sandbox={sandbox_tree or '<missing>'}"
+        )
     return {
         "mode": "copy",
         "sandbox_checkout_dir": sandbox_dir,
+        "sandbox_baseline_tree": sandbox_tree,
+        "tracked_archive_bytes": tracked_upload["archive_bytes"],
+        "tracked_archive_sha256": tracked_upload["archive_sha256"],
+        "tracked_archive_transport": tracked_upload["transport"],
+        **baseline,
         **upload,
     }
 
@@ -2127,12 +2585,16 @@ def ensure_nemoclaw_checkout_ready(
 ) -> dict[str, Any] | None:
     if not getattr(args, "nemoclaw_sandbox", None):
         return None
-    if nemoclaw_checkout_visible(checkout_dir, args):
-        return {"mode": "visible", "sandbox_checkout_dir": str(sandbox_checkout_dir(checkout_dir, args))}
     mode = str(getattr(args, "nemoclaw_checkout_transfer_mode", "visible") or "visible")
-    if mode != "copy":
-        assert_nemoclaw_checkout_visible(checkout_dir, args)
-    return sync_checkout_to_nemoclaw_copy(checkout_dir, task_dir, args)
+    if mode == "copy":
+        # Never reuse a sandbox-side git directory as an evaluation baseline.
+        # It may contain a model or gold patch left by an earlier run.
+        return sync_checkout_to_nemoclaw_copy(checkout_dir, task_dir, args)
+    assert_nemoclaw_checkout_visible(checkout_dir, args)
+    return {
+        "mode": "visible",
+        "sandbox_checkout_dir": str(sandbox_checkout_dir(checkout_dir, args)),
+    }
 
 
 def task_openclaw_config_paths(
@@ -2192,6 +2654,115 @@ def task_live_sandbox_session_dir(
     return str(sandbox_agent_dir / "sessions")
 
 
+def task_agent_registration_spec(
+    args: argparse.Namespace,
+    *,
+    agent_id: str,
+    workspace: str,
+    agent_dir: str,
+    config_path: str,
+) -> dict[str, Any]:
+    """Describe every setting material to a Gateway task-agent registration."""
+    return {
+        "schema_version": TASK_AGENT_REGISTRATION_SCHEMA_VERSION,
+        "agent_id": agent_id,
+        "workspace": workspace,
+        "agent_dir": agent_dir,
+        "config_path": config_path,
+        "model": str(getattr(args, "model", "") or ""),
+        "thinking": str(getattr(args, "thinking", "") or ""),
+        "tool_profile": str(getattr(args, "openclaw_tool_profile", "") or ""),
+        "deny_tools": effective_deny_tools(args),
+        "deny_argument_patterns": effective_deny_argument_patterns(args),
+        "max_input_tokens": int(getattr(args, "max_input_tokens", 0) or 0),
+        "max_cumulative_input_tokens": resolved_max_cumulative_input_tokens(args),
+        "max_cumulative_output_tokens": resolved_max_cumulative_output_tokens(args),
+        "max_tool_calls": int(getattr(args, "max_tool_calls", 0) or 0),
+        "max_agent_turns": int(getattr(args, "max_agent_turns", 0) or 0),
+        "max_tool_wall_seconds": int(getattr(args, "max_tool_wall_seconds", 0) or 0),
+        "require_actual_token_usage": bool(
+            getattr(args, "require_actual_token_usage", False)
+        ),
+        "session_prefix": resolve_session_prefix(args),
+        "openclaw_model_params": openclaw_model_params_from_args(args),
+        "openclaw_model_overrides": openclaw_model_overrides_from_args(args),
+        "budget_guard_plugin": OPENCLAW_BUDGET_GUARD_PLUGIN_ID,
+        "budget_guard_plugin_version": OPENCLAW_BUDGET_GUARD_PLUGIN_VERSION,
+        "nemoclaw_sandbox": str(getattr(args, "nemoclaw_sandbox", "") or ""),
+    }
+
+
+def task_agent_registration_key(spec: dict[str, Any]) -> str:
+    payload = json.dumps(
+        spec,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return sha256_text(payload)
+
+
+def gateway_task_agent_registration_context(
+    row: dict[str, Any],
+    checkout_dir: Path,
+    task_dir: Path,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    agent_id = safe_agent_id(str(row["instance_id"]), args.task_agent_prefix)
+    host_config_path, host_agent_dir, _, sandbox_agent_dir = task_openclaw_config_paths(
+        checkout_dir,
+        args,
+    )
+    workspace = str(sandbox_checkout_dir(checkout_dir, args))
+    config_path = str(
+        getattr(args, "nemoclaw_openclaw_config_path", NEMOCLAW_OPENCLAW_CONFIG_PATH)
+    )
+    spec = task_agent_registration_spec(
+        args,
+        agent_id=agent_id,
+        workspace=workspace,
+        agent_dir=str(sandbox_agent_dir),
+        config_path=config_path,
+    )
+    return {
+        "agent_id": agent_id,
+        "workspace": workspace,
+        "agent_dir": str(sandbox_agent_dir),
+        "host_config_path": str(host_config_path),
+        "host_agent_dir": str(host_agent_dir),
+        "config_path": config_path,
+        "registration_spec": spec,
+        "registration_key": task_agent_registration_key(spec),
+        "marker_path": task_dir / "openclaw_task_agent.json",
+    }
+
+
+def gateway_task_agent_registration_is_reusable(
+    row: dict[str, Any],
+    checkout_dir: Path,
+    task_dir: Path,
+    args: argparse.Namespace,
+) -> bool:
+    if not uses_nemoclaw_gateway_task_agent(args) or bool(getattr(args, "redo", False)):
+        return False
+    context = gateway_task_agent_registration_context(row, checkout_dir, task_dir, args)
+    marker_path = context["marker_path"]
+    if not marker_path.exists():
+        return False
+    try:
+        existing = json.loads(marker_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return False
+    return bool(
+        isinstance(existing, dict)
+        and existing.get("registration_key") == context["registration_key"]
+        and existing.get("registration_spec") == context["registration_spec"]
+        and isinstance(existing.get("gateway_registered"), dict)
+        and existing["gateway_registered"].get("ok") is True
+        and nemoclaw_gateway_agent_registered_in_current_process(context["agent_id"])
+    )
+
+
 def write_task_openclaw_config(
     row: dict[str, Any],
     checkout_dir: Path,
@@ -2219,25 +2790,11 @@ def write_task_openclaw_config(
     host_config_path.parent.mkdir(parents=True, exist_ok=True)
 
     if uses_nemoclaw_gateway_task_agent(args):
-        canonical_config_path = str(
-            getattr(args, "nemoclaw_openclaw_config_path", NEMOCLAW_OPENCLAW_CONFIG_PATH)
-        )
-        task_agent_path = task_dir / "openclaw_task_agent.json"
-        if task_agent_path.exists() and not bool(getattr(args, "redo", False)):
-            try:
-                existing = json.loads(task_agent_path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                existing = {}
-            if (
-                isinstance(existing, dict)
-                and existing.get("agent_id") == agent_id
-                and existing.get("workspace") == workspace
-                and existing.get("agent_dir") == str(sandbox_agent_dir)
-                and existing.get("config_path") == canonical_config_path
-                and isinstance(existing.get("gateway_registered"), dict)
-                and existing["gateway_registered"].get("ok") is True
-            ):
-                return agent_id, None
+        context = gateway_task_agent_registration_context(row, checkout_dir, task_dir, args)
+        canonical_config_path = context["config_path"]
+        task_agent_path = context["marker_path"]
+        if gateway_task_agent_registration_is_reusable(row, checkout_dir, task_dir, args):
+            return agent_id, None
 
         registration = register_nemoclaw_gateway_task_agent(
             args,
@@ -2263,6 +2820,8 @@ def write_task_openclaw_config(
                         if int(getattr(args, "max_tool_wall_seconds", 0) or 0) > 0
                         else None
                     ),
+                    "registration_spec": context["registration_spec"],
+                    "registration_key": context["registration_key"],
                     "gateway_registered": registration,
                 },
                 ensure_ascii=False,
@@ -2376,6 +2935,7 @@ def run_openclaw_for_task(
         max_input_tokens=getattr(args, "max_input_tokens", None),
         max_cumulative_input_tokens=getattr(args, "max_cumulative_input_tokens", None),
         max_cumulative_output_tokens=getattr(args, "max_cumulative_output_tokens", None),
+        max_output_tokens_per_response=openclaw_max_output_tokens_from_args(args),
     )
     prompt_hash = sha256_text(prompt_text)
     cache_key = build_cache_key(row, prompt_text, args)
@@ -2389,6 +2949,7 @@ def run_openclaw_for_task(
     max_attempts = max(1, int(args.openclaw_max_attempts))
     metadata: dict[str, Any] | None = None
     sidecar_path: Path | None = None
+    billable_attempts: list[dict[str, Any]] = []
     for attempt_number in range(1, max_attempts + 1):
         attempt_id = f"{int(time.time())}-{os.getpid()}-{attempt_number}"
         benchmark_id = protocol_benchmark_id(row)
@@ -2441,6 +3002,15 @@ def run_openclaw_for_task(
                     str(final_idle_salvage_seconds),
                 ]
             )
+        final_shutdown_grace_seconds = float(
+            getattr(args, "final_assistant_shutdown_grace_seconds", 30.0) or 0.0
+        )
+        command.extend(
+            [
+                "--final-assistant-shutdown-grace-seconds",
+                str(final_shutdown_grace_seconds),
+            ]
+        )
         llm_response_idle_timeout_seconds = float(
             getattr(args, "llm_response_idle_timeout_seconds", 0.0) or 0.0
         )
@@ -2538,6 +3108,26 @@ def run_openclaw_for_task(
                 sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 sidecar = None
+        billable_attempts.append(
+            {
+                "attempt_id": attempt_id,
+                "attempt_number": attempt_number,
+                "returncode": result.returncode,
+                "wall_clock_seconds": ended_at - started_at,
+                "openclaw_result_path": str(sidecar_path) if sidecar_path.exists() else "",
+                "usage": sidecar_usage(sidecar) if isinstance(sidecar, dict) else {},
+            }
+        )
+        model_failure_reason = sidecar_model_failure_reason(sidecar)
+        if model_failure_reason:
+            metadata["openclaw_disqualified_reason"] = model_failure_reason
+            metadata["model_completion"] = sidecar.get("model_completion", {})
+            print(
+                f"OpenClaw model-side incomplete response for {row['instance_id']}: "
+                f"{model_failure_reason}; preserving any produced patch and not retrying.",
+                flush=True,
+            )
+            break
         if result.returncode == 0 and not is_transient_openclaw_failure(result, sidecar):
             break
         if is_weave_sidecar_failure(sidecar):
@@ -2592,7 +3182,26 @@ def run_openclaw_for_task(
             metadata["openclaw_error"] = sidecar_error_text(sidecar, openclaw_failure_text(result, sidecar))
             print(
                 f"OpenClaw timed out for {row['instance_id']} on attempt "
-                f"{attempt_number}/{max_attempts}; recording an empty patch.",
+                f"{attempt_number}/{max_attempts}; scoring the saved workspace patch.",
+                flush=True,
+            )
+            break
+        if sidecar_llm_response_idle_timeout(sidecar):
+            # No model response arrived within the benchmark's idle window.
+            # This is a scoreable time-up, not an evaluator exception.  Keep
+            # the saved workspace patch, verify the native trace below, and
+            # let the task verifier assign the resulting score.
+            metadata["openclaw_disqualified_reason"] = "time_up"
+            metadata["openclaw_error"] = sidecar_error_text(
+                sidecar,
+                openclaw_failure_text(result, sidecar),
+            )
+            metadata["runtime_budget"] = (
+                sidecar.get("runtime_budget") if isinstance(sidecar, dict) else {}
+            )
+            print(
+                f"OpenClaw response-idle time-up for {row['instance_id']} on attempt "
+                f"{attempt_number}/{max_attempts}; scoring the saved patch.",
                 flush=True,
             )
             break
@@ -2674,6 +3283,16 @@ def run_openclaw_for_task(
         raise RuntimeError(f"OpenClaw did not run for {row['instance_id']}")
     if not sidecar_path.exists():
         if metadata.get("openclaw_disqualified_reason") == "time_up":
+            weave_agents_evidence = verify_weave_agents_for_attempt(
+                row,
+                task_dir,
+                args,
+                session_key=str(metadata.get("session_key") or ""),
+                agent_id=agent_id,
+                # An outer timeout can prevent the sidecar from being written,
+                # but a scoreable coding attempt should still contain tool spans.
+                sidecar={"tool_call_count": 1},
+            )
             metadata.update(
                 {
                     "openclaw_result_path": "",
@@ -2691,10 +3310,10 @@ def run_openclaw_for_task(
                     "runtime_budget": {},
                     "weave_sidecar": {},
                     "weave_sidecar_ok": None,
-                    **default_weave_agents_evidence(args, required=False),
+                    **weave_agents_evidence,
                 }
             )
-            return metadata
+            return attach_billable_openclaw_usage(metadata, billable_attempts)
         raise RuntimeError(f"OpenClaw completed without sidecar result: {sidecar_path}")
     sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
     if not sidecar_identity_matches_cache(sidecar, cache_key):
@@ -2743,13 +3362,14 @@ def run_openclaw_for_task(
             **nemoclaw_session_copy_evidence(sidecar),
             "openclaw_config_source": cache_key.get("openclaw_config_source", ""),
             "runtime_budget": sidecar.get("runtime_budget", {}),
+            "model_completion": sidecar.get("model_completion", {}),
             "weave_sidecar": sidecar.get("weave_sidecar", {}),
             "weave_sidecar_ok": (sidecar.get("weave_sidecar") or {}).get("ok"),
             "openclaw_disqualified_reason": disqualified_reason,
             **weave_agents_evidence,
         }
     )
-    return metadata
+    return attach_billable_openclaw_usage(metadata, billable_attempts)
 
 
 def write_outputs(
@@ -2765,11 +3385,25 @@ def write_outputs(
     with jsonl_path.open("w", encoding="utf-8") as f:
         for patch in patches:
             f.write(json.dumps(patch, ensure_ascii=False) + "\n")
+    billable = summarize_billable_openclaw_records(patches)
+    scoreable_stop_count = sum(
+        1 for patch in patches if patch_record_scoreable_disqualification(patch)
+    )
+    unscoreable_failure_count = sum(
+        1
+        for patch in patches
+        if patch.get("openclaw_disqualified_reason")
+        and not patch_record_scoreable_disqualification(patch)
+    )
     summary = {
         "total_requested": len(rows),
         "patches_written": len(patches),
         "empty_patches": sum(1 for patch in patches if not patch.get("patch")),
         "runner_version": RUNNER_VERSION,
+        "billable_openclaw_usage": billable["usage"],
+        "billable_openclaw_attempt_count": billable["attempt_count"],
+        "billable_openclaw_retry_count": billable["retry_count"],
+        "billable_openclaw_wall_seconds": billable["wall_seconds"],
         "openclaw_num_workers": int(getattr(args, "openclaw_num_workers", 1) or 1),
         "openclaw_task_start_min_interval_seconds": float(
             getattr(args, "openclaw_task_start_min_interval_seconds", 0.0) or 0.0
@@ -2805,6 +3439,10 @@ def write_outputs(
         "runtime_budget_exceeded_patches": sum(
             1 for patch in patches if patch.get("openclaw_disqualified_reason") == "runtime_budget_exceeded"
         ),
+        "scoreable_stop_patches": scoreable_stop_count,
+        "unscoreable_failure_patches": unscoreable_failure_count,
+        # Compatibility field. A nonzero value can include scoreable runtime
+        # stops whose captured diff is still submitted to the official grader.
         "disqualified_patches": sum(1 for patch in patches if patch.get("openclaw_disqualified_reason")),
         "patch_path": str(patch_path),
         "jsonl_path": str(jsonl_path),
@@ -3019,6 +3657,15 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--final-assistant-shutdown-grace-seconds",
+        type=float,
+        default=30.0,
+        help=(
+            "After final-answer idle salvage, allow OpenClaw this many seconds "
+            "to run finalizers and flush telemetry before forced termination."
+        ),
+    )
+    parser.add_argument(
         "--llm-response-idle-timeout-seconds",
         type=float,
         default=0.0,
@@ -3040,6 +3687,54 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=15.0,
         help="Linear backoff base seconds between transient OpenClaw retries.",
+    )
+    parser.add_argument(
+        "--provider-recovery-rounds",
+        type=int,
+        default=2,
+        help=(
+            "After normal per-task retries, defer provider failures until all other "
+            "tasks finish and requeue them this many times."
+        ),
+    )
+    parser.add_argument(
+        "--provider-recovery-base-seconds",
+        type=float,
+        default=60.0,
+        help="Base cooldown before deferred provider recovery rounds; doubles per round.",
+    )
+    parser.add_argument(
+        "--native-trace-recovery-attempts",
+        type=int,
+        default=1,
+        help=(
+            "Sequential reruns allowed for an isolated missing required native trace. "
+            "The model result and usage from each paid attempt remain accounted."
+        ),
+    )
+    parser.add_argument(
+        "--native-trace-recovery-max-tasks",
+        type=int,
+        default=2,
+        help=(
+            "Maximum missing-trace tasks eligible for automatic rerun. A larger "
+            "failure set is treated as an infrastructure incident before more spend."
+        ),
+    )
+    parser.add_argument(
+        "--native-trace-recovery-base-seconds",
+        type=float,
+        default=15.0,
+        help="Cooldown before each sequential native-trace recovery round.",
+    )
+    parser.add_argument(
+        "--native-trace-cached-reverification-timeout",
+        type=float,
+        default=0.0,
+        help=(
+            "Read-only polling window for delayed cached native traces before any "
+            "paid recovery rerun. Zero performs one immediate query."
+        ),
     )
     parser.add_argument("--limit", type=int)
     parser.add_argument("--instance-id", action="append")
@@ -3082,6 +3777,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    _COMMAND_RUNNER.reset()
     args = parse_args()
     if getattr(args, "weave_sidecar", False) or getattr(args, "weave_sidecar_strict", False):
         raise SystemExit(
@@ -3093,18 +3789,18 @@ def main() -> None:
         raise SystemExit("No rows selected")
 
     patches_by_index: dict[int, dict[str, Any]] = {}
+    cached_trace_reverification_attempted: set[str] = set()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     ensure_nemoclaw_openclaw_permissions(args)
 
     def ordered_patches() -> list[dict[str, Any]]:
         return [patches_by_index[index] for index in sorted(patches_by_index)]
 
-    def build_patch_record(index: int, row: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    def reusable_cached_patch(row: dict[str, Any]) -> dict[str, Any] | None:
+        if args.redo:
+            return None
         instance_id = str(row["instance_id"])
-        task_start_limiter.wait()
-        print(f"[{index}/{len(rows)}] {instance_id}")
         task_dir = args.output_dir / safe_id(instance_id)
-        task_dir.mkdir(parents=True, exist_ok=True)
         prompt_text = build_prompt(
             row,
             max_tool_wall_seconds=int(getattr(args, "max_tool_wall_seconds", 0) or 0),
@@ -3113,18 +3809,72 @@ def main() -> None:
             max_input_tokens=getattr(args, "max_input_tokens", None),
             max_cumulative_input_tokens=getattr(args, "max_cumulative_input_tokens", None),
             max_cumulative_output_tokens=getattr(args, "max_cumulative_output_tokens", None),
+            max_output_tokens_per_response=openclaw_max_output_tokens_from_args(args),
         )
         cache_key = build_cache_key(row, prompt_text, args)
-        if not args.redo:
-            cached_patch = load_cached_patch_record(
-                task_dir,
-                cache_key,
-                args.prefix,
-                selected_test_paths(row),
-            )
-            if cached_patch is not None:
-                print(f"Reusing existing SWE-bench Pro patch: {instance_id}", flush=True)
-                return index, cached_patch
+        instance_id = str(row["instance_id"])
+        if instance_id not in cached_trace_reverification_attempted:
+            cached_trace_reverification_attempted.add(instance_id)
+            record_path = task_dir / "patch_record.json"
+            try:
+                raw_record = json.loads(record_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                raw_record = None
+            if (
+                isinstance(raw_record, dict)
+                and cache_key_matches(raw_record, cache_key)
+                and raw_record.get("weave_agents_required") is True
+                and raw_record.get("weave_agents_ok") is False
+            ):
+                reverify_cached_native_trace(row, task_dir, args, raw_record)
+        return load_cached_patch_record(
+            task_dir,
+            cache_key,
+            args.prefix,
+            selected_test_paths(row),
+        )
+
+    def build_patch_record(index: int, row: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        instance_id = str(row["instance_id"])
+        task_dir = args.output_dir / safe_id(instance_id)
+        task_dir.mkdir(parents=True, exist_ok=True)
+        cached_patch = reusable_cached_patch(row)
+        if cached_patch is not None:
+            print(f"Reusing existing SWE-bench Pro patch: {instance_id}", flush=True)
+            return index, cached_patch
+        task_start_limiter.wait()
+        print(f"[{index}/{len(rows)}] {instance_id}")
+        prompt_text = build_prompt(
+            row,
+            max_tool_wall_seconds=int(getattr(args, "max_tool_wall_seconds", 0) or 0),
+            max_tool_calls=getattr(args, "max_tool_calls", None),
+            max_agent_turns=getattr(args, "max_agent_turns", None),
+            max_input_tokens=getattr(args, "max_input_tokens", None),
+            max_cumulative_input_tokens=getattr(args, "max_cumulative_input_tokens", None),
+            max_cumulative_output_tokens=getattr(args, "max_cumulative_output_tokens", None),
+            max_output_tokens_per_response=openclaw_max_output_tokens_from_args(args),
+        )
+        cache_key = build_cache_key(row, prompt_text, args)
+        prior_record_for_billing = None
+        prior_record_path = task_dir / "patch_record.json"
+        if prior_record_path.exists():
+            try:
+                prior_candidate = json.loads(prior_record_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                prior_candidate = None
+            if (
+                isinstance(prior_candidate, dict)
+                and cache_key_matches(prior_candidate, cache_key)
+                and (
+                    prior_candidate.get("openclaw_disqualified_reason")
+                    == "provider_transient_exhausted"
+                    or (
+                        prior_candidate.get("weave_agents_required") is True
+                        and prior_candidate.get("weave_agents_ok") is False
+                    )
+                )
+            ):
+                prior_record_for_billing = prior_candidate
         openclaw_metadata: dict[str, Any] = {}
         if args.dry_run:
             (task_dir / "prompt.md").write_text(prompt_text, encoding="utf-8")
@@ -3133,6 +3883,10 @@ def main() -> None:
             checkout_dir = prepare_checkout(row, args.checkout_root, reset=not args.no_reset)
             if not args.skip_agent:
                 openclaw_metadata = run_openclaw_for_task(row, checkout_dir, task_dir, args)
+                openclaw_metadata = merge_prior_billable_openclaw_usage(
+                    openclaw_metadata,
+                    prior_record_for_billing,
+                )
             elif (
                 getattr(args, "nemoclaw_sandbox", None)
                 and str(getattr(args, "nemoclaw_checkout_transfer_mode", "visible") or "visible") == "copy"
@@ -3177,6 +3931,10 @@ def main() -> None:
                     "openclaw_result_path",
                     "openclaw_returncode",
                     "openclaw_usage",
+                    "billable_openclaw_usage",
+                    "billable_openclaw_attempt_count",
+                    "billable_openclaw_attempts",
+                    "billable_openclaw_wall_seconds",
                     "openclaw_tool_call_count",
                     "openclaw_tool_error_count",
                     "tool_policy_ok",
@@ -3219,25 +3977,93 @@ def main() -> None:
         for index, row in enumerate(rows, start=1):
             if index in patches_by_index:
                 continue
-            task_dir = args.output_dir / safe_id(str(row["instance_id"]))
-            prompt_text = build_prompt(
-                row,
-                max_tool_wall_seconds=int(getattr(args, "max_tool_wall_seconds", 0) or 0),
-                max_tool_calls=getattr(args, "max_tool_calls", None),
-                max_agent_turns=getattr(args, "max_agent_turns", None),
-                max_input_tokens=getattr(args, "max_input_tokens", None),
-                max_cumulative_input_tokens=getattr(args, "max_cumulative_input_tokens", None),
-                max_cumulative_output_tokens=getattr(args, "max_cumulative_output_tokens", None),
-            )
-            cache_key = build_cache_key(row, prompt_text, args)
-            cached_patch = load_cached_patch_record(
-                task_dir,
-                cache_key,
-                args.prefix,
-                selected_test_paths(row),
-            )
+            cached_patch = reusable_cached_patch(row)
             if cached_patch is not None:
                 patches_by_index[index] = cached_patch
+
+    def is_deferred_provider_failure(patch_record: dict[str, Any]) -> bool:
+        return patch_record.get("openclaw_disqualified_reason") == "provider_transient_exhausted"
+
+    def is_native_trace_failure(patch_record: dict[str, Any]) -> bool:
+        return (
+            patch_record.get("weave_agents_required") is True
+            and patch_record.get("weave_agents_ok") is False
+        )
+
+    def write_provider_recovery_state(
+        pending: list[tuple[int, dict[str, Any]]],
+        *,
+        recovery_round: int,
+        exhausted: bool,
+    ) -> None:
+        write_json(
+            args.output_dir / "provider_recovery_state.json",
+            {
+                "runner_version": RUNNER_VERSION,
+                "updated_at": time.time(),
+                "recovery_round": recovery_round,
+                "max_recovery_rounds": max(
+                    0, int(getattr(args, "provider_recovery_rounds", 2) or 0)
+                ),
+                "exhausted": exhausted,
+                "pending_instance_ids": [str(row["instance_id"]) for _, row in pending],
+                "completed_instance_ids": [
+                    str(rows[index - 1]["instance_id"])
+                    for index in sorted(patches_by_index)
+                ],
+            },
+        )
+
+    def run_pending_batch(
+        pending: list[tuple[int, dict[str, Any]]],
+    ) -> list[tuple[int, dict[str, Any]]]:
+        deferred: list[tuple[int, dict[str, Any]]] = []
+        if openclaw_num_workers == 1:
+            for index, row in pending:
+                completed_index, patch_record = build_patch_record(index, row)
+                if is_deferred_provider_failure(patch_record):
+                    deferred.append((index, row))
+                    print(
+                        "Deferring provider-transient task until the recovery round: "
+                        f"{row['instance_id']}",
+                        flush=True,
+                    )
+                else:
+                    patches_by_index[completed_index] = patch_record
+                write_outputs(args.output_dir, ordered_patches(), rows, args)
+            return deferred
+
+        executor = ThreadPoolExecutor(max_workers=openclaw_num_workers)
+        failed = False
+        try:
+            future_to_task = {
+                executor.submit(build_patch_record, index, row): (index, row)
+                for index, row in pending
+            }
+            for future in as_completed(future_to_task):
+                index, row = future_to_task[future]
+                completed_index, patch_record = future.result()
+                if is_deferred_provider_failure(patch_record):
+                    deferred.append((index, row))
+                    print(
+                        "Deferring provider-transient task until the recovery round: "
+                        f"{row['instance_id']}",
+                        flush=True,
+                    )
+                else:
+                    patches_by_index[completed_index] = patch_record
+                write_outputs(args.output_dir, ordered_patches(), rows, args)
+        except Exception:
+            failed = True
+            merge_disk_patch_records()
+            write_outputs(args.output_dir, ordered_patches(), rows, args)
+            _COMMAND_RUNNER.cancel_all()
+            for pending_future in future_to_task:
+                pending_future.cancel()
+            raise
+        finally:
+            executor.shutdown(wait=True, cancel_futures=failed)
+        return deferred
 
     def pre_register_task_agents() -> None:
         if (
@@ -3246,25 +4072,40 @@ def main() -> None:
             or bool(getattr(args, "skip_agent", False))
         ):
             return
+        pending_rows = [row for row in rows if reusable_cached_patch(row) is None]
+        cached_count = len(rows) - len(pending_rows)
+        if cached_count:
+            print(
+                f"Skipping task-agent pre-registration for {cached_count} reusable cached tasks.",
+                flush=True,
+            )
+        if not pending_rows:
+            print("All SWE-Bench Pro tasks are reusable from cache; gateway restart skipped.", flush=True)
+            return
         print(
-            "Pre-registering NeMoClaw Gateway task agents before parallel SWE-Bench Pro execution.",
+            "Pre-registering NeMoClaw Gateway task agents for "
+            f"{len(pending_rows)} pending SWE-Bench Pro tasks.",
             flush=True,
         )
-        for index, row in enumerate(rows, start=1):
+        for index, row in enumerate(pending_rows, start=1):
             instance_id = str(row["instance_id"])
             task_dir = args.output_dir / safe_id(instance_id)
             task_dir.mkdir(parents=True, exist_ok=True)
             checkout_dir = prepare_checkout(row, args.checkout_root, reset=not args.no_reset)
             write_task_openclaw_config(row, checkout_dir, task_dir, args)
             print(
-                f"[{index}/{len(rows)}] Pre-registered SWE-Bench Pro task agent: {instance_id}",
+                f"[{index}/{len(pending_rows)}] Pre-registered SWE-Bench Pro task agent: {instance_id}",
                 flush=True,
             )
         restart_nemoclaw_gateway_after_task_agent_registration(args, label="SWE-Bench Pro")
 
     openclaw_num_workers = max(1, int(getattr(args, "openclaw_num_workers", 1) or 1))
     task_start_limiter = TaskStartLimiter(
-        float(getattr(args, "openclaw_task_start_min_interval_seconds", 0.0) or 0.0)
+        0.0
+        if bool(getattr(args, "dry_run", False))
+        else float(
+            getattr(args, "openclaw_task_start_min_interval_seconds", 0.0) or 0.0
+        )
     )
     print(f"SWE-Bench Pro OpenClaw task workers: {openclaw_num_workers}", flush=True)
     if task_start_limiter.min_interval_seconds:
@@ -3273,31 +4114,164 @@ def main() -> None:
             f"{task_start_limiter.min_interval_seconds:.1f}s",
             flush=True,
         )
-    if openclaw_num_workers == 1:
-        for index, row in enumerate(rows, start=1):
+    if openclaw_num_workers > 1:
+        pre_register_task_agents()
+    pending = list(enumerate(rows, start=1))
+    max_recovery_rounds = max(
+        0, int(getattr(args, "provider_recovery_rounds", 2) or 0)
+    )
+    for recovery_round in range(max_recovery_rounds + 1):
+        if recovery_round > 0:
+            cooldown = max(
+                0.0,
+                float(getattr(args, "provider_recovery_base_seconds", 60.0) or 0.0),
+            ) * (2 ** (recovery_round - 1))
+            print(
+                f"Provider recovery round {recovery_round}/{max_recovery_rounds}: "
+                f"{len(pending)} deferred tasks; cooldown {cooldown:.1f}s.",
+                flush=True,
+            )
+            if cooldown:
+                time.sleep(cooldown)
+        pending = run_pending_batch(pending)
+        write_provider_recovery_state(
+            pending,
+            recovery_round=recovery_round,
+            exhausted=bool(pending and recovery_round >= max_recovery_rounds),
+        )
+        if not pending:
+            break
+    if pending:
+        merge_disk_patch_records()
+        write_outputs(args.output_dir, ordered_patches(), rows, args)
+        pending_ids = ", ".join(str(row["instance_id"]) for _, row in pending)
+        raise ProviderRecoveryExhaustedError(
+            "Provider recovery remained pending after all healthy tasks completed: "
+            f"{pending_ids}. Resume the same output directory to retry only these tasks."
+        )
+
+    trace_recovery_attempts = max(
+        0, int(getattr(args, "native_trace_recovery_attempts", 1) or 0)
+    )
+    trace_recovery_max_tasks = max(
+        0, int(getattr(args, "native_trace_recovery_max_tasks", 2) or 0)
+    )
+    trace_pending = [
+        (index, rows[index - 1])
+        for index, patch_record in sorted(patches_by_index.items())
+        if is_native_trace_failure(patch_record)
+    ]
+    if trace_pending:
+        refreshed_count = 0
+        for index, row in trace_pending:
+            task_dir = args.output_dir / safe_id(str(row["instance_id"]))
+            refreshed = reverify_cached_native_trace(
+                row,
+                task_dir,
+                args,
+                patches_by_index[index],
+            )
+            patches_by_index[index] = refreshed
+            if not is_native_trace_failure(refreshed):
+                refreshed_count += 1
+        trace_pending = [
+            (index, row)
+            for index, row in trace_pending
+            if is_native_trace_failure(patches_by_index[index])
+        ]
+        if refreshed_count:
+            write_outputs(args.output_dir, ordered_patches(), rows, args)
+            print(
+                f"Recovered {refreshed_count} delayed native traces before paid recovery; "
+                f"{len(trace_pending)} remain.",
+                flush=True,
+            )
+
+    def write_native_trace_recovery_state(
+        *,
+        recovery_round: int,
+        attempted_instance_ids: list[str],
+        exhausted: bool,
+        broad_failure: bool,
+    ) -> None:
+        write_json(
+            args.output_dir / "native_trace_recovery_state.json",
+            {
+                "runner_version": RUNNER_VERSION,
+                "updated_at": time.time(),
+                "recovery_round": recovery_round,
+                "max_recovery_attempts": trace_recovery_attempts,
+                "max_recovery_tasks": trace_recovery_max_tasks,
+                "exhausted": exhausted,
+                "broad_failure": broad_failure,
+                "attempted_instance_ids": attempted_instance_ids,
+                "pending_instance_ids": [
+                    str(row["instance_id"]) for _, row in trace_pending
+                ],
+            },
+        )
+
+    if trace_pending and len(trace_pending) > trace_recovery_max_tasks:
+        write_native_trace_recovery_state(
+            recovery_round=0,
+            attempted_instance_ids=[],
+            exhausted=True,
+            broad_failure=True,
+        )
+        trace_ids = ", ".join(str(row["instance_id"]) for _, row in trace_pending)
+        raise NativeTraceRecoveryError(
+            "Required native traces are missing for "
+            f"{len(trace_pending)} tasks ({trace_ids}), above the automatic recovery "
+            f"limit of {trace_recovery_max_tasks}. No paid trace-recovery reruns were started."
+        )
+
+    attempted_trace_ids: list[str] = []
+    for recovery_round in range(1, trace_recovery_attempts + 1):
+        if not trace_pending:
+            break
+        cooldown = max(
+            0.0,
+            float(getattr(args, "native_trace_recovery_base_seconds", 15.0) or 0.0),
+        )
+        print(
+            f"Native trace recovery round {recovery_round}/{trace_recovery_attempts}: "
+            f"{len(trace_pending)} isolated tasks; cooldown {cooldown:.1f}s; "
+            "running sequentially.",
+            flush=True,
+        )
+        if cooldown:
+            time.sleep(cooldown)
+        next_trace_pending: list[tuple[int, dict[str, Any]]] = []
+        for index, row in trace_pending:
+            instance_id = str(row["instance_id"])
+            attempted_trace_ids.append(instance_id)
+            patches_by_index.pop(index, None)
             completed_index, patch_record = build_patch_record(index, row)
             patches_by_index[completed_index] = patch_record
             write_outputs(args.output_dir, ordered_patches(), rows, args)
-    else:
-        pre_register_task_agents()
-        executor = ThreadPoolExecutor(max_workers=openclaw_num_workers)
-        try:
-            future_to_task = {
-                executor.submit(build_patch_record, index, row): (index, row)
-                for index, row in enumerate(rows, start=1)
-            }
-            for future in as_completed(future_to_task):
-                completed_index, patch_record = future.result()
-                patches_by_index[completed_index] = patch_record
-                write_outputs(args.output_dir, ordered_patches(), rows, args)
-        except Exception:
-            merge_disk_patch_records()
-            write_outputs(args.output_dir, ordered_patches(), rows, args)
-            executor.shutdown(wait=False, cancel_futures=True)
-            raise
-        finally:
-            executor.shutdown(wait=True, cancel_futures=False)
+            if is_native_trace_failure(patch_record) or is_deferred_provider_failure(
+                patch_record
+            ):
+                next_trace_pending.append((index, row))
+        trace_pending = next_trace_pending
+        write_native_trace_recovery_state(
+            recovery_round=recovery_round,
+            attempted_instance_ids=attempted_trace_ids,
+            exhausted=bool(
+                trace_pending and recovery_round >= trace_recovery_attempts
+            ),
+            broad_failure=False,
+        )
+
+    if trace_pending:
+        trace_ids = ", ".join(str(row["instance_id"]) for _, row in trace_pending)
+        raise NativeTraceRecoveryError(
+            "Required native trace recovery did not complete for "
+            f"{trace_ids}. Resume the same output directory to retry only these tasks."
+        )
 
 
 if __name__ == "__main__":
-    main()
+    _sandbox = nemoclaw_sandbox_from_command(sys.argv[1:])
+    with nemoclaw_sandbox_lease(_sandbox):
+        main()

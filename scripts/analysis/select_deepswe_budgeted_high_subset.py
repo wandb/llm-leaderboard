@@ -362,6 +362,8 @@ def task_record(
 
 
 def display_name_for_subset(subset_name: str) -> str:
+    if subset_name == "essential_anchored_high_8_wandb_glm52_cap100_10m_lang_balanced":
+        return "DeepSWE-Essential-Anchored-High-8-WandB-GLM52-Cap100-10M-Lang-Balanced"
     if subset_name == "essential_anchored_high_8_glm52max_cap100_10m_lang_balanced":
         return "DeepSWE-Essential-Anchored-High-8-GLM52Max-Cap100-10M-Lang-Balanced"
     if subset_name == "essential_anchored_high_8_essential3_cost_trimmed_lang_balanced":

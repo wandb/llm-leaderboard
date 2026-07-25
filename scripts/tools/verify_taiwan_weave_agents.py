@@ -29,6 +29,7 @@ AGENTS_API_BASE_URL = "https://trace.wandb.ai"
 AGENTS_QUERY_ENDPOINT = "/agents/query"
 AGENTS_SPANS_QUERY_ENDPOINT = "/agents/spans/query"
 AGENTS_TRACES_CHAT_ENDPOINT = "/agents/traces/chat"
+AGENTS_SPANS_QUERY_MAX_LIMIT = 10_000
 FINAL_ANSWER_MARKERS = (
     "ANSWER:",
     "FINAL ANSWER",
@@ -1218,15 +1219,50 @@ def query_agents(
         "limit": limit,
         "offset": 0,
     }
-    span_filters = (
-        {}
-        if (conversation_id or conversation_id_contains)
-        else dict(filters)
-    )
+    span_conditions: list[dict[str, Any]] = []
+    if conversation_id:
+        span_conditions.append(
+            {
+                "$eq": [
+                    {"$getField": "conversation_id"},
+                    {"$literal": conversation_id},
+                ]
+            }
+        )
+    if conversation_id_contains:
+        span_conditions.append(
+            {
+                "$contains": {
+                    "input": {"$getField": "conversation_id"},
+                    "substr": {"$literal": conversation_id_contains},
+                    "case_insensitive": False,
+                }
+            }
+        )
+    # Dynamic task-agent spans can have an empty agent_name. Conversation scope
+    # is therefore authoritative when present; otherwise query by agent name.
+    if not span_conditions and agent_name:
+        span_conditions.append(
+            {
+                "$eq": [
+                    {"$getField": "agent_name"},
+                    {"$literal": agent_name},
+                ]
+            }
+        )
+    span_query = None
+    if len(span_conditions) == 1:
+        span_query = {"$expr": span_conditions[0]}
+    elif span_conditions:
+        span_query = {"$expr": {"$and": span_conditions}}
+    span_limit = max(limit, limit * 8, 400)
+    if conversation_id or conversation_id_contains:
+        span_limit = AGENTS_SPANS_QUERY_MAX_LIMIT
     spans_payload = {
         "project_id": project_id,
-        "filters": span_filters,
-        "limit": max(limit, limit * 8, 400),
+        "query": span_query,
+        "include_details": True,
+        "limit": min(AGENTS_SPANS_QUERY_MAX_LIMIT, span_limit),
         "offset": 0,
     }
     return (

@@ -18,6 +18,11 @@ from .evaluate_utils import (
     text_formatter,
     LLMAsyncProcessor,
 )
+from .evaluate_utils.llm_response_checkpoint import (
+    LLMResponseCheckpointStore,
+    default_checkpoint_root,
+    run_checkpointed_batch,
+)
 
 """
 ## datasetの追加方法
@@ -332,8 +337,22 @@ def evaluate_n_shot(few_shots: bool):
                         }
                     )
 
-    llm_ap = LLMAsyncProcessor(llm=llm, inputs=inputs)
-    results = llm_ap.get_results()
+    results = run_checkpointed_batch(
+        llm=llm,
+        inputs=inputs,
+        keys=(
+            (
+                f"{num_few_shots}shot:{row['subset']}:{row['example_id']}:"
+                f"{row['question_index']}"
+            )
+            for row in evaluation_results
+        ),
+        checkpoint_store=LLMResponseCheckpointStore(
+            default_checkpoint_root(run, "jbbq") / f"{num_few_shots}shot",
+            model_name=cfg.model.pretrained_model_name_or_path,
+        ),
+        label=f"JBBQ {num_few_shots}-shot",
+    )
     processed_results = process_results(results=results, evaluation_results=evaluation_results)
 
     # log table

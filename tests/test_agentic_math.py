@@ -44,6 +44,89 @@ def test_agentic_math_main_rejects_weave_sidecar_before_dataset_read(tmp_path, m
         module.main()
 
 
+def test_agentic_math_preflight_exits_before_gateway_or_model_execution(
+    tmp_path, monkeypatch
+):
+    module = load_script_module(
+        REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py"
+    )
+    output_dir = tmp_path / "out"
+    dataset = tmp_path / "dataset.jsonl"
+    dataset.write_text(
+        json.dumps({"task_id": "math_1", "question": "1+1?", "answer": "2"}) + "\n",
+        encoding="utf-8",
+    )
+    permission_checks = []
+    monkeypatch.setattr(
+        module,
+        "ensure_nemoclaw_openclaw_permissions",
+        lambda args: permission_checks.append(args.nemoclaw_sandbox),
+    )
+    monkeypatch.setattr(
+        module,
+        "run_openclaw_for_task",
+        lambda *args, **kwargs: pytest.fail("preflight must not run OpenClaw"),
+    )
+    monkeypatch.setattr(
+        module,
+        "restart_nemoclaw_gateway_after_task_agent_registration",
+        lambda *args, **kwargs: pytest.fail("preflight must not restart Gateway"),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_agentic_math_openclaw.py",
+            "--dataset-jsonl",
+            str(dataset),
+            "--output-dir",
+            str(output_dir),
+            "--nemoclaw-sandbox",
+            "nejumi-taiwan",
+            "--no-local",
+            "--num-workers",
+            "8",
+            "--preflight-only",
+        ],
+    )
+
+    module.main()
+
+    report = json.loads((output_dir / "preflight.json").read_text(encoding="utf-8"))
+    assert report["ok"] is True
+    assert report["selected_task_count"] == 1
+    assert report["will_run_model"] is False
+    assert report["will_run_gateway"] is False
+    assert permission_checks == ["nejumi-taiwan"]
+
+
+def test_agentic_math_preflight_rejects_duplicate_task_ids(tmp_path, monkeypatch):
+    module = load_script_module(
+        REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py"
+    )
+    dataset = tmp_path / "dataset.jsonl"
+    row = {"task_id": "math_1", "question": "1+1?", "answer": "2"}
+    dataset.write_text(
+        "\n".join(json.dumps(row) for _ in range(2)) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_agentic_math_openclaw.py",
+            "--dataset-jsonl",
+            str(dataset),
+            "--output-dir",
+            str(tmp_path / "out"),
+            "--preflight-only",
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="duplicate task_id"):
+        module.main()
+
+
 def test_agentic_math_weave_agents_verifier_failure_is_per_instance_evidence(
     tmp_path, monkeypatch
 ):
@@ -261,6 +344,52 @@ def test_outer_openclaw_timeout_is_scoreable_time_up_not_retry():
     assert module.is_outer_openclaw_timeout(completed, None)
     assert not module.is_transient_openclaw_failure(completed, None)
     assert module.non_scoreable_openclaw_failure_reason(completed, None) is None
+
+
+def test_model_output_truncation_is_scoreable_and_not_retryable(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    sidecar_path = tmp_path / "openclaw_result.json"
+    sidecar = {
+        "returncode": 1,
+        "stderr": "model output reached max tokens",
+        "model_completion": {
+            "ok": False,
+            "failure_category": "model",
+            "reason": "model_output_truncated",
+            "retryable": False,
+        },
+        "runtime_budget": {"ok": True, "violations": []},
+        "conversation_order": {"ok": True},
+    }
+    sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
+    completed = subprocess.CompletedProcess(
+        ["cmd"],
+        1,
+        stdout="",
+        stderr="LLM request timed out after model output reached max tokens",
+    )
+
+    assert module.sidecar_model_failure_reason(sidecar) == "model_output_truncated"
+    assert not module.is_transient_openclaw_failure(completed, sidecar)
+    record = module.build_openclaw_error_record(
+        {"task_id": "task_1", "answer": "42", "question": "q"},
+        completed,
+        sidecar_path,
+        {
+            "runner_version": module.RUNNER_VERSION,
+            "task_id": "task_1",
+            "prompt_hash": "abc",
+            "model": "model",
+            "thinking": "high",
+            "answer_format": "math_expression",
+        },
+        {
+            "openclaw_disqualified_reason": "model_output_truncated",
+            "model_completion": sidecar["model_completion"],
+        },
+    )
+    assert record["openclaw_disqualified_reason"] == "model_output_truncated"
+    assert record["model_completion"]["retryable"] is False
 
 
 def test_returncode_zero_provider_timeout_sidecar_is_transient():
@@ -1473,6 +1602,9 @@ def test_write_summary_counts_tool_usage(tmp_path):
             "openclaw_tool_call_count": 2,
             "nemoclaw_session_audit_ok": True,
             "nemoclaw_session_audit": {"required": True, "ok": True},
+            "billable_openclaw_attempt_count": 2,
+            "billable_openclaw_wall_seconds": 7,
+            "billable_openclaw_usage": {"inputTokens": 20, "outputTokens": 4},
         },
         {
             "task_id": "b",
@@ -1484,6 +1616,9 @@ def test_write_summary_counts_tool_usage(tmp_path):
             "tool_policy_violations": [{"type": "denied_tool"}],
             "nemoclaw_session_audit_ok": False,
             "nemoclaw_session_audit": {"required": True, "ok": False},
+            "billable_openclaw_attempt_count": 1,
+            "billable_openclaw_wall_seconds": 3,
+            "billable_openclaw_usage": {"inputTokens": 10, "outputTokens": 2},
         },
     ]
 
@@ -1498,6 +1633,10 @@ def test_write_summary_counts_tool_usage(tmp_path):
     assert summary["nemoclaw_session_audit_required_instances"] == 2
     assert summary["nemoclaw_session_audit_passed_instances"] == 1
     assert summary["nemoclaw_session_audit_failed_instances"] == 1
+    assert summary["billable_openclaw_attempt_count"] == 3
+    assert summary["billable_openclaw_retry_count"] == 1
+    assert summary["billable_openclaw_wall_seconds"] == 10
+    assert summary["billable_openclaw_usage"]["inputTokens"] == 30
 
 
 def test_build_prompt_includes_python_tool_guidance():
@@ -1513,6 +1652,12 @@ def test_build_prompt_includes_python_tool_guidance():
             "question": "求 1+1.",
         },
         max_tool_wall_seconds=45,
+        max_tool_calls=40,
+        max_agent_turns=40,
+        max_input_tokens=500_000,
+        max_cumulative_input_tokens=500_000,
+        max_cumulative_output_tokens=500_000,
+        max_output_tokens_per_response=32_768,
     )
 
     assert "## Python Tool Guidance" in prompt
@@ -1528,6 +1673,11 @@ def test_build_prompt_includes_python_tool_guidance():
     assert "Do not use web search" in prompt
     assert "call the tool before writing any `ANSWER:` line" in prompt
     assert "Do not write provisional" in prompt
+    assert "## Runtime Budget" in prompt
+    assert "Maximum tool calls: 40" in prompt
+    assert "Maximum agent turns: 40" in prompt
+    assert "Per-response output-token cap: 32768" in prompt
+    assert "execution stops immediately and your current answer is submitted" in prompt
 
 
 def test_task_openclaw_config_includes_tool_deny_policy(tmp_path):
@@ -1739,6 +1889,14 @@ def test_task_openclaw_config_registers_nemoclaw_gateway_agent_when_no_local(tmp
         module.task_live_sandbox_session_dir({"task_id": "math/task 1"}, args, agent_id)
         == f"/sandbox/.openclaw/agents/{agent_id}/sessions"
     )
+    module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS.clear()
+    module.write_task_openclaw_config(
+        {"task_id": "math/task 1"},
+        tmp_path / "workspace",
+        task_dir,
+        args,
+    )
+    assert len(calls) == 2
     module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS.clear()
 
 
@@ -2039,6 +2197,129 @@ def test_main_dry_run_uses_protocol_path(tmp_path, monkeypatch):
     assert (output_dir / "results.jsonl").exists()
 
 
+def test_main_defers_and_recovers_provider_transient_math_task(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    output_dir = tmp_path / "out"
+    row = {
+        "task_id": "math_provider_recovery",
+        "answer": "2",
+        "question": "1+1?",
+        "subject": "algebra",
+        "answer_format": "math_expression",
+    }
+    attempts = []
+    args = type(
+        "Args",
+        (),
+        {
+            "dataset_jsonl": tmp_path / "dataset.jsonl",
+            "output_dir": output_dir,
+            "limit": None,
+            "dry_run": True,
+            "model": "inference/example",
+            "thinking": "high",
+            "weave_sidecar": False,
+            "weave_sidecar_strict": False,
+            "num_workers": 1,
+            "task_start_min_interval_seconds": 0,
+            "provider_recovery_rounds": 1,
+            "provider_recovery_base_seconds": 0,
+        },
+    )()
+
+    def fake_run_openclaw_for_task(task_row, task_dir, parsed_args):
+        attempts.append(bool(getattr(parsed_args, "_provider_recovery_active", False)))
+        if len(attempts) == 1:
+            return {
+                **task_row,
+                "correct": False,
+                "predicted_answer": None,
+                "openclaw_disqualified_reason": "provider_transient_exhausted",
+            }
+        return {
+            **task_row,
+            "correct": True,
+            "predicted_answer": "2",
+            "openclaw_disqualified_reason": "",
+        }
+
+    monkeypatch.setattr(module, "parse_args", lambda: args)
+    monkeypatch.setattr(module, "read_jsonl", lambda path: [row])
+    monkeypatch.setattr(module, "run_openclaw_for_task", fake_run_openclaw_for_task)
+
+    module.main()
+
+    assert attempts == [False, True]
+    results = [
+        json.loads(line)
+        for line in (output_dir / "results.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(results) == 1
+    assert results[0]["correct"] is True
+    recovery = json.loads(
+        (output_dir / "provider_recovery_state.json").read_text(encoding="utf-8")
+    )
+    assert recovery["recovery_round"] == 1
+    assert recovery["pending_task_ids"] == []
+    assert recovery["exhausted"] is False
+
+
+def test_main_provider_recovery_exhaustion_is_not_scored_as_incorrect(
+    tmp_path,
+    monkeypatch,
+):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    output_dir = tmp_path / "out"
+    row = {
+        "task_id": "math_provider_exhausted",
+        "answer": "2",
+        "question": "1+1?",
+        "subject": "algebra",
+        "answer_format": "math_expression",
+    }
+    args = type(
+        "Args",
+        (),
+        {
+            "dataset_jsonl": tmp_path / "dataset.jsonl",
+            "output_dir": output_dir,
+            "limit": None,
+            "dry_run": True,
+            "model": "inference/example",
+            "thinking": "high",
+            "weave_sidecar": False,
+            "weave_sidecar_strict": False,
+            "num_workers": 1,
+            "task_start_min_interval_seconds": 0,
+            "provider_recovery_rounds": 0,
+            "provider_recovery_base_seconds": 0,
+        },
+    )()
+    monkeypatch.setattr(module, "parse_args", lambda: args)
+    monkeypatch.setattr(module, "read_jsonl", lambda path: [row])
+    monkeypatch.setattr(
+        module,
+        "run_openclaw_for_task",
+        lambda *args, **kwargs: {
+            **row,
+            "correct": False,
+            "predicted_answer": None,
+            "openclaw_disqualified_reason": "provider_transient_exhausted",
+        },
+    )
+
+    with pytest.raises(module.ProviderRecoveryExhaustedError, match="Resume the same"):
+        module.main()
+
+    assert not (output_dir / "summary.json").exists()
+    assert not (output_dir / "results.jsonl").exists()
+    recovery = json.loads(
+        (output_dir / "provider_recovery_state.json").read_text(encoding="utf-8")
+    )
+    assert recovery["exhausted"] is True
+    assert recovery["pending_task_ids"] == ["math_provider_exhausted"]
+
+
 def test_evaluator_as_list_expands_omegaconf_listconfig():
     from omegaconf import OmegaConf
 
@@ -2056,8 +2337,9 @@ def test_evaluator_passes_nemoclaw_args_to_agentic_math_runner(tmp_path, monkeyp
     agentic_module = load_script_module(REPO_ROOT / "scripts" / "evaluator" / "agentic_math.py")
     commands = []
 
-    def fake_run_command(command):
+    def fake_run_command(command, **kwargs):
         commands.append(command)
+        assert kwargs["timeout"] == 21_600
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
     monkeypatch.setattr(agentic_module, "_run_command", fake_run_command)
@@ -2072,6 +2354,8 @@ def test_evaluator_passes_nemoclaw_args_to_agentic_math_runner(tmp_path, monkeyp
                 "openclaw_timeout": 60,
                 "openclaw_max_attempts": 1,
                 "openclaw_retry_base_seconds": 1,
+                "provider_recovery_rounds": 3,
+                "provider_recovery_base_seconds": 7,
                 "max_input_tokens": 222222,
                 "max_tool_calls": 9,
                 "max_agent_turns": 10,
@@ -2098,6 +2382,8 @@ def test_evaluator_passes_nemoclaw_args_to_agentic_math_runner(tmp_path, monkeyp
     assert command[command.index("--max-input-tokens") + 1] == "222222"
     assert command[command.index("--max-tool-calls") + 1] == "9"
     assert command[command.index("--max-agent-turns") + 1] == "10"
+    assert command[command.index("--provider-recovery-rounds") + 1] == "3"
+    assert command[command.index("--provider-recovery-base-seconds") + 1] == "7"
 
 
 def test_evaluator_passes_no_use_task_agent_when_explicitly_disabled(tmp_path, monkeypatch):
@@ -2106,8 +2392,9 @@ def test_evaluator_passes_no_use_task_agent_when_explicitly_disabled(tmp_path, m
     agentic_module = load_script_module(REPO_ROOT / "scripts" / "evaluator" / "agentic_math.py")
     commands = []
 
-    def fake_run_command(command):
+    def fake_run_command(command, **kwargs):
         commands.append(command)
+        assert kwargs["timeout"] == 21_600
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
     monkeypatch.setattr(agentic_module, "_run_command", fake_run_command)
@@ -2129,6 +2416,129 @@ def test_evaluator_passes_no_use_task_agent_when_explicitly_disabled(tmp_path, m
         commands[0][commands[0].index("--nemoclaw-openclaw-config-path") + 1]
         == "/sandbox/.openclaw/openclaw.json"
     )
+
+
+def test_evaluator_rejects_no_local_math_without_named_sandbox(tmp_path):
+    from omegaconf import OmegaConf
+
+    agentic_module = load_script_module(REPO_ROOT / "scripts" / "evaluator" / "agentic_math.py")
+    cfg = OmegaConf.create(
+        {
+            "model": {"pretrained_model_name_or_path": "provider/model"},
+            "agentic_math": {"no_local": True, "nemoclaw_sandbox": None},
+        }
+    )
+
+    with pytest.raises(ValueError, match="agentic_math.nemoclaw_sandbox"):
+        agentic_module._run_openclaw(
+            cfg,
+            tmp_path / "dataset.jsonl",
+            tmp_path / "outputs",
+        )
+
+
+def test_evaluator_math_preflight_uses_exact_runner_command(tmp_path, monkeypatch):
+    from omegaconf import OmegaConf
+
+    agentic_module = load_script_module(
+        REPO_ROOT / "scripts" / "evaluator" / "agentic_math.py"
+    )
+    dataset_dir = tmp_path / "dataset"
+    subsets_dir = dataset_dir / "subsets"
+    subsets_dir.mkdir(parents=True)
+    (subsets_dir / "leaderboard.jsonl").write_text(
+        json.dumps({"task_id": "math_1", "question": "1+1?", "answer": "2"}) + "\n",
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "output"
+    captured = []
+
+    def fake_run(command, **kwargs):
+        captured.append((command, kwargs))
+        report_path = output_dir / "openclaw" / "preflight.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps({"ok": True, "will_run_model": False}) + "\n",
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(agentic_module.subprocess, "run", fake_run)
+    cfg = OmegaConf.create(
+        {
+            "testmode": False,
+            "model": {"pretrained_model_name_or_path": "provider/model"},
+            "agentic_math": {
+                "local_dataset_dir": str(dataset_dir),
+                "subset": "leaderboard",
+                "limit": 1,
+                "run_openclaw": True,
+                "nemoclaw_sandbox": "nejumi-taiwan",
+                "no_local": True,
+                "weave_sidecar": False,
+            },
+        }
+    )
+
+    result = agentic_module.preflight(cfg, object(), output_dir)
+
+    assert result["ok"] is True
+    [call] = captured
+    assert "--preflight-only" in call[0]
+    assert "--no-local" in call[0]
+    assert call[1]["capture_output"] is True
+    assert call[1]["timeout"] == 180
+    assert result["will_run_model"] is False
+    assert result["will_run_gateway"] is False
+
+
+def test_evaluator_math_reuse_preflight_rejects_incomplete_task_coverage(
+    tmp_path, monkeypatch
+):
+    import pandas as pd
+    from omegaconf import OmegaConf
+
+    agentic_module = load_script_module(
+        REPO_ROOT / "scripts" / "evaluator" / "agentic_math.py"
+    )
+    dataset_dir = tmp_path / "dataset"
+    subsets_dir = dataset_dir / "subsets"
+    subsets_dir.mkdir(parents=True)
+    (subsets_dir / "leaderboard.jsonl").write_text(
+        "\n".join(
+            json.dumps({"task_id": task_id, "question": "q", "answer": "a"})
+            for task_id in ("math_1", "math_2")
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    output_row = {
+        column: None
+        for column in agentic_module.AGENTIC_MATH_OUTPUT_TABLE_REQUIRED_COLUMNS
+    }
+    output_row["task_id"] = "math_1"
+    monkeypatch.setattr(
+        agentic_module,
+        "_load_results",
+        lambda path: ({"total_instances": 1}, pd.DataFrame([output_row])),
+    )
+    cfg = OmegaConf.create(
+        {
+            "model": {"pretrained_model_name_or_path": "provider/model"},
+            "agentic_math": {
+                "local_dataset_dir": str(dataset_dir),
+                "subset": "leaderboard",
+                "run_openclaw": False,
+                "results_dir": str(tmp_path / "reused"),
+            },
+        }
+    )
+
+    result = agentic_module.preflight(cfg, object(), tmp_path / "preflight")
+
+    assert result["ok"] is False
+    assert "coverage mismatch" in result["error"]
+    assert "total_instances" in result["error"]
 
 
 def test_prepare_agentic_math_normalizes_unit_answer():

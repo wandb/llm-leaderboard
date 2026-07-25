@@ -15,7 +15,7 @@
       ],
       "method": "Static-only lower/middle difficulty bands using gold patch files/hunks/changed lines, test patch size, issue length, and F2P/P2P counts."
     },
-    "v2_public_lite_prior_glm52_pilot_20260712": {
+    "v2_budget_guarded_public_lite_prior_glm52_20260715": {
       "subsets": [
         "low_v2_36",
         "middle_v2_36",
@@ -25,9 +25,35 @@
       "public_submission_count": 84,
       "pilot_summary_path": "source/glm52_lm12m12_20260712_pilot_summary.json",
       "pilot_total_instances": 24,
-      "low_rule": "public_lite_resolve_rate>=0.65, public_lite_seen_count>=20, static_percentile<=0.85, no local GLM-5.2 pilot unresolved/cost-risk signal",
-      "middle_rule": "0.25<=public_lite_resolve_rate<=0.72, public_lite_seen_count>=20, static_percentile<=0.95, no local GLM-5.2 pilot cost-risk signal",
-      "repo_cap": 6
+      "low_rule": "public_lite_resolve_rate>=0.65, public_lite_seen_count>=20, static_percentile<=0.85, no local GLM-5.2 pilot unresolved/cost-risk signal, no empirical exclusion",
+      "middle_rule": "0.25<=public_lite_resolve_rate<=0.72, public_lite_seen_count>=20, static_percentile<=0.95, PASS_TO_PASS<=150, no local GLM-5.2 pilot cost-risk signal, no empirical exclusion",
+      "excluded_instance_ids": [
+        "sympy__sympy-14817"
+      ],
+      "max_pass_to_pass_count": 150,
+      "repo_cap": 6,
+      "repo_cap_policy": "soft; preserve cap when enough candidates exist, then fill remaining slots from the best eligible rows",
+      "current_low_max_repo_count": 6,
+      "current_middle_max_repo_count": 7
+    },
+    "v3_stratified_model_fidelity_cost_20260724": {
+      "subsets": [
+        "low_v3_20",
+        "middle_v3_20",
+        "low_middle_v3_40"
+      ],
+      "source_subsets": [
+        "low_v2_36",
+        "middle_v2_36"
+      ],
+      "method": "Five public-difficulty strata per tier with four tasks selected per stratum. The objective preserves three observed model score profiles and public/static difficulty while penalizing cost, wall time, and repository concentration.",
+      "reference_models": [
+        "gpt-4.1-mini",
+        "gpt-5.6-luna-high",
+        "claude-sonnet-4.6-high"
+      ],
+      "repo_cap": 4,
+      "selection_audit_path": "../../../outputs/agentic_swe_subset_analysis/assorted_20_20_10_selection_20260724.json"
     }
   },
   "subsets": {
@@ -119,25 +145,25 @@
       "csv_path": "subsets/middle_v2_36.csv",
       "instance_ids_path": "subsets/middle_v2_36_instance_ids.json",
       "repo_distribution": {
+        "sphinx-doc/sphinx": 5,
+        "django/django": 7,
         "sympy/sympy": 6,
-        "sphinx-doc/sphinx": 3,
-        "django/django": 6,
         "pylint-dev/pylint": 5,
-        "pytest-dev/pytest": 3,
-        "scikit-learn/scikit-learn": 6,
-        "matplotlib/matplotlib": 5,
+        "pytest-dev/pytest": 4,
+        "scikit-learn/scikit-learn": 5,
+        "matplotlib/matplotlib": 2,
         "astropy/astropy": 1,
         "psf/requests": 1
       },
       "static_difficulty": {
-        "min": 9.252591,
-        "mean": 13.804876888888892,
-        "max": 22.182735
+        "min": 9.074882,
+        "mean": 13.061347527777775,
+        "max": 18.521403
       },
-      "gold_patch_changed_lines_mean": 8.444444444444445,
+      "gold_patch_changed_lines_mean": 8.583333333333334,
       "gold_patch_files_mean": 1.0,
-      "fail_to_pass_count_mean": 1.8611111111111112,
-      "pass_to_pass_count_mean": 66.44444444444444
+      "fail_to_pass_count_mean": 1.8333333333333333,
+      "pass_to_pass_count_mean": 41.416666666666664
     },
     "low_middle_72": {
       "count": 72,
@@ -174,41 +200,135 @@
       "csv_path": "subsets/low_middle_v2_72.csv",
       "instance_ids_path": "subsets/low_middle_v2_72_instance_ids.json",
       "repo_distribution": {
-        "django/django": 12,
+        "django/django": 13,
         "sympy/sympy": 12,
-        "pytest-dev/pytest": 8,
+        "pytest-dev/pytest": 9,
         "mwaskom/seaborn": 2,
-        "sphinx-doc/sphinx": 6,
-        "matplotlib/matplotlib": 8,
+        "sphinx-doc/sphinx": 8,
+        "matplotlib/matplotlib": 5,
         "pydata/xarray": 1,
-        "scikit-learn/scikit-learn": 12,
+        "scikit-learn/scikit-learn": 11,
         "astropy/astropy": 3,
         "psf/requests": 3,
         "pylint-dev/pylint": 5
       },
       "static_difficulty": {
-        "min": 9.080691,
-        "mean": 13.129466291666667,
-        "max": 22.182735
+        "min": 9.074882,
+        "mean": 12.757701611111111,
+        "max": 18.521403
       },
-      "gold_patch_changed_lines_mean": 7.166666666666667,
+      "gold_patch_changed_lines_mean": 7.236111111111111,
       "gold_patch_files_mean": 1.0,
-      "fail_to_pass_count_mean": 1.8333333333333333,
-      "pass_to_pass_count_mean": 59.263888888888886
+      "fail_to_pass_count_mean": 1.8194444444444444,
+      "pass_to_pass_count_mean": 46.75
+    },
+    "low_v3_20": {
+      "count": 20,
+      "jsonl_path": "subsets/low_v3_20.jsonl",
+      "csv_path": "subsets/low_v3_20.csv",
+      "instance_ids_path": "subsets/low_v3_20_instance_ids.json",
+      "repo_distribution": {
+        "astropy/astropy": 1,
+        "django/django": 3,
+        "matplotlib/matplotlib": 2,
+        "mwaskom/seaborn": 2,
+        "psf/requests": 1,
+        "pytest-dev/pytest": 2,
+        "scikit-learn/scikit-learn": 4,
+        "sphinx-doc/sphinx": 2,
+        "sympy/sympy": 3
+      },
+      "static_difficulty": {
+        "min": 9.080691,
+        "mean": 12.1999307,
+        "max": 17.089834
+      },
+      "public_lite_resolve_rate_mean": 0.84820635,
+      "gold_patch_changed_lines_mean": 5.3,
+      "fail_to_pass_count_mean": 1.8,
+      "pass_to_pass_count_mean": 52.05
+    },
+    "middle_v3_20": {
+      "count": 20,
+      "jsonl_path": "subsets/middle_v3_20.jsonl",
+      "csv_path": "subsets/middle_v3_20.csv",
+      "instance_ids_path": "subsets/middle_v3_20_instance_ids.json",
+      "repo_distribution": {
+        "django/django": 4,
+        "matplotlib/matplotlib": 1,
+        "psf/requests": 1,
+        "pylint-dev/pylint": 3,
+        "pytest-dev/pytest": 2,
+        "scikit-learn/scikit-learn": 3,
+        "sphinx-doc/sphinx": 3,
+        "sympy/sympy": 3
+      },
+      "static_difficulty": {
+        "min": 9.817252,
+        "mean": 12.99206375,
+        "max": 18.521403
+      },
+      "public_lite_resolve_rate_mean": 0.475484,
+      "gold_patch_changed_lines_mean": 7.5,
+      "fail_to_pass_count_mean": 2.25,
+      "pass_to_pass_count_mean": 42.6
+    },
+    "low_middle_v3_40": {
+      "count": 40,
+      "jsonl_path": "subsets/low_middle_v3_40.jsonl",
+      "csv_path": "subsets/low_middle_v3_40.csv",
+      "instance_ids_path": "subsets/low_middle_v3_40_instance_ids.json",
+      "repo_distribution": {
+        "astropy/astropy": 1,
+        "django/django": 7,
+        "matplotlib/matplotlib": 3,
+        "mwaskom/seaborn": 2,
+        "psf/requests": 2,
+        "pylint-dev/pylint": 3,
+        "pytest-dev/pytest": 4,
+        "scikit-learn/scikit-learn": 7,
+        "sphinx-doc/sphinx": 5,
+        "sympy/sympy": 6
+      },
+      "static_difficulty": {
+        "min": 9.080691,
+        "mean": 12.595997225,
+        "max": 18.521403
+      },
+      "public_lite_resolve_rate_mean": 0.661845175,
+      "gold_patch_changed_lines_mean": 6.4,
+      "fail_to_pass_count_mean": 2.025,
+      "pass_to_pass_count_mean": 47.325
     }
   },
   "assorted_80_plan": {
     "low": 36,
     "middle": 36,
     "high": 8,
+    "low_middle_jsonl_path": "subsets/low_middle_v2_72.jsonl",
+    "legacy_low_middle_jsonl_path": "subsets/low_middle_72.jsonl",
+    "high_subset": "data/taiwan/deepswe/subsets/essential_anchored_high_8_wandb_glm52_cap100_10m_lang_balanced.jsonl",
     "score_weights": {
       "low": 0.3333333333333333,
       "middle": 0.3333333333333333,
       "high": 0.3333333333333333
     },
-    "score_definition": "Total Score = (Low Pass@1 + Middle Pass@1 + High Pass@1) / 3. Instance-level micro Pass@1 is reported separately.",
-    "low_middle_jsonl_path": "subsets/low_middle_v2_72.jsonl",
-    "legacy_low_middle_jsonl_path": "subsets/low_middle_72.jsonl",
-    "high_subset": "data/taiwan/deepswe/subsets/essential_8.jsonl"
+    "score_definition": "Score = (Low Pass@1 + Middle Pass@1 + High Pass@1) / 3. The 36/36/8 task counts are cost controls, not micro-average weights.",
+    "status": "historical_v2"
+  },
+  "assorted_50_plan": {
+    "status": "frozen_default",
+    "frozen_at": "2026-07-24",
+    "low": 20,
+    "middle": 20,
+    "high": 10,
+    "low_middle_jsonl_path": "subsets/low_middle_v3_40.jsonl",
+    "high_subset": "data/taiwan/deepswe/subsets/essential_anchored_high_10_model_fidelity_cost_balanced.jsonl",
+    "score_weights": {
+      "low": 0.3333333333333333,
+      "middle": 0.3333333333333333,
+      "high": 0.3333333333333333
+    },
+    "score_definition": "Score = (Low mean task score + Middle mean task score + High mean task score) / 3. Per task: resolved=1; otherwise an applied scoreable patch receives up to 0.3 * F2P^2 * P2P."
   }
 }

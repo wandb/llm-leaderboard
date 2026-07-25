@@ -132,6 +132,20 @@ wandb_export_*.csv
 /generation*.jsonl
 /predictions/
 
+# Regenerable SWE-Bench Pro source material. Keep the compact production slice
+# and metadata in Git, but fetch the large raw/public copies from the W&B
+# artifact. Some upstream issue fixtures intentionally contain secret-shaped
+# placeholder strings that should not be sent through GitHub secret scanning.
+/data/taiwan/swebench_pro_public/hf_dataset/
+/data/taiwan/swebench_pro_public/test.csv
+/data/taiwan/swebench_pro_public/test.jsonl
+/data/taiwan/swebench_pro_public/subsets/full_public.csv
+/data/taiwan/swebench_pro_public/subsets/full_public.jsonl
+/data/taiwan/swebench_pro_public/subsets/leaderboard_80.csv
+/data/taiwan/swebench_pro_public/subsets/leaderboard_80.jsonl
+/data/taiwan/swebench_pro_public/subsets/leaderboard_compact_80.csv
+/data/taiwan/swebench_pro_public/subsets/leaderboard_compact_80.jsonl
+
 # local sandbox runtime data
 /volumes/sandbox/*
 !/volumes/sandbox/dependencies/

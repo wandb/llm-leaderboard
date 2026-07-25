@@ -11,10 +11,14 @@ from tqdm import tqdm
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import (
-    LLMAsyncProcessor,
     jaster_metrics_dict,
     normalize,
     text_formatter,
+)
+from .evaluate_utils.llm_response_checkpoint import (
+    LLMResponseCheckpointStore,
+    default_checkpoint_root,
+    run_checkpointed_batch,
 )
 
 
@@ -69,13 +73,15 @@ def evaluate():
 
     evaluation_results = []
     all_inputs = []
+    request_keys = []
 
     for task in tasks:
         for subset in ("test", "dev"):
             task_data_path = dataset_dir / subset / f"{task}.json"
             if not task_data_path.exists():
-                print(f"skip {task}/{subset} because it is not found in {dataset_dir}")
-                continue
+                raise FileNotFoundError(
+                    f"TCEval-v2 required task file not found: {task_data_path}"
+                )
 
             with task_data_path.open(encoding="utf-8") as f:
                 task_data = json.load(f)
@@ -97,6 +103,7 @@ def evaluate():
                 user_content = "\n".join([task_data["instruction"], "", sample["input"]])
                 messages = [{"role": "user", "content": user_content}]
                 all_inputs.append([messages, generator_config])
+                request_keys.append(f"{task}:{subset}:{idx}")
                 evaluation_results.append(
                     {
                         "model_name": cfg.model.pretrained_model_name_or_path,
@@ -113,8 +120,28 @@ def evaluate():
                     }
                 )
 
-    llm_ap = LLMAsyncProcessor(llm=llm, inputs=all_inputs)
-    responses = llm_ap.get_results()
+    if not all_inputs:
+        raise RuntimeError("TCEval-v2 produced no evaluation requests")
+
+    configured_checkpoint_dir = cfg[dataset_name].get("checkpoint_dir", None)
+    checkpoint_store = LLMResponseCheckpointStore(
+        Path(configured_checkpoint_dir)
+        if configured_checkpoint_dir
+        else default_checkpoint_root(run, dataset_name),
+        model_name=cfg.model.pretrained_model_name_or_path,
+    )
+    responses = run_checkpointed_batch(
+        llm=llm,
+        inputs=all_inputs,
+        keys=request_keys,
+        checkpoint_store=checkpoint_store,
+        label="TCEval-v2",
+    )
+    if len(responses) != len(evaluation_results):
+        raise RuntimeError(
+            "TCEval-v2 response count mismatch: "
+            f"{len(responses)}/{len(evaluation_results)}"
+        )
 
     for response, row in tqdm(
         zip(responses, evaluation_results),

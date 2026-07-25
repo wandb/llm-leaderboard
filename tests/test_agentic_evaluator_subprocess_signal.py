@@ -5,6 +5,8 @@ import sys
 import threading
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,28 +23,27 @@ def load_script_module(path: Path):
         sys.path.pop(0)
 
 
-def assert_parent_sigint_does_not_abort_child(command_runner):
+def assert_parent_sigint_aborts_child(command_runner):
     timer = threading.Timer(0.5, lambda: os.kill(os.getpid(), signal.SIGINT))
     timer.start()
     try:
-        result = command_runner(
-            [
-                sys.executable,
-                "-c",
-                "import time; time.sleep(1.2); print('child-ok')",
-            ]
-        )
+        with pytest.raises(KeyboardInterrupt):
+            command_runner(
+                [
+                    sys.executable,
+                    "-c",
+                    "import time; time.sleep(30); print('child-should-not-finish')",
+                ]
+            )
     finally:
         timer.cancel()
-    assert result.returncode == 0
-    assert "child-ok" in result.stdout
 
 
-def test_agentic_math_runner_survives_parent_sigint_while_child_runs():
+def test_agentic_math_runner_stops_child_on_parent_sigint():
     module = load_script_module(REPO_ROOT / "scripts" / "evaluator" / "agentic_math.py")
-    assert_parent_sigint_does_not_abort_child(module._run_command)
+    assert_parent_sigint_aborts_child(module._run_command)
 
 
-def test_swebench_pro_runner_survives_parent_sigint_while_child_runs():
+def test_swebench_pro_runner_stops_child_on_parent_sigint():
     module = load_script_module(REPO_ROOT / "scripts" / "evaluator" / "swebench_pro.py")
-    assert_parent_sigint_does_not_abort_child(module._run_command)
+    assert_parent_sigint_aborts_child(module._run_command)

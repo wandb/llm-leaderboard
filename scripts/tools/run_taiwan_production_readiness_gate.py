@@ -574,11 +574,13 @@ def run_nemoclaw_adoption_check(
     setup_paths = readiness.normalize_paths(
         parsed_report_args.nemoclaw_setup_json,
         (readiness.DEFAULT_NEMOCLAW_SETUP_GLOB,),
+        discover_defaults=not parsed_report_args.no_default_evidence_discovery,
     )
     readiness_paths = readiness.filter_canary_readiness_paths(
         readiness.normalize_paths(
             parsed_report_args.readiness_json,
             readiness.DEFAULT_READINESS_GLOBS,
+            discover_defaults=not parsed_report_args.no_default_evidence_discovery,
         )
     )
     adoption_args = argparse.Namespace(
@@ -587,6 +589,9 @@ def run_nemoclaw_adoption_check(
         agentic_config=args.nemoclaw_adoption_agentic_config,
         agentic_config_glob=args.nemoclaw_adoption_agentic_config_glob,
         sandbox=args.nemoclaw_adoption_sandbox,
+        no_default_evidence_discovery=(
+            parsed_report_args.no_default_evidence_discovery
+        ),
     )
     report = nemoclaw_adoption.build_report(adoption_args)
     report["path"] = str(output_path)

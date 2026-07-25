@@ -1,7 +1,7 @@
 {
   "name": "nejumi-budget-guard",
-  "version": "0.1.0",
-  "description": "OpenClaw before-tool-call hard budget guard with turn-hook coverage audit for Nejumi Taiwan agentic benchmarks.",
+  "version": "0.3.0",
+  "description": "OpenClaw budget and task-workspace isolation guard for Nejumi Taiwan agentic benchmarks.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -15,6 +15,7 @@
   },
   "files": [
     "dist/",
+    "landlock_exec.py",
     "openclaw.plugin.json",
     "README.md"
   ]

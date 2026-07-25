@@ -18,7 +18,8 @@ and exposes it through:
 
   /sandbox/.deepswe-tools/go/bin
 
-It also links go/gofmt into /usr/local/bin inside the sandbox container when
+The selected Go task images are inspected and the highest required Go version
+is installed. It also links go/gofmt into /usr/local/bin inside the sandbox container when
 Docker access to the OpenShell container is available. OpenClaw tool execution
 does not reliably inherit the launcher PATH, so the standard PATH exposure is
 required for model-visible test commands.
@@ -121,12 +122,58 @@ check_tools() {
   sandbox_exec 120 sh -lc 'ok=0; for cmd in "$@"; do if command -v "$cmd" >/dev/null 2>&1; then printf "%s\tOK\t%s\n" "$cmd" "$(command -v "$cmd")"; else printf "%s\tMISSING\n" "$cmd"; ok=1; fi; done; exit "$ok"' _ "${required_tools[@]}"
 }
 
+image_go_version() {
+  docker run --rm "${1:?image required}" sh -lc 'go env GOVERSION'
+}
+
+select_go_toolchain_image() {
+  local selected_go_image version
+  for selected_go_image in "${selected_go_images[@]}"; do
+    version="$(image_go_version "$selected_go_image")"
+    printf '%s\t%s\n' "$version" "$selected_go_image"
+  done | sort -V -k1,1 | tail -n 1 | cut -f2-
+}
+
+check_go_toolchain() {
+  if [[ "${#selected_go_images[@]}" -eq 0 ]]; then
+    echo "go-toolchain\tSKIPPED\tno-selected-go-tasks"
+    return 0
+  fi
+  local expected actual
+  expected="$(image_go_version "$selected_go_toolchain_image")"
+  actual="$(sandbox_exec 120 go env GOVERSION 2>/dev/null || true)"
+  if [[ "$actual" != "$expected" ]]; then
+    echo "go-toolchain\tMISMATCH\texpected=${expected}\tactual=${actual:-missing}\tsource=${selected_go_toolchain_image}" >&2
+    return 1
+  fi
+  echo "go-toolchain\tOK\t${actual}\t${selected_go_toolchain_image}"
+}
+
 check_go_module_cache() {
   if [[ "${#selected_go_images[@]}" -eq 0 ]]; then
     echo "go-mod-cache	SKIPPED	no-selected-go-tasks"
     return 0
   fi
-  sandbox_exec 120 sh -lc 'if find /sandbox/go/pkg/mod -type d -name "*@v*" 2>/dev/null | grep -v "/cache/download/" | head -1 | grep -q .; then echo "go-mod-cache	OK	/sandbox/go/pkg/mod"; else echo "go-mod-cache	MISSING"; exit 1; fi'
+  local ok=0
+  for selected_go_image in "${selected_go_images[@]}"; do
+    local hash image_id marker_path
+    hash="$(image_hash "$selected_go_image")"
+    marker_path="/sandbox/.deepswe-tools/go-mod-cache-markers/${hash}"
+    if ! image_id="$(docker image inspect --format '{{.Id}}' "$selected_go_image" 2>/dev/null)"; then
+      echo "go-mod-cache	MISSING_IMAGE	${selected_go_image}" >&2
+      ok=1
+      continue
+    fi
+    if sandbox_exec 120 sh -lc \
+      'test -f "$1" && test "$(sed -n "1p" "$1")" = "$2"' \
+      check-go-cache-marker "$marker_path" "$image_id"; then
+      echo "go-mod-cache	OK	${selected_go_image}	${marker_path}"
+    else
+      echo "go-mod-cache	MISSING	${selected_go_image}	${marker_path}" >&2
+      ok=1
+    fi
+  done
+  return "$ok"
 }
 
 sandbox_container_id() {
@@ -182,9 +229,35 @@ else
   mapfile -t selected_go_images < <(select_images_by_language go)
 fi
 mapfile -t selected_python_images < <(select_images_by_language python)
+selected_go_toolchain_image=""
+if [[ "${#selected_go_images[@]}" -gt 0 ]]; then
+  selected_go_toolchain_image="$(select_go_toolchain_image)"
+fi
 
 image_hash() {
   printf '%s' "${1:?image required}" | sha256sum | awk '{print substr($1, 1, 12)}'
+}
+
+go_cache_marker_valid() {
+  local selected_go_image="${1:?image required}"
+  local hash image_id marker_path
+  hash="$(image_hash "$selected_go_image")"
+  image_id="$(docker image inspect --format '{{.Id}}' "$selected_go_image")"
+  marker_path="/sandbox/.deepswe-tools/go-mod-cache-markers/${hash}"
+  sandbox_exec 120 sh -lc \
+    'test -f "$1" && test "$(sed -n "1p" "$1")" = "$2"' \
+    check-go-cache-marker "$marker_path" "$image_id"
+}
+
+write_go_cache_marker() {
+  local selected_go_image="${1:?image required}"
+  local hash image_id marker_path
+  hash="$(image_hash "$selected_go_image")"
+  image_id="$(docker image inspect --format '{{.Id}}' "$selected_go_image")"
+  marker_path="/sandbox/.deepswe-tools/go-mod-cache-markers/${hash}"
+  sandbox_exec 120 sh -lc \
+    'set -eu; mkdir -p "$(dirname "$1")"; tmp="$1.tmp.$$"; printf "%s\n%s\n" "$2" "$3" >"$tmp"; mv "$tmp" "$1"' \
+    write-go-cache-marker "$marker_path" "$image_id" "$selected_go_image"
 }
 
 check_python_overlays() {
@@ -245,16 +318,21 @@ SH
 if [[ "$check_only" -eq 1 ]]; then
   check_status=0
   check_tools || check_status=1
+  check_go_toolchain || check_status=1
   check_go_module_cache || check_status=1
   check_python_overlays || check_status=1
   exit "$check_status"
 fi
 
 tools_ok=0
+go_toolchain_ok=0
 module_cache_ok=0
 python_overlays_ok=0
 if check_tools; then
   tools_ok=1
+fi
+if check_go_toolchain; then
+  go_toolchain_ok=1
 fi
 if check_go_module_cache; then
   module_cache_ok=1
@@ -262,7 +340,7 @@ fi
 if check_python_overlays; then
   python_overlays_ok=1
 fi
-if [[ "$tools_ok" -eq 1 && "$module_cache_ok" -eq 1 && "$python_overlays_ok" -eq 1 && -z "$go_image" ]]; then
+if [[ "$tools_ok" -eq 1 && "$go_toolchain_ok" -eq 1 && "$module_cache_ok" -eq 1 && "$python_overlays_ok" -eq 1 && -z "$go_image" ]]; then
   echo "DeepSWE sandbox toolchain, Go module cache, and Python overlays already available."
   exit 0
 fi
@@ -291,19 +369,34 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ "${#selected_go_images[@]}" -gt 0 && ( "$tools_ok" -ne 1 || "$module_cache_ok" -ne 1 ) ]]; then
-  container_id="$(docker create "${selected_go_images[0]}" /bin/sh -c true)"
-  docker cp "$container_id:/usr/local/go" "$tmpdir/go"
-
-  sandbox_exec 120 sh -lc "mkdir -p /sandbox/.deepswe-tools /sandbox/.npm-global/bin /sandbox/go/pkg/mod '$cache_upload_root' && rm -rf /sandbox/.deepswe-tools/go"
-  "$nemoclaw_bin" sandbox upload "$sandbox" "$tmpdir/go" /sandbox/.deepswe-tools/
+if [[ "${#selected_go_images[@]}" -gt 0 && "$go_toolchain_ok" -ne 1 ]]; then
+  required_go_version="$(image_go_version "$selected_go_toolchain_image")"
+  docker run --rm "$selected_go_toolchain_image" sh -lc '
+    set -eu
+    required="$1"
+    base="$(cd /tmp && /usr/local/go/bin/go env GOVERSION)"
+    source=/usr/local/go
+    if [ "$required" != "$base" ]; then
+      module_cache="$(cd /app && /usr/local/go/bin/go env GOMODCACHE)"
+      source="$module_cache/golang.org/toolchain@v0.0.1-${required}.linux-$(go env GOARCH)"
+    fi
+    test -x "$source/bin/go"
+    cd "$source"
+    tar -czf - .
+  ' copy-go-toolchain "$required_go_version" >"$tmpdir/go-toolchain.tgz"
+  sandbox_exec 120 sh -lc "mkdir -p /sandbox/.deepswe-tools /sandbox/.npm-global/bin /sandbox/go/pkg/mod '$cache_upload_root'"
+  "$nemoclaw_bin" sandbox upload "$sandbox" "$tmpdir/go-toolchain.tgz" /sandbox/.deepswe-tools/go-toolchain.tgz
+  sandbox_exec 300 sh -lc \
+    'set -eu; rm -rf /sandbox/.deepswe-tools/go.next; mkdir -p /sandbox/.deepswe-tools/go.next; tar -xzf /sandbox/.deepswe-tools/go-toolchain.tgz -C /sandbox/.deepswe-tools/go.next; rm -rf /sandbox/.deepswe-tools/go; mv /sandbox/.deepswe-tools/go.next /sandbox/.deepswe-tools/go; rm -f /sandbox/.deepswe-tools/go-toolchain.tgz'
   sandbox_exec 120 sh -lc 'mkdir -p /sandbox/.npm-global/bin; ln -sfn /sandbox/.deepswe-tools/go/bin/go /sandbox/.npm-global/bin/go; ln -sfn /sandbox/.deepswe-tools/go/bin/gofmt /sandbox/.npm-global/bin/gofmt'
   install_standard_path_wrappers
 fi
 
 cache_index=0
-if [[ "$module_cache_ok" -ne 1 ]]; then
-  for selected_go_image in "${selected_go_images[@]}"; do
+for selected_go_image in "${selected_go_images[@]}"; do
+  if go_cache_marker_valid "$selected_go_image"; then
+    echo "Keeping verified Go module cache from: $selected_go_image"
+  else
     if [[ -n "$container_id" ]]; then
       docker rm -f "$container_id" >/dev/null 2>&1 || true
       container_id=""
@@ -313,18 +406,21 @@ if [[ "$module_cache_ok" -ne 1 ]]; then
     if docker run --rm "$selected_go_image" sh -lc 'cache="$(go env GOMODCACHE 2>/dev/null || true)"; cache="${cache:-/root/go/pkg/mod}"; test -d "$cache"; cd "$cache"; tar cf - .' | tar -xf - -C "$cache_dir"; then
       "$nemoclaw_bin" sandbox upload "$sandbox" "$cache_dir" "$cache_upload_root/"
       sandbox_exec 300 sh -lc "mkdir -p /sandbox/go/pkg/mod && chmod -R u+w /sandbox/go/pkg/mod >/dev/null 2>&1 || true; cp -a '$cache_upload_root/mod-${cache_index}/.' /sandbox/go/pkg/mod/"
+      write_go_cache_marker "$selected_go_image"
       echo "Merged Go module cache from: $selected_go_image"
     else
       echo "No /root/go/pkg/mod cache found in image: $selected_go_image" >&2
+      exit 3
     fi
-    cache_index=$((cache_index + 1))
-  done
-fi
+  fi
+  cache_index=$((cache_index + 1))
+done
 
 if [[ "${#selected_python_images[@]}" -gt 0 && "$python_overlays_ok" -ne 1 ]]; then
   sandbox_exec 120 sh -lc 'mkdir -p /sandbox/.deepswe-tools/python-runtime /sandbox/.deepswe-tools/python-site /sandbox/.deepswe-tools/python-bin'
 fi
 
+if [[ "$python_overlays_ok" -ne 1 ]]; then
 for selected_python_image in "${selected_python_images[@]}"; do
   hash="$(image_hash "$selected_python_image")"
   runtime_dir="$tmpdir/python-runtime/${hash}/usr/local"
@@ -418,9 +514,10 @@ PY
   sandbox_exec 120 sh -lc "mkdir -p '/sandbox/.deepswe-tools/python-site/${hash}' && ln -sfn '${site_target}' '/sandbox/.deepswe-tools/python-site/${hash}/site-packages'"
   echo "Installed Python runtime overlay from: $selected_python_image -> hash=$hash"
 done
+fi
 
 check_tools
+check_go_toolchain
 check_go_module_cache
 check_python_overlays
-check_go_module_cache
 sandbox_exec 120 sh -lc 'export PATH=/sandbox/.deepswe-tools/go/bin:/sandbox/.npm-global/bin:$PATH; go version; node --version; python3 --version'

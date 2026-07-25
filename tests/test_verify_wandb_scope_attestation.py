@@ -56,6 +56,8 @@ def completion_payload():
         "generated_at": 1,
         "verification_schema_version": 1,
         "required_evidence": {
+            "expected_total": 1,
+            "nemoclaw_session_audit": {"required": True},
             "run_metadata": {
                 "config": [
                     {
@@ -70,6 +72,38 @@ def completion_payload():
         "observed_evidence": {
             "run_state": "finished",
             "summary_metrics": {"agentic_math/accuracy": {"ok": True, "value": 0.86}},
+            "nemoclaw_session_audit": {
+                "ok": True,
+                "required": 1,
+                "passed": 1,
+                "failed": 0,
+                "expected_total": 1,
+            },
+            "tables": [
+                {
+                    "name": "agentic_math_output_table",
+                    "columns_ok": True,
+                    "missing_columns": [],
+                    "required_columns": [
+                        "nemoclaw_session_copy_source",
+                        "nemoclaw_session_copied_bytes",
+                    ],
+                    "row_observability_ok": True,
+                    "row_observability_invalid_row_count": 0,
+                    "row_observability_checked_rows": 1,
+                    "row_observability_expected_rows": 1,
+                    "row_observability_required_copy_source_columns": [
+                        "nemoclaw_session_copy_source"
+                    ],
+                    "row_observability_required_positive_int_columns": [
+                        "nemoclaw_session_copied_bytes"
+                    ],
+                    "row_observability_allowed_copy_sources": [
+                        "stdout_agent_meta",
+                        "live_runtime_budget",
+                    ],
+                }
+            ],
             "run_metadata": {
                 "config": [
                     {

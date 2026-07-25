@@ -11,6 +11,11 @@ import weave
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import LLMAsyncProcessor, get_openai_judge_client
+from .evaluate_utils.llm_response_checkpoint import (
+    JSONItemCheckpointStore,
+    LLMResponseCheckpointStore,
+    default_checkpoint_root,
+)
 
 Samples: TypeAlias = list[dict[str, Any]]
 
@@ -159,19 +164,47 @@ async def evaluate_async(
             except Exception:
                 pass
             llm_ap = LLMAsyncProcessor(llm=llm, soft_fail_on_error=soft_fail)
-            async def generate_answer(sample):
-                messages = [{"role": "user", "content": sample["prompt"]}]
-                result = await llm_ap.process_single_async(messages, **generator_config)
-                sample.update({"answer": result.content})
-                return sample
-            generate_answer_tasks = [asyncio.create_task(generate_answer(sample)) for sample in samples]
-            generate_answer_results = asyncio.create_task( # Judgeと並列で行うためにここではawaitしない
-                atqdm.gather(*generate_answer_tasks, desc="Generating Hallulens answers")
+            checkpoint_root = (
+                default_checkpoint_root(run, task_name) / subset / key
+            )
+            answer_store = LLMResponseCheckpointStore(
+                checkpoint_root / "answers",
+                model_name=cfg.model.pretrained_model_name_or_path,
             )
 
-            # OpenAIの場合、推論とJudgeが同じAPIになるため、Rate Limit対策として推論がすべて終わるのを待つ
-            if cfg.api == 'openai':
-                await generate_answer_results
+            async def generate_answer(sample_index, sample):
+                messages = [{"role": "user", "content": sample["prompt"]}]
+                checkpoint_key = str(sample_index)
+                result = answer_store.load(
+                    checkpoint_key,
+                    messages=messages,
+                    kwargs=generator_config,
+                )
+                if result is None:
+                    result = await llm_ap.process_single_async(
+                        messages,
+                        **generator_config,
+                    )
+                    answer_store.save(
+                        checkpoint_key,
+                        result,
+                        messages=messages,
+                        kwargs=generator_config,
+                    )
+                sample.update({"answer": result.content})
+                return sample
+
+            await atqdm.gather(
+                *(
+                    generate_answer(sample_index, sample)
+                    for sample_index, sample in enumerate(samples)
+                ),
+                desc="Generating Hallulens answers",
+            )
+            if any("answer" not in sample for sample in samples):
+                raise RuntimeError(
+                    f"Hallulens answer generation incomplete for {subset}/{key}"
+                )
 
             # === judge === #
             judge_model = cfg[task_name].judge.get("model", "gpt-5.5")
@@ -187,10 +220,13 @@ async def evaluate_async(
             place_phrase_template = cfg[task_name].get("place_phrase_template", " in {place}")
             judge_llm = get_openai_judge_client(judge_model, text_format=JudgeOutput)
             judge_llm_ap = LLMAsyncProcessor(llm=judge_llm, batch_size=judge_parallel, inference_interval=0.)
+            judge_store = JSONItemCheckpointStore(
+                checkpoint_root / "judgments",
+                model_name=judge_model,
+            )
 
             # Judge model answers
-            async def judge(sample, generate_answer_task):
-                await generate_answer_task
+            async def judge(sample_index, sample):
                 judge_prompt: str = render_judge_prompt_template(
                     judge_prompt_template,
                     name=sample["name"],
@@ -206,27 +242,47 @@ async def evaluate_async(
                 if judge_system_prompt:
                     messages.append({"role": "system", "content": judge_system_prompt})
                 messages.append({"role": "user", "content": judge_prompt})
-                judge_result = await judge_llm_ap.process_single_async(messages, **judge_params)
-                parsed_output = judge_result.parsed_output
-                if parsed_output is None:
-                    raise ValueError(
-                        "Parsed response is None, check the judge model response."
+                checkpoint_key = str(sample_index)
+                request = {"messages": messages, "params": judge_params}
+                cached = judge_store.load(checkpoint_key, request=request)
+                if cached is None:
+                    judge_result = await judge_llm_ap.process_single_async(
+                        messages,
+                        **judge_params,
                     )
-
-                sample.update(
-                    {
+                    parsed_output = judge_result.parsed_output
+                    if parsed_output is None:
+                        raise ValueError(
+                            "Parsed response is None, check the judge model response."
+                        )
+                    cached = {
                         **parsed_output.model_dump(),
                         "judge_prompt": judge_prompt,
                         "judge_system_prompt": judge_system_prompt,
                     }
-                )
+                    judge_store.save(
+                        checkpoint_key,
+                        cached,
+                        request=request,
+                    )
+                sample.update(cached)
                 return sample
 
-            judge_tasks = [
-                judge(sample, generate_answer_task)
-                for sample, generate_answer_task in zip(samples, generate_answer_tasks)
-            ]
-            await atqdm.gather(*judge_tasks, desc="Judging Hallulens")
+            try:
+                await atqdm.gather(
+                    *(
+                        judge(sample_index, sample)
+                        for sample_index, sample in enumerate(samples)
+                    ),
+                    desc="Judging Hallulens",
+                )
+            finally:
+                await judge_llm_ap.close_async_client()
+                await llm_ap.close_async_client()
+            if any("does_believe" not in sample for sample in samples):
+                raise RuntimeError(
+                    f"Hallulens judging incomplete for {subset}/{key}"
+                )
             _samples.extend(samples)
 
         # === Logging === #

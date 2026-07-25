@@ -12,13 +12,36 @@ def _format_table_name(template: str, cfg: Any) -> str:
     return template.format(num_few_shots=cfg.get("num_few_shots", 2))
 
 
-def _normalize_score(value: Any, scale: str) -> float:
+def _coerce_score_to_native_scale(value: Any, scale: str) -> float:
     if value is None:
         return float("nan")
+    is_percent_literal = False
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return float("nan")
+        if value.endswith("%"):
+            is_percent_literal = True
+            value = value[:-1].strip()
     try:
         score = float(value)
     except (TypeError, ValueError):
         return float("nan")
+    if not np.isfinite(score):
+        return float("nan")
+    if not is_percent_literal:
+        return score
+    if scale == "fraction":
+        return score / 100.0
+    if scale == "judge_0_10":
+        return score / 10.0
+    if scale == "percent":
+        return score
+    raise ValueError(f"Unsupported score scale: {scale}")
+
+
+def _normalize_score(value: Any, scale: str) -> float:
+    score = _coerce_score_to_native_scale(value, scale)
     if np.isnan(score):
         return float("nan")
     if scale == "fraction":
@@ -43,13 +66,13 @@ def _read_wandb_table_once(table_name: str, run) -> pd.DataFrame:
     return pd.DataFrame(data=table_json.get("data", []), columns=table_json.get("columns", []))
 
 
-def _read_score_source(run, cfg, source: dict[str, Any]) -> tuple[float, str]:
+def _read_score_source(run, cfg, source: dict[str, Any]) -> tuple[Any, str]:
     table_name = _format_table_name(source["table_name"], cfg)
     column = source["column"]
     table = _read_wandb_table_once(table_name=table_name, run=run)
     if column not in table.columns:
         raise KeyError(f"{column} not found in {table_name}")
-    return float(table[column].iloc[0]), table_name
+    return table[column].iloc[0], table_name
 
 
 def _unit_raw_score(run, cfg, unit: dict[str, Any]) -> tuple[float, str]:
@@ -58,14 +81,15 @@ def _unit_raw_score(run, cfg, unit: dict[str, Any]) -> tuple[float, str]:
         table_names = []
         for source in unit["sources"]:
             value, table_name = _read_score_source(run, cfg, source)
-            values.append(value)
+            values.append(_coerce_score_to_native_scale(value, unit["scale"]))
             table_names.append(table_name)
         if unit.get("aggregation", "mean") != "mean":
             raise ValueError(f"Unsupported aggregation: {unit.get('aggregation')}")
         return float(np.mean(values)), ",".join(table_names)
 
     source = {"table_name": unit["table_name"], "column": unit["column"]}
-    return _read_score_source(run, cfg, source)
+    value, table_name = _read_score_source(run, cfg, source)
+    return _coerce_score_to_native_scale(value, unit["scale"]), table_name
 
 
 def _mean_if_complete(values: list[float]) -> float:
@@ -133,6 +157,35 @@ def _weighted_overall(category_scores: dict[str, float], weights: dict[str, floa
     )
 
 
+def _required_missing_rows(unit_df: pd.DataFrame) -> pd.DataFrame:
+    return unit_df[
+        unit_df["required"]
+        & unit_df["score_included"]
+        & unit_df["score_0_to_100"].apply(lambda value: bool(np.isnan(value)))
+    ]
+
+
+def _write_aggregate_summary(
+    run: Any,
+    *,
+    category_scores: dict[str, float],
+    overall: float,
+    missing_required_count: int,
+    pending_count: int,
+) -> None:
+    summary_scores = {
+        "GLP": category_scores.get("GLP", float("nan")),
+        "ALT": category_scores.get("ALT", float("nan")),
+        "Overall": overall,
+    }
+    for name, value in summary_scores.items():
+        serialized = float(value) if np.isfinite(value) else None
+        run.summary[name] = serialized
+        run.summary[f"taiwan_{name.casefold()}_score"] = serialized
+    run.summary["taiwan_missing_required_count"] = int(missing_required_count)
+    run.summary["taiwan_pending_count"] = int(pending_count)
+
+
 def evaluate():
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
@@ -198,13 +251,8 @@ def evaluate():
     leaderboard_dict.update(category_scores)
     leaderboard_dict["Overall"] = _weighted_overall(category_scores, category_weights)
     leaderboard_dict["overall_weighting"] = "taxonomy_category_weighted_mean"
-    leaderboard_dict["missing_required_count"] = int(
-        (
-            unit_df["required"]
-            & unit_df["score_included"]
-            & unit_df["score_0_to_100"].apply(lambda value: bool(np.isnan(value)))
-        ).sum()
-    )
+    missing_required = _required_missing_rows(unit_df)
+    leaderboard_dict["missing_required_count"] = int(len(missing_required))
     leaderboard_dict["pending_count"] = int((unit_df["status"] == "pending").sum())
 
     leaderboard_table = pd.DataFrame([leaderboard_dict])
@@ -223,3 +271,19 @@ def evaluate():
             "taiwan_alt_radar_table": wandb.Table(dataframe=alt_radar),
         }
     )
+    _write_aggregate_summary(
+        run,
+        category_scores=category_scores,
+        overall=leaderboard_dict["Overall"],
+        missing_required_count=len(missing_required),
+        pending_count=leaderboard_dict["pending_count"],
+    )
+    if not missing_required.empty:
+        details = "; ".join(
+            f"{row.unit_id}: {row.error}"
+            for row in missing_required.itertuples(index=False)
+        )
+        raise RuntimeError(
+            "Taiwan aggregate is incomplete; required benchmark scores are "
+            f"missing ({len(missing_required)}): {details}"
+        )

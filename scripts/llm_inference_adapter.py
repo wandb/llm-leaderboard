@@ -1,6 +1,7 @@
 import os
 import asyncio
 import ast
+import inspect
 from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, Union, Any
@@ -69,12 +70,145 @@ class LLMResponse:
     # - reasoning_details: structured reasoning blocks (required to preserve tool-use continuity for some reasoning models)
     reasoning: Optional[str] = None
     reasoning_details: Optional[Any] = None
+    # Provider-native response items that must be replayed verbatim on the next
+    # turn (for example, OpenAI Responses reasoning and function-call items).
+    response_items: Optional[List[Any]] = None
     parsed_output: Optional[BaseModel] = None
     tool_calls: Optional[List[ToolCall]] = None
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
     finish_reason: Optional[str] = None
     content_was_none: bool = False
+
+
+def _normalize_openai_responses_tools(tools: Any) -> Any:
+    """Accept either Chat Completions or Responses function-tool schemas."""
+    if not isinstance(tools, list):
+        return tools
+
+    normalized = []
+    for tool in tools:
+        if (
+            isinstance(tool, dict)
+            and tool.get("type") == "function"
+            and isinstance(tool.get("function"), dict)
+        ):
+            normalized.append({"type": "function", **tool["function"]})
+        else:
+            normalized.append(tool)
+    return normalized
+
+
+def _normalize_openai_responses_input(messages: Any) -> Any:
+    """Convert common chat history objects into Responses API input items."""
+    if not isinstance(messages, list):
+        return messages
+
+    normalized = []
+    for message in messages:
+        if not isinstance(message, dict) or "role" not in message:
+            normalized.append(message)
+            continue
+
+        role = message.get("role")
+        if role == "system":
+            converted = dict(message)
+            converted["role"] = "developer"
+            normalized.append(converted)
+            continue
+
+        if role == "tool":
+            normalized.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": message.get("tool_call_id"),
+                    "output": message.get("content", ""),
+                }
+            )
+            continue
+
+        tool_calls = message.get("tool_calls")
+        if role == "assistant" and isinstance(tool_calls, list):
+            content = message.get("content")
+            if content:
+                normalized.append({"role": "assistant", "content": content})
+            for tool_call in tool_calls:
+                function = tool_call.get("function", {})
+                normalized.append(
+                    {
+                        "type": "function_call",
+                        "call_id": tool_call.get("id"),
+                        "name": function.get("name"),
+                        "arguments": function.get("arguments", "{}"),
+                    }
+                )
+            continue
+
+        normalized.append(message)
+    return normalized
+
+
+def _normalize_anthropic_messages(messages: Any) -> tuple[Any, Optional[str]]:
+    """Convert shared chat history into Anthropic message/content blocks."""
+    if not isinstance(messages, list):
+        return messages, None
+
+    system_parts = []
+    normalized = []
+    for message in messages:
+        if not isinstance(message, dict):
+            normalized.append(message)
+            continue
+
+        role = message.get("role")
+        if role in {"system", "developer"}:
+            content = message.get("content", "")
+            if isinstance(content, str):
+                system_parts.append(content)
+            else:
+                system_parts.append(json.dumps(content, ensure_ascii=False))
+            continue
+
+        if role == "tool":
+            normalized.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": message.get("tool_call_id"),
+                            "content": str(message.get("content", "")),
+                        }
+                    ],
+                }
+            )
+            continue
+
+        tool_calls = message.get("tool_calls")
+        if role == "assistant" and isinstance(tool_calls, list):
+            blocks = []
+            if message.get("content"):
+                blocks.append({"type": "text", "text": str(message["content"])})
+            for tool_call in tool_calls:
+                function = tool_call.get("function", {})
+                arguments = function.get("arguments", {})
+                if isinstance(arguments, str):
+                    arguments = _parse_tool_call_arguments(arguments)
+                blocks.append(
+                    {
+                        "type": "tool_use",
+                        "id": tool_call.get("id"),
+                        "name": function.get("name"),
+                        "input": arguments,
+                    }
+                )
+            normalized.append({"role": "assistant", "content": blocks})
+            continue
+
+        normalized.append(message)
+
+    system = "\n\n".join(part for part in system_parts if part) or None
+    return normalized, system
 
 
 def _strip_json_code_fence(text: str) -> str:
@@ -548,14 +682,68 @@ class BaseLLMClient(ABC):
         """同期版のinvoke（後方互換性のため）"""
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+
+        async def invoke_once() -> LLMResponse:
+            try:
+                return await self.ainvoke(messages, max_tokens, **kwargs)
+            finally:
+                close = getattr(self, "aclose", None)
+                if close is not None:
+                    result = close()
+                    if inspect.isawaitable(result):
+                        await result
+
         try:
-            return loop.run_until_complete(self.ainvoke(messages, max_tokens, **kwargs))
+            return loop.run_until_complete(invoke_once())
         finally:
             loop.close()
 
     @abstractmethod
     async def ainvoke(self, messages: List[Dict[str, str]], max_tokens: Optional[int] = None, **kwargs) -> LLMResponse:
         raise NotImplementedError
+
+
+class _LoopLocalAsyncClientMixin:
+    """Keep HTTPX/OpenAI async clients on the event loop that owns them."""
+
+    def _initialize_loop_local_async_client(self, factory) -> None:
+        self._async_client_factory = factory
+        # Preserve the public attribute for compatibility and test injection.
+        self.async_client = factory()
+        self._async_client_loop = None
+
+    def _get_async_client(self):
+        loop = asyncio.get_running_loop()
+        client = getattr(self, "async_client", None)
+        is_closed = bool(getattr(client, "is_closed", False)) if client else True
+        owner_loop = getattr(self, "_async_client_loop", None)
+        if client is None or is_closed or (
+            owner_loop is not None and owner_loop is not loop
+        ):
+            client = self._async_client_factory()
+            self.async_client = client
+        self._async_client_loop = loop
+        return client
+
+    async def aclose(self) -> None:
+        client = getattr(self, "async_client", None)
+        if client is None:
+            return
+        owner_loop = getattr(self, "_async_client_loop", None)
+        current_loop = asyncio.get_running_loop()
+        if owner_loop is not None and owner_loop is not current_loop:
+            raise RuntimeError(
+                "Async API client must be closed on the event loop that used it"
+            )
+        close = getattr(client, "close", None)
+        if close is None:
+            close = getattr(client, "aclose", None)
+        if close is not None:
+            result = close()
+            if inspect.isawaitable(result):
+                await result
+        self.async_client = None
+        self._async_client_loop = None
 
 
 class ChatBedrock(BaseLLMClient):
@@ -760,7 +948,7 @@ class ChatBedrock(BaseLLMClient):
         return LLMResponse(content=content, reasoning_content=reasoning_content)
 
 
-class OpenAIClient:
+class OpenAIClient(_LoopLocalAsyncClientMixin):
     def __init__(self, api_key=None, base_url=None, model=None, timeout_primary_key="openai", **kwargs):
         # YAMLから（なければデフォルトで）HTTPタイムアウトを解決
         instance = WandbConfigSingleton.get_instance()
@@ -777,7 +965,9 @@ class OpenAIClient:
         if project:
             client_kwargs["project"] = project
 
-        self.async_client = openai.AsyncOpenAI(**client_kwargs)
+        self._initialize_loop_local_async_client(
+            lambda: openai.AsyncOpenAI(**client_kwargs)
+        )
         self.client = openai.OpenAI(**client_kwargs)
         self.model = model
         self.base_url = base_url
@@ -958,7 +1148,7 @@ class OpenAIClient:
             params["response_format"] = _response_format_to_param(manual_response_format)
 
         try:
-            async_client = self.async_client
+            async_client = self._get_async_client()
             if request_max_retries is not None:
                 async_client = async_client.with_options(max_retries=request_max_retries)
             # Structured output
@@ -1066,7 +1256,7 @@ class OpenAIClient:
         return llm_response
 
 
-class OpenAIResponsesClient(BaseLLMClient):
+class OpenAIResponsesClient(_LoopLocalAsyncClientMixin, BaseLLMClient):
     """
     OpenAIのResponses APIを使用するクライアント(Reasoning対応)
     """
@@ -1076,17 +1266,20 @@ class OpenAIResponsesClient(BaseLLMClient):
         cfg = instance.config if instance else None
         timeout = _resolve_http_timeout_from_cfg(cfg, primary_key=timeout_primary_key) if cfg else httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=30.0)
 
-        self.async_client = openai.AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            timeout=timeout
+        async_client_kwargs = {
+            "api_key": api_key,
+            "base_url": base_url,
+            "timeout": timeout,
+        }
+        self._initialize_loop_local_async_client(
+            lambda: openai.AsyncOpenAI(**async_client_kwargs)
         )
         self.model = model
         self.kwargs = kwargs
         self.structured = structured
         
         self.allowed_params = {
-            'instructions', 'max_output_tokens', 'max_tool_calls', 'metadata',
+            'include', 'instructions', 'max_output_tokens', 'max_tool_calls', 'metadata',
             'parallel_tool_calls', 'previous_response_id', 'reasoning', 
             'service_tier', 'store', 'stream', 'text', 'text_format',
             'tool_choice', 'tools', 'top_logprobs', 'truncation', 'user',
@@ -1108,10 +1301,14 @@ class OpenAIResponsesClient(BaseLLMClient):
             pass
         mapped_params = map_common_params(all_kwargs, self.param_mapping)
         filtered_params = filter_params(mapped_params, self.allowed_params)
+        if "tools" in filtered_params:
+            filtered_params["tools"] = _normalize_openai_responses_tools(
+                filtered_params["tools"]
+            )
         
         params = {
             "model": self.model,
-            "input": messages,
+            "input": _normalize_openai_responses_input(messages),
             **filtered_params
         }
         
@@ -1119,10 +1316,10 @@ class OpenAIResponsesClient(BaseLLMClient):
             params["max_output_tokens"] = max(max_tokens, 16)
         
         if 'text_format' in filtered_params:
-            response: OpenAIParsedResponse = await self.async_client.responses.parse(**params)
+            response: OpenAIParsedResponse = await self._get_async_client().responses.parse(**params)
             parsed_output = response.output_parsed
         else:
-            response: OpenAIResponse = await self.async_client.responses.create(**params)
+            response: OpenAIResponse = await self._get_async_client().responses.create(**params)
             parsed_output = None
 
         content, reasoning_content = "", ""
@@ -1157,7 +1354,17 @@ class OpenAIResponsesClient(BaseLLMClient):
                 except Exception:
                     pass
 
-        return LLMResponse(content=content, reasoning_content=reasoning_content, parsed_output=parsed_output, tool_calls=collected_tool_calls if collected_tool_calls else None)
+        usage = getattr(response, "usage", None)
+        return LLMResponse(
+            content=content,
+            reasoning_content=reasoning_content,
+            parsed_output=parsed_output,
+            tool_calls=collected_tool_calls if collected_tool_calls else None,
+            response_items=list(response.output),
+            prompt_tokens=getattr(usage, "input_tokens", None),
+            completion_tokens=getattr(usage, "output_tokens", None),
+            finish_reason=getattr(response, "status", None),
+        )
 
 
 class AzureOpenAIResponsesClient(OpenAIResponsesClient):
@@ -1167,11 +1374,14 @@ class AzureOpenAIResponsesClient(OpenAIResponsesClient):
         cfg = instance.config if instance else None
         timeout = _resolve_http_timeout_from_cfg(cfg, primary_key="azure_openai") if cfg else httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=30.0)
 
-        self.async_client = openai.AsyncAzureOpenAI(
-            api_key=api_key,
-            azure_endpoint=azure_endpoint,
-            api_version=api_version,
-            timeout=timeout
+        async_client_kwargs = {
+            "api_key": api_key,
+            "azure_endpoint": azure_endpoint,
+            "api_version": api_version,
+            "timeout": timeout,
+        }
+        self._initialize_loop_local_async_client(
+            lambda: openai.AsyncAzureOpenAI(**async_client_kwargs)
         )
         self.model = azure_deployment
         self.kwargs = kwargs
@@ -1539,7 +1749,8 @@ class AnthropicClient(BaseLLMClient):
         
         self.allowed_params = {
             'temperature', 'top_p', 'top_k', 'max_tokens',
-            'stop_sequences', 'stream'
+            'stop_sequences', 'stream', 'output_config', 'tools',
+            'tool_choice', 'timeout'
         }
         
         self.param_mapping = {
@@ -1548,18 +1759,24 @@ class AnthropicClient(BaseLLMClient):
 
     async def ainvoke(self, messages, max_tokens=None, **kwargs):
         """非同期版のinvoke"""
-        system_message = None
-        filtered_messages = []
-        
-        for msg in messages:
-            if msg["role"] == "system":
-                system_message = msg["content"]
-            else:
-                filtered_messages.append(msg)
+        filtered_messages, system_message = _normalize_anthropic_messages(messages)
         
         all_kwargs = {**self.kwargs, **kwargs}
+        effort = all_kwargs.pop("effort", None)
         mapped_params = map_common_params(all_kwargs, self.param_mapping)
         filtered_params = filter_params(mapped_params, self.allowed_params)
+        # Anthropic rejects requests that specify both sampling controls. The
+        # leaderboard's shared generator config commonly contains both, so
+        # preserve temperature as the primary control and omit top_p.
+        if (
+            filtered_params.get("temperature") is not None
+            and filtered_params.get("top_p") is not None
+        ):
+            filtered_params.pop("top_p", None)
+        if effort is not None:
+            output_config = dict(filtered_params.get("output_config") or {})
+            output_config["effort"] = effort
+            filtered_params["output_config"] = output_config
         
         params = {
             "model": self.model,
@@ -1600,6 +1817,7 @@ class AnthropicClient(BaseLLMClient):
         # レスポンス処理（thinking対応）
         content = ""
         thinking_content = ""
+        collected_tool_calls = []
         
         for block in response.content:
             if hasattr(block, 'type'):
@@ -1607,8 +1825,24 @@ class AnthropicClient(BaseLLMClient):
                     content = block.text
                 elif block.type == "thinking":
                     thinking_content = getattr(block, 'thinking', '')
+                elif block.type == "tool_use":
+                    collected_tool_calls.append(
+                        ToolCall(
+                            name=getattr(block, "name", ""),
+                            arguments=getattr(block, "input", {}) or {},
+                            id=getattr(block, "id", str(uuid.uuid4())),
+                            type="function",
+                        )
+                    )
         
-        return LLMResponse(content=content, reasoning_content=thinking_content)
+        usage = getattr(response, "usage", None)
+        return LLMResponse(
+            content=content,
+            reasoning_content=thinking_content,
+            tool_calls=collected_tool_calls or None,
+            prompt_tokens=getattr(usage, "input_tokens", None),
+            completion_tokens=getattr(usage, "output_tokens", None),
+        )
     
     def _configure_thinking(self, params, max_tokens, all_kwargs):
         """Anthropic純正API用のthinking設定"""
@@ -1660,7 +1894,7 @@ class AnthropicClient(BaseLLMClient):
             return params, False
 
 
-class AzureOpenAIClient(BaseLLMClient):
+class AzureOpenAIClient(_LoopLocalAsyncClientMixin, BaseLLMClient):
     def __init__(self, api_key, azure_endpoint, azure_deployment, api_version, **kwargs):
         # YAMLから（なければデフォルトで）HTTPタイムアウトを解決
         instance = WandbConfigSingleton.get_instance()
@@ -1673,11 +1907,14 @@ class AzureOpenAIClient(BaseLLMClient):
             api_version=api_version,
             timeout=timeout
         )
-        self.async_client = openai.AsyncAzureOpenAI(
-            api_key=api_key,
-            azure_endpoint=azure_endpoint,
-            api_version=api_version,
-            timeout=timeout
+        async_client_kwargs = {
+            "api_key": api_key,
+            "azure_endpoint": azure_endpoint,
+            "api_version": api_version,
+            "timeout": timeout,
+        }
+        self._initialize_loop_local_async_client(
+            lambda: openai.AsyncAzureOpenAI(**async_client_kwargs)
         )
         self.azure_deployment = azure_deployment
         self.kwargs = kwargs
@@ -1706,7 +1943,7 @@ class AzureOpenAIClient(BaseLLMClient):
         if max_tokens:
             params["max_tokens"] = max_tokens
         
-        response = await self.async_client.chat.completions.create(**params)
+        response = await self._get_async_client().chat.completions.create(**params)
         return LLMResponse(content=response.choices[0].message.content)
 
 

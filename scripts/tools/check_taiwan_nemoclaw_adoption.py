@@ -1542,9 +1542,16 @@ def swebench_guard(config_paths: list[Path], *, sandbox: str) -> dict[str, Any]:
     )
 
 
-def discover_config_paths(paths: list[Path] | None, globs: list[str] | None = None) -> list[Path]:
+def discover_config_paths(
+    paths: list[Path] | None,
+    globs: list[str] | None = None,
+    *,
+    discover_defaults: bool = True,
+) -> list[Path]:
     if paths:
         return [repo_path(path) for path in paths]
+    if not discover_defaults and not globs:
+        return []
     return readiness.discover_paths(tuple(globs or DEFAULT_AGENTIC_CONFIG_GLOBS))
 
 
@@ -1629,19 +1636,32 @@ def adoption_decision(
 
 
 def build_report(args: argparse.Namespace) -> dict[str, Any]:
+    discover_defaults = not getattr(args, "no_default_evidence_discovery", False)
     setup_paths = (
         [repo_path(path) for path in args.setup_json]
         if args.setup_json
-        else readiness.discover_paths((readiness.DEFAULT_NEMOCLAW_SETUP_GLOB,))
+        else (
+            readiness.discover_paths((readiness.DEFAULT_NEMOCLAW_SETUP_GLOB,))
+            if discover_defaults
+            else []
+        )
     )
     readiness_paths = (
         [repo_path(path) for path in args.readiness_json]
         if args.readiness_json
-        else readiness.filter_canary_readiness_paths(
-            readiness.discover_paths(readiness.DEFAULT_READINESS_GLOBS)
+        else (
+            readiness.filter_canary_readiness_paths(
+                readiness.discover_paths(readiness.DEFAULT_READINESS_GLOBS)
+            )
+            if discover_defaults
+            else []
         )
     )
-    config_paths = discover_config_paths(args.agentic_config, args.agentic_config_glob)
+    config_paths = discover_config_paths(
+        args.agentic_config,
+        args.agentic_config_glob,
+        discover_defaults=discover_defaults,
+    )
     criteria = [
         setup_plan_safety(setup_paths),
         setup_installed(setup_paths),
@@ -1866,6 +1886,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--sandbox", default="nejumi-taiwan")
+    parser.add_argument(
+        "--no-default-evidence-discovery",
+        action="store_true",
+        help="Inspect only explicitly supplied setup, readiness, and config evidence.",
+    )
     parser.add_argument("--json", type=Path)
     parser.add_argument("--markdown", type=Path)
     parser.add_argument("--fail-on-not-adoptable", action="store_true")

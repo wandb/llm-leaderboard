@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import signal
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +19,94 @@ def load_module(path: Path):
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+def test_agentic_swe_assorted_terminates_child_process_group(monkeypatch):
+    module = load_module(SCRIPT)
+    signals = []
+
+    class FakeProcess:
+        pid = 1234
+
+        def __init__(self):
+            self.wait_calls = 0
+
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            self.wait_calls += 1
+            return -signal.SIGKILL
+
+    monkeypatch.setattr(module, "_descendant_pids", lambda pid: [2345])
+    monkeypatch.setattr(module, "_process_groups", lambda pids: set(pids))
+    monkeypatch.setattr(module, "_pid_exists", lambda pid: True)
+    monkeypatch.setattr(module.time, "sleep", lambda seconds: None)
+    monotonic_values = iter([0.0, 0.0, 1.0])
+    monkeypatch.setattr(module.time, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(module.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+    proc = FakeProcess()
+
+    module.terminate_process_group(proc, grace_seconds=0.5)
+
+    assert signals == [
+        (1234, signal.SIGTERM),
+        (2345, signal.SIGTERM),
+        (1234, signal.SIGKILL),
+        (2345, signal.SIGKILL),
+    ]
+    assert proc.wait_calls == 1
+
+
+def test_agentic_swe_assorted_sigterm_handler_interrupts_child(monkeypatch):
+    module = load_module(SCRIPT)
+    terminated = []
+
+    class FakeStdout:
+        def __iter__(self):
+            handler = signal.getsignal(signal.SIGTERM)
+            handler(signal.SIGTERM, None)
+            yield "unreachable"
+
+    class FakeProcess:
+        pid = 1234
+        stdout = FakeStdout()
+
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
+    monkeypatch.setattr(module, "terminate_process_group", lambda proc: terminated.append(proc.pid))
+
+    with pytest.raises(KeyboardInterrupt, match="received SIGTERM"):
+        module.run_command(["child"])
+
+    assert terminated == [1234]
+
+
+def test_agentic_swe_assorted_passes_sandbox_lease_to_child(monkeypatch):
+    module = load_module(SCRIPT)
+    captured = {}
+
+    class FakeProcess:
+        pid = 1234
+        stdout = iter(())
+
+        def wait(self):
+            return 0
+
+    def fake_popen(*args, **kwargs):
+        captured.update(kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+
+    result = module.run_command(
+        ["child", "--nemoclaw-sandbox", "nejumi-taiwan"]
+    )
+
+    assert result.returncode == 0
+    assert captured["env"][module.NEMOCLAW_SANDBOX_LEASE_ENV] == "nejumi-taiwan"
 
 
 def test_agentic_swe_assorted_keeps_tier_and_source_fields():
@@ -52,21 +142,310 @@ def test_agentic_swe_assorted_keeps_tier_and_source_fields():
     assert row["source_subset"] == "low_36"
     assert row["source_instance_id"] == "django__django-1"
     assert row["resolved"] is True
+    assert row["score"] == 1.0
+    assert row["official_score"] == 1.0
 
 
-def test_agentic_swe_assorted_defaults_to_v2_low_middle_subset():
+def test_lite_rows_backfills_flat_session_audit_evidence():
+    module = load_module(SCRIPT)
+    rows = module.lite_rows(
+        source_rows=[
+            {
+                "instance_id": "django__django-1",
+                "repo": "django/django",
+                "agentic_swe_tier": "low",
+            }
+        ],
+        patch_rows=[
+            {
+                "instance_id": "django__django-1",
+                "patch": "",
+                "nemoclaw_session_audit_ok": True,
+                "nemoclaw_session_audit": {
+                    "required": True,
+                    "ok": True,
+                    "copied_session_bytes": 2048,
+                    "copy": {
+                        "source": "stdout_agent_meta",
+                        "bytes": 2048,
+                    },
+                },
+            }
+        ],
+        eval_results={"django__django-1": False},
+    )
+
+    [row] = rows
+    assert row["nemoclaw_session_audit_required"] is True
+    assert row["nemoclaw_session_copy_source"] == "stdout_agent_meta"
+    assert row["nemoclaw_session_copied_bytes"] == 2048
+
+
+def test_lite_rows_resolved_result_overrides_missing_report_score():
+    module = load_module(SCRIPT)
+    rows = module.lite_rows(
+        source_rows=[
+            {
+                "instance_id": "django__django-1",
+                "repo": "django/django",
+                "agentic_swe_tier": "low",
+            }
+        ],
+        patch_rows=[
+            {
+                "instance_id": "django__django-1",
+                "patch": "diff --git a/a.py b/a.py\n",
+            }
+        ],
+        eval_results={"django__django-1": True},
+        partial_eval_results={
+            "django__django-1": {
+                "score": 0.0,
+                "official_score": 0.0,
+                "official_partial_credit": 0.0,
+                "official_score_version": (
+                    "resolved-1-else-f2p-squared-p2p-cap0.3-v2"
+                ),
+                "binary_score": 0.0,
+                "diagnostic_partial_credit": 0.0,
+                "diagnostic_score_with_partial": 0.0,
+            }
+        },
+    )
+
+    [row] = rows
+    assert row["resolved"] is True
+    assert row["score"] == 1.0
+    assert row["official_score"] == 1.0
+    assert row["official_partial_credit"] == 0.0
+    assert row["binary_score"] == 1.0
+    assert row["diagnostic_score_with_partial"] == 1.0
+
+
+def test_agentic_swe_assorted_defaults_to_frozen_20_20_10_subset():
     module = load_module(SCRIPT)
 
-    assert module.DEFAULT_LOW_MIDDLE_JSONL.name == "low_middle_v2_72.jsonl"
-    assert module.DEFAULT_LOW_MIDDLE_IDS.name == "low_middle_v2_72_instance_ids.json"
+    assert module.DEFAULT_LOW_MIDDLE_JSONL.name == "low_middle_v3_40.jsonl"
+    assert module.DEFAULT_LOW_MIDDLE_IDS.name == "low_middle_v3_40_instance_ids.json"
     assert (
         module.DEFAULT_DEEPSWE_META.name
-        == "essential_anchored_high_8_glm52max_cap100_10m_lang_balanced.jsonl"
+        == "essential_anchored_high_10_model_fidelity_cost_balanced.jsonl"
     )
     assert (
         module.DEFAULT_DEEPSWE_TASK_NAMES.name
-        == "essential_anchored_high_8_glm52max_cap100_10m_lang_balanced_task_names.json"
+        == "essential_anchored_high_10_model_fidelity_cost_balanced_task_names.json"
     )
+    assert len(module.FROZEN_DEEPSWE_HIGH_TASK_NAMES) == 10
+
+
+def _reusable_high_result(task: str, *, model: str = "openrouter/z-ai/glm-5.2"):
+    return {
+        "task_name": f"datacurve/{task}",
+        "score": 0,
+        "resolved": False,
+        "exception": None,
+        "openclaw_disqualified_reason": "",
+        "weave_agents_ok": True,
+        "nemoclaw_session_audit_ok": True,
+        "agent_result": {
+            "metadata": {
+                "openclaw": {
+                    "cache_key": {"model": model},
+                }
+            }
+        },
+    }
+
+
+def test_load_reused_high_results_accepts_complete_scoreable_split_files(tmp_path):
+    module = load_module(SCRIPT)
+    metadata = [{"task_name": "one"}, {"task_name": "two"}]
+    first = tmp_path / "first.jsonl"
+    second = tmp_path / "second.jsonl"
+    first.write_text(json.dumps(_reusable_high_result("one")) + "\n", encoding="utf-8")
+    second.write_text(json.dumps(_reusable_high_result("two")) + "\n", encoding="utf-8")
+
+    rows = module.load_reused_high_results(
+        [first, second],
+        metadata_rows=metadata,
+        model="openrouter/z-ai/glm-5.2",
+    )
+
+    assert [row["task_name"] for row in rows] == ["datacurve/one", "datacurve/two"]
+
+
+@pytest.mark.parametrize(
+    "reason",
+    ["runtime_budget_exceeded", "model_output_truncated", "time_up"],
+)
+def test_load_reused_high_results_accepts_scoreable_model_stop(tmp_path, reason):
+    module = load_module(SCRIPT)
+    result = _reusable_high_result("one")
+    result["score"] = 0.0
+    result["openclaw_disqualified_reason"] = reason
+    path = tmp_path / "results.jsonl"
+    path.write_text(json.dumps(result) + "\n", encoding="utf-8")
+
+    rows = module.load_reused_high_results(
+        [path],
+        metadata_rows=[{"task_name": "one"}],
+        model="openrouter/z-ai/glm-5.2",
+    )
+
+    assert rows == [result]
+
+
+def test_load_reused_high_results_rejects_infrastructure_failure(tmp_path):
+    module = load_module(SCRIPT)
+    result = _reusable_high_result("one")
+    result["openclaw_disqualified_reason"] = "provider_transient_exhausted"
+    path = tmp_path / "results.jsonl"
+    path.write_text(json.dumps(result) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unscoreable failure for one"):
+        module.load_reused_high_results(
+            [path],
+            metadata_rows=[{"task_name": "one"}],
+            model="openrouter/z-ai/glm-5.2",
+        )
+
+
+def test_load_reused_high_results_rejects_missing_or_wrong_model(tmp_path):
+    module = load_module(SCRIPT)
+    path = tmp_path / "results.jsonl"
+    path.write_text(
+        json.dumps(_reusable_high_result("one", model="different/model")) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        module.load_reused_high_results(
+            [path],
+            metadata_rows=[{"task_name": "one"}, {"task_name": "two"}],
+            model="openrouter/z-ai/glm-5.2",
+        )
+
+    message = str(exc_info.value)
+    assert "model mismatch for one" in message
+    assert "missing selected High tasks: two" in message
+
+
+def test_load_reused_high_results_rejects_unscoreable_trace(tmp_path):
+    module = load_module(SCRIPT)
+    result = _reusable_high_result("one")
+    result["score"] = None
+    result["weave_agents_ok"] = False
+    path = tmp_path / "results.jsonl"
+    path.write_text(json.dumps(result) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError) as exc_info:
+        module.load_reused_high_results(
+            [path],
+            metadata_rows=[{"task_name": "one"}],
+            model="openrouter/z-ai/glm-5.2",
+        )
+
+    message = str(exc_info.value)
+    assert "non-numeric score for one" in message
+    assert "native trace verification failed for one" in message
+
+
+def _reusable_lite_patch(
+    instance_id: str,
+    *,
+    model: str = "anthropic/claude-sonnet-4-6",
+    reason: str = "",
+):
+    return {
+        "instance_id": instance_id,
+        "patch": "diff --git a/a.py b/a.py\n",
+        "cache_key": {
+            "model": model,
+            "nemoclaw_sandbox": "nejumi-taiwan",
+        },
+        "openclaw_disqualified_reason": reason,
+        "weave_agents_ok": True,
+        "nemoclaw_session_audit_ok": True,
+        "nemoclaw_checkout_transfer": {
+            "mode": "copy",
+            "host_status": "clean",
+            "host_head_tree": "tree-sha",
+            "sandbox_baseline_tree": "tree-sha",
+        },
+    }
+
+
+def test_load_reused_low_middle_patches_accepts_scoreable_budget_stop(tmp_path):
+    module = load_module(SCRIPT)
+    path = tmp_path / "patches.json"
+    path.write_text(
+        json.dumps(
+            [
+                _reusable_lite_patch("one"),
+                _reusable_lite_patch("two", reason="runtime_budget_exceeded"),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    rows = module.load_reused_low_middle_patches(
+        path,
+        source_rows=[{"instance_id": "one"}, {"instance_id": "two"}],
+        model="anthropic/claude-sonnet-4-6",
+    )
+
+    assert [row["instance_id"] for row in rows] == ["one", "two"]
+
+
+def test_load_reused_low_middle_patches_rejects_unscoreable_or_incomplete_set(tmp_path):
+    module = load_module(SCRIPT)
+    path = tmp_path / "patches.json"
+    path.write_text(
+        json.dumps(
+            [
+                _reusable_lite_patch(
+                    "one",
+                    reason="provider_transient_exhausted",
+                )
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        module.load_reused_low_middle_patches(
+            path,
+            source_rows=[{"instance_id": "one"}, {"instance_id": "two"}],
+            model="anthropic/claude-sonnet-4-6",
+        )
+
+    message = str(exc_info.value)
+    assert "unscoreable failure for one: provider_transient_exhausted" in message
+    assert "missing selected Low/Middle tasks: two" in message
+
+
+def test_load_reused_low_middle_patches_rejects_legacy_unisolated_baseline(tmp_path):
+    module = load_module(SCRIPT)
+    patch = _reusable_lite_patch("one")
+    patch["nemoclaw_checkout_transfer"] = {
+        "mode": "visible",
+        "sandbox_checkout_dir": "/sandbox/checkouts/one",
+    }
+    path = tmp_path / "patches.json"
+    path.write_text(json.dumps([patch]) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError) as exc_info:
+        module.load_reused_low_middle_patches(
+            path,
+            source_rows=[{"instance_id": "one"}],
+            model="anthropic/claude-sonnet-4-6",
+        )
+
+    message = str(exc_info.value)
+    assert "non-isolated sandbox baseline for one: visible" in message
+    assert "sandbox baseline tree mismatch for one" in message
 
 
 def test_agentic_swe_assorted_high_defaults_are_budgeted_but_above_low_middle(monkeypatch):
@@ -86,12 +465,54 @@ def test_agentic_swe_assorted_high_defaults_are_budgeted_but_above_low_middle(mo
     assert args.max_agent_turns == 40
     assert args.max_tool_calls == 40
     assert args.max_cumulative_input_tokens == 1_000_000
-    assert args.high_max_agent_turns == 120
-    assert args.high_max_tool_calls == 120
-    assert args.high_max_cumulative_input_tokens == 12_000_000
+    assert args.high_max_agent_turns == 150
+    assert args.high_max_tool_calls == 200
+    assert args.high_max_cumulative_input_tokens == 14_000_000
     assert args.deepswe_budget_preflight == "error"
-    assert args.deepswe_preflight_hard_stat == "p75"
+    assert args.deepswe_preflight_hard_stat == "p90"
     assert args.min_free_disk_gb == 30.0
+
+
+def test_prepare_high_inputs_honors_requested_task_order_and_limit(tmp_path):
+    module = load_module(SCRIPT)
+    metadata_path = tmp_path / "metadata.jsonl"
+    metadata_path.write_text(
+        "".join(
+            json.dumps({"task_name": task_name}) + "\n"
+            for task_name in ("first", "second", "third")
+        ),
+        encoding="utf-8",
+    )
+    task_names_path = tmp_path / "task_names.json"
+    task_names_path.write_text(json.dumps(["third", "first", "third"]), encoding="utf-8")
+    args = SimpleNamespace(
+        output_dir=tmp_path / "out",
+        deepswe_metadata_jsonl=metadata_path,
+        deepswe_task_names_file=task_names_path,
+        high_limit=1,
+    )
+
+    selected_path, rows = module.prepare_high_inputs(args)
+
+    assert rows == [{"task_name": "third"}]
+    assert json.loads(selected_path.read_text(encoding="utf-8")) == ["third"]
+
+
+def test_prepare_high_inputs_rejects_task_missing_from_metadata(tmp_path):
+    module = load_module(SCRIPT)
+    metadata_path = tmp_path / "metadata.jsonl"
+    metadata_path.write_text(json.dumps({"task_name": "present"}) + "\n", encoding="utf-8")
+    task_names_path = tmp_path / "task_names.json"
+    task_names_path.write_text(json.dumps(["missing"]), encoding="utf-8")
+    args = SimpleNamespace(
+        output_dir=tmp_path / "out",
+        deepswe_metadata_jsonl=metadata_path,
+        deepswe_task_names_file=task_names_path,
+        high_limit=None,
+    )
+
+    with pytest.raises(ValueError, match="missing from metadata: missing"):
+        module.prepare_high_inputs(args)
 
 
 def test_agentic_swe_assorted_dedupes_default_policy_flags(monkeypatch):
@@ -277,14 +698,14 @@ def test_default_deepswe_high_subset_passes_glm52max_budget_preflight(tmp_path):
         deepswe_public_model=None,
         deepswe_public_effort=None,
         deepswe_budget_preflight="error",
-        deepswe_preflight_hard_stat="p75",
+        deepswe_preflight_hard_stat="p90",
         allow_deepswe_budget_mismatch=False,
         dry_run=False,
         model="openrouter-direct/z-ai/glm-5.2",
         thinking="max",
-        high_max_agent_turns=120,
+        high_max_agent_turns=140,
         max_agent_turns=40,
-        high_max_cumulative_input_tokens=12_000_000,
+        high_max_cumulative_input_tokens=13_000_000,
         max_cumulative_input_tokens=1_000_000,
     )
 
@@ -292,7 +713,7 @@ def test_default_deepswe_high_subset_passes_glm52max_budget_preflight(tmp_path):
 
     assert report["ok"] is True
     assert report["basis"] == "model_effort"
-    assert report["hard_stat"] == "p75"
+    assert report["hard_stat"] == "p90"
     assert not report["blocking_reasons"]
 
 
@@ -307,6 +728,8 @@ def test_deepswe_command_can_use_high_specific_cumulative_input_cap(tmp_path):
         model="openrouter-direct/z-ai/glm-5.2",
         openclaw_model_params_json=params_json,
         openclaw_model_overrides_json=overrides_json,
+        high_openclaw_model_params_json=json.dumps({"maxTokens": 65536}),
+        high_openclaw_model_overrides_json=json.dumps({"maxTokens": 65536}),
         thinking="high",
         agent="main",
         high_workers=2,
@@ -351,9 +774,12 @@ def test_deepswe_command_can_use_high_specific_cumulative_input_cap(tmp_path):
     idx = command.index("--max-cumulative-input-tokens")
     assert command[idx + 1] == "3000000"
     idx = command.index("--openclaw-model-params-json")
-    assert command[idx + 1] == params_json
+    assert json.loads(command[idx + 1]) == {
+        "provider": {"only": ["z-ai/fp8"], "allow_fallbacks": False},
+        "maxTokens": 65536,
+    }
     idx = command.index("--openclaw-model-overrides-json")
-    assert command[idx + 1] == overrides_json
+    assert json.loads(command[idx + 1]) == {"maxTokens": 65536}
 
 
 def test_swe_command_forwards_openclaw_model_params_json(tmp_path):
@@ -512,6 +938,47 @@ def test_agentic_swe_assorted_summary_groups_by_tier_and_source():
     assert summary["limits"]["llm_response_idle_timeout_seconds"] == 900.0
 
 
+def test_agentic_swe_assorted_summary_reports_budget_stop_outcomes():
+    module = load_module(SCRIPT)
+    rows = [
+        {
+            "resolved": True,
+            "openclaw_disqualified_reason": "runtime_budget_exceeded",
+            "runtime_budget": {
+                "ok": False,
+                "violations": [
+                    {"type": "max_tool_calls"},
+                    {"type": "max_agent_turns"},
+                ],
+            },
+        },
+        {
+            "resolved": False,
+            "runtime_budget": {
+                "ok": False,
+                "violations": [{"type": "max_tool_calls"}],
+            },
+        },
+        {"resolved": True, "runtime_budget": {"ok": True, "violations": []}},
+        {"resolved": False, "runtime_budget": {"ok": True, "violations": []}},
+    ]
+
+    summary = module.summarize_group(rows, model="dummy/local")
+    outcomes = summary["runtime_budget_outcomes"]
+
+    assert outcomes["exceeded_instances"] == 2
+    assert outcomes["resolved_after_budget_stop"] == 1
+    assert outcomes["unresolved_after_budget_stop"] == 1
+    assert outcomes["pass_rate_after_budget_stop"] == 0.5
+    assert outcomes["within_budget_instances"] == 2
+    assert outcomes["within_budget_resolved_instances"] == 1
+    assert outcomes["within_budget_pass_rate"] == 0.5
+    assert outcomes["by_violation"] == {
+        "max_agent_turns": {"instances": 1, "resolved_instances": 1},
+        "max_tool_calls": {"instances": 2, "resolved_instances": 1},
+    }
+
+
 def test_agentic_swe_assorted_summary_uses_tier_macro_score_when_complete():
     module = load_module(SCRIPT)
     args = SimpleNamespace(
@@ -559,12 +1026,12 @@ def test_agentic_swe_assorted_writes_human_readable_report(tmp_path):
         dry_run=False,
         max_input_tokens=1_000_000,
         max_cumulative_input_tokens=1_000_000,
-        high_max_cumulative_input_tokens=12_000_000,
+        high_max_cumulative_input_tokens=13_000_000,
         max_cumulative_output_tokens=500_000,
         max_tool_calls=40,
-        high_max_tool_calls=120,
+        high_max_tool_calls=200,
         max_agent_turns=40,
-        high_max_agent_turns=120,
+        high_max_agent_turns=140,
         max_tool_wall_seconds=120,
         swe_workers=4,
         high_workers=2,
@@ -588,7 +1055,7 @@ def test_agentic_swe_assorted_writes_human_readable_report(tmp_path):
     assert "Agentic SWE-Assorted Report" in text
     assert "official_score" in text
     assert "| low |" in text
-    assert "| high_max_agent_turns | `120` |" in text
+    assert "| high_max_agent_turns | `140` |" in text
 
 
 def test_agentic_swe_assorted_summary_accepts_custom_tier_weights():
@@ -760,6 +1227,44 @@ def test_agentic_swe_assorted_summary_estimates_wandb_inference_glm52_cost():
     assert summary["total"]["usage"]["cost_usd"] == pytest.approx(0.15552564)
 
 
+def test_agentic_swe_assorted_summary_estimates_canonical_openrouter_glm52_cost():
+    module = load_module(SCRIPT)
+    args = SimpleNamespace(
+        model="openrouter/z-ai/glm-5.2",
+        dry_run=False,
+        max_input_tokens=1_000_000,
+        max_cumulative_input_tokens=1_000_000,
+        high_max_cumulative_input_tokens=13_000_000,
+        max_cumulative_output_tokens=500_000,
+        max_tool_calls=40,
+        high_max_tool_calls=200,
+        max_agent_turns=40,
+        high_max_agent_turns=140,
+        max_tool_wall_seconds=120,
+        swe_workers=4,
+        high_workers=1,
+        llm_response_idle_timeout_seconds=900.0,
+        tier_weights="low=1,middle=1,high=1",
+    )
+    rows = [
+        {
+            "source_benchmark": "DeepSWE",
+            "agentic_swe_tier": "high",
+            "resolved": False,
+            "weave_agents_ok": True,
+            "openclaw_usage": {
+                "inputTokens": 82_346,
+                "outputTokens": 75_171,
+                "cacheReadInputTokens": 5_108_825,
+            },
+        }
+    ]
+
+    summary = module.build_summary(rows, args=args, elapsed=1.0)
+
+    assert summary["total"]["usage"]["cost_usd"] == pytest.approx(1.7743313)
+
+
 def test_deepswe_usage_falls_back_to_weave_agents_trace_usage(tmp_path):
     module = load_module(SCRIPT)
     verifier = tmp_path / "weave_agents.json"
@@ -799,10 +1304,10 @@ def test_deepswe_usage_falls_back_to_weave_agents_trace_usage(tmp_path):
     )
 
     assert rows[0]["openclaw_usage"] == {
-        "inputTokens": 1010,
-        "outputTokens": 52,
+        "inputTokens": 10,
+        "outputTokens": 2,
         "cacheReadInputTokens": 0,
-        "usageSource": "weave_agents_trace",
+        "usageSource": "weave_agents_agent_summary",
         "usageApproximate": True,
     }
 

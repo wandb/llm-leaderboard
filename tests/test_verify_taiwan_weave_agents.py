@@ -156,6 +156,70 @@ def trace_chat_payload(
     }
 
 
+def test_query_agents_uses_server_side_exact_conversation_query(monkeypatch):
+    module = load_module()
+    calls = []
+
+    def fake_post(_env, path, payload):
+        calls.append((path, payload))
+        return {"agents": []} if path == module.AGENTS_QUERY_ENDPOINT else {"spans": []}
+
+    monkeypatch.setattr(module, "agents_api_post", fake_post)
+    conversation_id = "agent:task:agentic-swe-assorted:ofetch"
+
+    module.query_agents(
+        env={"WANDB_API_KEY": "test"},
+        entity="llm-leaderboard",
+        project="tc-leaderboard",
+        agent_name="nejumi-taiwan-openclaw",
+        limit=50,
+        conversation_id=conversation_id,
+    )
+
+    spans_request = calls[1][1]
+    assert "filters" not in spans_request
+    assert spans_request["query"] == {
+        "$expr": {
+            "$eq": [
+                {"$getField": "conversation_id"},
+                {"$literal": conversation_id},
+            ]
+        }
+    }
+    assert spans_request["include_details"] is True
+    assert spans_request["limit"] == 10_000
+
+
+def test_query_agents_uses_server_side_conversation_contains_query(monkeypatch):
+    module = load_module()
+    calls = []
+
+    def fake_post(_env, path, payload):
+        calls.append((path, payload))
+        return {"agents": []} if path == module.AGENTS_QUERY_ENDPOINT else {"spans": []}
+
+    monkeypatch.setattr(module, "agents_api_post", fake_post)
+
+    module.query_agents(
+        env={"WANDB_API_KEY": "test"},
+        entity="llm-leaderboard",
+        project="tc-leaderboard",
+        agent_name="nejumi-taiwan-openclaw",
+        limit=20,
+        conversation_id_contains="agentic-swe-assorted:ofetch",
+    )
+
+    assert calls[1][1]["query"] == {
+        "$expr": {
+            "$contains": {
+                "input": {"$getField": "conversation_id"},
+                "substr": {"$literal": "agentic-swe-assorted:ofetch"},
+                "case_insensitive": False,
+            }
+        }
+    }
+
+
 def test_verify_weave_agents_accepts_contentful_ordered_trace():
     module = load_module()
 

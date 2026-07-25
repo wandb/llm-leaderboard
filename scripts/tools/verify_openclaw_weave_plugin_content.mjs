@@ -152,6 +152,44 @@ plugin.handlers.diagnostic({
     outputMessages: [],
   },
 });
+// OpenClaw registers this process-global service again when a concurrent task
+// agent starts. The duplicate start must not clear run-1's active registries.
+await plugin.service.start({logger, config: {}});
+const parallelMarker = ` + "`${marker}_PARALLEL`" + `;
+plugin.handlers.diagnostic({
+  type: "run.started",
+  runId: "run-2",
+  sessionKey: "session-2",
+  model: "local-model",
+}, trusted);
+plugin.handlers.diagnostic({
+  type: "model.call.started",
+  runId: "run-2",
+  callId: "call-2",
+  model: "local-model",
+  provider: "local",
+}, trusted, {
+  modelContent: {
+    inputMessages: [{role: "user", content: parallelMarker}],
+    outputMessages: [],
+  },
+});
+plugin.handlers.diagnostic({
+  type: "model.call.completed",
+  runId: "run-2",
+  callId: "call-2",
+}, trusted, {
+  modelContent: {
+    inputMessages: [{role: "user", content: parallelMarker}],
+    outputMessages: [{role: "assistant", content: parallelMarker}],
+  },
+});
+plugin.handlers.diagnostic({
+  type: "run.completed",
+  runId: "run-2",
+  sessionKey: "session-2",
+  outcome: "completed",
+}, trusted);
 plugin.handlers.hook.llm_input?.({
   runId: "run-1",
   systemPrompt: "system",
@@ -225,6 +263,7 @@ const result = {
   has_private_output: text.includes(` + "`${marker}_PRIVATE_OUTPUT`" + `),
   has_private_tool_args: text.includes(` + "`${marker}_PRIVATE_TOOL_ARGS`" + `),
   has_private_tool_result: text.includes(` + "`${marker}_PRIVATE_TOOL_RESULT`" + `),
+  has_parallel_run: text.includes(parallelMarker),
 };
 result.ok = result.bytes > 0
   && result.has_input
@@ -232,7 +271,8 @@ result.ok = result.bytes > 0
   && (result.has_tool_args || result.has_private_tool_args)
   && (result.has_tool_result || result.has_private_tool_result)
   && result.has_private_input
-  && result.has_private_output;
+  && result.has_private_output
+  && result.has_parallel_run;
 console.log(JSON.stringify(result));
 `;
 }

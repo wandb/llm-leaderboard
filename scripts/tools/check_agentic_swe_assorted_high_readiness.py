@@ -14,7 +14,7 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SUBSET = "essential_anchored_high_8_glm52max_cap100_10m_lang_balanced"
+DEFAULT_SUBSET = "essential_anchored_high_10_model_fidelity_cost_balanced"
 LEGACY_ESSENTIAL3_SUBSET = "essential_anchored_high_8_essential3_cost_trimmed_lang_balanced"
 DEFAULT_MANIFEST = REPO_ROOT / "data" / "taiwan" / "deepswe" / "manifest.json"
 DEFAULT_TASKS_ROOT = REPO_ROOT / "external" / "deep-swe" / "tasks"
@@ -84,7 +84,7 @@ def check_manifest(args: argparse.Namespace) -> dict[str, Any]:
     checks.append(
         {
             "name": "manifest_count",
-            "ok": subset.get("count") == len(task_names) == len(records) == 8,
+            "ok": subset.get("count") == len(task_names) == len(records),
             "detail": {
                 "manifest_count": subset.get("count"),
                 "task_names": len(task_names),
@@ -349,7 +349,12 @@ def check_provider_findings(args: argparse.Namespace) -> dict[str, Any]:
             ],
         }
     findings = read_json(args.findings)
-    entries = findings.get("findings", [])
+    entries = list(findings.get("findings", []))
+    pilot_run_reports = []
+    for pilot_run_dir in getattr(args, "pilot_run_dir", []) or []:
+        pilot_report = load_pilot_run_evidence(Path(pilot_run_dir), args)
+        pilot_run_reports.append(pilot_report)
+        entries.extend(pilot_report["entries"])
     current_task_names = current_subset_task_names(args)
     current_subset_entries = [
         entry
@@ -452,7 +457,176 @@ def check_provider_findings(args: argparse.Namespace) -> dict[str, Any]:
                 ],
             },
         ],
-        "evidence": {"findings": rel(args.findings)},
+        "evidence": {
+            "findings": rel(args.findings),
+            "pilot_runs": pilot_run_reports,
+        },
+    }
+
+
+def build_readiness_decision(
+    manifest_report: dict[str, Any],
+    docker_report: dict[str, Any],
+    sandbox_report: dict[str, Any],
+    openclaw_runtime_report: dict[str, Any],
+    provider_report: dict[str, Any],
+) -> tuple[dict[str, Any], str]:
+    """Require affirmative evidence; skipped checks never authorize paid runs."""
+    design_ready = bool(manifest_report.get("ok"))
+    sandbox_verified = (
+        sandbox_report.get("skipped") is not True
+        and sandbox_report.get("ok") is True
+    )
+    runtime_verified = (
+        openclaw_runtime_report.get("skipped") is not True
+        and openclaw_runtime_report.get("ok") is True
+    )
+    sandbox_ready = bool(docker_report.get("ok")) and sandbox_verified
+    runtime_ready = runtime_verified
+    provider_ready = bool(provider_report.get("ok"))
+    full_run_recommended = (
+        design_ready and sandbox_ready and runtime_ready and provider_ready
+    )
+    skipped = bool(
+        sandbox_report.get("skipped") is True
+        or openclaw_runtime_report.get("skipped") is True
+    )
+    readiness = {
+        "design_ready": design_ready,
+        "sandbox_ready": sandbox_ready,
+        "sandbox_verified": sandbox_verified,
+        "runtime_ready": runtime_ready,
+        "runtime_verified": runtime_verified,
+        "provider_ready": provider_ready,
+        "full_run_recommended": full_run_recommended,
+        "status": "ready" if full_run_recommended else "unverified" if skipped else "not_ready",
+    }
+    if openclaw_runtime_report.get("skipped") is True:
+        recommendation = (
+            "Do not start a paid full High run: the OpenClaw runtime check was skipped."
+        )
+    elif not runtime_ready:
+        recommendation = (
+            "Do not start a paid full High run until the OpenClaw/NeMoClaw runtime patch "
+            f"check passes. Remediation: {openclaw_runtime_report.get('remediation')}"
+        )
+    elif not provider_ready:
+        recommendation = (
+            "Do not start a paid full High run until a scoreable long-form pilot passes "
+            "without provider timeout."
+        )
+    elif sandbox_report.get("skipped") is True:
+        recommendation = (
+            "Do not start a paid full High run: the sandbox toolchain check was skipped."
+        )
+    elif not sandbox_ready:
+        recommendation = (
+            "Do not start a paid full High run until Docker images and sandbox "
+            "toolchain checks pass."
+        )
+    elif not design_ready:
+        recommendation = (
+            "Do not start a paid full High run until the subset manifest checks pass."
+        )
+    else:
+        recommendation = "Full High run is allowed by current evidence."
+    return readiness, recommendation
+
+
+def load_pilot_run_evidence(run_dir: Path, args: argparse.Namespace) -> dict[str, Any]:
+    """Load scoreability evidence from a completed Agentic SWE-Assorted run."""
+    run_dir = run_dir.resolve()
+    root_summary_path = run_dir / "summary.json"
+    deepswe_dir = run_dir / "high" / "deepswe"
+    deepswe_summary_path = deepswe_dir / "summary.json"
+    results_path = deepswe_dir / "results.jsonl"
+    required_paths = [root_summary_path, deepswe_summary_path, results_path]
+    missing = [rel(path) for path in required_paths if not path.is_file()]
+    if missing:
+        raise ValueError(
+            f"pilot run is missing required evidence files ({rel(run_dir)}): "
+            + ", ".join(missing)
+        )
+
+    root_summary = read_json(root_summary_path)
+    deepswe_summary = read_json(deepswe_summary_path)
+    results = read_jsonl(results_path)
+    model = str(root_summary.get("model") or "")
+    if not model:
+        raise ValueError(f"pilot run summary has no model: {rel(root_summary_path)}")
+
+    total_trials = int(deepswe_summary.get("total_trials", -1))
+    scored_trials = int(deepswe_summary.get("scored_trials", -1))
+    exceptions = int(deepswe_summary.get("exceptions", -1))
+    provider_timeouts = int(deepswe_summary.get("non_scoreable_provider_timeouts", -1))
+    if total_trials != len(results):
+        raise ValueError(
+            f"pilot trial count mismatch ({rel(run_dir)}): "
+            f"summary={total_trials}, results={len(results)}"
+        )
+
+    current_task_names = current_subset_task_names(args)
+    entries: list[dict[str, Any]] = []
+    for result in results:
+        raw_task_name = str(result.get("task_name") or "")
+        task_name = raw_task_name.rsplit("/", 1)[-1]
+        if task_name not in current_task_names:
+            raise ValueError(
+                f"pilot task is not in subset {args.subset}: {raw_task_name or '<missing>'}"
+            )
+        score = result.get("score")
+        is_scored = (
+            result.get("exception") is None
+            and isinstance(score, (int, float))
+            and not isinstance(score, bool)
+        )
+        if is_scored:
+            status = "scoreable_success" if bool(result.get("resolved")) else "scoreable_incorrect"
+            reason = "resolved" if bool(result.get("resolved")) else "completed_but_not_resolved"
+        else:
+            status = "pilot_not_scoreable"
+            reason = str(result.get("exception") or "missing_numeric_score")
+        entries.append(
+            {
+                "task_name": task_name,
+                "subset": args.subset,
+                "run_dir": rel(run_dir),
+                "model": model,
+                "status": status,
+                "reason": reason,
+                "deepswe_reward": score if is_scored else None,
+                "resolved": bool(result.get("resolved")),
+                "openclaw_disqualified_reason": result.get("openclaw_disqualified_reason") or "",
+                "weave_agents_ok": result.get("weave_agents_ok"),
+                "conversation_url": result.get("weave_agents_conversation_url"),
+                "evidence_source": "completed_pilot_run",
+            }
+        )
+
+    if provider_timeouts > 0:
+        entries.append(
+            {
+                "task_name": "",
+                "subset": args.subset,
+                "run_dir": rel(run_dir),
+                "model": model,
+                "status": "provider_blocked_not_task_excluded",
+                "reason": "provider_timeout_in_completed_pilot_run",
+                "openclaw_disqualified_reason": "provider_transient_exhausted",
+                "evidence_source": "completed_pilot_run",
+            }
+        )
+
+    return {
+        "run_dir": rel(run_dir),
+        "model": model,
+        "total_trials": total_trials,
+        "scored_trials": scored_trials,
+        "exceptions": exceptions,
+        "non_scoreable_provider_timeouts": provider_timeouts,
+        "weave_agents_ok": deepswe_summary.get("weave_agents_ok"),
+        "results_jsonl": rel(results_path),
+        "entries": entries,
     }
 
 
@@ -531,6 +705,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--tasks-root", type=Path, default=DEFAULT_TASKS_ROOT)
     parser.add_argument("--findings", type=Path, default=DEFAULT_FINDINGS)
+    parser.add_argument(
+        "--pilot-run-dir",
+        type=Path,
+        action="append",
+        default=[],
+        help="Completed Agentic SWE-Assorted run directory to use as live provider evidence.",
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--model", default="openrouter-direct/z-ai/glm-5.2")
     parser.add_argument("--sandbox", default="nejumi-taiwan")
@@ -560,37 +741,16 @@ def main() -> None:
     openclaw_runtime_report = check_openclaw_runtime(args)
     provider_report = check_provider_findings(args)
 
-    design_ready = bool(manifest_report["ok"])
-    sandbox_ready = bool(docker_report["ok"]) and sandbox_report.get("ok") is not False
-    runtime_ready = openclaw_runtime_report.get("ok") is not False
-    provider_ready = bool(provider_report["ok"])
-    full_run_recommended = design_ready and sandbox_ready and runtime_ready and provider_ready
-    if not runtime_ready:
-        recommendation = (
-            "Do not start a paid full High run until the OpenClaw/NeMoClaw runtime patch "
-            f"check passes. Remediation: {openclaw_runtime_report.get('remediation')}"
-        )
-    elif not provider_ready:
-        recommendation = (
-            "Do not start a paid full High run until a scoreable long-form pilot passes "
-            "without provider timeout."
-        )
-    elif not sandbox_ready:
-        recommendation = "Do not start a paid full High run until Docker images and sandbox toolchain checks pass."
-    elif not design_ready:
-        recommendation = "Do not start a paid full High run until the subset manifest checks pass."
-    else:
-        recommendation = "Full High run is allowed by current evidence."
+    readiness, recommendation = build_readiness_decision(
+        manifest_report,
+        docker_report,
+        sandbox_report,
+        openclaw_runtime_report,
+        provider_report,
+    )
     report = {
         "generated_at_unix": time.time(),
-        "readiness": {
-            "design_ready": design_ready,
-            "sandbox_ready": sandbox_ready,
-            "runtime_ready": runtime_ready,
-            "provider_ready": provider_ready,
-            "full_run_recommended": full_run_recommended,
-            "status": "ready" if full_run_recommended else "not_ready",
-        },
+        "readiness": readiness,
         "recommendation": recommendation,
         "manifest": manifest_report,
         "docker_images": docker_report,
@@ -601,7 +761,7 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report["readiness"], ensure_ascii=False, indent=2))
-    if not full_run_recommended:
+    if not readiness["full_run_recommended"]:
         raise SystemExit(1)
 
 

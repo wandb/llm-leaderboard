@@ -1,0 +1,83 @@
+wandb:
+  entity: "llm-leaderboard"
+  project: "tc-leaderboard"
+  run_name: "taiwan/validation/bfcl-v4-fullrun/anthropic-claude-haiku-4.5"
+
+api: anthropic
+batch_size: 4
+testmode: false
+
+model:
+  pretrained_model_name_or_path: claude-haiku-4-5-20251001
+  bfcl_model_id: claude-haiku-4-5-20251001-FC
+  base_model: unknown
+  size_category: api
+  size: null
+  release_date: 10/16/2025
+
+generator:
+  max_tokens: 8096
+  temperature: 0.01
+  top_p: 1.0
+
+run:
+  bfcl: true
+  agentic_math: false
+  swebench: false
+  swebench_pro: false
+  deepswe: false
+  agentic_swe_assorted: false
+  mtbench: false
+  script_adherence: false
+  jbbq: false
+  toxicity: false
+  jtruthfulqa: false
+  hle: false
+  hallulens: false
+  hallulens_zh_tw: false
+  arc_agi: false
+  m_ifeval: false
+  ifeval_zh_tw: false
+  ts_bench: false
+  twbias: false
+  tceval_v2: false
+  jaster: false
+  aggregate: false
+  aggregate_taiwan: false
+  jmmlu_robustness: false
+  tmmluplus_robustness: false
+
+bfcl:
+  version: "v4"
+  profile: "full"
+  artifact_profile: "full"
+  test_category: "simple_python simple_java simple_javascript multiple irrelevance live_simple live_multiple live_irrelevance live_relevance multi_turn_base multi_turn_miss_func multi_turn_miss_param memory_kv memory_vector memory_rec_sum web_search_base web_search_no_snippet"
+  artifacts_path: "llm-leaderboard/tc-leaderboard/bfcl-v4-zh-tw:production"
+  num_threads: 4
+  provider_min_request_interval_sec: 2.0
+  provider_request_jitter_sec: 0.5
+  request_timeout_sec: 300
+  request_max_retries: 1
+  case_timeout_sec: 600
+  case_timeout_retries: 0
+  resume_existing_results: true
+  retry_failed_cases: true
+  stall_fail_fast_sec: 900
+  consecutive_failure_fail_fast: 5
+  web_search:
+    backend: "ddgs"
+    ddgs_backend: "auto"
+    endpoint: "https://html.duckduckgo.com/html/"
+    timeout_sec: 20
+    max_attempts: 4
+    retry_base_sec: 2
+    min_request_interval_sec: 2
+    request_jitter_sec: 0.25
+    cache_path: "outputs/bfcl_v4/web_search_cache.sqlite3"
+    cache_ttl_sec: 0
+    fetch_max_bytes: 2000000
+    fetch_max_chars: 20000
+  generator_config:
+    max_tokens: 8096
+    temperature: 0.01
+    top_p: 1.0

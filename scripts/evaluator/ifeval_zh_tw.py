@@ -7,11 +7,15 @@ import weave
 from tqdm import tqdm
 
 from config_singleton import WandbConfigSingleton
-from .evaluate_utils import LLMAsyncProcessor
 from .evaluate_utils.ifeval_zh_tw_utils import (
     read_prompt_list,
     read_prompt_to_response_dict,
     test_instruction_following_strict,
+)
+from .evaluate_utils.llm_response_checkpoint import (
+    LLMResponseCheckpointStore,
+    default_checkpoint_root,
+    run_checkpointed_batch,
 )
 
 
@@ -121,7 +125,16 @@ def evaluate():
             }
         )
 
-    responses = LLMAsyncProcessor(llm=llm, inputs=all_inputs).get_results()
+    responses = run_checkpointed_batch(
+        llm=llm,
+        inputs=all_inputs,
+        keys=(str(row["key"]) for row in evaluation_results),
+        checkpoint_store=LLMResponseCheckpointStore(
+            default_checkpoint_root(run, dataset_name),
+            model_name=cfg.model.pretrained_model_name_or_path,
+        ),
+        label="IFEval zh-TW",
+    )
     for response, row in zip(responses, evaluation_results):
         row["response"] = getattr(response, "content", str(response))
 

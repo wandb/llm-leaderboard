@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -1134,7 +1135,12 @@ def build_weave_content_canary_gate_record(
 
 def stream_run(command: list[str], log_path: Path, env: dict[str, str]) -> int:
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    with log_path.open("w", encoding="utf-8") as log:
+    with log_path.open("a", encoding="utf-8") as log:
+        if log.tell() > 0:
+            log.write("\n")
+        log.write(
+            f"===== attempt started at {time.strftime('%Y-%m-%dT%H:%M:%S%z')} =====\n"
+        )
         log.write("$ " + " ".join(command) + "\n")
         log.flush()
         proc = subprocess.Popen(
@@ -1145,12 +1151,50 @@ def stream_run(command: list[str], log_path: Path, env: dict[str, str]) -> int:
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            start_new_session=True,
         )
         assert proc.stdout is not None
-        for line in proc.stdout:
-            print(line, end="")
-            log.write(line)
-        return proc.wait()
+        previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
+
+        def interrupt_on_sigterm(_signum, _frame):
+            raise KeyboardInterrupt("Taiwan full evaluation batch received SIGTERM")
+
+        signal.signal(signal.SIGTERM, interrupt_on_sigterm)
+        try:
+            for line in proc.stdout:
+                print(line, end="", flush=True)
+                log.write(line)
+                log.flush()
+            returncode = proc.wait()
+            log.write(
+                "===== attempt finished at "
+                f"{time.strftime('%Y-%m-%dT%H:%M:%S%z')} "
+                f"(returncode={returncode}) =====\n"
+            )
+            log.flush()
+            return returncode
+        except BaseException:
+            log.write(
+                "===== attempt interrupted at "
+                f"{time.strftime('%Y-%m-%dT%H:%M:%S%z')} =====\n"
+            )
+            log.flush()
+            if proc.poll() is None:
+                try:
+                    os.killpg(proc.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    proc.wait(timeout=10)
+            raise
+        finally:
+            signal.signal(signal.SIGTERM, previous_sigterm_handler)
 
 
 def default_wandb_verify_benchmarks(phase: str) -> list[str]:
@@ -1204,7 +1248,10 @@ def request_model_aliases(model_id: str) -> list[str]:
         aliases.append(value.removeprefix("openai-direct/"))
     if "/" in value:
         provider, remainder = value.split("/", 1)
-        if (provider.endswith("-direct") or provider == "wandb-inference") and remainder:
+        if (
+            provider.endswith("-direct")
+            or provider in {"openrouter", "wandb-inference"}
+        ) and remainder:
             aliases.append(remainder)
         aliases.append(value.rsplit("/", 1)[-1])
     return list(dict.fromkeys(alias for alias in aliases if alias))
@@ -1243,6 +1290,8 @@ def build_wandb_verify_command(
     expected_run_group: str | None = None,
     expected_run_job_type: str | None = None,
     require_nemoclaw_session_audit: bool = False,
+    require_agentic_swe_assorted: bool = False,
+    expected_total_override: int | None = None,
     env_file: Path | None = None,
     json_path: Path | None = None,
 ) -> list[str]:
@@ -1254,7 +1303,11 @@ def build_wandb_verify_command(
         "--benchmark",
         benchmark,
     ]
-    expected_total = DEFAULT_EXPECTED_TOTALS.get(benchmark)
+    expected_total = (
+        expected_total_override
+        if expected_total_override is not None
+        else DEFAULT_EXPECTED_TOTALS.get(benchmark)
+    )
     if expected_total is not None:
         command.extend(["--expected-total", str(expected_total)])
     if benchmark == "taiwan_full":
@@ -1273,6 +1326,8 @@ def build_wandb_verify_command(
         command.extend(["--expected-run-job-type", expected_run_job_type])
     if require_nemoclaw_session_audit and benchmark in {"agentic_math", "agentic_swe"}:
         command.append("--require-nemoclaw-session-audit")
+    if require_agentic_swe_assorted and benchmark == "agentic_swe":
+        command.append("--require-agentic-swe-assorted")
     if env_file:
         command.extend(["--env-file", str(env_file)])
     if json_path:
@@ -1295,6 +1350,8 @@ def run_wandb_completion_verification(
     expected_run_group: str | None = None,
     expected_run_job_type: str | None = None,
     require_nemoclaw_session_audit: bool = False,
+    require_agentic_swe_assorted: bool = False,
+    expected_total_override: int | None = None,
     env_file: Path | None = None,
 ) -> dict:
     command = build_wandb_verify_command(
@@ -1309,6 +1366,8 @@ def run_wandb_completion_verification(
         expected_run_group=expected_run_group,
         expected_run_job_type=expected_run_job_type,
         require_nemoclaw_session_audit=require_nemoclaw_session_audit,
+        require_agentic_swe_assorted=require_agentic_swe_assorted,
+        expected_total_override=expected_total_override,
         env_file=env_file,
         json_path=output_path,
     )
@@ -1342,6 +1401,34 @@ def run_wandb_completion_verification(
     payload["stderr"] = result.stderr
     write_json(output_path, payload)
     return payload
+
+
+def expected_total_for_config(config_path: Path, benchmark: str) -> int | None:
+    config = OmegaConf.to_container(OmegaConf.load(config_path), resolve=True)
+    if not isinstance(config, dict):
+        return DEFAULT_EXPECTED_TOTALS.get(benchmark)
+    if benchmark == "agentic_math":
+        section = config.get("agentic_math")
+        if isinstance(section, dict) and section.get("limit") is not None:
+            return int(section["limit"])
+    if benchmark == "agentic_swe":
+        run = config.get("run")
+        assorted_enabled = isinstance(run, dict) and bool(run.get("agentic_swe_assorted"))
+        section = config.get("agentic_swe_assorted")
+        if assorted_enabled and isinstance(section, dict):
+            low_middle = 0
+            if not bool(section.get("skip_low_middle", False)):
+                if section.get("low_middle_limit") is not None:
+                    low_middle = int(section["low_middle_limit"])
+                else:
+                    low_middle = int(section.get("low_limit", 20) or 0) + int(
+                        section.get("middle_limit", 20) or 0
+                    )
+            high = 0
+            if not bool(section.get("skip_high", False)):
+                high = int(section.get("high_limit", 10) or 0)
+            return low_middle + high
+    return DEFAULT_EXPECTED_TOTALS.get(benchmark)
 
 
 def build_weave_agents_verify_command(
@@ -1536,6 +1623,14 @@ def parse_args() -> argparse.Namespace:
         "--include-final-only",
         action="store_true",
         help="Allow models marked final_only=true, such as very high-cost final release candidates.",
+    )
+    parser.add_argument(
+        "--include-suspended",
+        action="store_true",
+        help=(
+            "Explicitly allow models marked suspended=true. Use only after resolving "
+            "the suspension reason recorded in the manifest."
+        ),
     )
     parser.add_argument("--limit", type=int)
     parser.add_argument("--start-index", type=int, default=0)
@@ -1787,6 +1882,7 @@ def main() -> None:
         "prepare_only": bool(args.prepare_only),
         "canary": bool(args.canary),
         "include_final_only": bool(args.include_final_only),
+        "include_suspended": bool(getattr(args, "include_suspended", False)),
         "run_purpose": args.run_purpose or "",
         "expected_cost_band": args.expected_cost_band or "",
         "requires_paid_model_api": phase_requires_paid_model_api,
@@ -1832,6 +1928,7 @@ def main() -> None:
         "prepare_only": bool(args.prepare_only),
         "canary": bool(args.canary),
         "include_final_only": bool(args.include_final_only),
+        "include_suspended": bool(getattr(args, "include_suspended", False)),
         "requires_paid_model_api": phase_requires_paid_model_api,
         "will_call_paid_model_api": will_call_paid_model_api,
         "will_execute_external_actions": will_execute_external_actions,
@@ -2270,6 +2367,10 @@ def main() -> None:
                         require_nemoclaw_session_audit=bool(
                             args.require_nemoclaw_agentic_config
                             and benchmark in {"agentic_math", "agentic_swe"}
+                        ),
+                        require_agentic_swe_assorted=(benchmark == "agentic_swe"),
+                        expected_total_override=expected_total_for_config(
+                            config_path, benchmark
                         ),
                         env_file=args.env_file,
                     )

@@ -47,10 +47,15 @@ AGENTS_API_BASE_URL = "https://trace.wandb.ai"
 AGENTS_QUERY_ENDPOINT = "/agents/query"
 AGENTS_SPANS_QUERY_ENDPOINT = "/agents/spans/query"
 AGENTS_TRACES_CHAT_ENDPOINT = "/agents/traces/chat"
+AGENTS_SPANS_QUERY_MAX_LIMIT = 10_000
 AGENTS_DIAGNOSTIC_SCHEMA_VERSION = 1
 SANDBOX_LIVE_SESSION_SCAN_TIMEOUT = 10
 SANDBOX_LIVE_SESSION_POLL_SECONDS = 1.0
 BUDGET_GUARD_BLOCK_MARKER = "NEJUMI_BUDGET_GUARD_BLOCKED"
+OPENCLAW_NO_RESPONSE_MARKERS = (
+    "agent couldn't generate a response",
+    "agent could not generate a response",
+)
 SANDBOX_LIVE_SESSION_SCAN_SCRIPT = r"""
 import json
 import sys
@@ -1626,6 +1631,37 @@ def terminate_process(process: subprocess.Popen[str], grace_seconds: float = 10.
         return process.communicate()
 
 
+def gracefully_complete_process(
+    process: subprocess.Popen[str],
+    interrupt_grace_seconds: float = 30.0,
+) -> tuple[str, str, dict[str, Any]]:
+    """Let OpenClaw run finalizers and telemetry flush before forced cleanup."""
+    signal_method = "process_group_sigint"
+    try:
+        os.killpg(process.pid, signal.SIGINT)
+    except ProcessLookupError:
+        signal_method = "process_already_exited"
+    except OSError:
+        signal_method = "process_sigint"
+        process.send_signal(signal.SIGINT)
+    try:
+        stdout, stderr = process.communicate(timeout=interrupt_grace_seconds)
+        return stdout, stderr, {
+            "mode": "graceful_sigint",
+            "signal_method": signal_method,
+            "interrupt_grace_seconds": interrupt_grace_seconds,
+            "forced_after_sigint": False,
+        }
+    except subprocess.TimeoutExpired:
+        stdout, stderr = terminate_process(process)
+        return stdout, stderr, {
+            "mode": "sigint_then_forced_termination",
+            "signal_method": signal_method,
+            "interrupt_grace_seconds": interrupt_grace_seconds,
+            "forced_after_sigint": True,
+        }
+
+
 def run_openclaw_command_with_live_budget(
     command: list[str],
     args: argparse.Namespace,
@@ -1651,6 +1687,13 @@ def run_openclaw_command_with_live_budget(
         0.0,
         float(getattr(args, "final_assistant_idle_salvage_seconds", 0.0) or 0.0),
     )
+    final_idle_shutdown_grace_seconds = max(
+        0.0,
+        float(
+            getattr(args, "final_assistant_shutdown_grace_seconds", 30.0)
+            or 0.0
+        ),
+    )
     while True:
         try:
             stdout, stderr = process.communicate(timeout=poll_seconds)
@@ -1671,7 +1714,10 @@ def run_openclaw_command_with_live_budget(
                 and isinstance(final_idle_seconds, (int, float))
                 and float(final_idle_seconds) >= final_idle_salvage_seconds
             ):
-                stdout, stderr = terminate_process(process)
+                stdout, stderr, shutdown = gracefully_complete_process(
+                    process,
+                    interrupt_grace_seconds=final_idle_shutdown_grace_seconds,
+                )
                 reason = (
                     "Live OpenClaw final assistant idle salvage: "
                     f"session_file={last_status.get('final_assistant_session_file')} "
@@ -1686,11 +1732,19 @@ def run_openclaw_command_with_live_budget(
                         "interrupted": False,
                         "final_assistant_idle_salvaged": True,
                         "final_assistant_idle_salvage_seconds": final_idle_salvage_seconds,
+                        "final_assistant_shutdown": shutdown,
                     },
                 )
             if not last_status.get("interrupt"):
                 continue
-            stdout, stderr = terminate_process(process)
+            # Budget and idle-timeout exits still need OpenClaw's shutdown hooks.
+            # In particular, weave-openclaw closes and flushes the parent
+            # agent/message spans from those hooks.  A direct SIGTERM can leave
+            # only already-completed tool spans in W&B.
+            stdout, stderr, shutdown = gracefully_complete_process(
+                process,
+                interrupt_grace_seconds=final_idle_shutdown_grace_seconds,
+            )
             reason_name = (
                 last_status.get("interrupt_reason")
                 or last_status.get("reason")
@@ -1719,6 +1773,7 @@ def run_openclaw_command_with_live_budget(
                     **last_status,
                     "interrupted": True,
                     "reason": reason_name,
+                    "interrupt_shutdown": shutdown,
                 },
             )
 
@@ -1815,6 +1870,7 @@ def run_agent(args: argparse.Namespace) -> None:
     enrich_sidecar_with_tool_events(sidecar)
     sidecar["runtime_budget"] = runtime_budget_status(sidecar, args)
     sidecar["nemoclaw_session_audit"] = nemoclaw_session_audit_status(sidecar, args)
+    sidecar["model_completion"] = model_completion_status(sidecar)
     violations = tool_policy_violations(sidecar.get("tool_events", []), policy)
     sidecar["tool_policy_violations"] = violations
     sidecar["tool_policy_ok"] = not violations
@@ -1858,6 +1914,13 @@ def run_agent(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
         raise SystemExit("NeMoClaw session audit failed")
+    model_completion = sidecar.get("model_completion")
+    if isinstance(model_completion, dict) and model_completion.get("ok") is False:
+        print(
+            json.dumps({"model_completion": model_completion}, ensure_ascii=False, indent=2),
+            file=sys.stderr,
+        )
+        raise SystemExit(str(model_completion.get("reason") or "Model response incomplete"))
     print(sidecar_path)
     if result.returncode != 0:
         raise SystemExit(result.returncode)
@@ -2094,6 +2157,61 @@ def nemoclaw_session_audit_status(sidecar: dict[str, Any], args: argparse.Namesp
     }
 
 
+def model_completion_status(sidecar: dict[str, Any]) -> dict[str, Any]:
+    """Classify model-side incomplete output separately from harness failures."""
+    output_text = "\n".join(
+        str(sidecar.get(key) or "") for key in ("stdout", "stderr")
+    ).lower()
+    warning_marker = next(
+        (marker for marker in OPENCLAW_NO_RESPONSE_MARKERS if marker in output_text),
+        None,
+    )
+
+    meta = extract_openclaw_meta(sidecar)
+    final_stop_reason = meta.get("stopReason") if isinstance(meta, dict) else None
+    final_assistant_message_seen = False
+    session_file = extract_agent_meta(sidecar).get("sessionFile")
+    if isinstance(session_file, str) and session_file:
+        session_path = Path(session_file).expanduser()
+        if session_path.exists():
+            for raw in session_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                try:
+                    event = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                message = event.get("message") if isinstance(event, dict) else None
+                if not isinstance(message, dict) or message.get("role") != "assistant":
+                    continue
+                final_assistant_message_seen = True
+                observed_reason = message.get("stopReason") or message.get("stop_reason")
+                if isinstance(observed_reason, str) and observed_reason:
+                    final_stop_reason = observed_reason
+
+    normalized_stop_reason = str(final_stop_reason or "").strip().lower()
+    truncated = normalized_stop_reason in {
+        "length",
+        "max_tokens",
+        "max_output_tokens",
+    }
+    if truncated:
+        reason = "model_output_truncated"
+    elif warning_marker:
+        reason = "openclaw_no_response"
+    else:
+        reason = None
+    return {
+        "ok": reason is None,
+        "failure_category": "model" if reason else None,
+        "reason": reason,
+        "scoreable": bool(reason),
+        "retryable": False,
+        "final_stop_reason": final_stop_reason,
+        "final_assistant_message_seen": final_assistant_message_seen,
+        "openclaw_no_response_warning": bool(warning_marker),
+        "warning_marker": warning_marker,
+    }
+
+
 def extract_assistant_text(sidecar: dict[str, Any]) -> str:
     stdout_json = sidecar.get("stdout_json")
     if isinstance(stdout_json, dict):
@@ -2140,6 +2258,48 @@ def normalize_usage(agent_meta: dict[str, Any]) -> dict[str, int]:
         "cacheCreationInputTokens": usage.get("cacheWrite"),
     }
     return {key: int(value) for key, value in mapped.items() if isinstance(value, (int, float))}
+
+
+def copied_session_usage(sidecar: dict[str, Any]) -> dict[str, int]:
+    """Recover cumulative provider usage when an interrupted CLI omits agentMeta."""
+    copy_status = sidecar.get("nemoclaw_session_copy")
+    if not isinstance(copy_status, dict) or copy_status.get("ok") is not True:
+        return {}
+    session_file = copy_status.get("copied_session_file")
+    if not isinstance(session_file, str) or not session_file:
+        return {}
+    path = Path(session_file).expanduser()
+    totals = {
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "reasoningTokens": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0,
+    }
+    found = False
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            entry = json.loads(line)
+            message = entry.get("message") if isinstance(entry, dict) else None
+            usage = message.get("usage") if isinstance(message, dict) else None
+            if not isinstance(usage, dict):
+                continue
+            found = True
+            mapping = {
+                "inputTokens": usage.get("input"),
+                "outputTokens": usage.get("output"),
+                "reasoningTokens": usage.get("reasoningTokens"),
+                "cacheReadInputTokens": usage.get("cacheRead"),
+                "cacheCreationInputTokens": usage.get("cacheWrite"),
+            }
+            for key, value in mapping.items():
+                if isinstance(value, (int, float)):
+                    totals[key] += int(value)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return totals if found else {}
 
 
 def enrich_sidecar_with_tool_events(sidecar: dict[str, Any]) -> dict[str, Any]:
@@ -2329,9 +2489,16 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
     max_tool_wall_seconds = int(getattr(args, "max_tool_wall_seconds", 0) or 0)
     agent_meta = extract_agent_meta(sidecar)
     usage = agent_meta.get("usage") if isinstance(agent_meta.get("usage"), dict) else {}
+    normalized_usage = normalize_usage(agent_meta)
+    usage_source = "stdout_agent_meta" if normalized_usage else None
+    if not normalized_usage:
+        normalized_usage = copied_session_usage(sidecar)
+        if normalized_usage:
+            usage_source = "copied_nemoclaw_session"
     input_tokens = usage.get("input")
     input_tokens = int(input_tokens) if isinstance(input_tokens, (int, float)) else None
-    normalized_usage = normalize_usage(agent_meta)
+    if input_tokens is None and normalized_usage:
+        input_tokens = normalized_usage.get("inputTokens")
     actual_input_tokens = None
     actual_output_tokens = None
     if normalized_usage:
@@ -2395,6 +2562,14 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
         and (
             block.get("kind") == "agent_turn"
             or "agent_turn_limit_exceeded" in str(block.get("text") or "")
+        )
+        for block in sidecar_budget_guard_blocks
+    )
+    sidecar_tool_call_guard_blocked = any(
+        isinstance(block, dict)
+        and (
+            block.get("kind") == "tool_call"
+            or "tool_call_limit_exceeded" in str(block.get("text") or "")
         )
         for block in sidecar_budget_guard_blocks
     )
@@ -2549,13 +2724,28 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
     if max_tool_calls > 0 and (
         (executed_tool_call_count is not None and executed_tool_call_count > max_tool_calls)
         or live_tool_exceeded
+        or sidecar_tool_call_guard_blocked
     ):
         violations.append(
             {
                 "type": "max_tool_calls_exceeded",
-                "observed": executed_tool_call_count,
+                "observed": (
+                    max_tool_calls + 1
+                    if sidecar_tool_call_guard_blocked
+                    and (
+                        executed_tool_call_count is None
+                        or executed_tool_call_count <= max_tool_calls
+                    )
+                    else executed_tool_call_count
+                ),
                 "limit": max_tool_calls,
-                "source": "live_runtime_budget" if live_tool_exceeded else "openclaw_session_jsonl",
+                "source": (
+                    "openclaw_runtime_patch"
+                    if sidecar_tool_call_guard_blocked
+                    else "live_runtime_budget"
+                    if live_tool_exceeded
+                    else "openclaw_session_jsonl"
+                ),
             }
         )
     if max_agent_turns > 0 and (
@@ -2641,6 +2831,7 @@ def runtime_budget_status(sidecar: dict[str, Any], args: argparse.Namespace) -> 
             "actual_cumulative_input_tokens": actual_input_tokens,
             "actual_cumulative_output_tokens": actual_output_tokens,
             "actual_usage": normalized_usage,
+            "actual_usage_source": usage_source,
             "estimated_input_tokens": live_estimated_input_tokens,
             "tool_call_count": tool_call_count,
             "executed_tool_call_count": executed_tool_call_count,
@@ -3718,11 +3909,49 @@ def check_agents(args: argparse.Namespace) -> None:
         "limit": args.limit,
         "offset": 0,
     }
-    spans_payload = dict(agents_payload)
+    span_conditions: list[dict[str, Any]] = []
+    if args.conversation_id:
+        span_conditions.append(
+            {
+                "$eq": [
+                    {"$getField": "conversation_id"},
+                    {"$literal": args.conversation_id},
+                ]
+            }
+        )
+    if args.conversation_id_contains:
+        span_conditions.append(
+            {
+                "$contains": {
+                    "input": {"$getField": "conversation_id"},
+                    "substr": {"$literal": args.conversation_id_contains},
+                    "case_insensitive": False,
+                }
+            }
+        )
+    if not span_conditions and args.agent_name:
+        span_conditions.append(
+            {
+                "$eq": [
+                    {"$getField": "agent_name"},
+                    {"$literal": args.agent_name},
+                ]
+            }
+        )
+    span_query = None
+    if len(span_conditions) == 1:
+        span_query = {"$expr": span_conditions[0]}
+    elif span_conditions:
+        span_query = {"$expr": {"$and": span_conditions}}
     if args.conversation_id or args.conversation_id_contains:
-        spans_payload["filters"] = {}
-        span_limit = max(span_limit, args.limit * 8, 400)
-    spans_payload["limit"] = span_limit
+        span_limit = AGENTS_SPANS_QUERY_MAX_LIMIT
+    spans_payload = {
+        "project_id": project_id,
+        "query": span_query,
+        "include_details": True,
+        "limit": min(AGENTS_SPANS_QUERY_MAX_LIMIT, span_limit),
+        "offset": 0,
+    }
     agents = agents_api_post(env, AGENTS_QUERY_ENDPOINT, agents_payload)
     spans = agents_api_post(env, AGENTS_SPANS_QUERY_ENDPOINT, spans_payload)
     raw_spans = [
@@ -3956,6 +4185,16 @@ def build_parser() -> argparse.ArgumentParser:
             "the session lock is gone, and the live session has been idle this "
             "many seconds, terminate the stuck OpenClaw process and write a "
             "scoreable sidecar. 0 disables this salvage path."
+        ),
+    )
+    run_parser.add_argument(
+        "--final-assistant-shutdown-grace-seconds",
+        type=float,
+        default=30.0,
+        help=(
+            "After final-answer idle salvage triggers, send SIGINT and allow this "
+            "many seconds for OpenClaw finalizers and telemetry flush before "
+            "falling back to forced termination."
         ),
     )
     run_parser.add_argument(

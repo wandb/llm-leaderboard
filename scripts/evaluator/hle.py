@@ -14,6 +14,11 @@ import weave
 
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import LLMAsyncProcessor, get_openai_judge_client
+from .evaluate_utils.llm_response_checkpoint import (
+    JSONItemCheckpointStore,
+    LLMResponseCheckpointStore,
+    default_checkpoint_root,
+)
 
 
 SYSTEM_PROMPT = """回答は以下の形式で行ってください：
@@ -188,9 +193,10 @@ async def evaluate_async():
         artifact = run.use_artifact(artifact_path, type="dataset")
         artifact_dir = artifact.download()
     except Exception as e:
-        print(f"Error downloading artifact: {e}")
-        return
+        raise RuntimeError(f"HLE dataset artifact download failed: {e}") from e
 
+    expected_subsets = ["dev"] if cfg.testmode else ["test", "dev"]
+    completed_subsets = []
     for subset in ("test", "dev"):
         if cfg.testmode and subset == "test":
             print("Skipping test set in test mode.")
@@ -198,8 +204,9 @@ async def evaluate_async():
 
         data_file = Path(artifact_dir) / dataset_dir_name / f"{subset}.jsonl"
         if not data_file.exists():
-            print(f"Dataset file not found for subset '{subset}': {data_file}")
-            continue
+            raise FileNotFoundError(
+                f"HLE dataset file not found for subset '{subset}': {data_file}"
+            )
             
         print(f"--- Evaluating subset: {subset} --- ")
         
@@ -219,14 +226,17 @@ async def evaluate_async():
                 # For the 'test' set, we do nothing, so all samples are used.
                 
             print(f"Loaded {len(questions)} questions from {data_file.name}")
+            if not questions:
+                raise RuntimeError(f"HLE subset '{subset}' contains no questions")
             
             multimodal_count = sum(1 for q in questions if q.get('image'))
             if multimodal_count > 0:
                 print(f"Warning: {multimodal_count} questions contain images. Ensure your LLM supports multimodal input.")
             
         except Exception as e:
-            print(f"Error loading dataset for subset '{subset}': {e}")
-            continue
+            raise RuntimeError(
+                f"HLE dataset loading failed for subset '{subset}': {e}"
+            ) from e
         
         print("Generating model responses...")
         predictions = {}
@@ -234,58 +244,85 @@ async def evaluate_async():
         llm_ap = LLMAsyncProcessor(llm=llm)
         judge_llm = get_openai_judge_client(judge_model, text_format=ExtractedAnswer)
         judge_llm_ap = LLMAsyncProcessor(llm=judge_llm, batch_size=judge_parallel, inference_interval=0.)
+        checkpoint_root = default_checkpoint_root(run, "hle") / subset
+        answer_store = LLMResponseCheckpointStore(
+            checkpoint_root / "answers",
+            model_name=cfg.model.pretrained_model_name_or_path,
+        )
+        judge_store = JSONItemCheckpointStore(
+            checkpoint_root / "judgments",
+            model_name=judge_model,
+        )
 
-        # Inference and judge in parallel
-        # Generate model responses
-        async def generate_answer(q):
-            messages = format_message_for_llm_processor(
-                q,
-                cfg.model.pretrained_model_name_or_path,
-                system_prompt=system_prompt,
-            )
-            try:
-                result = await llm_ap.process_single_async(messages, **generator_config)
+        try:
+            async def generate_answer(q):
+                messages = format_message_for_llm_processor(
+                    q,
+                    cfg.model.pretrained_model_name_or_path,
+                    system_prompt=system_prompt,
+                )
+                key = str(q["id"])
+                cached = answer_store.load(
+                    key,
+                    messages=messages,
+                    kwargs=generator_config,
+                )
+                if cached is not None:
+                    result = cached
+                else:
+                    result = await llm_ap.process_single_async(
+                        messages,
+                        **generator_config,
+                    )
+                    answer_store.save(
+                        key,
+                        result,
+                        messages=messages,
+                        kwargs=generator_config,
+                    )
                 predictions[q["id"]] = {
                     "model": cfg.model.pretrained_model_name_or_path,
                     "response": result.content,
                     "usage": {
-                        "completion_tokens": len(result.content.split()),
-                        "prompt_tokens": len(q["question"].split())
+                        "completion_tokens": result.completion_tokens,
+                        "prompt_tokens": result.prompt_tokens,
                     }
                 }
-            except Exception as e:
-                print(f"Error generating model responses for subset '{subset}': {e}")
-            return q
+                return q
 
-        generate_answer_tasks = [asyncio.create_task(generate_answer(q)) for q in questions]
-        generate_answer_results = asyncio.create_task(
-            atqdm.gather(*generate_answer_tasks, desc="Generating HLE answers")
-        )
-
-        # OpenAIの場合、推論とJudgeが同じAPIになるため、Rate Limit対策として推論がすべて終わるのを待つ
-        if cfg.api == 'openai':
-            await generate_answer_results
-            print(f"Generated {len(predictions)} model responses for {subset}")
-
-        # Judge model responses
-        async def judge(q, generate_answer_task):
-            await generate_answer_task
-            if q["id"] not in predictions:
-                return
-
-            if "judge_response" in predictions[q["id"]]:
-                judged_predictions[q["id"]] = predictions[q["id"]]
-                return
-
-            prompt = judge_prompt_template.format(
-                question=q["question"],
-                correct_answer=q["answer"],
-                response=predictions[q["id"]]["response"],
+            await atqdm.gather(
+                *(generate_answer(q) for q in questions),
+                desc="Generating HLE answers",
             )
-            messages = [{"role": "user", "content": prompt}]
+            print(f"Generated {len(predictions)} model responses for {subset}")
+            if len(predictions) != len(questions):
+                raise RuntimeError(
+                    f"HLE answer generation incomplete for {subset}: "
+                    f"{len(predictions)}/{len(questions)}"
+                )
 
-            try:
-                result = await judge_llm_ap.process_single_async(messages, **judge_params)
+            async def judge(q):
+                prompt = judge_prompt_template.format(
+                    question=q["question"],
+                    correct_answer=q["answer"],
+                    response=predictions[q["id"]]["response"],
+                )
+                messages = [{"role": "user", "content": prompt}]
+                key = str(q["id"])
+                request = {
+                    "messages": messages,
+                    "params": judge_params,
+                    "correct_answer": q["answer"],
+                }
+                cached = judge_store.load(key, request=request)
+                if cached is not None:
+                    judged_predictions[q["id"]] = cached
+                    return
+
+                result = await judge_llm_ap.process_single_async(
+                    messages,
+                    **judge_params,
+                )
                 prediction = copy.deepcopy(predictions[q["id"]])
                 prediction["judge_response"] = {
                     "correct_answer": q["answer"],
@@ -294,13 +331,22 @@ async def evaluate_async():
                     "correct": result.parsed_output.correct,
                     "confidence": result.parsed_output.confidence,
                 }
+                judge_store.save(key, prediction, request=request)
                 judged_predictions[q["id"]] = prediction
-            except Exception as e:
-                print(f"Error judging model responses for subset '{subset}': {e}")
 
-        judge_tasks = [judge(q, task) for q, task in zip(questions, generate_answer_tasks)]
-        await atqdm.gather(*judge_tasks, desc="Judging HLE")
-        print(f"Judged {len(judged_predictions)} responses for {subset}")
+            await atqdm.gather(
+                *(judge(q) for q in questions),
+                desc="Judging HLE",
+            )
+            print(f"Judged {len(judged_predictions)} responses for {subset}")
+            if len(judged_predictions) != len(questions):
+                raise RuntimeError(
+                    f"HLE judging incomplete for {subset}: "
+                    f"{len(judged_predictions)}/{len(questions)}"
+                )
+        finally:
+            await judge_llm_ap.close_async_client()
+            await llm_ap.close_async_client()
         
         metrics = calculate_metrics(judged_predictions, len(questions))
         
@@ -344,8 +390,15 @@ async def evaluate_async():
             f"hle_{subset}_accuracy": metrics["accuracy_percent"],
             f"hle_{subset}_calibration_error": metrics["calibration_error"]
         })
+        completed_subsets.append(subset)
         
         print(f"HLE evaluation for subset '{subset}' completed and logged to wandb")
+
+    if completed_subsets != expected_subsets:
+        raise RuntimeError(
+            "HLE subset completion mismatch: "
+            f"completed={completed_subsets}, expected={expected_subsets}"
+        )
 
 @weave.op(call_display_name=lambda _: "[HLE] " + WandbConfigSingleton.get_instance().config.wandb.run_name)
 def evaluate():

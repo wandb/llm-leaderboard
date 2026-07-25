@@ -26,13 +26,17 @@ def test_configure_nemoclaw_weave_shell_syntax():
     assert result.returncode == 0, result.stderr
 
 
-def test_wandb_weave_policy_allows_inference_api_without_broad_network():
+def test_wandb_weave_policy_allows_direct_model_apis_without_broad_network():
     text = POLICY.read_text(encoding="utf-8")
 
     assert "host: api.inference.wandb.ai" in text
     assert "path: /v1/models" in text
     assert "path: /v1/models/**" in text
     assert "path: /v1/chat/completions" in text
+    assert "host: api.openai.com" in text
+    assert "path: /v1/responses" in text
+    assert "host: api.anthropic.com" in text
+    assert "path: /v1/messages" in text
 
 
 def test_configure_nemoclaw_weave_registers_wandb_inference_model(tmp_path):
@@ -49,6 +53,7 @@ if args == ["sandbox", "status", "nejumi-test"]:
     print("host: api.wandb.ai")
     print("host: api.inference.wandb.ai")
     print("host: api.openai.com")
+    print("host: api.anthropic.com")
     raise SystemExit(0)
 if len(args) >= 3 and args[:2] == ["sandbox", "exec"]:
     try:
@@ -65,7 +70,7 @@ raise SystemExit(1)
     )
     env_file = tmp_path / ".env"
     env_file.write_text(
-        "WANDB_API_KEY=wandb-test\nOPENAI_API_KEY=openai-test\n",
+        "WANDB_API_KEY=wandb-test\nOPENAI_API_KEY=openai-test\nANTHROPIC_API_KEY=anthropic-test\n",
         encoding="utf-8",
     )
     secret_file = tmp_path / "secrets.json"
@@ -119,6 +124,9 @@ raise SystemExit(1)
     assert report["wandb_inference_config_ok"] is True
     assert report["wandb_inference_model_params"] == model_params
     assert report["secret_value_in_report"] is False
+    assert report["openai_secret_value_in_report"] is False
+    assert report["anthropic_secret_value_in_report"] is False
+    assert report["anthropic_direct_config_ok"] is True
 
     config = json.loads(config_file.read_text(encoding="utf-8"))
     provider = config["models"]["providers"]["wandb-inference"]
@@ -138,3 +146,25 @@ raise SystemExit(1)
     secrets = json.loads(secret_file.read_text(encoding="utf-8"))
     assert secrets["wandb"]["apiKey"] == "wandb-test"
     assert secrets["openai"]["apiKey"] == "openai-test"
+    assert secrets["anthropic"]["apiKey"] == "anthropic-test"
+
+    anthropic_provider = config["models"]["providers"]["anthropic"]
+    assert anthropic_provider["baseUrl"] == "https://api.anthropic.com"
+    assert anthropic_provider["api"] == "anthropic-messages"
+    assert anthropic_provider["apiKey"] == {
+        "source": "file",
+        "provider": "nejumi-anthropic",
+        "id": "/anthropic/apiKey",
+    }
+    fable = next(
+        item for item in anthropic_provider["models"] if item["id"] == "claude-fable-5"
+    )
+    assert fable["contextWindow"] == 1_000_000
+    assert fable["maxTokens"] == 128_000
+    sonnet = next(
+        item for item in anthropic_provider["models"] if item["id"] == "claude-sonnet-4-6"
+    )
+    assert sonnet["api"] == "anthropic-messages"
+    assert sonnet["reasoning"] is True
+    assert sonnet["contextWindow"] == 1_000_000
+    assert sonnet["maxTokens"] == 64_000

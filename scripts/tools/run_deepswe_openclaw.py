@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
 import json
 import os
 import re
@@ -14,13 +16,24 @@ import time
 from pathlib import Path
 from typing import Any
 
+TOOLS_DIR = Path(__file__).resolve().parent
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
+EVALUATE_UTILS_DIR = TOOLS_DIR.parent / "evaluator" / "evaluate_utils"
+if str(EVALUATE_UTILS_DIR) not in sys.path:
+    sys.path.insert(0, str(EVALUATE_UTILS_DIR))
+
+from agentic_swe_partial_credit import from_deepswe_verifier, verifier_rewards
+from openclaw_usage import summarize_billable_openclaw_records
+from subprocess_runner import nemoclaw_sandbox_from_command, nemoclaw_sandbox_lease
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AGENT_IMPORT_PATH = "deepswe_openclaw_pier_agent:NejumiDeepSWEOpenClawAgent"
 DEFAULT_TASKS_ROOT = REPO_ROOT / "external" / "deep-swe" / "tasks"
 DEFAULT_JOBS_DIR = REPO_ROOT / "outputs" / "deepswe_openclaw_pier_jobs"
 DEEPSWE_SANDBOX_DEPS_SCRIPT = REPO_ROOT / "scripts" / "setup" / "install_deepswe_sandbox_deps.sh"
-RUNNER_VERSION = "run-deepswe-openclaw-2026-07-11-v1"
+RUNNER_VERSION = "run-deepswe-openclaw-2026-07-23-v4"
 DOCKER_IMAGE_RE = re.compile(r'^\s*docker_image\s*=\s*["\']([^"\']+)["\']\s*$')
 LANGUAGE_RE = re.compile(r'^\s*language\s*=\s*["\']([^"\']+)["\']\s*$')
 NEMOCLAW_STALE_SHIELDS_LOCK_RE = re.compile(
@@ -65,6 +78,24 @@ def read_json(path: Path) -> dict[str, Any]:
         return json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
+
+
+def read_jsonl(path: Path) -> list[dict[str, Any]]:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            rows.append(value)
+    return rows
 
 
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -531,18 +562,27 @@ def usage_from_weave_agents_verifier(path_value: Any) -> dict[str, Any]:
                 or check.get("ok") is not True
             ):
                 continue
-            input_tokens = _numeric_value(check.get("agent_input_tokens")) + _numeric_value(
-                check.get("trace_input_tokens")
+            agent_usage = (
+                _numeric_value(check.get("agent_input_tokens")),
+                _numeric_value(check.get("agent_output_tokens")),
             )
-            output_tokens = _numeric_value(check.get("agent_output_tokens")) + _numeric_value(
-                check.get("trace_output_tokens")
+            trace_usage = (
+                _numeric_value(check.get("trace_input_tokens")),
+                _numeric_value(check.get("trace_output_tokens")),
+            )
+            input_tokens, output_tokens = (
+                agent_usage if sum(agent_usage) > 0 else trace_usage
             )
             if input_tokens + output_tokens > 0:
                 return {
                     "inputTokens": int(input_tokens),
                     "outputTokens": int(output_tokens),
                     "cacheReadInputTokens": 0,
-                    "usageSource": "weave_agents_trace",
+                    "usageSource": (
+                        "weave_agents_agent_summary"
+                        if sum(agent_usage) > 0
+                        else "weave_agents_trace"
+                    ),
                     "usageApproximate": True,
                 }
 
@@ -624,19 +664,33 @@ def collect_results(job_dir: Path, output_dir: Path, *, command: list[str], elap
                 agent_result["metadata"] = metadata
         usage = openclaw_usage_with_trace_fallback(openclaw)
         posthoc_violations = posthoc_trace_budget_violations(openclaw, usage)
-        score = verifier_score(result.get("verifier_result"))
+        verifier_result = result.get("verifier_result")
+        score = verifier_score(verifier_result)
         if posthoc_violations:
             score = 0.0
+        resolved = bool(score and score > 0) and not posthoc_violations
         disqualified_reason = openclaw.get("openclaw_disqualified_reason")
         if posthoc_violations and not disqualified_reason:
             disqualified_reason = "runtime_budget_exceeded"
+        patch_apply = metadata.get("patch_apply")
+        patch_applied = bool(
+            isinstance(patch_apply, dict) and patch_apply.get("patch_applied") is True
+        )
+        diagnostic_scores = from_deepswe_verifier(
+            verifier_result,
+            resolved=resolved,
+            patch_applied=patch_applied,
+            scoreable=score is not None and not posthoc_violations,
+        )
         rows.append(
             {
                 "task_name": result.get("task_name"),
                 "trial_name": result.get("trial_name"),
                 "trial_uri": result.get("trial_uri"),
                 "score": score,
-                "resolved": bool(score and score > 0) and not posthoc_violations,
+                "resolved": resolved,
+                **diagnostic_scores,
+                "verifier_rewards": verifier_rewards(verifier_result),
                 "exception": result.get("exception_info"),
                 "started_at": result.get("started_at"),
                 "finished_at": result.get("finished_at"),
@@ -645,6 +699,14 @@ def collect_results(job_dir: Path, output_dir: Path, *, command: list[str], elap
                 "openclaw_disqualified_reason": disqualified_reason,
                 "openclaw_tool_call_count": openclaw.get("openclaw_tool_call_count"),
                 "openclaw_usage": usage,
+                "billable_openclaw_usage": openclaw.get("billable_openclaw_usage"),
+                "billable_openclaw_attempt_count": openclaw.get(
+                    "billable_openclaw_attempt_count"
+                ),
+                "billable_openclaw_attempts": openclaw.get("billable_openclaw_attempts"),
+                "billable_openclaw_wall_seconds": openclaw.get(
+                    "billable_openclaw_wall_seconds"
+                ),
                 "runtime_budget_posthoc_trace_violations": posthoc_violations,
                 "weave_agents_ok": openclaw.get("weave_agents_ok"),
                 "weave_agents_verifier_json": openclaw.get("weave_agents_verifier_json"),
@@ -653,12 +715,13 @@ def collect_results(job_dir: Path, output_dir: Path, *, command: list[str], elap
                     "weave_agents_conversation_link_html"
                 ),
                 "nemoclaw_session_audit_ok": openclaw.get("nemoclaw_session_audit_ok"),
-                "patch_apply": metadata.get("patch_apply"),
+                "patch_apply": patch_apply,
                 "result_path": str(trial_dir / "result.json"),
             }
         )
     scored = [row for row in rows if row["score"] is not None]
     resolved = sum(1 for row in scored if row["resolved"])
+    billable = summarize_billable_openclaw_records(rows)
     summary = {
         "runner_version": RUNNER_VERSION,
         "job_dir": str(job_dir),
@@ -669,6 +732,22 @@ def collect_results(job_dir: Path, output_dir: Path, *, command: list[str], elap
         "scored_trials": len(scored),
         "resolved_trials": resolved,
         "pass_at_1": (resolved / len(scored)) if scored else None,
+        "billable_openclaw_usage": billable["usage"],
+        "billable_openclaw_attempt_count": billable["attempt_count"],
+        "billable_openclaw_retry_count": billable["retry_count"],
+        "billable_openclaw_wall_seconds": billable["wall_seconds"],
+        "diagnostic_score_with_partial": (
+            sum(float(row.get("diagnostic_score_with_partial") or 0.0) for row in scored)
+            / len(scored)
+            if scored
+            else None
+        ),
+        "diagnostic_partial_credit_total": sum(
+            float(row.get("diagnostic_partial_credit") or 0.0) for row in scored
+        ),
+        "diagnostic_evidence_trials": sum(
+            1 for row in scored if row.get("diagnostic_scoreable") is True
+        ),
         "exceptions": sum(1 for row in rows if row["exception"]),
         "non_scoreable_policy_blocks": sum(
             1 for row in rows if is_non_scoreable_policy_failure(read_json(Path(row["result_path"])))
@@ -809,6 +888,22 @@ def build_agent_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         "openclaw_timeout": args.openclaw_timeout,
         "openclaw_max_attempts": args.openclaw_max_attempts,
         "openclaw_retry_base_seconds": args.openclaw_retry_base_seconds,
+        "provider_recovery_rounds": getattr(args, "provider_recovery_rounds", 2),
+        "provider_recovery_base_seconds": getattr(
+            args,
+            "provider_recovery_base_seconds",
+            60.0,
+        ),
+        "native_trace_recovery_attempts": getattr(
+            args,
+            "native_trace_recovery_attempts",
+            1,
+        ),
+        "native_trace_recovery_base_seconds": getattr(
+            args,
+            "native_trace_recovery_base_seconds",
+            15.0,
+        ),
         "max_input_tokens": args.max_input_tokens,
         "max_cumulative_input_tokens": args.max_cumulative_input_tokens,
         "max_cumulative_output_tokens": args.max_cumulative_output_tokens,
@@ -816,6 +911,9 @@ def build_agent_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         "max_agent_turns": args.max_agent_turns,
         "max_tool_wall_seconds": args.max_tool_wall_seconds,
         "final_assistant_idle_salvage_seconds": args.final_assistant_idle_salvage_seconds,
+        "final_assistant_shutdown_grace_seconds": (
+            args.final_assistant_shutdown_grace_seconds
+        ),
         "llm_response_idle_timeout_seconds": args.llm_response_idle_timeout_seconds,
         "require_actual_token_usage": str(args.require_actual_token_usage).lower(),
         "nemoclaw_bin": args.nemoclaw_bin,
@@ -837,6 +935,7 @@ def build_agent_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         "weave_agents_limit": args.weave_agents_limit,
         "weave_agents_verification_timeout": args.weave_agents_verification_timeout,
         "weave_agents_poll_seconds": args.weave_agents_poll_seconds,
+        "fail_fast_trace_evidence": str(args.fail_fast_trace_evidence).lower(),
         "allow_failed_preflight": str(args.allow_failed_preflight).lower(),
     }
     if args.deny_tool:
@@ -893,6 +992,151 @@ def build_job_config(args: argparse.Namespace, job_name: str) -> dict[str, Any]:
 def build_command(config_path: Path) -> list[str]:
     command = ["pier", "run", "--config", str(config_path), "--yes"]
     return command
+
+
+def deepswe_sandbox_checkout_root(task_id: str, output_root: Path, safe_id: str) -> str:
+    digest = hashlib.sha256(str(output_root.resolve()).encode("utf-8")).hexdigest()[:10]
+    return f"/sandbox/checkouts/deepswe/{safe_id}-{digest}"
+
+
+def preregister_gateway_task_agents(args: argparse.Namespace) -> dict[str, Any]:
+    task_names = configured_task_names(args)
+    if not (
+        task_names
+        and args.no_local
+        and args.use_task_agent
+        and args.nemoclaw_sandbox
+        and args.restart_gateway_before_run
+    ):
+        return {
+            "ok": None,
+            "performed": False,
+            "reason": "gateway_preregistration_not_applicable",
+            "task_count": len(task_names),
+        }
+
+    import run_swebench_pro_openclaw as swe_runner
+
+    output_root = args.output_dir / "openclaw"
+    registration_args = argparse.Namespace(**vars(args))
+    registration_args.profile = None
+    registration_args.openclaw_config_template = None
+    registration_args.no_reset = False
+    registration_args.redo = False
+    registration_args.dry_run = False
+    registration_args.restart_gateway_after_task_agent_registration = False
+    swe_runner.ensure_nemoclaw_openclaw_permissions(registration_args)
+
+    registrations: list[dict[str, Any]] = []
+    registration_changes = 0
+    for index, task_id in enumerate(task_names, start=1):
+        safe_task_id = swe_runner.safe_id(task_id)
+        registration_args.nemoclaw_checkout_sandbox_root = deepswe_sandbox_checkout_root(
+            task_id,
+            output_root,
+            safe_task_id,
+        )
+        checkout_dir = Path("openclaw_checkout")
+        task_dir = output_root / safe_task_id
+        task_dir.mkdir(parents=True, exist_ok=True)
+        was_reusable = swe_runner.gateway_task_agent_registration_is_reusable(
+            {"instance_id": task_id},
+            checkout_dir,
+            task_dir,
+            registration_args,
+        )
+        agent_id, config_path = swe_runner.write_task_openclaw_config(
+            {"instance_id": task_id},
+            checkout_dir,
+            task_dir,
+            registration_args,
+        )
+        if config_path is not None:
+            raise RuntimeError(
+                "DeepSWE Gateway preregistration unexpectedly created a local config: "
+                f"{config_path}"
+            )
+        registration_changes += int(not was_reusable)
+        registrations.append(
+            {"task_id": task_id, "agent_id": agent_id, "reused": was_reusable}
+        )
+        print(
+            f"[{index}/{len(task_names)}] "
+            f"{'Reused' if was_reusable else 'Pre-registered'} DeepSWE task agent: {task_id}",
+            flush=True,
+        )
+
+    if registration_changes == 0:
+        args.restart_gateway_before_run = False
+        return {
+            "ok": True,
+            "performed": False,
+            "reason": "all_task_agent_registrations_reusable",
+            "task_count": len(task_names),
+            "registration_changes": 0,
+            "gateway_restart_count": 0,
+            "gateway_readiness_verified": False,
+            "registrations": registrations,
+        }
+
+    # Per-agent registration suppresses restarts so a batch only disrupts the
+    # Gateway once.  Re-enable it for the explicit batch restart; otherwise the
+    # helper silently returns and the live Gateway keeps its stale agent list.
+    restart_args = argparse.Namespace(**vars(registration_args))
+    restart_args.restart_gateway_after_task_agent_registration = True
+    swe_runner.restart_nemoclaw_gateway_after_task_agent_registration(
+        restart_args,
+        label="DeepSWE batch",
+    )
+    expected_agent_ids = [entry["agent_id"] for entry in registrations]
+    deadline = time.monotonic() + 60.0
+    observed_agent_ids: list[str] = []
+    last_error = ""
+    while True:
+        try:
+            result = swe_runner.run_nemoclaw_text_command(
+                restart_args,
+                [
+                    "openclaw",
+                    "gateway",
+                    "call",
+                    "agents.list",
+                    "--json",
+                ],
+                timeout=45,
+            )
+            stdout = result.stdout
+            if isinstance(stdout, bytes):
+                stdout = stdout.decode("utf-8", errors="replace")
+            payload = json.loads(str(stdout or "{}"))
+            observed_agent_ids = [
+                str(entry.get("id"))
+                for entry in payload.get("agents", [])
+                if isinstance(entry, dict) and entry.get("id")
+            ]
+            missing = sorted(set(expected_agent_ids) - set(observed_agent_ids))
+            if not missing:
+                break
+            last_error = f"missing agents: {', '.join(missing)}"
+        except (json.JSONDecodeError, OSError, RuntimeError) as exc:
+            last_error = str(exc)
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                "DeepSWE Gateway did not load all pre-registered task agents: "
+                f"{last_error or 'unknown readiness failure'}"
+            )
+        time.sleep(2.0)
+    args.restart_gateway_before_run = False
+    return {
+        "ok": True,
+        "performed": True,
+        "task_count": len(task_names),
+        "registration_changes": registration_changes,
+        "gateway_restart_count": 1,
+        "gateway_readiness_verified": True,
+        "gateway_observed_agent_count": len(observed_agent_ids),
+        "registrations": registrations,
+    }
 
 
 def is_environment_setup_failure(result: dict[str, Any]) -> bool:
@@ -1021,9 +1265,92 @@ def is_non_scoreable_configuration_error(result: dict[str, Any]) -> bool:
     return "Thinking level" in stderr and "is not supported for" in stderr
 
 
+def is_required_trace_evidence_failure(result: dict[str, Any]) -> bool:
+    exception = result.get("exception_info")
+    if isinstance(exception, dict):
+        exception_text = "\n".join(
+            str(exception.get(key) or "")
+            for key in ("exception_type", "exception_message", "traceback")
+        )
+        if "RequiredWeaveAgentsTraceError" in exception_text:
+            return True
+        if "required_trace_evidence_failure" in exception_text:
+            return True
+    agent_result = result.get("agent_result")
+    metadata = agent_result.get("metadata") if isinstance(agent_result, dict) else None
+    openclaw = metadata.get("openclaw") if isinstance(metadata, dict) else None
+    if not isinstance(openclaw, dict):
+        return False
+    if openclaw.get("openclaw_disqualified_reason") in {
+        "model_output_truncated",
+        "openclaw_no_response",
+    }:
+        return False
+    return (
+        openclaw.get("weave_agents_required") is True
+        and openclaw.get("weave_agents_ok") is False
+    )
+
+
+def _descendant_pids(root_pid: int) -> list[int]:
+    """Return descendants of one Pier process, deepest children first."""
+    try:
+        result = subprocess.run(
+            ["ps", "-eo", "pid=,ppid="],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return []
+    children: dict[int, list[int]] = {}
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) != 2:
+            continue
+        try:
+            pid, parent = (int(field) for field in fields)
+        except ValueError:
+            continue
+        children.setdefault(parent, []).append(pid)
+    ordered: list[int] = []
+
+    def visit(parent: int) -> None:
+        for child in children.get(parent, []):
+            visit(child)
+            ordered.append(child)
+
+    visit(root_pid)
+    return ordered
+
+
+def _signal_pids(pids: list[int], sig: signal.Signals) -> None:
+    for pid in pids:
+        try:
+            os.kill(pid, sig)
+        except ProcessLookupError:
+            continue
+        except PermissionError:
+            continue
+
+
+def _pid_exists(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def terminate_process_tree(proc: subprocess.Popen[str]) -> None:
     if proc.poll() is not None:
         return
+    descendants = _descendant_pids(proc.pid)
+    _signal_pids(descendants, signal.SIGTERM)
     try:
         os.killpg(proc.pid, signal.SIGTERM)
     except ProcessLookupError:
@@ -1031,15 +1358,387 @@ def terminate_process_tree(proc: subprocess.Popen[str]) -> None:
     except Exception:
         proc.terminate()
     deadline = time.time() + 10
-    while proc.poll() is None and time.time() < deadline:
+    while time.time() < deadline:
+        if proc.poll() is not None and not any(_pid_exists(pid) for pid in descendants):
+            return
         time.sleep(0.2)
-    if proc.poll() is None:
+    remaining = [pid for pid in descendants if _pid_exists(pid)]
+    if proc.poll() is None or remaining:
+        _signal_pids([*remaining, *_descendant_pids(proc.pid)], signal.SIGKILL)
         try:
             os.killpg(proc.pid, signal.SIGKILL)
         except ProcessLookupError:
-            return
+            pass
         except Exception:
-            proc.kill()
+            if proc.poll() is None:
+                proc.kill()
+
+
+def _task_agent_records_for_run(args: argparse.Namespace) -> list[dict[str, str]]:
+    records: list[dict[str, str]] = []
+    seen: set[str] = set()
+    openclaw_root = args.output_dir / "openclaw"
+    for metadata_path in sorted(openclaw_root.rglob("openclaw_task_agent.json")):
+        metadata = read_json(metadata_path)
+        agent_id = str(metadata.get("agent_id") or "").strip()
+        sandbox = str(metadata.get("nemoclaw_sandbox") or "").strip()
+        if not agent_id or agent_id in seen:
+            continue
+        if sandbox and sandbox != str(getattr(args, "nemoclaw_sandbox", "") or ""):
+            continue
+        seen.add(agent_id)
+        records.append(
+            {
+                "agent_id": agent_id,
+                "metadata_path": str(metadata_path),
+                "sandbox": sandbox,
+                "workspace": str(metadata.get("workspace") or "").strip(),
+            }
+        )
+    return records
+
+
+def _cleanup_nemoclaw_workspace_processes(
+    args: argparse.Namespace,
+    workspace_roots: list[str],
+) -> dict[str, Any]:
+    roots = sorted(
+        {
+            root.rstrip("/")
+            for root in workspace_roots
+            if root.startswith("/sandbox/checkouts/") and root.rstrip("/")
+        }
+    )
+    if not roots or not getattr(args, "nemoclaw_sandbox", None):
+        return {
+            "ok": True,
+            "performed": False,
+            "workspace_roots": roots,
+            "terminated_pids": [],
+            "killed_pids": [],
+            "remaining_pids": [],
+        }
+
+    import run_swebench_pro_openclaw as swe_runner
+
+    cleanup_code = r'''
+import json
+import os
+import signal
+import sys
+import time
+from pathlib import Path
+
+roots = tuple(sorted({item.rstrip("/") for item in json.loads(sys.argv[1])}))
+self_pids = {os.getpid(), os.getppid()}
+
+def under_root(value):
+    return any(value == root or value.startswith(root + "/") for root in roots)
+
+def matching_pids():
+    matches = []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        if pid in self_pids:
+            continue
+        values = []
+        try:
+            values.append(os.readlink(entry / "cwd"))
+        except OSError:
+            pass
+        try:
+            values.extend(
+                item.decode("utf-8", errors="replace")
+                for item in (entry / "cmdline").read_bytes().split(b"\0")
+                if item
+            )
+        except OSError:
+            pass
+        if any(under_root(value) for value in values):
+            matches.append(pid)
+    return sorted(matches)
+
+terminated = matching_pids()
+for pid in terminated:
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+deadline = time.monotonic() + 3.0
+while time.monotonic() < deadline and matching_pids():
+    time.sleep(0.05)
+remaining_after_term = matching_pids()
+for pid in remaining_after_term:
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+time.sleep(0.1)
+remaining = matching_pids()
+print(json.dumps({
+    "workspace_roots": roots,
+    "terminated_pids": terminated,
+    "killed_pids": remaining_after_term,
+    "remaining_pids": remaining,
+}))
+if remaining:
+    raise SystemExit(1)
+'''
+    encoded_cleanup_code = base64.b64encode(cleanup_code.encode("utf-8")).decode("ascii")
+    cleanup_bootstrap = (
+        "import base64,sys;"
+        "code=base64.b64decode(sys.argv[1]);"
+        "sys.argv=[sys.argv[0],*sys.argv[2:]];"
+        "exec(compile(code,'<nejumi-workspace-process-cleanup>','exec'))"
+    )
+    try:
+        result = swe_runner.run_nemoclaw_text_command(
+            args,
+            [
+                "python3",
+                "-c",
+                cleanup_bootstrap,
+                encoded_cleanup_code,
+                json.dumps(roots),
+            ],
+            timeout=15,
+            check=False,
+        )
+        try:
+            payload = json.loads(result.stdout.strip().splitlines()[-1])
+        except (IndexError, json.JSONDecodeError):
+            payload = {}
+        return {
+            "ok": result.returncode == 0 and not payload.get("remaining_pids"),
+            "performed": True,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "workspace_roots": roots,
+            "terminated_pids": payload.get("terminated_pids", []),
+            "killed_pids": payload.get("killed_pids", []),
+            "remaining_pids": payload.get("remaining_pids", []),
+        }
+    except BaseException as exc:
+        return {
+            "ok": False,
+            "performed": True,
+            "error": f"{type(exc).__name__}: {exc}",
+            "workspace_roots": roots,
+            "terminated_pids": [],
+            "killed_pids": [],
+            "remaining_pids": [],
+        }
+
+
+def _pier_containers_for_job(job_dir: Path) -> list[dict[str, str]]:
+    try:
+        listed = subprocess.run(
+            ["docker", "ps", "-aq"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=15,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return []
+    container_ids = [line.strip() for line in listed.stdout.splitlines() if line.strip()]
+    if listed.returncode != 0 or not container_ids:
+        return []
+    try:
+        inspected = subprocess.run(
+            ["docker", "inspect", *container_ids],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=30,
+        )
+        payload = json.loads(inspected.stdout) if inspected.returncode == 0 else []
+    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        return []
+    job_marker = str(job_dir.resolve())
+    matches: list[dict[str, str]] = []
+    for item in payload if isinstance(payload, list) else []:
+        if not isinstance(item, dict):
+            continue
+        labels = item.get("Config", {}).get("Labels", {})
+        if not isinstance(labels, dict):
+            continue
+        config_files = str(labels.get("com.docker.compose.project.config_files") or "")
+        if job_marker not in config_files:
+            continue
+        container_id = str(item.get("Id") or "").strip()
+        if not container_id:
+            continue
+        matches.append(
+            {
+                "id": container_id,
+                "name": str(item.get("Name") or "").lstrip("/"),
+                "compose_project": str(labels.get("com.docker.compose.project") or ""),
+                "config_files": config_files,
+            }
+        )
+    return matches
+
+
+def cleanup_deepswe_run_resources(
+    args: argparse.Namespace,
+    *,
+    job_dir: Path,
+    reason: str,
+) -> dict[str, Any]:
+    """Clean only task agents and Pier containers recorded for this run."""
+    report: dict[str, Any] = {
+        "reason": reason,
+        "job_dir": str(job_dir.resolve()),
+        "task_agents": [],
+        "sandbox_processes": {},
+        "pier_containers": [],
+    }
+    task_agent_records = _task_agent_records_for_run(args)
+    report["sandbox_processes"] = _cleanup_nemoclaw_workspace_processes(
+        args,
+        [record.get("workspace", "") for record in task_agent_records],
+    )
+    if task_agent_records and getattr(args, "nemoclaw_sandbox", None):
+        import run_swebench_pro_openclaw as swe_runner
+
+        cleanup_args = argparse.Namespace(**vars(args))
+        agent_ids = [record["agent_id"] for record in task_agent_records]
+        batch_timeout = 60
+        config_path = str(
+            getattr(
+                args,
+                "nemoclaw_openclaw_config_path",
+                "/sandbox/.openclaw/openclaw.json",
+            )
+        )
+        cleanup_code = r'''
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+agent_ids = set(json.loads(sys.argv[2]))
+config = json.loads(path.read_text(encoding="utf-8"))
+agents = config.setdefault("agents", {})
+entries = agents.setdefault("list", [])
+before = [item.get("id") for item in entries if isinstance(item, dict)]
+if isinstance(entries, list):
+    entries[:] = [
+        item
+        for item in entries
+        if not (isinstance(item, dict) and str(item.get("id") or "") in agent_ids)
+    ]
+guard = config.get("plugins", {}).get("entries", {}).get("nejumi-budget-guard", {})
+guard_config = guard.get("config") if isinstance(guard, dict) else None
+if isinstance(guard_config, dict):
+    guard_config["agentIds"] = [
+        item for item in guard_config.get("agentIds", []) if str(item) not in agent_ids
+    ]
+    guard_config["sessionKeyPrefixes"] = [
+        item
+        for item in guard_config.get("sessionKeyPrefixes", [])
+        if not any(agent_id in str(item) for agent_id in agent_ids)
+    ]
+tmp = path.with_suffix(path.suffix + ".cleanup.tmp")
+tmp.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+tmp.replace(path)
+after = [item.get("id") for item in entries if isinstance(item, dict)]
+remaining = sorted(agent_ids.intersection(str(item) for item in after))
+print(json.dumps({"removed": sorted(agent_ids.intersection(str(item) for item in before)), "remaining": remaining}))
+if remaining:
+    raise SystemExit(1)
+'''
+        encoded_cleanup_code = base64.b64encode(cleanup_code.encode("utf-8")).decode("ascii")
+        cleanup_bootstrap = (
+            "import base64,sys;"
+            "code=base64.b64decode(sys.argv[1]);"
+            "sys.argv=[sys.argv[0],*sys.argv[2:]];"
+            "exec(compile(code,'<nejumi-agent-cleanup>','exec'))"
+        )
+        try:
+            result = swe_runner.run_nemoclaw_text_command(
+                cleanup_args,
+                [
+                    "python3",
+                    "-c",
+                    cleanup_bootstrap,
+                    encoded_cleanup_code,
+                    config_path,
+                    json.dumps(agent_ids),
+                ],
+                timeout=batch_timeout,
+                check=False,
+            )
+            batch_status = {
+                "ok": result.returncode == 0,
+                "returncode": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "batch_timeout": batch_timeout,
+                "batch_size": len(agent_ids),
+            }
+        except BaseException as exc:
+            batch_status = {
+                "ok": False,
+                "error": f"{type(exc).__name__}: {exc}",
+                "batch_timeout": batch_timeout,
+                "batch_size": len(agent_ids),
+            }
+        for record in task_agent_records:
+            report["task_agents"].append({**record, "cleanup": dict(batch_status)})
+
+    containers = _pier_containers_for_job(job_dir)
+    for container in containers:
+        try:
+            removed = subprocess.run(
+                ["docker", "rm", "-f", container["id"]],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                timeout=30,
+            )
+            status = {
+                "ok": removed.returncode == 0,
+                "returncode": removed.returncode,
+                "stdout": removed.stdout,
+                "stderr": removed.stderr,
+            }
+        except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+            status = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+        report["pier_containers"].append({**container, "cleanup": status})
+    report["ok"] = all(
+        entry.get("cleanup", {}).get("ok") is True
+        for key in ("task_agents", "pier_containers")
+        for entry in report[key]
+    ) and report["sandbox_processes"].get("ok") is True
+    write_json(args.output_dir / "resource_cleanup.json", report)
+    return report
+
+
+def cleanup_completed_deepswe_run_resources(
+    args: argparse.Namespace,
+    *,
+    job_dir: Path,
+) -> dict[str, Any]:
+    """Clean resources after a scored run and surface any cleanup failure."""
+    report = cleanup_deepswe_run_resources(
+        args,
+        job_dir=job_dir,
+        reason="pier_completed",
+    )
+    if report.get("ok") is not True:
+        raise RuntimeError(
+            "DeepSWE completed scoring, but run-scoped resource cleanup failed. "
+            f"See {args.output_dir / 'resource_cleanup.json'}"
+        )
+    return report
 
 
 def start_environment_failure_watchdog(
@@ -1050,6 +1749,7 @@ def start_environment_failure_watchdog(
     poll_seconds: float = 2.0,
     watch_environment_setup: bool = True,
     watch_non_scoreable_policy: bool = True,
+    watch_trace_evidence: bool = True,
 ) -> tuple[threading.Thread, dict[str, Any]]:
     state: dict[str, Any] = {"failure": None}
     seen: set[Path] = set()
@@ -1073,10 +1773,10 @@ def start_environment_failure_watchdog(
                     failure_reason = "environment_setup_failure"
                 elif watch_non_scoreable_policy and is_non_scoreable_policy_failure(result):
                     failure_reason = "non_scoreable_policy_block"
-                elif watch_non_scoreable_policy and is_non_scoreable_provider_timeout(result):
-                    failure_reason = "non_scoreable_provider_timeout"
                 elif watch_non_scoreable_policy and is_non_scoreable_configuration_error(result):
                     failure_reason = "non_scoreable_configuration_error"
+                elif watch_trace_evidence and is_required_trace_evidence_failure(result):
+                    failure_reason = "required_trace_evidence_failure"
                 if failure_reason is None:
                     continue
                 exception = result.get("exception_info") if isinstance(result.get("exception_info"), dict) else {}
@@ -1146,6 +1846,31 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--openclaw-timeout", type=int, default=3600)
     parser.add_argument("--openclaw-max-attempts", type=int, default=1)
     parser.add_argument("--openclaw-retry-base-seconds", type=float, default=15.0)
+    parser.add_argument(
+        "--provider-recovery-rounds",
+        type=int,
+        default=2,
+        help=(
+            "Additional task-local recovery rounds after normal OpenClaw attempts "
+            "are exhausted by provider-transient failures."
+        ),
+    )
+    parser.add_argument("--provider-recovery-base-seconds", type=float, default=60.0)
+    parser.add_argument(
+        "--native-trace-recovery-attempts",
+        type=int,
+        default=1,
+        help=(
+            "Task-local reruns allowed after a successful model rollout is missing "
+            "required native trace evidence."
+        ),
+    )
+    parser.add_argument(
+        "--native-trace-recovery-base-seconds",
+        type=float,
+        default=15.0,
+        help="Cooldown before a task-local native trace recovery rerun.",
+    )
     parser.add_argument("--max-input-tokens", type=int, default=1_000_000)
     parser.add_argument("--max-cumulative-input-tokens", type=int, default=1_000_000)
     parser.add_argument("--max-cumulative-output-tokens", type=int, default=500_000)
@@ -1153,6 +1878,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-agent-turns", type=int, default=40)
     parser.add_argument("--max-tool-wall-seconds", type=int, default=300)
     parser.add_argument("--final-assistant-idle-salvage-seconds", type=float, default=60.0)
+    parser.add_argument(
+        "--final-assistant-shutdown-grace-seconds",
+        type=float,
+        default=30.0,
+        help=(
+            "After final-answer idle salvage, allow OpenClaw finalizers and "
+            "native trace flush this many seconds before forced termination."
+        ),
+    )
     parser.add_argument(
         "--llm-response-idle-timeout-seconds",
         type=float,
@@ -1227,11 +1961,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--docker-pull-retry-seconds", type=float, default=30.0)
     parser.add_argument("--fail-fast-environment-setup", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--fail-fast-non-scoreable-policy", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--fail-fast-trace-evidence", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--environment-failfast-poll-seconds", type=float, default=2.0)
     parser.add_argument("--agent-timeout-multiplier", type=float)
     parser.add_argument("--disable-verification", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--dry-run", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--preflight-only", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument(
+        "--gateway-preregister-only",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Run normal preflights, pre-register selected Gateway task agents, "
+            "restart the Gateway once, and exit before Pier or model execution."
+        ),
+    )
     parser.add_argument("--delete", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--quiet", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--env-file", type=Path, default=REPO_ROOT / ".env")
@@ -1277,6 +2021,41 @@ def main() -> None:
             f"{len(sandbox_tool_preflight.get('required_tools', []))} OpenClaw sandbox tools."
         )
         return
+    try:
+        gateway_preregistration = preregister_gateway_task_agents(args)
+    except Exception as exc:
+        write_json(
+            args.output_dir / "gateway_task_agent_preregistration_error.json",
+            {
+                "ok": False,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            },
+        )
+        cleanup_deepswe_run_resources(
+            args,
+            job_dir=args.jobs_dir / job_name,
+            reason="gateway_preregistration_failed",
+        )
+        raise
+    write_json(
+        args.output_dir / "gateway_task_agent_preregistration.json",
+        gateway_preregistration,
+    )
+    if gateway_preregistration.get("performed"):
+        write_json(config_path, build_job_config(args, job_name))
+        command = build_command(config_path)
+    if args.gateway_preregister_only:
+        if not gateway_preregistration.get("performed"):
+            raise RuntimeError(
+                "DeepSWE Gateway preregistration probe was requested, but Gateway "
+                "preregistration was not applicable to this configuration."
+            )
+        print(
+            "DeepSWE Gateway preregistration probe completed without Pier or model execution.",
+            flush=True,
+        )
+        return
     env = os.environ.copy()
     env["PYTHONPATH"] = (
         str(REPO_ROOT / "scripts" / "tools")
@@ -1303,6 +2082,8 @@ def main() -> None:
     watchdog_state: dict[str, Any] = {"failure": None}
     if bool(getattr(args, "fail_fast_environment_setup", True)) or bool(
         getattr(args, "fail_fast_non_scoreable_policy", True)
+    ) or bool(
+        getattr(args, "fail_fast_trace_evidence", True)
     ):
         watchdog_thread, watchdog_state = start_environment_failure_watchdog(
             job_dir=args.jobs_dir / job_name,
@@ -1311,14 +2092,30 @@ def main() -> None:
             poll_seconds=float(getattr(args, "environment_failfast_poll_seconds", 2.0) or 2.0),
             watch_environment_setup=bool(getattr(args, "fail_fast_environment_setup", True)),
             watch_non_scoreable_policy=bool(getattr(args, "fail_fast_non_scoreable_policy", True)),
+            watch_trace_evidence=bool(getattr(args, "fail_fast_trace_evidence", True)),
         )
     stdout_parts: list[str] = []
     assert proc.stdout is not None
+    previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
+
+    def interrupt_on_sigterm(_signum, _frame):
+        raise KeyboardInterrupt("DeepSWE runner received SIGTERM")
+
+    signal.signal(signal.SIGTERM, interrupt_on_sigterm)
     try:
         for line in proc.stdout:
             print(line, end="", flush=True)
             stdout_parts.append(line)
+    except BaseException:
+        terminate_process_tree(proc)
+        cleanup_deepswe_run_resources(
+            args,
+            job_dir=args.jobs_dir / job_name,
+            reason="runner_interrupted",
+        )
+        raise
     finally:
+        signal.signal(signal.SIGTERM, previous_sigterm_handler)
         stop_watchdog.set()
         if watchdog_thread is not None:
             watchdog_thread.join(timeout=5)
@@ -1331,6 +2128,11 @@ def main() -> None:
         failure = watchdog_state["failure"]
         reason = failure.get("reason") or "unknown_failure"
         write_json(args.output_dir / f"failfast_{reason}.json", failure)
+        cleanup_deepswe_run_resources(
+            args,
+            job_dir=args.jobs_dir / job_name,
+            reason=f"failfast_{reason}",
+        )
         if reason == "environment_setup_failure":
             raise RuntimeError(
                 "DeepSWE aborted because an environment setup failure occurred before model execution: "
@@ -1343,8 +2145,46 @@ def main() -> None:
             )
         raise RuntimeError(f"DeepSWE aborted by fail-fast watchdog: {reason}")
     if returncode != 0:
+        cleanup_deepswe_run_resources(
+            args,
+            job_dir=args.jobs_dir / job_name,
+            reason=f"pier_exit_{returncode}",
+        )
         raise SystemExit(returncode)
+    cleanup_completed_deepswe_run_resources(
+        args,
+        job_dir=args.jobs_dir / job_name,
+    )
+    summary = read_json(args.output_dir / "summary.json")
+    provider_timeout_count = int(summary.get("non_scoreable_provider_timeouts") or 0)
+    if provider_timeout_count:
+        result_rows = [
+            row
+            for row in read_jsonl(args.output_dir / "results.jsonl")
+            if is_non_scoreable_provider_timeout(read_json(Path(row["result_path"])))
+        ]
+        pending_task_names = [str(row.get("task_name") or "") for row in result_rows]
+        write_json(
+            args.output_dir / "provider_recovery_pending.json",
+            {
+                "runner_version": RUNNER_VERSION,
+                "provider_timeout_count": provider_timeout_count,
+                "pending_task_names": pending_task_names,
+                "completed_task_count": max(
+                    0,
+                    int(summary.get("total_trials") or 0) - provider_timeout_count,
+                ),
+                "resume_output_dir": str(args.output_dir),
+            },
+        )
+        raise RuntimeError(
+            "DeepSWE provider recovery was exhausted after all other tasks completed; "
+            "results were checkpointed and only the pending tasks need to be resumed: "
+            + ", ".join(pending_task_names)
+        )
 
 
 if __name__ == "__main__":
-    main()
+    _sandbox = nemoclaw_sandbox_from_command(sys.argv[1:])
+    with nemoclaw_sandbox_lease(_sandbox):
+        main()

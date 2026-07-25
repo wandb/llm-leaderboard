@@ -1,6 +1,8 @@
 import asyncio
 import functools
-import traceback
+import threading
+import inspect
+import time
 import json
 from typing import Any, TypeAlias, List, Tuple, Optional
 
@@ -46,12 +48,14 @@ Inputs: TypeAlias = List[Tuple[Messages, dict[str, Any]]]
 
 def error_handler(func: callable) -> callable:
     @functools.wraps(func)
-    def wrapper(*args, **kwargs):
+    async def wrapper(*args, **kwargs):
         try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            error_message = traceback.format_exc()
-            print(error_message)
+            return await func(*args, **kwargs)
+        except Exception as exc:
+            print(
+                f"LLM request attempt failed: {type(exc).__name__}: {exc}",
+                flush=True,
+            )
             raise
 
     return wrapper
@@ -90,7 +94,7 @@ class LLMAsyncProcessor:
     def __init__(
         self,
         llm: object,
-        inputs: Inputs = [],
+        inputs: Optional[Inputs] = None,
         batch_size: Optional[int] = None,
         inference_interval: Optional[float] = None,
         soft_fail_on_error: Optional[bool] = None,
@@ -101,9 +105,17 @@ class LLMAsyncProcessor:
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config
         self.llm = llm
-        self.inputs = inputs
-        self.batch_size = batch_size or cfg.get("batch_size", 256)
-        self.inference_interval = inference_interval or cfg.inference_interval
+        self.inputs = list(inputs or [])
+        self.batch_size = (
+            int(batch_size)
+            if batch_size is not None
+            else int(cfg.get("batch_size", 256))
+        )
+        self.inference_interval = (
+            float(inference_interval)
+            if inference_interval is not None
+            else float(cfg.inference_interval)
+        )
         self.semaphore = asyncio.Semaphore(self.batch_size)
         # デフォルトはハードフェイル（従来挙動）。設定がある場合のみ上書き可能。
         try:
@@ -113,8 +125,30 @@ class LLMAsyncProcessor:
         except Exception:
             default_soft = False
         self.soft_fail_on_error = default_soft if soft_fail_on_error is None else bool(soft_fail_on_error)
-        self.backoff_max_time = MAX_TIME if backoff_max_time is None else backoff_max_time
-        self.backoff_max_tries = MAX_TRIES if backoff_max_tries is None else backoff_max_tries
+        configured_backoff_max_time = _select_config_value(
+            cfg,
+            "network.retry.max_time_sec",
+            default=MAX_TIME,
+        )
+        configured_backoff_max_tries = _select_config_value(
+            cfg,
+            "network.retry.max_tries",
+            default=MAX_TRIES,
+        )
+        self.backoff_max_time = (
+            float(configured_backoff_max_time)
+            if backoff_max_time is None
+            else float(backoff_max_time)
+        )
+        self.backoff_max_tries = (
+            int(configured_backoff_max_tries)
+            if backoff_max_tries is None
+            else int(backoff_max_tries)
+        )
+        if self.backoff_max_time <= 0:
+            raise ValueError("backoff_max_time must be positive")
+        if self.backoff_max_tries <= 0:
+            raise ValueError("backoff_max_tries must be positive")
         resolved_provider_rate_limit_enabled = (
             bool(_select_config_value(cfg, "provider_rate_limit.enabled", default=False))
             if provider_rate_limit_enabled is None
@@ -143,6 +177,13 @@ class LLMAsyncProcessor:
             and (provider_min_interval_sec > 0.0 or provider_jitter_sec > 0.0)
             else None
         )
+        self.progress_interval_sec = _nonnegative_float(
+            _select_config_value(
+                cfg,
+                "network.progress_interval_sec",
+                default=60.0,
+            )
+        )
         self._ainvoke_with_backoff = backoff.on_exception(
             backoff.expo,
             RETRYABLE_EXCEPTIONS,
@@ -150,6 +191,9 @@ class LLMAsyncProcessor:
             max_time=self.backoff_max_time,
             jitter=backoff.full_jitter,
         )(self._ainvoke_impl)
+        self._sync_loop = None
+        self._sync_loop_thread = None
+        self._sync_loop_lock = threading.Lock()
 
     async def _ainvoke(self, messages: Messages, **kwargs) -> Any:
         """非同期でLLMを呼び出す統一メソッド（インスタンス別backoff適用）"""
@@ -171,12 +215,12 @@ class LLMAsyncProcessor:
         except pydantic_core.ValidationError as e:
             # JSONパースエラーの場合は、エラー内容をログに出力してから再スロー
             print(f"JSON parsing error occurred: {str(e)}")
-            print(f"Retrying due to JSON validation error...")
+            print("Retrying due to JSON validation error...")
             raise  # backoffデコレータがリトライを処理
         except json.JSONDecodeError as e:
             # JSONデコードエラーの場合は、エラー内容をログに出力してから再スロー
             print(f"JSON decode error occurred: {str(e)}")
-            print(f"Retrying due to JSON decode error...")
+            print("Retrying due to JSON decode error...")
             raise  # backoffデコレータがリトライを処理
 
     def _assert_messages_format(self, data: Messages):
@@ -185,29 +229,57 @@ class LLMAsyncProcessor:
         assert isinstance(data, list), "Data should be a list"
         # 各要素が辞書であることを確認
         for item in data:
-            assert isinstance(item, dict), "Each item should be a dictionary"
+            # The OpenAI Responses API replays provider-native response items
+            # (reasoning, function_call, function_call_output) alongside chat
+            # messages. SDK response models are intentionally accepted here.
+            if not isinstance(item, dict):
+                assert hasattr(item, "type"), (
+                    "Each item should be a chat dictionary or a provider-native "
+                    "response item"
+                )
+                continue
+            if "role" not in item and "type" in item:
+                continue
             # 'role'キーと'content'キーが存在することを確認
             assert "role" in item, "'role' key is missing in an item"
             assert "content" in item or "tool_calls" in item, "'content' or 'tool_calls' key is missing in an item"
-            # 'role'の値が'system', 'assistant', 'user', 'tool'のいずれかであることを確認
-            roles = {"system", "assistant", "user", "tool"}
+            # OpenAI Responses uses the developer role for application-level
+            # instructions. The shared Anthropic adapter also normalizes it.
+            roles = {"system", "developer", "assistant", "user", "tool"}
             assert item["role"] in roles, f"'role' should be one of {str(roles)}"
-            # 'content'の値が文字列であることを確認
+            # Provider-native chat histories may use structured content blocks
+            # (Anthropic) or null content when tool_calls carry the assistant
+            # output (OpenAI-compatible APIs).
             if "content" in item:
-                assert isinstance(item["content"], str), "'content' should be a string"
+                content = item["content"]
+                if content is None:
+                    assert "tool_calls" in item, (
+                        "null 'content' is only valid when 'tool_calls' is present"
+                    )
+                elif isinstance(content, list):
+                    for block in content:
+                        assert (
+                            isinstance(block, dict) and "type" in block
+                        ) or hasattr(block, "type"), (
+                            "structured 'content' blocks must have a 'type'"
+                        )
+                else:
+                    assert isinstance(content, str), (
+                        "'content' should be a string, null tool-call payload, "
+                        "or provider-native block list"
+                    )
             if "tool_calls" in item:
                 assert isinstance(item["tool_calls"], list), "'tool_calls' should be a list"
                 for tool_call in item["tool_calls"]:
                     assert isinstance(tool_call, dict), "'tool_call' should be a dictionary"
 
-    async def _gather_tasks(self) -> List[LLMResponse]:
+    async def _gather_tasks(self, on_result=None) -> List[LLMResponse]:
         """すべてのタスクを収集して実行"""
         # 入力データの検証
         for messages, _ in self.inputs:
             self._assert_messages_format(data=messages)
 
-        if self.soft_fail_on_error:
-            async def _invoke_with_catch(messages: Messages, **kwargs) -> LLMResponse:
+        async def _invoke_with_catch(messages: Messages, **kwargs) -> LLMResponse:
                 """各リクエスト恒久失敗時に空レスポンスで継続（ソフトフェイル）"""
                 try:
                     return await self._ainvoke(messages, **kwargs)
@@ -215,24 +287,160 @@ class LLMAsyncProcessor:
                     print(f"Request failed permanently: {type(e).__name__}: {str(e)}")
                     return LLMResponse(content="", reasoning_content="")
 
-            tasks = [_invoke_with_catch(messages, **kwargs) for messages, kwargs in self.inputs]
-            return await atqdm.gather(*tasks, desc=f"Processing requests")
-        else:
-            # 従来挙動（ハードフェイル）。例外はそのまま伝播して全体を停止。
-            tasks = [self._ainvoke(messages, **kwargs) for messages, kwargs in self.inputs]
-            return await atqdm.gather(*tasks, desc=f"Processing requests")
+        async def _invoke_indexed(index, messages, kwargs):
+            invoke = _invoke_with_catch if self.soft_fail_on_error else self._ainvoke
+            return index, await invoke(messages, **kwargs)
 
-    def get_results(self) -> List[LLMResponse]:
+        tasks = [
+            asyncio.create_task(_invoke_indexed(index, messages, kwargs))
+            for index, (messages, kwargs) in enumerate(self.inputs)
+        ]
+        results: list[Optional[LLMResponse]] = [None] * len(tasks)
+        progress = {
+            "completed": 0,
+            "last_completed_at": time.monotonic(),
+        }
+
+        async def progress_watchdog() -> None:
+            while True:
+                await asyncio.sleep(self.progress_interval_sec)
+                pending = len(tasks) - progress["completed"]
+                idle = time.monotonic() - progress["last_completed_at"]
+                print(
+                    "LLM batch heartbeat: "
+                    f"{progress['completed']}/{len(tasks)} completed, "
+                    f"{pending} pending, {idle:.1f}s since last completion",
+                    flush=True,
+                )
+
+        watchdog_task = (
+            asyncio.create_task(progress_watchdog())
+            if tasks and self.progress_interval_sec > 0
+            else None
+        )
+        try:
+            for completed in atqdm.as_completed(
+                tasks,
+                total=len(tasks),
+                desc="Processing requests",
+            ):
+                index, response = await completed
+                results[index] = response
+                progress["completed"] += 1
+                progress["last_completed_at"] = time.monotonic()
+                if on_result is not None:
+                    callback_result = on_result(index, response)
+                    if inspect.isawaitable(callback_result):
+                        await callback_result
+        except BaseException:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
+        finally:
+            if watchdog_task is not None:
+                watchdog_task.cancel()
+                await asyncio.gather(watchdog_task, return_exceptions=True)
+        return [result for result in results if result is not None]
+
+    def get_results(self, on_result=None) -> List[LLMResponse]:
         """結果を取得（同期的なエントリーポイント）"""
-        return asyncio.run(self._gather_tasks())
+        return self._run_on_sync_loop(self._gather_tasks(on_result=on_result))
 
-    async def get_results_async(self) -> List[LLMResponse]:
+    async def get_results_async(self, on_result=None) -> List[LLMResponse]:
         """結果を取得（非同期版）"""
-        return await self._gather_tasks()
+        return await self._gather_tasks(on_result=on_result)
 
     def process_single(self, messages: Messages, **kwargs) -> LLMResponse:
         """単一のメッセージを処理（同期版）"""
-        return asyncio.run(self.process_single_async(messages, **kwargs))
+        return self._run_on_sync_loop(
+            self.process_single_async(messages, **kwargs)
+        )
+
+    def _ensure_sync_loop(self) -> asyncio.AbstractEventLoop:
+        with self._sync_loop_lock:
+            if self._sync_loop is not None and self._sync_loop.is_running():
+                return self._sync_loop
+
+            ready = threading.Event()
+            loop_holder = {}
+
+            def run_loop() -> None:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop_holder["loop"] = loop
+                ready.set()
+                loop.run_forever()
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    loop.run_until_complete(
+                        asyncio.gather(*pending, return_exceptions=True)
+                    )
+                loop.close()
+
+            thread = threading.Thread(
+                target=run_loop,
+                name=f"llm-async-processor-{id(self)}",
+                daemon=True,
+            )
+            thread.start()
+            ready.wait()
+            self._sync_loop = loop_holder["loop"]
+            self._sync_loop_thread = thread
+            return self._sync_loop
+
+    def _run_on_sync_loop(self, coroutine):
+        loop = self._ensure_sync_loop()
+        return asyncio.run_coroutine_threadsafe(coroutine, loop).result()
+
+    def close_sync_loop(self) -> None:
+        with self._sync_loop_lock:
+            loop = self._sync_loop
+            thread = self._sync_loop_thread
+            self._sync_loop = None
+            self._sync_loop_thread = None
+        if (
+            loop is not None
+            and loop.is_running()
+            and thread is not threading.current_thread()
+        ):
+            future = asyncio.run_coroutine_threadsafe(
+                self.close_async_client(),
+                loop,
+            )
+            try:
+                future.result(timeout=10)
+            except Exception as exc:
+                print(
+                    "Warning: failed to close async LLM client cleanly: "
+                    f"{type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+        if loop is not None and loop.is_running():
+            loop.call_soon_threadsafe(loop.stop)
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=5)
+
+    async def close_async_client(self) -> None:
+        """Close an evaluator-owned async HTTP client before its event loop exits."""
+        close_llm = getattr(self.llm, "aclose", None)
+        if close_llm is not None:
+            result = close_llm()
+            if inspect.isawaitable(result):
+                await result
+            return
+        async_client = getattr(self.llm, "async_client", None)
+        close = getattr(async_client, "close", None)
+        if close is None:
+            close = getattr(async_client, "aclose", None)
+        if close is None:
+            return
+        result = close()
+        if inspect.isawaitable(result):
+            await result
 
     async def process_single_async(self, messages: Messages, **kwargs) -> LLMResponse:
         """単一のメッセージを処理（非同期版）"""
@@ -261,18 +469,7 @@ class LLMAsyncProcessor:
 
     async def process_with_callback(self, callback_func=None) -> List[Any]:
         """コールバック関数付きで処理"""
-        results = []
-        
-        for i in tqdm(range(0, len(self.inputs), self.batch_size), desc="Processing with callback"):
-            batch = self.inputs[i : i + self.batch_size]
-            batch_results = await self._process_batch(batch)
-            results.extend(batch_results)
-            
-            # コールバック関数が指定されている場合は実行
-            if callback_func:
-                await callback_func(batch_results, i // self.batch_size)
-        
-        return results
+        return await self._gather_tasks(on_result=callback_func)
 
     def get_statistics(self) -> dict:
         """統計情報を取得"""

@@ -1,9 +1,15 @@
 import argparse
 import importlib.util
 import json
+import subprocess
 import sys
+import threading
 import types
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+import pytest
+from omegaconf import OmegaConf
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,6 +18,68 @@ spec = importlib.util.spec_from_file_location("run_deepswe_openclaw", MODULE_PAT
 assert spec is not None and spec.loader is not None
 run_deepswe_openclaw = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(run_deepswe_openclaw)
+
+
+def load_deepswe_evaluator():
+    path = ROOT / "scripts" / "evaluator" / "deepswe.py"
+    sys.path.insert(0, str(ROOT / "scripts"))
+    try:
+        evaluator_spec = importlib.util.spec_from_file_location("deepswe_evaluator", path)
+        assert evaluator_spec is not None and evaluator_spec.loader is not None
+        module = importlib.util.module_from_spec(evaluator_spec)
+        evaluator_spec.loader.exec_module(module)
+        return module
+    finally:
+        sys.path.pop(0)
+
+
+def _deepswe_evaluator_cfg(*, no_local: bool, nemoclaw_sandbox):
+    return OmegaConf.create(
+        {
+            "model": {"pretrained_model_name_or_path": "test-model"},
+            "deepswe": {
+                "no_local": no_local,
+                "nemoclaw_sandbox": nemoclaw_sandbox,
+                "verify_weave_agents": False,
+                "disable_verification": True,
+                "delete": False,
+            },
+        }
+    )
+
+
+def test_deepswe_evaluator_rejects_no_local_without_named_sandbox(tmp_path):
+    evaluator = load_deepswe_evaluator()
+    cfg = _deepswe_evaluator_cfg(no_local=True, nemoclaw_sandbox=None)
+
+    with pytest.raises(ValueError, match="must name an isolated NeMoClaw sandbox"):
+        evaluator._run_openclaw(cfg, tmp_path / "tasks.json", tmp_path / "output")
+
+
+def test_deepswe_evaluator_local_mode_omits_absent_nemoclaw_sandbox(
+    monkeypatch,
+    tmp_path,
+):
+    evaluator = load_deepswe_evaluator()
+    cfg = _deepswe_evaluator_cfg(no_local=False, nemoclaw_sandbox=None)
+    commands = []
+    def fake_run_command(command, **kwargs):
+        commands.append(command)
+        assert kwargs["timeout"] == 129_600
+
+    monkeypatch.setattr(evaluator, "_run_command", fake_run_command)
+
+    runner_dir = evaluator._run_openclaw(
+        cfg,
+        tmp_path / "tasks.json",
+        tmp_path / "output",
+    )
+
+    assert runner_dir == tmp_path / "output" / "runner"
+    assert len(commands) == 1
+    assert "--no-no-local" in commands[0]
+    assert "--nemoclaw-sandbox" not in commands[0]
+    assert "None" not in commands[0]
 
 
 def _args(tmp_path: Path, task_names_file: Path) -> argparse.Namespace:
@@ -38,6 +106,7 @@ def _args(tmp_path: Path, task_names_file: Path) -> argparse.Namespace:
         max_agent_turns=40,
         max_tool_wall_seconds=300,
         final_assistant_idle_salvage_seconds=60.0,
+        final_assistant_shutdown_grace_seconds=30.0,
         llm_response_idle_timeout_seconds=900.0,
         require_actual_token_usage=True,
         nemoclaw_bin="nemoclaw",
@@ -69,6 +138,7 @@ def _args(tmp_path: Path, task_names_file: Path) -> argparse.Namespace:
         docker_pull_retry_seconds=30.0,
         fail_fast_environment_setup=True,
         fail_fast_non_scoreable_policy=True,
+        fail_fast_trace_evidence=True,
         environment_failfast_poll_seconds=2.0,
         agent_timeout_multiplier=None,
         disable_verification=False,
@@ -122,6 +192,121 @@ def _load_deepswe_pier_agent_module(monkeypatch):
     return module
 
 
+def test_deepswe_completion_requires_explicit_submit_marker(monkeypatch):
+    module = _load_deepswe_pier_agent_module(monkeypatch)
+
+    assert module.DEEPSWE_SUBMIT_MARKER in module.DEEPSWE_COMPLETION_REQUIREMENTS
+    assert "final shell action" in module.DEEPSWE_COMPLETION_REQUIREMENTS
+
+
+def test_deepswe_time_up_preserves_existing_patch(monkeypatch):
+    module = _load_deepswe_pier_agent_module(monkeypatch)
+
+    assert module._deepswe_should_force_empty_patch(
+        {"openclaw_disqualified_reason": "time_up"}
+    ) is False
+
+
+def test_deepswe_provider_failure_still_forces_empty_patch(monkeypatch):
+    module = _load_deepswe_pier_agent_module(monkeypatch)
+
+    assert module._deepswe_should_force_empty_patch(
+        {"openclaw_disqualified_reason": "provider_transient_exhausted"}
+    ) is True
+
+
+def test_submission_trace_detects_marker_and_usage_only_reasoning(monkeypatch):
+    module = _load_deepswe_pier_agent_module(monkeypatch)
+    sidecar = {
+        "timeline_events": [
+            {"type": "assistant_message", "content": "Implemented and tested."},
+            {
+                "type": "tool_call",
+                "arguments": {"command": f"echo {module.DEEPSWE_SUBMIT_MARKER}"},
+            },
+        ]
+    }
+
+    trace = module._submission_trace(
+        sidecar,
+        {"openclaw_usage": {"reasoningTokens": 42}},
+    )
+
+    assert trace["explicit_submit_marker_seen"] is True
+    assert trace["final_assistant_text"] == "Implemented and tested."
+    assert trace["final_assistant_character_count"] == len("Implemented and tested.")
+    assert trace["reasoning_trace_present"] is False
+    assert trace["reasoning_trace_source"] == "provider_usage_only"
+
+
+def test_submission_trace_records_visible_reasoning(monkeypatch):
+    module = _load_deepswe_pier_agent_module(monkeypatch)
+
+    trace = module._submission_trace(
+        {
+            "timeline_events": [
+                {"type": "assistant_reasoning", "content": "Inspect the failing path."},
+                {"type": "assistant_message", "content": "Done."},
+            ]
+        },
+        {"openclaw_usage": {}},
+    )
+
+    assert trace["reasoning_trace_present"] is True
+    assert trace["reasoning_trace_source"] == "openclaw_session_jsonl"
+    assert trace["reasoning_event_count"] == 1
+
+
+def test_submission_evidence_accepts_applicable_explicit_patch(monkeypatch, tmp_path):
+    module = _load_deepswe_pier_agent_module(monkeypatch)
+    checkout = tmp_path / "checkout"
+    task_dir = tmp_path / "task"
+    checkout.mkdir()
+    task_dir.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=checkout, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=checkout, check=True)
+    (checkout / "file.txt").write_text("before\n", encoding="utf-8")
+    subprocess.run(["git", "add", "file.txt"], cwd=checkout, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=checkout, check=True)
+    (checkout / "file.txt").write_text("after\n", encoding="utf-8")
+    patch = subprocess.run(
+        ["git", "diff", "--binary", "HEAD"],
+        cwd=checkout,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout
+    subprocess.run(["git", "restore", "file.txt"], cwd=checkout, check=True)
+    sidecar_path = task_dir / "openclaw_result.json"
+    sidecar_path.write_text(
+        json.dumps(
+            {
+                "timeline_events": [
+                    {
+                        "type": "tool_call",
+                        "arguments": {"command": f"echo {module.DEEPSWE_SUBMIT_MARKER}"},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    evidence = module._deepswe_submission_evidence(
+        "task-1",
+        task_dir,
+        checkout,
+        {"openclaw_result_path": str(sidecar_path), "openclaw_usage": {}},
+        patch,
+    )
+
+    assert evidence["mode"] == "explicit_submit"
+    assert evidence["accepted"] is True
+    assert evidence["patch_apply_check_ok"] is True
+    assert "file.txt" in evidence["patch_stat"]
+
+
 def test_configured_task_names_filters_task_names_file_when_include_is_set(tmp_path):
     task_names_file = tmp_path / "tasks.json"
     task_names_file.write_text(
@@ -152,6 +337,128 @@ def test_deepswe_agent_python_runtime_paths_use_task_image_hash(monkeypatch):
     assert pythonpath_entries == [
         f"/sandbox/.deepswe-tools/python-site/{image_hash}/site-packages"
     ]
+
+
+@pytest.mark.parametrize(
+    ("language", "expected_fragment"),
+    [
+        ("go", "GOPROXY=off"),
+        ("python", "import pytest, setuptools"),
+        ("typescript", "test -d node_modules"),
+    ],
+)
+def test_deepswe_checkout_preflight_commands_are_offline(
+    monkeypatch,
+    language,
+    expected_fragment,
+):
+    module = _load_deepswe_pier_agent_module(monkeypatch)
+
+    resolved_language, command = module._deepswe_checkout_preflight_command(
+        {"metadata": {"language": language}}
+    )
+
+    assert resolved_language == language
+    assert expected_fragment in command[-1]
+    assert "curl" not in command[-1]
+    assert "wget" not in command[-1]
+
+
+def test_deepswe_python_preflight_imports_target_package(monkeypatch):
+    module = _load_deepswe_pier_agent_module(monkeypatch)
+
+    _, command = module._deepswe_checkout_preflight_command(
+        {
+            "metadata": {
+                "language": "python",
+                "repository_url": "https://github.com/langchain-ai/langchain.git",
+            }
+        }
+    )
+
+    assert "langchain_core" in command[-1]
+    assert "$PWD/libs/core" in command[-1]
+    assert "--collect-only" not in command[-1]
+
+
+def test_deepswe_failed_checkout_preflight_stops_before_model(monkeypatch, tmp_path):
+    module = _load_deepswe_pier_agent_module(monkeypatch)
+    model_calls = []
+
+    monkeypatch.setattr(module.swe_runner, "ensure_nemoclaw_openclaw_permissions", lambda args: None)
+    monkeypatch.setattr(
+        module.swe_runner,
+        "ensure_nemoclaw_checkout_ready",
+        lambda checkout_dir, task_dir, args: {"mode": "copy"},
+    )
+    monkeypatch.setattr(module.swe_runner, "uses_nemoclaw_gateway_task_agent", lambda args: False)
+
+    def fail_preflight(*args, **kwargs):
+        raise module.NonScoreableOpenClawConfigurationError("offline compile failed")
+
+    monkeypatch.setattr(module, "_preflight_deepswe_agent_checkout", fail_preflight)
+    monkeypatch.setattr(
+        module.swe_runner,
+        "run_openclaw_for_task",
+        lambda *args, **kwargs: model_calls.append(True),
+    )
+    agent = module.NejumiDeepSWEOpenClawAgent(
+        logs_dir=tmp_path / "logs",
+        output_root=tmp_path / "openclaw",
+        model_name="openrouter-direct/z-ai/glm-5.2",
+        verify_weave_agents=False,
+        use_task_agent=False,
+        restart_gateway_before_run=False,
+    )
+    checkout_dir = tmp_path / "checkout"
+    checkout_dir.mkdir()
+
+    with pytest.raises(module.NonScoreableOpenClawConfigurationError, match="offline compile failed"):
+        agent._run_openclaw_host(
+            "go-genai-streamed-function-args",
+            {"metadata": {"language": "go"}, "environment": {}},
+            "Implement the feature.",
+            checkout_dir,
+        )
+
+    assert model_calls == []
+
+
+def test_deepswe_checkout_preflight_injects_task_python_overlay(monkeypatch, tmp_path):
+    module = _load_deepswe_pier_agent_module(monkeypatch)
+    observed = {}
+
+    def run_command(args, command, **kwargs):
+        observed["command"] = command
+        return subprocess.CompletedProcess(command, 0, stdout="collected", stderr="")
+
+    monkeypatch.setattr(module.swe_runner, "run_nemoclaw_text_command", run_command)
+    monkeypatch.setattr(
+        module,
+        "_docker_image_identity",
+        lambda task_toml: ("python-image", "sha256:python"),
+    )
+    args = types.SimpleNamespace(
+        max_tool_wall_seconds=300,
+        nemoclaw_checkout_sandbox_root="/sandbox/checkouts/test",
+        nemoclaw_checkout_transfer_mode="copy",
+        nemoclaw_sandbox="nejumi-taiwan",
+        nemoclaw_extra_path=["/sandbox/.deepswe-tools/python-bin/hash"],
+        nemoclaw_extra_pythonpath=["/sandbox/.deepswe-tools/python-site/hash/site-packages"],
+    )
+
+    evidence = module._preflight_deepswe_agent_checkout(
+        "python-task",
+        {"metadata": {"language": "python"}},
+        tmp_path / "checkout",
+        tmp_path,
+        args,
+    )
+
+    script = observed["command"][-1]
+    assert "export PATH=" in script
+    assert "export PYTHONPATH=" in script
+    assert evidence["extra_pythonpath"] == args.nemoclaw_extra_pythonpath
 
 
 def test_deepswe_runtime_budget_stop_keeps_patch_scoreable(monkeypatch):
@@ -208,6 +515,11 @@ def test_deepswe_runtime_budget_stop_captures_patch(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(module.swe_runner, "uses_nemoclaw_gateway_task_agent", lambda args: False)
     monkeypatch.setattr(
+        module,
+        "_preflight_deepswe_agent_checkout",
+        lambda *args, **kwargs: {"ok": True, "environment_mode": "test"},
+    )
+    monkeypatch.setattr(
         module.swe_runner,
         "run_openclaw_for_task",
         lambda row, checkout_dir, task_dir, args: {
@@ -250,10 +562,226 @@ def test_deepswe_runtime_budget_stop_captures_patch(monkeypatch, tmp_path):
     assert calls == [("capture_patch_nemoclaw", checkout_dir, [])]
     assert patch == "diff --git a/file.ts b/file.ts\n"
     assert metadata["deepswe_scoreable_failure_reason"] == "llm_response_idle_timeout"
+    assert metadata["deepswe_checkout_preflight"]["ok"] is True
     assert metadata["deepswe_patch_bytes"] == len(patch.encode("utf-8"))
+    assert metadata["deepswe_submission"]["mode"] == "invalid_patch_submission"
+    assert metadata["deepswe_submission"]["accepted"] is False
     assert (tmp_path / "openclaw" / "superjson-error-stack-serialization" / "model.patch").read_text(
         encoding="utf-8"
     ) == patch
+
+
+def test_deepswe_provider_timeout_recovers_without_aborting_other_work(
+    monkeypatch,
+    tmp_path,
+):
+    module = _load_deepswe_pier_agent_module(monkeypatch)
+    model_results = [
+        {
+            "openclaw_disqualified_reason": "provider_transient_exhausted",
+            "openclaw_usage": {"inputTokens": 10, "outputTokens": 2},
+            "runtime_budget": {
+                "live": {
+                    "live_provider_timeout_count": 1,
+                    "reason": "live_provider_timeout",
+                }
+            },
+        },
+        {
+            "openclaw_disqualified_reason": "",
+            "openclaw_usage": {"inputTokens": 20, "outputTokens": 3},
+        },
+    ]
+    monkeypatch.setattr(module.swe_runner, "ensure_nemoclaw_openclaw_permissions", lambda args: None)
+    monkeypatch.setattr(
+        module.swe_runner,
+        "ensure_nemoclaw_checkout_ready",
+        lambda checkout_dir, task_dir, args: {"mode": "copy"},
+    )
+    monkeypatch.setattr(module.swe_runner, "uses_nemoclaw_gateway_task_agent", lambda args: False)
+    monkeypatch.setattr(
+        module,
+        "_preflight_deepswe_agent_checkout",
+        lambda *args, **kwargs: {"ok": True},
+    )
+    monkeypatch.setattr(
+        module.swe_runner,
+        "run_openclaw_for_task",
+        lambda *args, **kwargs: model_results.pop(0),
+    )
+    monkeypatch.setattr(
+        module.swe_runner,
+        "capture_patch_nemoclaw",
+        lambda *args, **kwargs: "diff --git a/file.ts b/file.ts\n",
+    )
+
+    agent = module.NejumiDeepSWEOpenClawAgent(
+        logs_dir=tmp_path / "logs",
+        output_root=tmp_path / "openclaw",
+        model_name="wandb-inference/zai-org/GLM-5.2",
+        verify_weave_agents=False,
+        use_task_agent=False,
+        restart_gateway_before_run=False,
+        provider_recovery_rounds=1,
+        provider_recovery_base_seconds=0,
+    )
+    checkout_dir = tmp_path / "checkout"
+    checkout_dir.mkdir()
+
+    metadata, patch = agent._run_openclaw_host(
+        "provider-recovery-task",
+        {"metadata": {"language": "typescript"}, "environment": {}},
+        "Implement the feature.",
+        checkout_dir,
+    )
+
+    assert model_results == []
+    assert patch == "diff --git a/file.ts b/file.ts\n"
+    assert len(metadata["provider_recovery"]) == 1
+    assert metadata["billable_openclaw_attempt_count"] == 2
+    assert metadata["billable_openclaw_usage"]["inputTokens"] == 30
+    assert metadata["billable_openclaw_usage"]["outputTokens"] == 5
+    recovery_path = tmp_path / "openclaw" / "provider-recovery-task" / "provider_recovery.json"
+    assert json.loads(recovery_path.read_text(encoding="utf-8"))[0]["recovery_round"] == 1
+
+
+def test_deepswe_isolated_native_trace_failure_is_recovered_task_locally(
+    monkeypatch,
+    tmp_path,
+):
+    module = _load_deepswe_pier_agent_module(monkeypatch)
+    model_results = [
+        {
+            "weave_agents_required": True,
+            "weave_agents_ok": False,
+            "openclaw_usage": {"inputTokens": 10, "outputTokens": 2},
+        },
+        {
+            "weave_agents_required": True,
+            "weave_agents_ok": True,
+            "openclaw_usage": {"inputTokens": 20, "outputTokens": 3},
+        },
+    ]
+    monkeypatch.setattr(module.swe_runner, "ensure_nemoclaw_openclaw_permissions", lambda args: None)
+    monkeypatch.setattr(
+        module.swe_runner,
+        "ensure_nemoclaw_checkout_ready",
+        lambda checkout_dir, task_dir, args: {"mode": "copy"},
+    )
+    monkeypatch.setattr(module.swe_runner, "uses_nemoclaw_gateway_task_agent", lambda args: False)
+    monkeypatch.setattr(
+        module,
+        "_preflight_deepswe_agent_checkout",
+        lambda *args, **kwargs: {"ok": True},
+    )
+    monkeypatch.setattr(
+        module.swe_runner,
+        "run_openclaw_for_task",
+        lambda *args, **kwargs: model_results.pop(0),
+    )
+    monkeypatch.setattr(
+        module.swe_runner,
+        "capture_patch_nemoclaw",
+        lambda *args, **kwargs: "diff --git a/file.ts b/file.ts\n",
+    )
+
+    agent = module.NejumiDeepSWEOpenClawAgent(
+        logs_dir=tmp_path / "logs",
+        output_root=tmp_path / "openclaw",
+        model_name="openai-direct/gpt-5.6-luna",
+        verify_weave_agents=True,
+        use_task_agent=False,
+        restart_gateway_before_run=False,
+        provider_recovery_rounds=0,
+        native_trace_recovery_attempts=1,
+        native_trace_recovery_base_seconds=0,
+    )
+    checkout_dir = tmp_path / "checkout"
+    checkout_dir.mkdir()
+
+    metadata, patch = agent._run_openclaw_host(
+        "trace-recovery-task",
+        {"metadata": {"language": "typescript"}, "environment": {}},
+        "Implement the feature.",
+        checkout_dir,
+    )
+
+    assert model_results == []
+    assert patch == "diff --git a/file.ts b/file.ts\n"
+    assert metadata["weave_agents_ok"] is True
+    assert metadata["billable_openclaw_attempt_count"] == 2
+    assert metadata["billable_openclaw_usage"]["inputTokens"] == 30
+    recovery_path = (
+        tmp_path
+        / "openclaw"
+        / "trace-recovery-task"
+        / "native_trace_recovery.json"
+    )
+    assert json.loads(recovery_path.read_text(encoding="utf-8"))[0][
+        "recovery_round"
+    ] == 1
+
+
+def test_deepswe_model_execution_is_not_serialized_by_setup_lock(monkeypatch, tmp_path):
+    module = _load_deepswe_pier_agent_module(monkeypatch)
+    model_execution_barrier = threading.Barrier(2, timeout=2.0)
+    entered: list[str] = []
+    entered_lock = threading.Lock()
+
+    monkeypatch.setattr(module.swe_runner, "ensure_nemoclaw_openclaw_permissions", lambda args: None)
+    monkeypatch.setattr(
+        module.swe_runner,
+        "ensure_nemoclaw_checkout_ready",
+        lambda checkout_dir, task_dir, args: {"mode": "copy"},
+    )
+    monkeypatch.setattr(module.swe_runner, "uses_nemoclaw_gateway_task_agent", lambda args: False)
+    monkeypatch.setattr(
+        module,
+        "_preflight_deepswe_agent_checkout",
+        lambda *args, **kwargs: {"ok": True, "environment_mode": "test"},
+    )
+
+    def fake_run_openclaw_for_task(row, checkout_dir, task_dir, args):
+        with entered_lock:
+            entered.append(row["instance_id"])
+        model_execution_barrier.wait()
+        return {"status": "ok"}
+
+    monkeypatch.setattr(
+        module.swe_runner,
+        "run_openclaw_for_task",
+        fake_run_openclaw_for_task,
+    )
+    monkeypatch.setattr(
+        module.swe_runner,
+        "capture_patch_nemoclaw",
+        lambda checkout_dir, args, excluded_paths: "",
+    )
+    monkeypatch.setattr(module.swe_runner, "capture_patch", lambda checkout_dir, excluded_paths: "")
+
+    def run_task(task_id: str):
+        agent = module.NejumiDeepSWEOpenClawAgent(
+            logs_dir=tmp_path / f"logs-{task_id}",
+            output_root=tmp_path / "openclaw",
+            model_name="wandb-inference/zai-org/GLM-5.2",
+            verify_weave_agents=False,
+            use_task_agent=False,
+            restart_gateway_before_run=False,
+        )
+        checkout_dir = tmp_path / f"checkout-{task_id}"
+        checkout_dir.mkdir()
+        return agent._run_openclaw_host(
+            task_id,
+            {"metadata": {"language": "typescript"}, "environment": {}},
+            "Implement the feature.",
+            checkout_dir,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(run_task, ["task-a", "task-b"]))
+
+    assert sorted(entered) == ["task-a", "task-b"]
+    assert [patch for _, patch in results] == ["", ""]
 
 
 def test_build_job_config_pins_deepswe_budget_and_native_agent(tmp_path):
@@ -273,6 +801,7 @@ def test_build_job_config_pins_deepswe_budget_and_native_agent(tmp_path):
     assert kwargs["max_tool_calls"] == 40
     assert kwargs["max_agent_turns"] == 40
     assert kwargs["final_assistant_idle_salvage_seconds"] == 60.0
+    assert kwargs["final_assistant_shutdown_grace_seconds"] == 30.0
     assert kwargs["llm_response_idle_timeout_seconds"] == 900.0
     assert kwargs["no_local"] == "true"
     assert kwargs["use_task_agent"] == "true"
@@ -483,6 +1012,17 @@ def test_prepare_openclaw_sandbox_runtime_fails_before_model(tmp_path, monkeypat
         raise AssertionError("Expected sandbox runtime preflight to fail")
 
 
+def test_deepswe_setup_tracks_go_cache_per_immutable_task_image():
+    script = (
+        ROOT / "scripts" / "setup" / "install_deepswe_sandbox_deps.sh"
+    ).read_text(encoding="utf-8")
+
+    assert "go-mod-cache-markers" in script
+    assert "docker image inspect --format '{{.Id}}'" in script
+    assert "write_go_cache_marker \"$selected_go_image\"" in script
+    assert 'find /sandbox/go/pkg/mod -type d -name "*@v*"' not in script
+
+
 def test_build_job_config_rejects_native_trace_without_gateway_mode(tmp_path):
     task_names_file = tmp_path / "pilot_2_task_names.json"
     task_names_file.write_text(json.dumps(["task-a", "task-b"]) + "\n", encoding="utf-8")
@@ -534,7 +1074,9 @@ def test_collect_results_uses_openclaw_metadata_fallback_for_exception_rows(tmp_
                 "task_name": "datacurve/expr-try-catch-errors",
                 "trial_name": "trial-1",
                 "exception_info": {"type": "RuntimeError"},
-                "agent_result": {"metadata": {}},
+                "agent_result": {
+                    "metadata": {"patch_apply": {"patch_applied": True}}
+                },
                 "verifier_result": None,
             }
         )
@@ -742,6 +1284,8 @@ def test_collect_results_reads_pier_rewards_score(tmp_path):
                         "partial": 0.71,
                         "f2p_passed": 0,
                         "f2p_total": 35,
+                        "p2p_passed": 13,
+                        "p2p_total": 13,
                     }
                 },
             }
@@ -765,8 +1309,14 @@ def test_collect_results_reads_pier_rewards_score(tmp_path):
 
     assert rows[0]["score"] == 0.0
     assert rows[0]["resolved"] is False
+    assert rows[0]["diagnostic_score_with_partial"] == 0.0
+    assert rows[0]["f2p_total"] == 35
+    assert rows[0]["p2p_total"] == 13
+    assert rows[0]["verifier_rewards"]["partial"] == 0.71
     assert summary["scored_trials"] == 1
     assert summary["pass_at_1"] == 0.0
+    assert summary["diagnostic_score_with_partial"] == 0.0
+    assert summary["diagnostic_evidence_trials"] == 1
 
 
 def test_selected_docker_images_reads_task_toml_in_task_order(tmp_path):
@@ -1097,6 +1647,231 @@ def test_non_scoreable_configuration_error_detection_matches_agent_exception():
     assert run_deepswe_openclaw.is_non_scoreable_configuration_error(result) is True
 
 
+def test_required_trace_failure_is_fail_fast_for_completed_model_result():
+    result = {
+        "agent_result": {
+            "metadata": {
+                "openclaw": {
+                    "weave_agents_required": True,
+                    "weave_agents_ok": False,
+                    "openclaw_disqualified_reason": "",
+                }
+            }
+        }
+    }
+
+    assert run_deepswe_openclaw.is_required_trace_evidence_failure(result) is True
+
+
+def test_required_trace_exception_is_fail_fast_before_scoring():
+    result = {
+        "agent_result": None,
+        "exception_info": {
+            "exception_type": "RequiredWeaveAgentsTraceError",
+            "exception_message": (
+                "required_trace_evidence_failure: native trace was missing"
+            ),
+        },
+    }
+
+    assert run_deepswe_openclaw.is_required_trace_evidence_failure(result) is True
+
+
+def test_cleanup_deepswe_run_resources_is_scoped_to_run_metadata_and_job_labels(
+    monkeypatch, tmp_path
+):
+    args = argparse.Namespace(
+        output_dir=tmp_path / "output",
+        nemoclaw_sandbox="nejumi-taiwan",
+        nemoclaw_bin="nemoclaw",
+    )
+    task_dir = args.output_dir / "openclaw" / "task-a"
+    task_dir.mkdir(parents=True)
+    (task_dir / "openclaw_task_agent.json").write_text(
+        json.dumps(
+            {
+                "agent_id": "tw-run-task-a",
+                "nemoclaw_sandbox": "nejumi-taiwan",
+                "workspace": "/sandbox/checkouts/deepswe/task-a-run",
+            }
+        ),
+        encoding="utf-8",
+    )
+    unrelated_dir = args.output_dir / "openclaw" / "unrelated"
+    unrelated_dir.mkdir(parents=True)
+    (unrelated_dir / "openclaw_task_agent.json").write_text(
+        json.dumps(
+            {
+                "agent_id": "japanese-production-agent",
+                "nemoclaw_sandbox": "japanese-production",
+            }
+        ),
+        encoding="utf-8",
+    )
+    job_dir = tmp_path / "jobs" / "this-run"
+    removed_agents = []
+
+    def run_nemoclaw_text_command(cleanup_args, command, timeout, check):
+        removed_agents.append(
+            {
+                "sandbox": cleanup_args.nemoclaw_sandbox,
+                "command": command,
+                "timeout": timeout,
+                "check": check,
+            }
+        )
+        return types.SimpleNamespace(returncode=0, stdout="deleted\n", stderr="")
+
+    fake_runner = types.SimpleNamespace(
+        run_nemoclaw_text_command=run_nemoclaw_text_command,
+    )
+    monkeypatch.setitem(sys.modules, "run_swebench_pro_openclaw", fake_runner)
+    monkeypatch.setattr(
+        run_deepswe_openclaw,
+        "_pier_containers_for_job",
+        lambda observed_job_dir: [
+            {
+                "id": "container-this-run",
+                "name": "task-a-main-1",
+                "compose_project": "task-a",
+                "config_files": str(observed_job_dir / "docker-compose-mounts.json"),
+            }
+        ],
+    )
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        return types.SimpleNamespace(returncode=0, stdout="removed\n", stderr="")
+
+    monkeypatch.setattr(run_deepswe_openclaw.subprocess, "run", fake_run)
+
+    report = run_deepswe_openclaw.cleanup_deepswe_run_resources(
+        args,
+        job_dir=job_dir,
+        reason="test_failfast",
+    )
+
+    assert len(removed_agents) == 2
+    assert removed_agents[0]["sandbox"] == "nejumi-taiwan"
+    assert removed_agents[0]["command"][:2] == ["python3", "-c"]
+    assert "base64.b64decode" in removed_agents[0]["command"][2]
+    assert "\n" not in removed_agents[0]["command"][2]
+    assert "\n" not in removed_agents[0]["command"][3]
+    assert json.loads(removed_agents[0]["command"][-1]) == [
+        "/sandbox/checkouts/deepswe/task-a-run"
+    ]
+    assert removed_agents[0]["timeout"] == 15
+    assert removed_agents[0]["check"] is False
+    assert json.loads(removed_agents[1]["command"][-1]) == ["tw-run-task-a"]
+    assert removed_agents[1]["timeout"] == 60
+    assert commands == [["docker", "rm", "-f", "container-this-run"]]
+    assert [entry["id"] for entry in report["pier_containers"]] == [
+        "container-this-run"
+    ]
+    assert report["sandbox_processes"]["ok"] is True
+    assert report["ok"] is True
+    saved = json.loads((args.output_dir / "resource_cleanup.json").read_text())
+    assert saved["reason"] == "test_failfast"
+
+
+def test_completed_run_cleanup_requires_success(monkeypatch, tmp_path):
+    args = argparse.Namespace(output_dir=tmp_path / "output")
+    job_dir = tmp_path / "jobs" / "this-run"
+    calls = []
+
+    def fake_cleanup(cleanup_args, *, job_dir, reason):
+        calls.append((cleanup_args, job_dir, reason))
+        return {"ok": False}
+
+    monkeypatch.setattr(
+        run_deepswe_openclaw,
+        "cleanup_deepswe_run_resources",
+        fake_cleanup,
+    )
+
+    with pytest.raises(RuntimeError, match="resource cleanup failed"):
+        run_deepswe_openclaw.cleanup_completed_deepswe_run_resources(
+            args,
+            job_dir=job_dir,
+        )
+
+    assert calls == [(args, job_dir, "pier_completed")]
+
+
+def test_pier_container_discovery_requires_exact_job_directory_in_compose_labels(
+    monkeypatch, tmp_path
+):
+    job_dir = tmp_path / "jobs" / "this-run"
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[:3] == ["docker", "ps", "-aq"]:
+            return types.SimpleNamespace(returncode=0, stdout="own\nother\n", stderr="")
+        assert command[:2] == ["docker", "inspect"]
+        return types.SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                [
+                    {
+                        "Id": "own",
+                        "Name": "/own-task",
+                        "Config": {
+                            "Labels": {
+                                "com.docker.compose.project": "own-task",
+                                "com.docker.compose.project.config_files": str(
+                                    job_dir / "trial" / "docker-compose-mounts.json"
+                                ),
+                            }
+                        },
+                    },
+                    {
+                        "Id": "other",
+                        "Name": "/japanese-production",
+                        "Config": {
+                            "Labels": {
+                                "com.docker.compose.project": "llm-leaderboard",
+                                "com.docker.compose.project.config_files": (
+                                    "/home/yuya/qwen3-next/llm-leaderboard/docker-compose.yaml"
+                                ),
+                            }
+                        },
+                    },
+                ]
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(run_deepswe_openclaw.subprocess, "run", fake_run)
+
+    matches = run_deepswe_openclaw._pier_containers_for_job(job_dir)
+
+    assert [item["id"] for item in matches] == ["own"]
+    assert calls[1] == ["docker", "inspect", "own", "other"]
+
+
+def test_model_truncation_trace_gap_remains_scoreable_model_failure():
+    result = {
+        "agent_result": {
+            "metadata": {
+                "openclaw": {
+                    "weave_agents_required": True,
+                    "weave_agents_ok": False,
+                    "openclaw_disqualified_reason": "model_output_truncated",
+                    "model_completion": {
+                        "failure_category": "model",
+                        "retryable": False,
+                    },
+                }
+            }
+        }
+    }
+
+    assert run_deepswe_openclaw.is_required_trace_evidence_failure(result) is False
+    assert run_deepswe_openclaw.is_non_scoreable_provider_timeout(result) is False
+
+
 def test_non_scoreable_configuration_error_detection_matches_openclaw_stderr():
     result = {
         "agent_result": {
@@ -1289,6 +2064,127 @@ def test_deepswe_pier_agent_uses_trial_scoped_sandbox_checkout_root(monkeypatch,
     assert root_a != root_c
 
 
+def test_deepswe_preregisters_all_gateway_agents_and_restarts_once(monkeypatch, tmp_path):
+    task_names_file = tmp_path / "tasks.json"
+    task_names_file.write_text(json.dumps(["task-a", "task-b"]), encoding="utf-8")
+    args = _args(tmp_path, task_names_file)
+    calls: list[tuple[str, object]] = []
+
+    def write_task_openclaw_config(row, checkout_dir, task_dir, registration_args):
+        calls.append(
+            (
+                "register",
+                {
+                    "task": row["instance_id"],
+                    "checkout": str(checkout_dir),
+                    "task_dir": str(task_dir),
+                    "sandbox_root": registration_args.nemoclaw_checkout_sandbox_root,
+                },
+            )
+        )
+        return f"agent-{row['instance_id']}", None
+
+    registered_ids: list[str] = []
+
+    def list_gateway_agents(registration_args, command, timeout):
+        calls.append(
+            (
+                "gateway_readiness",
+                {
+                    "restart_enabled": registration_args.restart_gateway_after_task_agent_registration,
+                    "command": command,
+                    "timeout": timeout,
+                },
+            )
+        )
+        return types.SimpleNamespace(
+            stdout=json.dumps({"agents": [{"id": agent_id} for agent_id in registered_ids]}),
+            returncode=0,
+        )
+
+    def record_registration(row, checkout_dir, task_dir, registration_args):
+        result = write_task_openclaw_config(row, checkout_dir, task_dir, registration_args)
+        registered_ids.append(result[0])
+        return result
+
+    fake_runner = types.SimpleNamespace(
+        safe_id=lambda value: value,
+        ensure_nemoclaw_openclaw_permissions=lambda registration_args: calls.append(
+            ("permissions", registration_args.nemoclaw_sandbox)
+        ),
+        gateway_task_agent_registration_is_reusable=lambda *args, **kwargs: False,
+        write_task_openclaw_config=record_registration,
+        restart_nemoclaw_gateway_after_task_agent_registration=lambda registration_args, label: calls.append(
+            (
+                "restart",
+                {
+                    "label": label,
+                    "enabled": registration_args.restart_gateway_after_task_agent_registration,
+                },
+            )
+        ),
+        run_nemoclaw_text_command=list_gateway_agents,
+    )
+    monkeypatch.setitem(sys.modules, "run_swebench_pro_openclaw", fake_runner)
+
+    status = run_deepswe_openclaw.preregister_gateway_task_agents(args)
+
+    registrations = [value for kind, value in calls if kind == "register"]
+    assert status["ok"] is True
+    assert status["task_count"] == 2
+    assert status["registration_changes"] == 2
+    assert status["gateway_restart_count"] == 1
+    assert status["gateway_readiness_verified"] is True
+    assert len(registrations) == 2
+    assert registrations[0]["sandbox_root"] != registrations[1]["sandbox_root"]
+    assert [kind for kind, _ in calls].count("restart") == 1
+    restart = next(value for kind, value in calls if kind == "restart")
+    assert restart == {"label": "DeepSWE batch", "enabled": True}
+    readiness = next(value for kind, value in calls if kind == "gateway_readiness")
+    assert readiness["restart_enabled"] is True
+    assert readiness["command"][:4] == ["openclaw", "gateway", "call", "agents.list"]
+    assert "--timeout" not in readiness["command"]
+    assert args.restart_gateway_before_run is False
+
+
+def test_deepswe_skips_gateway_restart_when_all_task_agents_are_reusable(
+    monkeypatch,
+    tmp_path,
+):
+    task_names_file = tmp_path / "tasks.json"
+    task_names_file.write_text(json.dumps(["task-a", "task-b"]), encoding="utf-8")
+    args = _args(tmp_path, task_names_file)
+    calls: list[str] = []
+
+    fake_runner = types.SimpleNamespace(
+        safe_id=lambda value: value,
+        ensure_nemoclaw_openclaw_permissions=lambda registration_args: calls.append(
+            "permissions"
+        ),
+        gateway_task_agent_registration_is_reusable=lambda *args, **kwargs: True,
+        write_task_openclaw_config=lambda row, checkout_dir, task_dir, registration_args: (
+            f"agent-{row['instance_id']}",
+            None,
+        ),
+        restart_nemoclaw_gateway_after_task_agent_registration=lambda *args, **kwargs: calls.append(
+            "restart"
+        ),
+        run_nemoclaw_text_command=lambda *args, **kwargs: calls.append("readiness"),
+    )
+    monkeypatch.setitem(sys.modules, "run_swebench_pro_openclaw", fake_runner)
+
+    status = run_deepswe_openclaw.preregister_gateway_task_agents(args)
+
+    assert status["ok"] is True
+    assert status["performed"] is False
+    assert status["reason"] == "all_task_agent_registrations_reusable"
+    assert status["registration_changes"] == 0
+    assert status["gateway_restart_count"] == 0
+    assert "restart" not in calls
+    assert "readiness" not in calls
+    assert args.restart_gateway_before_run is False
+
+
 def test_deepswe_pier_agent_forwards_openclaw_model_params_json(monkeypatch, tmp_path):
     module = _load_deepswe_pier_agent_module(monkeypatch)
     params_json = json.dumps({"provider": {"only": ["z-ai/fp8"], "allow_fallbacks": False}})
@@ -1322,3 +2218,24 @@ def test_deepswe_pier_agent_sanitizes_branch_commit_runner_directive(monkeypatch
     assert "Keep the public API stable." in sanitized
     assert "new branch" not in sanitized
     assert "commit everything" not in sanitized
+
+
+def test_deepswe_pier_agent_requires_nonempty_working_tree_diff(monkeypatch, tmp_path):
+    module = _load_deepswe_pier_agent_module(monkeypatch)
+    agent = module.NejumiDeepSWEOpenClawAgent(
+        logs_dir=tmp_path / "logs",
+        model_name="openrouter-direct/z-ai/glm-5.2",
+    )
+
+    row = agent._row(
+        "example-task",
+        {"metadata": {"language": "python"}, "environment": {}},
+        "Implement the feature.",
+    )
+
+    requirements = row["requirements"]
+    assert "Do not stop after only describing a plan" in requirements
+    assert "`git diff HEAD --check`" in requirements
+    assert "`git diff HEAD --stat`" in requirements
+    assert "continue editing instead of finishing" in requirements
+    assert "harness scores all changes relative to HEAD" in requirements

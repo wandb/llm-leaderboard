@@ -9,6 +9,7 @@ import wandb
 import weave
 
 from config_singleton import WandbConfigSingleton
+from evaluator.evaluate_utils.subprocess_runner import run_streaming_command
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -28,6 +29,9 @@ DEEPSWE_OUTPUT_TABLE_REQUIRED_COLUMNS = (
     "openclaw_disqualified_reason",
     "openclaw_tool_call_count",
     "openclaw_usage",
+    "billable_openclaw_usage",
+    "billable_openclaw_attempt_count",
+    "billable_openclaw_wall_seconds",
     "weave_agents_ok",
     "weave_agents_conversation_url",
     "weave_agents_conversation_link_html",
@@ -64,29 +68,12 @@ def _json_cli_arg(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
-def _run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
-    print("Running:", " ".join(command))
-    proc = subprocess.Popen(
-        command,
-        cwd=str(REPO_ROOT),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        bufsize=1,
-        start_new_session=True,
-    )
-    stdout_parts: list[str] = []
-    assert proc.stdout is not None
-    for line in proc.stdout:
-        print(line, end="", flush=True)
-        stdout_parts.append(line)
-    returncode = proc.wait()
-    stdout = "".join(stdout_parts)
-    if returncode != 0:
-        raise RuntimeError(
-            f"Command failed with return code {returncode}: {command}\n{stdout[-4000:]}"
-        )
-    return subprocess.CompletedProcess(command, returncode, stdout=stdout, stderr="")
+def _run_command(
+    command: list[str],
+    *,
+    timeout: float | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return run_streaming_command(command, cwd=REPO_ROOT, timeout=timeout)
 
 
 def _dataset_dir(cfg, run) -> Path:
@@ -116,6 +103,17 @@ def _task_names_path(cfg, run) -> Path:
 
 
 def _run_openclaw(cfg, task_names_path: Path, output_dir: Path) -> Path:
+    nemoclaw_sandbox = _cfg_get(cfg.deepswe, "nemoclaw_sandbox")
+    no_local = bool(_cfg_get(cfg.deepswe, "no_local", True))
+    if no_local and (
+        nemoclaw_sandbox is None
+        or not str(nemoclaw_sandbox).strip()
+        or str(nemoclaw_sandbox).strip().lower() in {"none", "null"}
+    ):
+        raise ValueError(
+            "deepswe.nemoclaw_sandbox must name an isolated NeMoClaw sandbox "
+            "when deepswe.no_local is true"
+        )
     command = [
         sys.executable,
         str(RUNNER),
@@ -166,18 +164,6 @@ def _run_openclaw(cfg, task_names_path: Path, output_dir: Path) -> Path:
         str(_cfg_get(cfg.deepswe, "max_agent_turns", DEFAULT_MAX_AGENT_TURNS)),
         "--max-tool-wall-seconds",
         str(_cfg_get(cfg.deepswe, "max_tool_wall_seconds", DEFAULT_MAX_TOOL_WALL_SECONDS)),
-        "--nemoclaw-bin",
-        str(_cfg_get(cfg.deepswe, "nemoclaw_bin", "nemoclaw")),
-        "--nemoclaw-sandbox",
-        str(_cfg_get(cfg.deepswe, "nemoclaw_sandbox", "nejumi-taiwan")),
-        "--nemoclaw-workdir",
-        str(_cfg_get(cfg.deepswe, "nemoclaw_workdir", "/sandbox")),
-        "--nemoclaw-openclaw-config-path",
-        str(_cfg_get(cfg.deepswe, "nemoclaw_openclaw_config_path", "/sandbox/.openclaw/openclaw.json")),
-        "--nemoclaw-checkout-transfer-mode",
-        str(_cfg_get(cfg.deepswe, "nemoclaw_checkout_transfer_mode", "copy")),
-        "--nemoclaw-checkout-transfer-timeout",
-        str(_cfg_get(cfg.deepswe, "nemoclaw_checkout_transfer_timeout", 600)),
         "--openclaw-tool-profile",
         str(_cfg_get(cfg.deepswe, "openclaw_tool_profile", "coding")),
         "--task-agent-prefix",
@@ -197,6 +183,29 @@ def _run_openclaw(cfg, task_names_path: Path, output_dir: Path) -> Path:
         "--weave-agents-poll-seconds",
         str(_cfg_get(cfg.deepswe, "weave_agents_poll_seconds", 5)),
     ]
+    if nemoclaw_sandbox:
+        command.extend(
+            [
+                "--nemoclaw-bin",
+                str(_cfg_get(cfg.deepswe, "nemoclaw_bin", "nemoclaw")),
+                "--nemoclaw-sandbox",
+                str(nemoclaw_sandbox),
+                "--nemoclaw-workdir",
+                str(_cfg_get(cfg.deepswe, "nemoclaw_workdir", "/sandbox")),
+                "--nemoclaw-openclaw-config-path",
+                str(
+                    _cfg_get(
+                        cfg.deepswe,
+                        "nemoclaw_openclaw_config_path",
+                        "/sandbox/.openclaw/openclaw.json",
+                    )
+                ),
+                "--nemoclaw-checkout-transfer-mode",
+                str(_cfg_get(cfg.deepswe, "nemoclaw_checkout_transfer_mode", "copy")),
+                "--nemoclaw-checkout-transfer-timeout",
+                str(_cfg_get(cfg.deepswe, "nemoclaw_checkout_transfer_timeout", 600)),
+            ]
+        )
     openclaw_model_params = _cfg_get(cfg.deepswe, "openclaw_model_params")
     if openclaw_model_params is not None:
         command.extend(["--openclaw-model-params-json", _json_cli_arg(openclaw_model_params)])
@@ -229,7 +238,12 @@ def _run_openclaw(cfg, task_names_path: Path, output_dir: Path) -> Path:
     for pattern in _as_list(_cfg_get(cfg.deepswe, "deny_argument_pattern")):
         command.extend(["--deny-argument-pattern", str(pattern)])
 
-    _run_command(command)
+    _run_command(
+        command,
+        timeout=float(
+            _cfg_get(cfg.deepswe, "benchmark_timeout_seconds", 129_600)
+        ),
+    )
     return output_dir / "runner"
 
 
@@ -336,6 +350,30 @@ def _log_summary(
             "deepswe/total_trials": int(summary.get("total_trials") or 0),
             "deepswe/scored_trials": int(summary.get("scored_trials") or 0),
             "deepswe/exceptions": int(summary.get("exceptions") or 0),
+            "deepswe/diagnostic_score_with_partial": float(
+                summary.get("diagnostic_score_with_partial") or 0.0
+            ),
+            "deepswe/diagnostic_partial_credit_total": float(
+                summary.get("diagnostic_partial_credit_total") or 0.0
+            ),
+            "deepswe/billable_attempt_count": int(
+                summary.get("billable_openclaw_attempt_count") or 0
+            ),
+            "deepswe/billable_retry_count": int(
+                summary.get("billable_openclaw_retry_count") or 0
+            ),
+            "deepswe/billable_wall_seconds": float(
+                summary.get("billable_openclaw_wall_seconds") or 0.0
+            ),
+            "deepswe/billable_input_tokens": float(
+                (summary.get("billable_openclaw_usage") or {}).get("inputTokens") or 0.0
+            ),
+            "deepswe/billable_output_tokens": float(
+                (summary.get("billable_openclaw_usage") or {}).get("outputTokens") or 0.0
+            ),
+            "deepswe/billable_cost_usd": float(
+                (summary.get("billable_openclaw_usage") or {}).get("costUsd") or 0.0
+            ),
             "deepswe/weave_agents_ok": int(summary.get("weave_agents_ok") or 0),
             "deepswe/native_trace_missing": int(summary.get("native_trace_missing") or 0),
         }

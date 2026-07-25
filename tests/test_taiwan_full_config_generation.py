@@ -50,6 +50,7 @@ def _args(tmp_path: Path, phase: str, *, manifest: Path | None = None) -> argpar
         phase=phase,
         canary=False,
         include_final_only=False,
+        include_suspended=False,
         agentic_math_nemoclaw_sandbox=None,
         agentic_math_nemoclaw_bin="nemoclaw",
         agentic_math_nemoclaw_workdir="/sandbox",
@@ -127,6 +128,10 @@ def test_agentic_phase_runs_only_agentic_generation(tmp_path):
     assert cfg.provider_rate_limit.min_request_interval_sec == 1.0
     assert cfg.provider_rate_limit.request_jitter_sec == 0.25
     assert cfg.agentic_math.run_openclaw is True
+    assert cfg.wandb.entity == "llm-leaderboard"
+    assert cfg.wandb.project == "tc-leaderboard"
+    assert cfg.wandb.expected_entity == "llm-leaderboard"
+    assert cfg.wandb.expected_project == "tc-leaderboard"
     assert cfg.swebench_pro.run_openclaw is True
     assert cfg.deepswe.run_openclaw is True
     assert cfg.agentic_math.results_dir is None
@@ -140,23 +145,92 @@ def test_agentic_phase_runs_only_agentic_generation(tmp_path):
     assert cfg.agentic_math.max_tool_calls == 40
     assert cfg.agentic_math.max_agent_turns == 40
     assert cfg.agentic_math.max_tool_wall_seconds == 120
-    assert cfg.agentic_swe_assorted.low_limit == 36
-    assert cfg.agentic_swe_assorted.middle_limit == 36
-    assert cfg.agentic_swe_assorted.high_limit == 8
+    assert cfg.agentic_swe_assorted.low_limit == 20
+    assert cfg.agentic_swe_assorted.middle_limit == 20
+    assert cfg.agentic_swe_assorted.high_limit == 10
     assert cfg.agentic_swe_assorted.tier_weights == "low=1,middle=1,high=1"
+    assert cfg.agentic_swe_assorted.reuse_high_results_jsonl == []
+    assert cfg.agentic_swe_assorted.reuse_low_middle_patches_json is None
     assert cfg.agentic_swe_assorted.swe_workers == 4
     assert cfg.agentic_swe_assorted.high_workers == 2
     assert cfg.agentic_swe_assorted.max_input_tokens == 1_000_000
+    assert cfg.agentic_swe_assorted.max_cumulative_input_tokens == 1_000_000
     assert cfg.agentic_swe_assorted.max_tool_calls == 40
     assert cfg.agentic_swe_assorted.max_agent_turns == 40
-    assert cfg.agentic_swe_assorted.high_max_tool_calls == 120
-    assert cfg.agentic_swe_assorted.high_max_agent_turns == 120
-    assert cfg.agentic_swe_assorted.high_max_cumulative_input_tokens == 12_000_000
+    assert cfg.agentic_swe_assorted.high_max_tool_calls == 200
+    assert cfg.agentic_swe_assorted.high_max_agent_turns == 150
+    assert cfg.agentic_swe_assorted.high_max_cumulative_input_tokens == 14_000_000
+    assert cfg.agentic_swe_assorted.deepswe_preflight_hard_stat == "p90"
     assert cfg.agentic_swe_assorted.max_tool_wall_seconds == 120
     assert cfg.bfcl.num_threads == 4
     assert cfg.bfcl.provider_min_request_interval_sec == 2.0
     assert cfg.bfcl.provider_request_jitter_sec == 0.5
     assert cfg.bfcl.consecutive_failure_fail_fast == 5
+
+
+def test_full_phase_supports_verified_math_and_bfcl_recovery_sources(tmp_path):
+    math_results_dir = tmp_path / "previous" / "agentic_math" / "openclaw"
+    bfcl_result_dir = tmp_path / "previous" / "bfcl" / "result"
+
+    override = build_override(
+        {
+            "slug": "recovery-model",
+            "run_name": "recovery-model",
+            "openclaw_model": "openai-direct/test-model",
+            "agentic_math_run_openclaw": False,
+            "agentic_math_results_dir": str(math_results_dir),
+            "bfcl_run_generation": False,
+            "bfcl_result_dir": str(bfcl_result_dir),
+        },
+        tmp_path / "outputs",
+        phase="full",
+    )
+
+    assert override["agentic_math"]["run_openclaw"] is False
+    assert Path(override["agentic_math"]["results_dir"]) == math_results_dir
+    assert override["bfcl"]["run_generation"] is False
+    assert Path(override["bfcl"]["result_dir"]) == bfcl_result_dir
+
+
+def test_bfcl_recovery_requires_an_explicit_result_directory(tmp_path):
+    with pytest.raises(ValueError, match="bfcl_result_dir"):
+        build_override(
+            {
+                "slug": "broken-recovery-model",
+                "run_name": "broken-recovery-model",
+                "openclaw_model": "openai-direct/test-model",
+                "bfcl_run_generation": False,
+            },
+            tmp_path / "outputs",
+            phase="full",
+        )
+
+
+def test_taiwan_base_uses_bfcl_v4_full_profile():
+    cfg = OmegaConf.load(BASE_TAIWAN_CONFIG)
+
+    assert cfg.bfcl.version == "v4"
+    assert cfg.bfcl.profile == "full"
+    assert set(str(cfg.bfcl.test_category).split()) == {
+        "simple_python",
+        "simple_java",
+        "simple_javascript",
+        "multiple",
+        "irrelevance",
+        "live_simple",
+        "live_multiple",
+        "live_irrelevance",
+        "live_relevance",
+        "multi_turn_base",
+        "multi_turn_miss_func",
+        "multi_turn_miss_param",
+        "memory_kv",
+        "memory_vector",
+        "memory_rec_sum",
+        "web_search_base",
+        "web_search_no_snippet",
+    }
+    assert cfg.bfcl.web_search.backend == "ddgs"
 
 
 def test_agentic_math_nemoclaw_cli_override_is_agentic_math_only(tmp_path):
@@ -320,9 +394,9 @@ def test_canary_generates_openai_direct_only(tmp_path):
     assert cfg.deepswe.openclaw_model == "openai-direct/gpt-4.1-mini-2025-04-14"
     assert cfg.agentic_swe_assorted.openclaw_model == "openai-direct/gpt-4.1-mini-2025-04-14"
     assert cfg.agentic_math.limit == 50
-    assert cfg.agentic_swe_assorted.low_limit == 36
-    assert cfg.agentic_swe_assorted.middle_limit == 36
-    assert cfg.agentic_swe_assorted.high_limit == 8
+    assert cfg.agentic_swe_assorted.low_limit == 20
+    assert cfg.agentic_swe_assorted.middle_limit == 20
+    assert cfg.agentic_swe_assorted.high_limit == 10
     assert cfg.run.deepswe is False
 
 
@@ -365,28 +439,33 @@ def test_openai_direct_canary_manifest_generates_openai_configs(tmp_path):
     assert resolved.deepswe.max_tool_calls == 40
     assert resolved.deepswe.max_agent_turns == 40
     assert resolved.deepswe.max_tool_wall_seconds == 300
+    assert resolved.agentic_swe_assorted.max_cumulative_input_tokens == 1_000_000
     assert resolved.agentic_swe_assorted.max_tool_calls == 40
     assert resolved.agentic_swe_assorted.max_agent_turns == 40
-    assert resolved.agentic_swe_assorted.high_max_tool_calls == 120
-    assert resolved.agentic_swe_assorted.high_max_agent_turns == 120
+    assert resolved.agentic_swe_assorted.high_max_tool_calls == 200
+    assert resolved.agentic_swe_assorted.high_max_agent_turns == 150
 
 
-def test_default_glm_manifest_generates_math50_swe40(tmp_path):
+def test_default_luna_manifest_generates_math50_assorted80(tmp_path):
     args = _args(tmp_path, "full", manifest=FULL_EVAL_MANIFEST)
-    args.model = ["glm-5_2-openrouter-reasoning"]
+    args.model = ["gpt-5_6-luna-openai-direct-high"]
 
     [config_path] = generate_configs(args)
     cfg = OmegaConf.load(config_path)
 
-    assert config_path.name == "config-taiwan-full-glm-5_2-openrouter-reasoning.yaml"
+    assert config_path.name == "config-taiwan-full-gpt-5_6-luna-openai-direct-high.yaml"
+    assert cfg.api == "openai_responses"
+    assert cfg.model.pretrained_model_name_or_path == "gpt-5.6-luna"
+    assert cfg.model.bfcl_model_id == "OpenAIResponsesHandler-FC"
+    assert cfg.agentic_math.openclaw_model == "openai-direct/gpt-5.6-luna"
     assert cfg.agentic_math.limit == 50
     assert cfg.run.swebench_pro is False
     assert cfg.run.agentic_swe_assorted is True
-    assert cfg.agentic_swe_assorted.low_limit == 36
-    assert cfg.agentic_swe_assorted.middle_limit == 36
-    assert cfg.agentic_swe_assorted.high_limit == 8
+    assert cfg.agentic_swe_assorted.low_limit == 20
+    assert cfg.agentic_swe_assorted.middle_limit == 20
+    assert cfg.agentic_swe_assorted.high_limit == 10
     assert cfg.agentic_swe_assorted.deepswe_metadata_jsonl.endswith(
-        "essential_anchored_high_8_glm52max_cap100_10m_lang_balanced.jsonl"
+        "essential_anchored_high_10_model_fidelity_cost_balanced.jsonl"
     )
     assert cfg.run.deepswe is False
     assert cfg.agentic_math.max_tool_calls == 40
@@ -395,37 +474,67 @@ def test_default_glm_manifest_generates_math50_swe40(tmp_path):
     assert cfg.swebench_pro.max_tool_calls == 40
     assert cfg.swebench_pro.max_agent_turns == 40
     assert cfg.swebench_pro.max_tool_wall_seconds == 300
-    assert list(cfg.agentic_math.openclaw_model_params.provider.only) == ["z-ai/fp8"]
-    assert cfg.agentic_math.openclaw_model_params.provider.allow_fallbacks is False
-    assert list(cfg.swebench_pro.openclaw_model_params.provider.only) == ["z-ai/fp8"]
-    assert cfg.swebench_pro.openclaw_model_params.provider.require_parameters is True
-    assert list(cfg.deepswe.openclaw_model_params.provider.only) == ["z-ai/fp8"]
-    assert list(cfg.agentic_swe_assorted.openclaw_model_params.provider.only) == ["z-ai/fp8"]
-    assert cfg.agentic_swe_assorted.openclaw_model_params.provider.require_parameters is True
-    assert cfg.agentic_math.openclaw_model_overrides.maxTokens == 4096
-    assert cfg.swebench_pro.openclaw_model_overrides.maxTokens == 4096
-    assert cfg.deepswe.openclaw_model_overrides.maxTokens == 4096
-    assert cfg.agentic_swe_assorted.openclaw_model_overrides.maxTokens == 4096
+    assert cfg.agentic_swe_assorted.openclaw_max_attempts == 2
+    assert cfg.agentic_math.openclaw_model_overrides.maxTokens == 65536
+    assert cfg.agentic_swe_assorted.high_openclaw_model_overrides.maxTokens == 65536
+    assert cfg.swebench_pro.openclaw_model_overrides.maxTokens == 65536
+    assert cfg.deepswe.openclaw_model_overrides.maxTokens == 65536
+    assert cfg.agentic_swe_assorted.openclaw_model_overrides.maxTokens == 65536
 
 
-def test_wandb_inference_glm_manifest_generates_wandb_routes(tmp_path):
+def test_anthropic_fable_manifest_generates_direct_routes(tmp_path):
     args = _args(tmp_path, "full", manifest=FULL_EVAL_MANIFEST)
-    args.model = ["glm-5_2-wandb-inference"]
+    args.model = ["claude-fable-5-anthropic-direct-high"]
+    args.include_final_only = True
 
     [config_path] = generate_configs(args)
     cfg = OmegaConf.load(config_path)
 
-    assert config_path.name == "config-taiwan-full-glm-5_2-wandb-inference.yaml"
-    assert cfg.api == "openai-compatible"
-    assert cfg.base_url == "https://api.inference.wandb.ai/v1"
-    assert cfg.model.pretrained_model_name_or_path == "zai-org/GLM-5.2"
-    assert cfg.model.bfcl_model_id == "WandBInference-FC"
-    assert cfg.agentic_math.openclaw_model == "wandb-inference/zai-org/GLM-5.2"
-    assert cfg.swebench_pro.openclaw_model == "wandb-inference/zai-org/GLM-5.2"
-    assert cfg.deepswe.openclaw_model == "wandb-inference/zai-org/GLM-5.2"
-    assert cfg.agentic_swe_assorted.openclaw_model == "wandb-inference/zai-org/GLM-5.2"
-    assert cfg.agentic_math.openclaw_model_overrides.maxTokens == 4096
-    assert cfg.agentic_swe_assorted.openclaw_model_overrides.maxTokens == 4096
+    assert config_path.name == "config-taiwan-full-claude-fable-5-anthropic-direct-high.yaml"
+    assert cfg.api == "anthropic"
+    assert cfg.model.pretrained_model_name_or_path == "claude-fable-5"
+    assert cfg.model.bfcl_model_id == "Claude-FC"
+    assert cfg.generator.effort == "high"
+    assert "thinking" not in cfg.model
+    assert cfg.agentic_math.openclaw_model == "anthropic/claude-fable-5"
+    assert cfg.swebench_pro.openclaw_model == "anthropic/claude-fable-5"
+    assert cfg.deepswe.openclaw_model == "anthropic/claude-fable-5"
+    assert cfg.agentic_swe_assorted.openclaw_model == "anthropic/claude-fable-5"
+    assert cfg.agentic_math.thinking == "high"
+    assert cfg.swebench_pro.thinking == "high"
+    assert cfg.deepswe.thinking == "high"
+    assert cfg.agentic_swe_assorted.thinking == "high"
+    assert cfg.agentic_math.openclaw_model_overrides.maxTokens == 128000
+    assert cfg.agentic_swe_assorted.high_openclaw_model_overrides.maxTokens == 128000
+    assert cfg.agentic_swe_assorted.openclaw_model_overrides.maxTokens == 128000
+
+
+def test_active_full_manifest_retains_suspended_openrouter_routes_safely():
+    manifest = OmegaConf.to_container(OmegaConf.load(FULL_EVAL_MANIFEST), resolve=True)
+    models = manifest["models"]
+
+    [canary] = [model for model in models if model.get("canary")]
+    assert canary["slug"] == "gpt-5_6-luna-openai-direct-high"
+    assert canary["openclaw_model"].startswith("openai-direct/")
+    assert not canary.get("suspended", False)
+
+    [wandb_glm] = [model for model in models if model["slug"] == "glm-5_2-wandb-inference"]
+    assert wandb_glm["openclaw_model"] == "wandb-inference/zai-org/GLM-5.2"
+    assert not wandb_glm.get("suspended", False)
+
+    openrouter_models = [
+        model for model in models if "openrouter" in model["openclaw_model"].lower()
+    ]
+    assert openrouter_models
+    assert all(model.get("suspended") for model in openrouter_models)
+    assert all(model.get("suspension_reason") for model in openrouter_models)
+
+    selected_by_default = select_models(models, None)
+    assert all(not model.get("suspended") for model in selected_by_default)
+    assert all(
+        "openrouter" not in model["openclaw_model"].lower()
+        for model in selected_by_default
+    )
 
 
 def test_twbias_stays_excluded_from_generated_full_configs(tmp_path):
@@ -458,6 +567,10 @@ def test_manifest_openclaw_model_params_can_be_section_specific(tmp_path):
                 "provider": {"only": ["deepswe/provider"], "require_parameters": True}
             },
             "deepswe_openclaw_model_overrides": {"maxTokens": 2048},
+            "agentic_swe_assorted_high_openclaw_model_params": {
+                "maxTokens": 65536,
+                "provider": {"only": ["high/provider"]},
+            },
         },
         tmp_path / "outputs",
         phase="agentic",
@@ -477,6 +590,10 @@ def test_manifest_openclaw_model_params_can_be_section_specific(tmp_path):
     assert override["agentic_math"]["openclaw_model_overrides"]["maxTokens"] == 4096
     assert override["swebench_pro"]["openclaw_model_overrides"]["maxTokens"] == 8192
     assert override["deepswe"]["openclaw_model_overrides"]["maxTokens"] == 2048
+    assert override["agentic_swe_assorted"]["high_openclaw_model_params"] == {
+        "maxTokens": 65536,
+        "provider": {"only": ["high/provider"]},
+    }
 
 
 def test_default_selection_skips_final_only_models():
@@ -499,3 +616,25 @@ def test_final_only_model_requires_explicit_include_flag():
         select_models(models, ["opus"])
 
     assert select_models(models, ["opus"], include_final_only=True) == models
+
+
+def test_suspended_models_are_excluded_unless_explicitly_enabled():
+    models = [
+        {"slug": "direct"},
+        {"slug": "openrouter", "suspended": True},
+    ]
+
+    assert select_models(models, None) == [models[0]]
+    with pytest.raises(SystemExit, match="--include-suspended"):
+        select_models(models, ["openrouter"])
+    assert select_models(models, ["openrouter"], include_suspended=True) == [models[1]]
+
+    with pytest.raises(SystemExit, match="requires at least one explicit --model"):
+        select_models(models, None, include_suspended=True)
+
+
+def test_suspended_canary_is_rejected_even_with_include_flag():
+    models = [{"slug": "paused", "canary": True, "suspended": True}]
+
+    with pytest.raises(SystemExit, match="Canary model paused is suspended"):
+        select_models(models, None, canary=True, include_suspended=True)

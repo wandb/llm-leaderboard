@@ -89,8 +89,11 @@ The current Agentic SWE-Assorted High-8 can be regenerated with:
 
 ```bash
 python3 scripts/analysis/select_deepswe_budgeted_high_subset.py \
-  --subset-name essential_anchored_high_8_glm52max_cap100_10m_lang_balanced \
+  --subset-name essential_anchored_high_8_wandb_glm52_cap100_10m_lang_balanced \
   --no-default-must-include \
+  --language-count go=3 --language-count python=2 --language-count typescript=3 \
+  --base-subset essential_8 \
+  --budgeted-subset budgeted_high_8 \
   --max-avg-cost-usd 5.0 \
   --max-avg-steps 75 \
   --max-avg-input-tokens 7000000 \
@@ -98,5 +101,11 @@ python3 scripts/analysis/select_deepswe_budgeted_high_subset.py \
   --budget-effort max \
   --max-model-avg-steps 100 \
   --max-model-avg-input-tokens 10000000 \
-  --max-candidates-per-language 5
+  --min-pass-rate 0.12 \
+  --max-pass-rate 0.90 \
+  --max-candidates-per-language 5 \
+  --exclude-task-name termenv-preserve-ansi-resets \
+  --exclude-task-name superjson-error-stack-serialization \
+  --exclude-task-name ts-pattern-match-each \
+  --exclude-task-name kcp-go-multiplexed-kcp-streams
 ```

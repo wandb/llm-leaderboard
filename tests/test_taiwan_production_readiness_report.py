@@ -30,6 +30,18 @@ def load_module():
     return module
 
 
+def test_no_default_evidence_discovery_keeps_unspecified_paths_empty():
+    module = load_module()
+    args = module.parse_args(["--no-default-evidence-discovery"])
+
+    assert args.no_default_evidence_discovery is True
+    assert module.normalize_paths(
+        None,
+        module.DEFAULT_READINESS_GLOBS,
+        discover_defaults=False,
+    ) == []
+
+
 def write_json(path, payload):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")

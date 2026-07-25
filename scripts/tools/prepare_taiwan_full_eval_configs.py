@@ -17,6 +17,8 @@ CONFIG_DIR = REPO_ROOT / "configs"
 DEFAULT_MANIFEST = CONFIG_DIR / "taiwan_openai_canary_models.yaml"
 DEFAULT_OUTPUT_DIR = CONFIG_DIR / "taiwan_full" / "generated"
 DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
+TAIWAN_WANDB_ENTITY = "llm-leaderboard"
+TAIWAN_WANDB_PROJECT = "tc-leaderboard"
 
 
 RUN_FLAGS: dict[str, bool] = {
@@ -364,10 +366,32 @@ def build_override(
     math_limit = model.get("math_limit", 50)
     if math_limit is None:
         math_limit = 50
+    math_run_openclaw = bool(
+        model.get(
+            "agentic_math_run_openclaw",
+            phase != "agentic_aggregate",
+        )
+    )
+    math_results_dir = model.get("agentic_math_results_dir")
+    if not math_run_openclaw and not math_results_dir:
+        math_results_dir = output_root / "agentic_math" / slug / "openclaw"
+    bfcl_run_generation = bool(model.get("bfcl_run_generation", True))
+    bfcl_result_dir = model.get("bfcl_result_dir")
+    if not bfcl_run_generation and not bfcl_result_dir:
+        raise ValueError(
+            f"Model {slug!r} sets bfcl_run_generation=false but has no "
+            "bfcl_result_dir"
+        )
 
     override: dict[str, Any] = {
         "testmode": False,
-        "wandb": {"run_name": str(model["run_name"])},
+        "wandb": {
+            "entity": TAIWAN_WANDB_ENTITY,
+            "project": TAIWAN_WANDB_PROJECT,
+            "expected_entity": TAIWAN_WANDB_ENTITY,
+            "expected_project": TAIWAN_WANDB_PROJECT,
+            "run_name": str(model["run_name"]),
+        },
         "run": _run_flags_for_phase(phase),
         "provider_rate_limit": {
             "enabled": bool(model.get("provider_rate_limit_enabled", True)),
@@ -427,11 +451,9 @@ def build_override(
             ),
             "weave_agents_poll_seconds": int(model.get("weave_agents_poll_seconds", 5)),
             "dry_run": False,
-            "run_openclaw": phase != "agentic_aggregate",
+            "run_openclaw": math_run_openclaw,
             "redo": bool(model.get("agentic_math_redo", False)),
-            "results_dir": str(output_root / "agentic_math" / slug / "openclaw")
-            if phase == "agentic_aggregate"
-            else None,
+            "results_dir": str(math_results_dir) if math_results_dir else None,
             "no_local": True,
             "weave_sidecar": False,
             "weave_sidecar_strict": False,
@@ -521,7 +543,7 @@ def build_override(
             "thinking": str(model.get("deepswe_thinking", model.get("swe_thinking", "high"))),
             "n_concurrent": int(model.get("deepswe_n_concurrent", 1)),
             "openclaw_timeout": int(model.get("deepswe_openclaw_timeout", 3600)),
-            "openclaw_max_attempts": int(model.get("deepswe_openclaw_max_attempts", 1)),
+            "openclaw_max_attempts": int(model.get("deepswe_openclaw_max_attempts", 2)),
             "openclaw_retry_base_seconds": int(model.get("openclaw_retry_base_seconds", 15)),
             "dry_run": False,
             "run_openclaw": phase != "agentic_aggregate",
@@ -586,6 +608,26 @@ def build_override(
                 if agentic_swe_assorted_model_overrides
                 else {}
             ),
+            **(
+                {
+                    "high_openclaw_model_params": _optional_plain_dict(
+                        model.get("agentic_swe_assorted_high_openclaw_model_params"),
+                        field_name="agentic_swe_assorted_high_openclaw_model_params",
+                    )
+                }
+                if model.get("agentic_swe_assorted_high_openclaw_model_params") is not None
+                else {}
+            ),
+            **(
+                {
+                    "high_openclaw_model_overrides": _optional_plain_dict(
+                        model.get("agentic_swe_assorted_high_openclaw_model_overrides"),
+                        field_name="agentic_swe_assorted_high_openclaw_model_overrides",
+                    )
+                }
+                if model.get("agentic_swe_assorted_high_openclaw_model_overrides") is not None
+                else {}
+            ),
             "thinking": str(
                 model.get("agentic_swe_assorted_thinking", model.get("swe_thinking", "high"))
             ),
@@ -593,28 +635,28 @@ def build_override(
             "low_middle_jsonl": str(
                 model.get(
                     "agentic_swe_assorted_low_middle_jsonl",
-                    "data/taiwan/swebench_lite_assorted/subsets/low_middle_v2_72.jsonl",
+                    "data/taiwan/swebench_lite_assorted/subsets/low_middle_v3_40.jsonl",
                 )
             ),
             "low_middle_instance_ids_json": str(
                 model.get(
                     "agentic_swe_assorted_low_middle_instance_ids_json",
-                    "data/taiwan/swebench_lite_assorted/subsets/low_middle_v2_72_instance_ids.json",
+                    "data/taiwan/swebench_lite_assorted/subsets/low_middle_v3_40_instance_ids.json",
                 )
             ),
-            "low_limit": int(model.get("agentic_swe_assorted_low_limit", 36)),
-            "middle_limit": int(model.get("agentic_swe_assorted_middle_limit", 36)),
-            "high_limit": int(model.get("agentic_swe_assorted_high_limit", 8)),
+            "low_limit": int(model.get("agentic_swe_assorted_low_limit", 20)),
+            "middle_limit": int(model.get("agentic_swe_assorted_middle_limit", 20)),
+            "high_limit": int(model.get("agentic_swe_assorted_high_limit", 10)),
             "deepswe_metadata_jsonl": str(
                 model.get(
                     "agentic_swe_assorted_deepswe_metadata_jsonl",
-                    "data/taiwan/deepswe/subsets/essential_anchored_high_8_glm52max_cap100_10m_lang_balanced.jsonl",
+                    "data/taiwan/deepswe/subsets/essential_anchored_high_10_model_fidelity_cost_balanced.jsonl",
                 )
             ),
             "deepswe_task_names_file": str(
                 model.get(
                     "agentic_swe_assorted_deepswe_task_names_file",
-                    "data/taiwan/deepswe/subsets/essential_anchored_high_8_glm52max_cap100_10m_lang_balanced_task_names.json",
+                    "data/taiwan/deepswe/subsets/essential_anchored_high_10_model_fidelity_cost_balanced_task_names.json",
                 )
             ),
             "deepswe_tasks_root": str(
@@ -628,11 +670,17 @@ def build_override(
             ),
             "deepswe_public_model": model.get("agentic_swe_assorted_deepswe_public_model"),
             "deepswe_public_effort": model.get("agentic_swe_assorted_deepswe_public_effort"),
+            "reuse_high_results_jsonl": list(
+                model.get("agentic_swe_assorted_reuse_high_results_jsonl", [])
+            ),
+            "reuse_low_middle_patches_json": model.get(
+                "agentic_swe_assorted_reuse_low_middle_patches_json"
+            ),
             "deepswe_budget_preflight": str(
                 model.get("agentic_swe_assorted_deepswe_budget_preflight", "error")
             ),
             "deepswe_preflight_hard_stat": str(
-                model.get("agentic_swe_assorted_deepswe_preflight_hard_stat", "p75")
+                model.get("agentic_swe_assorted_deepswe_preflight_hard_stat", "p90")
             ),
             "allow_deepswe_budget_mismatch": bool(
                 model.get("agentic_swe_assorted_allow_deepswe_budget_mismatch", False)
@@ -658,7 +706,7 @@ def build_override(
             ),
             "eval_timeout": int(model.get("agentic_swe_assorted_eval_timeout", 1800)),
             "openclaw_max_attempts": int(
-                model.get("agentic_swe_assorted_openclaw_max_attempts", 1)
+                model.get("agentic_swe_assorted_openclaw_max_attempts", 2)
             ),
             "openclaw_retry_base_seconds": int(model.get("openclaw_retry_base_seconds", 15)),
             "max_input_tokens": int(model.get("agentic_swe_assorted_max_input_tokens", 1_000_000)),
@@ -666,7 +714,7 @@ def build_override(
                 model.get("agentic_swe_assorted_max_cumulative_input_tokens", 1_000_000)
             ),
             "high_max_cumulative_input_tokens": int(
-                model.get("agentic_swe_assorted_high_max_cumulative_input_tokens", 12_000_000)
+                model.get("agentic_swe_assorted_high_max_cumulative_input_tokens", 14_000_000)
             ),
             "max_cumulative_output_tokens": int(
                 model.get("agentic_swe_assorted_max_cumulative_output_tokens", 500_000)
@@ -674,11 +722,11 @@ def build_override(
             "require_actual_token_usage": bool(model.get("require_actual_token_usage", True)),
             "max_tool_calls": int(model.get("agentic_swe_assorted_max_tool_calls", 40)),
             "high_max_tool_calls": int(
-                model.get("agentic_swe_assorted_high_max_tool_calls", 120)
+                model.get("agentic_swe_assorted_high_max_tool_calls", 200)
             ),
             "max_agent_turns": int(model.get("agentic_swe_assorted_max_agent_turns", 40)),
             "high_max_agent_turns": int(
-                model.get("agentic_swe_assorted_high_max_agent_turns", 120)
+                model.get("agentic_swe_assorted_high_max_agent_turns", 150)
             ),
             "max_tool_wall_seconds": int(
                 model.get("agentic_swe_assorted_max_tool_wall_seconds", 120)
@@ -711,6 +759,12 @@ def build_override(
         },
         "bfcl": {
             "allow_overwrite": False,
+            "run_generation": bfcl_run_generation,
+            **(
+                {"result_dir": str(bfcl_result_dir)}
+                if bfcl_result_dir
+                else {}
+            ),
             "num_threads": int(model.get("bfcl_num_threads", 4)),
             "provider_min_request_interval_sec": float(
                 model.get("bfcl_provider_min_request_interval_sec", 2.0)
@@ -743,12 +797,17 @@ def _is_final_only(model: dict[str, Any]) -> bool:
     return bool(model.get("final_only"))
 
 
+def _is_suspended(model: dict[str, Any]) -> bool:
+    return bool(model.get("suspended"))
+
+
 def select_models(
     models: list[dict[str, Any]],
     selected: list[str] | None,
     *,
     canary: bool = False,
     include_final_only: bool = False,
+    include_suspended: bool = False,
 ) -> list[dict[str, Any]]:
     if canary and selected:
         raise SystemExit("--canary cannot be combined with --model")
@@ -758,12 +817,19 @@ def select_models(
             raise SystemExit(
                 f"Expected exactly one canary model in the manifest; found {len(chosen)}."
             )
+        if _is_suspended(chosen[0]):
+            raise SystemExit(
+                f"Canary model {chosen[0].get('slug')} is suspended; choose an active canary."
+            )
         return chosen
+    if include_suspended and not selected:
+        raise SystemExit("--include-suspended requires at least one explicit --model slug")
     if not selected:
         return [
             model
             for model in models
-            if include_final_only or not _is_final_only(model)
+            if (include_final_only or not _is_final_only(model))
+            and not _is_suspended(model)
         ]
     wanted = set(selected)
     chosen = [model for model in models if str(model.get("slug")) in wanted]
@@ -779,6 +845,16 @@ def select_models(
         raise SystemExit(
             "Final-only model(s) require --include-final-only: "
             + ", ".join(sorted(final_only))
+        )
+    suspended = [
+        str(model.get("slug"))
+        for model in chosen
+        if _is_suspended(model)
+    ]
+    if suspended and not include_suspended:
+        raise SystemExit(
+            "Suspended model(s) require --include-suspended: "
+            + ", ".join(sorted(suspended))
         )
     return chosen
 
@@ -796,6 +872,7 @@ def generate_configs(args: argparse.Namespace) -> list[Path]:
         args.model,
         canary=bool(getattr(args, "canary", False)),
         include_final_only=bool(getattr(args, "include_final_only", False)),
+        include_suspended=bool(getattr(args, "include_suspended", False)),
     )
     output_dir.mkdir(parents=True, exist_ok=True)
     output_paths: list[Path] = []
@@ -839,6 +916,14 @@ def parse_args() -> argparse.Namespace:
         "--include-final-only",
         action="store_true",
         help="Allow models marked final_only=true, such as very high-cost final release candidates.",
+    )
+    parser.add_argument(
+        "--include-suspended",
+        action="store_true",
+        help=(
+            "Explicitly allow models marked suspended=true. Use only after resolving "
+            "the suspension reason recorded in the manifest."
+        ),
     )
     parser.add_argument(
         "--phase",

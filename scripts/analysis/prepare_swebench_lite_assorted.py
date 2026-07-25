@@ -51,7 +51,13 @@ DEFAULT_PILOT_OUTPUT_TABLE = (
 DEFAULT_PILOT_SUMMARY = (
     DEFAULT_OUTPUT_DIR / "source" / "glm52_lm12m12_20260712_pilot_summary.json"
 )
-V2_SELECTION_VERSION = "v2_public_lite_prior_glm52_pilot_20260712"
+V2_SELECTION_VERSION = "v2_budget_guarded_public_lite_prior_glm52_20260715"
+V2_DEFAULT_EXCLUDED_INSTANCE_IDS = {
+    # Empirical W&B Inference GLM-5.2 run, 2026-07-15:
+    # hit the 40 tool-call guard without a patch despite moderate public rate.
+    "sympy__sympy-14817",
+}
+V2_MAX_PASS_TO_PASS_COUNT = 150
 
 
 DIFF_FILE_RE = re.compile(r"^diff --git a/(.*?) b/(.*?)$", re.MULTILINE)
@@ -476,6 +482,15 @@ def stratified_pick_ordered(
         repo_counts[repo] += 1
         if len(selected) >= size:
             return selected
+    for row in sorted(candidates, key=sort_key):
+        instance_id = str(row.get("instance_id") or "")
+        if instance_id in selected_ids:
+            continue
+        selected.append(row)
+        selected_ids.add(instance_id)
+        repo_counts[str(row.get("repo") or "")] += 1
+        if len(selected) >= size:
+            return selected
     raise RuntimeError(
         f"Only selected {len(selected)} rows out of requested {size}; "
         f"repo_counts={dict(repo_counts)}"
@@ -508,6 +523,14 @@ def public_seen(row: dict[str, Any]) -> int:
     return int(row.get("_public_seen_count") or 0)
 
 
+def pass_to_pass_count(row: dict[str, Any]) -> int:
+    return len(read_json_list(row.get("PASS_TO_PASS")))
+
+
+def v2_static_runtime_guard(row: dict[str, Any]) -> bool:
+    return pass_to_pass_count(row) <= V2_MAX_PASS_TO_PASS_COUNT
+
+
 def v2_low_candidates(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         row
@@ -528,6 +551,7 @@ def v2_middle_candidates(rows: list[dict[str, Any]], *, excluded_ids: set[str]) 
         and public_seen(row) >= 20
         and 0.25 <= public_rate(row) <= 0.72
         and float(row.get("_percentile") or 0.0) <= 0.95
+        and v2_static_runtime_guard(row)
         and not pilot_cost_risk(row)
     ]
 
@@ -616,6 +640,7 @@ def build(
     public_results_cache: Path | None,
     pilot_summary_path: Path | None,
     pilot_output_table: Path | None,
+    excluded_instance_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     cache_path = output_dir / "source" / "swebench_lite_test.jsonl"
     source_rows = fetch_rows(refresh_cache=refresh_cache, cache_path=cache_path)
@@ -647,13 +672,21 @@ def build(
     middle_candidates = [row for row in scored if 0.40 <= row["_percentile"] <= 0.72]
     low_raw = stratified_pick(low_candidates, size=low_size, repo_cap=6)
     middle_raw = stratified_pick(middle_candidates, size=middle_size, repo_cap=6, target_quantile=0.56)
+    v2_excluded_ids = set(V2_DEFAULT_EXCLUDED_INSTANCE_IDS)
+    if excluded_instance_ids:
+        v2_excluded_ids.update(excluded_instance_ids)
+
     low_v2_raw = stratified_pick_ordered(
-        v2_low_candidates(scored),
+        [
+            row
+            for row in v2_low_candidates(scored)
+            if str(row.get("instance_id") or "") not in v2_excluded_ids
+        ],
         size=low_size,
         repo_cap=6,
         sort_key=lambda row: (-public_rate(row), row["_score"], str(row.get("instance_id"))),
     )
-    low_v2_ids = {str(row.get("instance_id") or "") for row in low_v2_raw}
+    low_v2_ids = {str(row.get("instance_id") or "") for row in low_v2_raw} | v2_excluded_ids
     middle_v2_raw = stratified_pick_ordered(
         v2_middle_candidates(scored, excluded_ids=low_v2_ids),
         size=middle_size,
@@ -694,7 +727,8 @@ def build(
                     selection_version=V2_SELECTION_VERSION,
                     selection_basis=(
                         "public_lite_resolve_rate>=0.65, public_lite_seen_count>=20, "
-                        "static_percentile<=0.85, no local GLM-5.2 pilot unresolved/cost-risk signal"
+                        "static_percentile<=0.85, no local GLM-5.2 pilot "
+                        "unresolved/cost-risk signal, no empirical exclusion"
                     ),
                 ),
                 tier="low",
@@ -711,7 +745,8 @@ def build(
                     selection_version=V2_SELECTION_VERSION,
                     selection_basis=(
                         "0.25<=public_lite_resolve_rate<=0.72, public_lite_seen_count>=20, "
-                        "static_percentile<=0.95, no local GLM-5.2 pilot cost-risk signal"
+                        f"static_percentile<=0.95, PASS_TO_PASS<={V2_MAX_PASS_TO_PASS_COUNT}, no local GLM-5.2 "
+                        "pilot cost-risk signal, no empirical exclusion"
                     ),
                 ),
                 tier="middle",
@@ -773,13 +808,25 @@ def build(
                 "pilot_total_instances": pilot_summary.get("total_instances"),
                 "low_rule": (
                     "public_lite_resolve_rate>=0.65, public_lite_seen_count>=20, "
-                    "static_percentile<=0.85, no local GLM-5.2 pilot unresolved/cost-risk signal"
+                    "static_percentile<=0.85, no local GLM-5.2 pilot "
+                    "unresolved/cost-risk signal, no empirical exclusion"
                 ),
                 "middle_rule": (
                     "0.25<=public_lite_resolve_rate<=0.72, public_lite_seen_count>=20, "
-                    "static_percentile<=0.95, no local GLM-5.2 pilot cost-risk signal"
+                    f"static_percentile<=0.95, PASS_TO_PASS<={V2_MAX_PASS_TO_PASS_COUNT}, no local GLM-5.2 "
+                    "pilot cost-risk signal, no empirical exclusion"
                 ),
+                "excluded_instance_ids": sorted(v2_excluded_ids),
+                "max_pass_to_pass_count": V2_MAX_PASS_TO_PASS_COUNT,
                 "repo_cap": 6,
+                "repo_cap_policy": (
+                    "soft; preserve cap when enough candidates exist, then fill remaining "
+                    "slots from the best eligible rows"
+                ),
+                "current_low_max_repo_count": max(Counter(row["repo"] for row in subsets["low_v2_36"]).values()),
+                "current_middle_max_repo_count": max(
+                    Counter(row["repo"] for row in subsets["middle_v2_36"]).values()
+                ),
             },
         },
         "subsets": {
@@ -798,9 +845,32 @@ def build(
             "high": 8,
             "low_middle_jsonl_path": "subsets/low_middle_v2_72.jsonl",
             "legacy_low_middle_jsonl_path": "subsets/low_middle_72.jsonl",
-            "high_subset": "data/taiwan/deepswe/subsets/essential_8.jsonl",
+            "high_subset": (
+                "data/taiwan/deepswe/subsets/"
+                "essential_anchored_high_8_wandb_glm52_cap100_10m_lang_balanced.jsonl"
+            ),
+            "score_weights": {"low": 1 / 3, "middle": 1 / 3, "high": 1 / 3},
+            "score_definition": (
+                "Score = (Low Pass@1 + Middle Pass@1 + High Pass@1) / 3. "
+                "The 36/36/8 task counts are cost controls, not micro-average weights."
+            ),
         },
     }
+    # The 20/20/10 release is materialized by a separate nested-selector script.
+    # Preserve that approved release metadata when refreshing the v1/v2 source
+    # pools so a maintenance regeneration cannot silently roll defaults back.
+    existing_manifest_path = output_dir / "manifest.json"
+    if existing_manifest_path.exists():
+        existing = json.loads(existing_manifest_path.read_text(encoding="utf-8"))
+        for key in ("v3_stratified_model_fidelity_cost_20260724",):
+            if key in existing.get("selection_versions", {}):
+                manifest["selection_versions"][key] = existing["selection_versions"][key]
+        for key in ("low_v3_20", "middle_v3_20", "low_middle_v3_40"):
+            if key in existing.get("subsets", {}):
+                manifest["subsets"][key] = existing["subsets"][key]
+        if "assorted_50_plan" in existing:
+            manifest["assorted_50_plan"] = existing["assorted_50_plan"]
+            manifest["assorted_80_plan"]["status"] = "historical_v2"
     write_json(output_dir / "manifest.json", manifest)
     return manifest
 
@@ -815,6 +885,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--public-results-cache", type=Path)
     parser.add_argument("--pilot-summary-path", type=Path, default=DEFAULT_PILOT_SUMMARY)
     parser.add_argument("--pilot-output-table", type=Path, default=DEFAULT_PILOT_OUTPUT_TABLE)
+    parser.add_argument(
+        "--exclude-instance-id",
+        action="append",
+        default=[],
+        help="Additional instance id to exclude from v2 Low/Middle selection. May be repeated.",
+    )
     return parser.parse_args()
 
 
@@ -829,6 +905,7 @@ def main() -> None:
         public_results_cache=args.public_results_cache,
         pilot_summary_path=args.pilot_summary_path,
         pilot_output_table=args.pilot_output_table,
+        excluded_instance_ids={str(item) for item in args.exclude_instance_id},
     )
     for name, entry in manifest["subsets"].items():
         difficulty = entry["static_difficulty"]

@@ -8,6 +8,10 @@ import weave
 from tqdm.asyncio import tqdm as atqdm
 from config_singleton import WandbConfigSingleton
 from .evaluate_utils import LLMAsyncProcessor, get_openai_judge_client
+from .evaluate_utils.llm_response_checkpoint import (
+    JSONItemCheckpointStore,
+    default_checkpoint_root,
+)
 import numpy as np
 from pydantic import BaseModel
 import openai
@@ -107,9 +111,9 @@ def handle_content_policy_error(error: Exception) -> str:
 
 def generate_judge_tasks(
     questions: List[Dict[str, Any]],
-    generate_answer_tasks: List[Dict[str, Any]],
     judge_prompts: List[Dict[str, str]],
-    llm_ap: LLMAsyncProcessor
+    llm_ap: LLMAsyncProcessor,
+    checkpoint_store: JSONItemCheckpointStore,
 ):
     categories = {'禁止行為': 0, '社会規範': 1, '公平性': 2, '違反カテゴリ': 3}
     prompt_template = """### ユーザーの発言: 
@@ -117,15 +121,7 @@ def generate_judge_tasks(
 ### 評価対象モデルの返答: 
 {answer}"""
 
-    async def do_judge(q, generate_answer_task):
-        try:
-            await generate_answer_task
-        except Exception as e:
-            # コンテンツポリシー違反エラーの場合、エラーメッセージを回答として扱う
-            error_message = handle_content_policy_error(e)
-            q.update({"answer": error_message})
-            print(f"Content policy violation for question {q.get('id', 'unknown')}: {error_message}")
-        
+    async def do_judge(index, q):
         category_id = categories.get(q['category_1'], -1)
         if category_id == -1:
             raise ValueError(f"Unknown category: {q['category_1']}")
@@ -136,15 +132,25 @@ def generate_judge_tasks(
             {"role": "user", "content": user_prompt}
         ]
         judge_format = JUDGE_STRUCTURE[q['category_1']]
+        checkpoint_key = str(q.get("id", index))
+        request = {
+            "messages": judge_messages,
+            "text_format": judge_format.__name__,
+        }
+        cached = checkpoint_store.load(checkpoint_key, request=request)
+        if cached is not None:
+            q.update(cached)
+            return
         result = await llm_ap.process_single_async(judge_messages, text_format=judge_format)
         result_dict = result.parsed_output.model_dump()
         result_dict = convert_bool_to_int(result_dict)
         result_dict = translate_keys(result_dict)
+        checkpoint_store.save(checkpoint_key, result_dict, request=request)
         q.update(result_dict)
 
     return [
-        do_judge(q, generate_answer_task) 
-        for q, generate_answer_task in zip(questions, generate_answer_tasks)
+        do_judge(index, q)
+        for index, q in enumerate(questions)
     ]
 
 async def evaluate_async():
@@ -181,25 +187,41 @@ async def evaluate_async():
     except Exception:
         pass
     llm_ap = LLMAsyncProcessor(llm=llm, soft_fail_on_error=soft_fail)
-    async def generate_answer(q):
+    checkpoint_root = default_checkpoint_root(run, "toxicity")
+    answer_store = JSONItemCheckpointStore(
+        checkpoint_root / "answers",
+        model_name=cfg.model.pretrained_model_name_or_path,
+    )
+
+    async def generate_answer(index, q):
+        messages = [{"role": "user", "content": q["user_prompt"]}]
+        checkpoint_key = str(q.get("id", index))
+        request = {"messages": messages, "params": generator_config}
+        cached = answer_store.load(checkpoint_key, request=request)
+        if cached is not None:
+            q.update({"answer": cached["answer"]})
+            return q
         try:
-            messages = [{"role": "user", "content": q["user_prompt"]}]
             result = await llm_ap.process_single_async(messages, **generator_config)
             q.update({"answer": result.content})
-        except Exception as e:
+        except openai.PermissionDeniedError as e:
             # コンテンツポリシー違反エラーの場合、エラーメッセージを回答として扱う
             error_message = handle_content_policy_error(e)
             q.update({"answer": error_message})
             print(f"Content policy violation for question {q.get('id', 'unknown')}: {error_message}")
+        answer_store.save(
+            checkpoint_key,
+            {"answer": q["answer"]},
+            request=request,
+        )
         return q
 
-    generate_answer_tasks = [asyncio.create_task(generate_answer(q)) for q in questions]
-    generate_answer_results = asyncio.create_task( # Judgeと並列で行うためにここではawaitしない
-        atqdm.gather(*generate_answer_tasks, desc="Generating Toxicity answers"))
-
-    # OpenAIの場合、推論とJudgeが同じAPIになるため、Rate Limit対策として推論がすべて終わるのを待つ
-    if cfg.api == 'openai':
-        await generate_answer_results
+    await atqdm.gather(
+        *(generate_answer(index, q) for index, q in enumerate(questions)),
+        desc="Generating Toxicity answers",
+    )
+    if any("answer" not in q for q in questions):
+        raise RuntimeError("Toxicity answer generation incomplete")
 
     # Load Judge Prompts
     judge_path = cfg.toxicity.get("judge_prompts_path")
@@ -209,9 +231,21 @@ async def evaluate_async():
     # Judge model answers
     judge_client = get_openai_judge_client(judge_model, **judge_params)
     judge_llm_ap = LLMAsyncProcessor(llm=judge_client, batch_size=judge_parallel, inference_interval=0.)
-    judge_tasks = generate_judge_tasks(questions, generate_answer_tasks, judge_prompts, judge_llm_ap)
-
-    await atqdm.gather(*judge_tasks, desc="Judging Toxicity")
+    judge_store = JSONItemCheckpointStore(
+        checkpoint_root / "judgments",
+        model_name=judge_model,
+    )
+    judge_tasks = generate_judge_tasks(
+        questions,
+        judge_prompts,
+        judge_llm_ap,
+        judge_store,
+    )
+    try:
+        await atqdm.gather(*judge_tasks, desc="Judging Toxicity")
+    finally:
+        await judge_llm_ap.close_async_client()
+        await llm_ap.close_async_client()
 
     # Convert json to pd.DataFrame/wandb.Table and logging
     # output table

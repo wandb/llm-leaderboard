@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import signal
 import subprocess
 import sys
 import time
@@ -74,6 +75,90 @@ def test_extract_openclaw_text_prefers_meta_visible_text():
         }
     }
     assert module.extract_assistant_text(sidecar) == "visible answer"
+
+
+def test_model_completion_status_detects_length_truncation_and_openclaw_warning(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    session = tmp_path / "session.jsonl"
+    session.write_text(
+        json.dumps(
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "unfinished planning"}],
+                    "stopReason": "length",
+                }
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sidecar = {
+        "stdout": "Agent couldn't generate a response. Some tool actions may have executed.",
+        "stdout_json": {
+            "status": "ok",
+            "meta": {"agentMeta": {"sessionFile": str(session)}},
+        },
+    }
+
+    status = module.model_completion_status(sidecar)
+
+    assert status == {
+        "ok": False,
+        "failure_category": "model",
+        "reason": "model_output_truncated",
+        "scoreable": True,
+        "retryable": False,
+        "final_stop_reason": "length",
+        "final_assistant_message_seen": True,
+        "openclaw_no_response_warning": True,
+        "warning_marker": "agent couldn't generate a response",
+    }
+
+
+def test_model_completion_status_detects_no_response_without_length():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    sidecar = {
+        "stdout": "Agent could not generate a response; verify tool actions before retrying.",
+        "stdout_json": {"status": "ok", "meta": {}},
+    }
+
+    status = module.model_completion_status(sidecar)
+
+    assert status["ok"] is False
+    assert status["reason"] == "openclaw_no_response"
+    assert status["retryable"] is False
+    assert status["scoreable"] is True
+
+
+def test_model_completion_status_accepts_completed_response(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    session = tmp_path / "session.jsonl"
+    session.write_text(
+        json.dumps(
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "done"}],
+                    "stopReason": "stop",
+                }
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sidecar = {
+        "stdout_json": {
+            "status": "ok",
+            "meta": {"agentMeta": {"sessionFile": str(session)}},
+        }
+    }
+
+    status = module.model_completion_status(sidecar)
+
+    assert status["ok"] is True
+    assert status["reason"] is None
+    assert status["final_stop_reason"] == "stop"
 
 
 def test_gateway_transport_status_rejects_embedded_fallback_when_gateway_required():
@@ -212,6 +297,124 @@ def test_normalize_usage_maps_openclaw_usage_to_weave_usage():
         "cacheReadInputTokens": 7,
         "cacheCreationInputTokens": 1,
     }
+
+
+def test_copied_session_usage_recovers_interrupted_openclaw_usage(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    session = tmp_path / "session.jsonl"
+    session.write_text(
+        "\n".join(
+            [
+                json.dumps({"type": "session"}),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "message": {
+                            "role": "assistant",
+                            "usage": {
+                                "input": 10,
+                                "output": 3,
+                                "cacheRead": 7,
+                                "cacheWrite": 1,
+                            },
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "message",
+                        "message": {
+                            "role": "assistant",
+                            "usage": {
+                                "input": 4,
+                                "output": 2,
+                                "cacheRead": 11,
+                                "cacheWrite": 0,
+                            },
+                        },
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    usage = module.copied_session_usage(
+        {
+            "nemoclaw_session_copy": {
+                "ok": True,
+                "copied_session_file": str(session),
+            }
+        }
+    )
+
+    assert usage == {
+        "inputTokens": 14,
+        "outputTokens": 5,
+        "reasoningTokens": 0,
+        "cacheReadInputTokens": 18,
+        "cacheCreationInputTokens": 1,
+    }
+
+
+def test_runtime_budget_keeps_tool_guard_violation_when_session_usage_is_recovered(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    session = tmp_path / "session.jsonl"
+    session.write_text(
+        json.dumps(
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "usage": {"input": 10, "output": 3, "cacheRead": 7},
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    block = {
+        "kind": "tool_call",
+        "text": "NEJUMI_BUDGET_GUARD_BLOCKED tool_call_limit_exceeded observed=121 limit=120",
+    }
+    sidecar = {
+        "tool_call_count": 121,
+        "executed_tool_call_count": 120,
+        "blocked_tool_call_count": 1,
+        "budget_guard_blocks": [block],
+        "live_runtime_budget": {
+            "reason": "budget_guard_blocked",
+            "exceeded_limits": ["budget_guard_blocked"],
+            "budget_guard_block_count": 1,
+            "budget_guard_blocks": [block],
+        },
+        "nemoclaw_session_copy": {
+            "ok": True,
+            "copied_session_file": str(session),
+        },
+    }
+    args = Namespace(
+        max_input_tokens=1_000_000,
+        max_cumulative_input_tokens=1_000_000,
+        max_cumulative_output_tokens=1_000_000,
+        require_actual_token_usage=True,
+        max_tool_calls=120,
+        max_agent_turns=120,
+        max_tool_wall_seconds=120,
+    )
+
+    status = module.runtime_budget_status(sidecar, args)
+
+    assert status["observed"]["actual_usage_source"] == "copied_nemoclaw_session"
+    assert status["violations"] == [
+        {
+            "type": "max_tool_calls_exceeded",
+            "observed": 121,
+            "limit": 120,
+            "source": "openclaw_runtime_patch",
+        }
+    ]
 
 
 def test_extract_reasoning_text_from_openclaw_session(tmp_path):
@@ -1117,14 +1320,26 @@ def test_run_openclaw_command_salvages_final_assistant_idle(monkeypatch, tmp_pat
 
     terminated = {}
 
-    def fake_terminate(process):
+    def fake_graceful_complete(process, interrupt_grace_seconds):
         terminated["process"] = process
-        return ("stdout text", "stderr text")
+        terminated["grace"] = interrupt_grace_seconds
+        return (
+            "stdout text",
+            "stderr text",
+            {
+                "mode": "graceful_sigint",
+                "forced_after_sigint": False,
+            },
+        )
 
     monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(module, "live_tool_budget_status", fake_live_status)
-    monkeypatch.setattr(module, "terminate_process", fake_terminate)
-    args = Namespace(cwd=tmp_path, final_assistant_idle_salvage_seconds=60.0)
+    monkeypatch.setattr(module, "gracefully_complete_process", fake_graceful_complete)
+    args = Namespace(
+        cwd=tmp_path,
+        final_assistant_idle_salvage_seconds=60.0,
+        final_assistant_shutdown_grace_seconds=45.0,
+    )
 
     result, live_status = module.run_openclaw_command_with_live_budget(
         ["openclaw", "agent"],
@@ -1138,8 +1353,47 @@ def test_run_openclaw_command_salvages_final_assistant_idle(monkeypatch, tmp_pat
     assert "final assistant idle salvage" in result.stderr
     assert live_status["final_assistant_idle_salvaged"] is True
     assert live_status["interrupted"] is False
+    assert live_status["final_assistant_shutdown"] == {
+        "mode": "graceful_sigint",
+        "forced_after_sigint": False,
+    }
     assert terminated["process"] is fake_process
+    assert terminated["grace"] == 45.0
     assert status_calls
+
+
+def test_gracefully_complete_process_escalates_after_sigint_timeout(monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    signals = []
+
+    class FakeProcess:
+        pid = 12345
+
+        def communicate(self, timeout=None):
+            raise subprocess.TimeoutExpired(["openclaw"], timeout)
+
+    process = FakeProcess()
+    monkeypatch.setattr(module.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+    monkeypatch.setattr(
+        module,
+        "terminate_process",
+        lambda observed: ("stdout", "stderr"),
+    )
+
+    stdout, stderr, status = module.gracefully_complete_process(
+        process,
+        interrupt_grace_seconds=25.0,
+    )
+
+    assert stdout == "stdout"
+    assert stderr == "stderr"
+    assert signals == [(12345, signal.SIGINT)]
+    assert status == {
+        "mode": "sigint_then_forced_termination",
+        "signal_method": "process_group_sigint",
+        "interrupt_grace_seconds": 25.0,
+        "forced_after_sigint": True,
+    }
 
 
 def test_run_openclaw_command_interrupts_llm_response_idle(monkeypatch, tmp_path):
@@ -1169,8 +1423,25 @@ def test_run_openclaw_command_interrupts_llm_response_idle(monkeypatch, tmp_path
             "live_provider_timeouts": [],
         },
     )
-    monkeypatch.setattr(module, "terminate_process", lambda process: ("stdout text", "stderr text"))
-    args = Namespace(cwd=tmp_path, final_assistant_idle_salvage_seconds=60.0)
+    shutdown_calls = []
+
+    def fake_graceful_complete(process, interrupt_grace_seconds):
+        shutdown_calls.append((process, interrupt_grace_seconds))
+        return (
+            "stdout text",
+            "stderr text",
+            {
+                "mode": "graceful_sigint",
+                "forced_after_sigint": False,
+            },
+        )
+
+    monkeypatch.setattr(module, "gracefully_complete_process", fake_graceful_complete)
+    args = Namespace(
+        cwd=tmp_path,
+        final_assistant_idle_salvage_seconds=60.0,
+        final_assistant_shutdown_grace_seconds=45.0,
+    )
 
     result, live_status = module.run_openclaw_command_with_live_budget(
         ["openclaw", "agent"],
@@ -1182,6 +1453,11 @@ def test_run_openclaw_command_interrupts_llm_response_idle(monkeypatch, tmp_path
     assert result.returncode == 125
     assert live_status["interrupted"] is True
     assert live_status["reason"] == "llm_response_idle_timeout"
+    assert live_status["interrupt_shutdown"] == {
+        "mode": "graceful_sigint",
+        "forced_after_sigint": False,
+    }
+    assert shutdown_calls == [(fake_process, 45.0)]
     assert "llm_response_idle_seconds=901.0" in result.stderr
 
 
@@ -2125,7 +2401,10 @@ def test_check_agents_writes_json_diagnostic(tmp_path):
         ]
     }
 
-    def fake_agents_api_post(_env, path, _payload):
+    requests = []
+
+    def fake_agents_api_post(_env, path, payload):
+        requests.append((path, payload))
         if path == "/agents/query":
             return agents
         if path == "/agents/spans/query":
@@ -2172,6 +2451,65 @@ def test_check_agents_writes_json_diagnostic(tmp_path):
     assert payload["latest_trace_id"] == "trace-json"
     assert payload["content_capture_health"]["spans_with_invalid_timestamps"] == 0
     assert payload["trace_order_health"]["timestamp_quality_ok"] is True
+    spans_request = next(
+        request for path, request in requests if path == "/agents/spans/query"
+    )
+    assert "filters" not in spans_request
+    assert spans_request["query"] == {
+        "$expr": {
+            "$eq": [
+                {"$getField": "agent_name"},
+                {"$literal": "nejumi-taiwan-openclaw"},
+            ]
+        }
+    }
+    assert spans_request["include_details"] is True
+
+
+def test_check_agents_queries_exact_conversation_without_recent_span_window(
+    monkeypatch, tmp_path
+):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    output = tmp_path / "agents_exact_diagnostic.json"
+    requests = []
+
+    def fake_agents_api_post(_env, path, payload):
+        requests.append((path, payload))
+        if path == "/agents/query":
+            return {"agents": [], "total_count": 0}
+        if path == "/agents/spans/query":
+            return {"spans": []}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(module, "agents_api_post", fake_agents_api_post)
+    conversation_id = "agent:task-agent:agentic-swe-assorted:ofetch"
+    module.check_agents(
+        Namespace(
+            entity="llm-leaderboard",
+            project="tc-leaderboard",
+            agent_name="nejumi-taiwan-openclaw",
+            env_file=None,
+            limit=50,
+            conversation_id=conversation_id,
+            conversation_id_contains=None,
+            json=output,
+        )
+    )
+
+    spans_request = next(
+        request for path, request in requests if path == "/agents/spans/query"
+    )
+    assert "filters" not in spans_request
+    assert spans_request["query"] == {
+        "$expr": {
+            "$eq": [
+                {"$getField": "conversation_id"},
+                {"$literal": conversation_id},
+            ]
+        }
+    }
+    assert spans_request["limit"] == 10_000
+    assert spans_request["include_details"] is True
 
 
 def test_build_agents_check_summary_filters_by_conversation_scope():

@@ -5,6 +5,7 @@ if os.environ.get("NEJUMI_MAIN_STARTED") == "1":
 os.environ["NEJUMI_MAIN_STARTED"] = "1"
 
 import json
+import hashlib
 import signal
 import time
 from pathlib import Path
@@ -174,6 +175,48 @@ def dispatch_validation_from_config(cfg):
     }
 
 
+def summarize_wandb_scope_validation(cfg):
+    entity = str(OmegaConf.select(cfg, "wandb.entity", default="") or "").strip()
+    project = str(OmegaConf.select(cfg, "wandb.project", default="") or "").strip()
+    run_name = str(OmegaConf.select(cfg, "wandb.run_name", default="") or "").strip()
+    expected_entity = str(
+        OmegaConf.select(cfg, "wandb.expected_entity", default="") or ""
+    ).strip()
+    expected_project = str(
+        OmegaConf.select(cfg, "wandb.expected_project", default="") or ""
+    ).strip()
+    errors = []
+
+    if run_name.startswith("taiwan/") and not (
+        expected_entity and expected_project
+    ):
+        errors.append(
+            "Taiwan W&B runs must declare wandb.expected_entity and "
+            "wandb.expected_project. This prevents a Taiwan config from being "
+            "merged with the Japanese/default base config."
+        )
+    if expected_entity and entity != expected_entity:
+        errors.append(
+            "W&B entity scope mismatch: "
+            f"configured={entity!r}, expected={expected_entity!r}"
+        )
+    if expected_project and project != expected_project:
+        errors.append(
+            "W&B project scope mismatch: "
+            f"configured={project!r}, expected={expected_project!r}"
+        )
+
+    return {
+        "ok": not errors,
+        "entity": entity,
+        "project": project,
+        "run_name": run_name,
+        "expected_entity": expected_entity or None,
+        "expected_project": expected_project or None,
+        "errors": errors,
+    }
+
+
 def summarize_token_validation(cfg, enabled_benchmarks):
     validation_results = validate_all_benchmarks(cfg)
     rows = []
@@ -212,6 +255,77 @@ def summarize_runtime_validation(cfg, enabled_benchmarks):
     errors = []
     warnings = []
     credential_checks = []
+    benchmark_preflights = []
+    wandb_scope = summarize_wandb_scope_validation(cfg)
+    errors.extend(wandb_scope["errors"])
+
+    def require_number(
+        path: str,
+        *,
+        minimum: float,
+        inclusive: bool = False,
+        default=None,
+    ) -> None:
+        raw = OmegaConf.select(cfg, path, default=default)
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            errors.append(f"{path} must be numeric; got {raw!r}")
+            return
+        valid = value >= minimum if inclusive else value > minimum
+        if not valid:
+            operator = ">=" if inclusive else ">"
+            errors.append(f"{path} must be {operator} {minimum}; got {value}")
+
+    require_number("batch_size", minimum=0, default=256)
+    require_number("network.retry.max_time_sec", minimum=0, default=1800)
+    require_number("network.retry.max_tries", minimum=0, default=50)
+    require_number(
+        "network.progress_interval_sec",
+        minimum=0,
+        inclusive=True,
+        default=60,
+    )
+    for timeout_name in ("connect", "read", "write", "pool"):
+        require_number(
+            f"network.http_timeout.{timeout_name}",
+            minimum=0,
+            default=300 if timeout_name in {"read", "write"} else 30,
+        )
+    require_number(
+        "provider_rate_limit.min_request_interval_sec",
+        minimum=0,
+        inclusive=True,
+        default=0,
+    )
+    require_number(
+        "provider_rate_limit.request_jitter_sec",
+        minimum=0,
+        inclusive=True,
+        default=0,
+    )
+    benchmark_timeout_paths = {
+        "agentic_math": (
+            ("agentic_math.benchmark_timeout_seconds", 21_600),
+            ("agentic_math.preflight_timeout_seconds", 180),
+        ),
+        "agentic_swe_assorted": (
+            ("agentic_swe_assorted.benchmark_timeout_seconds", 50_400),
+            ("agentic_swe_assorted.preflight_timeout_seconds", 180),
+        ),
+        "swebench_pro": (
+            ("swebench_pro.benchmark_timeout_seconds", 28_800),
+            ("swebench_pro.grading_timeout_seconds", 14_400),
+        ),
+        "deepswe": (
+            ("deepswe.benchmark_timeout_seconds", 129_600),
+        ),
+    }
+    for benchmark_name, timeout_paths in benchmark_timeout_paths.items():
+        if benchmark_name not in enabled_benchmarks:
+            continue
+        for path, default in timeout_paths:
+            require_number(path, minimum=0, default=default)
 
     def env_is_present(name: str | None) -> bool:
         if not name:
@@ -325,6 +439,136 @@ def summarize_runtime_validation(cfg, enabled_benchmarks):
     require_answer_model_credentials()
     require_judge_credentials()
 
+    if "bfcl" in enabled_benchmarks:
+        version = str(
+            OmegaConf.select(cfg, "bfcl.version", default="v3")
+        ).strip().lower()
+        if version == "v4":
+            raw_categories = OmegaConf.select(
+                cfg, "bfcl.test_category", default=[]
+            )
+            categories = (
+                raw_categories.split()
+                if isinstance(raw_categories, str)
+                else list(raw_categories or [])
+            )
+            uses_memory = any(
+                category.startswith("memory_") for category in categories
+            )
+            uses_web = any(
+                category.startswith("web_search_") for category in categories
+            )
+            backend_aliases = {
+                "ddgs": "ddgs",
+                "direct": "ddgs",
+                "direct_search": "ddgs",
+                "multi_engine": "ddgs",
+                "duckduckgo": "duckduckgo_html",
+                "duckduckgo_html": "duckduckgo_html",
+                "ddg": "duckduckgo_html",
+                "ddg_html": "duckduckgo_html",
+                "serpapi": "serpapi",
+                "serp_api": "serpapi",
+            }
+            raw_backend = str(
+                OmegaConf.select(
+                    cfg,
+                    "bfcl.web_search.backend",
+                    default="ddgs",
+                )
+            ).strip().lower().replace("-", "_")
+            backend = backend_aliases.get(raw_backend)
+            if uses_web and backend is None:
+                errors.append(
+                    "Unsupported BFCL v4 web search backend "
+                    f"{raw_backend!r}; use ddgs, duckduckgo_html, or serpapi."
+                )
+
+            required_modules = {}
+            if uses_memory:
+                required_modules.update(
+                    {
+                        "rank_bm25": "rank-bm25",
+                        "sentence_transformers": "sentence-transformers",
+                        "faiss": "faiss-cpu",
+                    }
+                )
+            if uses_web:
+                required_modules["html2text"] = "html2text"
+                if backend == "ddgs":
+                    required_modules["ddgs"] = "ddgs"
+                elif backend == "duckduckgo_html":
+                    required_modules.update(
+                        {
+                            "bs4": "beautifulsoup4",
+                            "requests": "requests",
+                        }
+                    )
+                elif backend == "serpapi":
+                    required_modules["serpapi"] = "google-search-results"
+                    require_any_env(
+                        "BFCL v4 SerpAPI web search",
+                        ["SERPAPI_API_KEY"],
+                    )
+
+            missing_packages = sorted(
+                package
+                for module, package in required_modules.items()
+                if importlib.util.find_spec(module) is None
+            )
+            if missing_packages:
+                errors.append(
+                    "BFCL v4 agentic runtime dependencies are missing: "
+                    + ", ".join(missing_packages)
+                    + ". Install the locked project environment before "
+                    "starting the run."
+                )
+
+    if (
+        "agentic_swe_assorted" in enabled_benchmarks
+        and bool(
+            OmegaConf.select(
+                cfg,
+                "agentic_swe_assorted.run_openclaw",
+                default=True,
+            )
+        )
+    ):
+        configured_output = Path(
+            str(
+                OmegaConf.select(
+                    cfg,
+                    "agentic_swe_assorted.output_dir",
+                    default="outputs/agentic_swe_assorted",
+                )
+            )
+        )
+        try:
+            preflight_result = agentic_swe_assorted.preflight(
+                cfg,
+                configured_output / ".run_eval_preflight",
+            )
+        except Exception as exc:
+            preflight_result = {
+                "benchmark": "agentic_swe_assorted",
+                "ok": False,
+                "returncode": None,
+                "report_path": None,
+                "report": None,
+                "error": f"{type(exc).__name__}: {exc}",
+                "will_run_model": False,
+                "will_run_gateway": False,
+                "will_run_grading": False,
+                "will_initialize_wandb": False,
+            }
+        benchmark_preflights.append(preflight_result)
+        if not preflight_result["ok"]:
+            detail = preflight_result.get("error") or "unknown static preflight error"
+            errors.append(
+                "Agentic SWE-Assorted static preflight failed before paid execution: "
+                + detail
+            )
+
     if "twbias" in enabled_benchmarks:
         backend = str(OmegaConf.select(cfg, "twbias.backend", default="hf_perplexity"))
         api = str(OmegaConf.select(cfg, "api", default=""))
@@ -347,7 +591,9 @@ def summarize_runtime_validation(cfg, enabled_benchmarks):
         "ok": not errors,
         "errors": errors,
         "warnings": warnings,
+        "wandb_scope": wandb_scope,
         "credential_checks": credential_checks,
+        "benchmark_preflights": benchmark_preflights,
     }
 
 
@@ -403,6 +649,99 @@ def build_preflight_payload(custom_cfg_path, base_cfg_path, cfg, enabled_benchma
         "runtime_validation": runtime_validation,
     }
 
+
+def summarize_execution_readiness(cfg, run, enabled_benchmarks):
+    """Run checks that require downloaded artifacts, before any model execution."""
+    checks = []
+    errors = []
+
+    if "agentic_math" in enabled_benchmarks:
+        configured_output = Path(
+            str(
+                OmegaConf.select(
+                    cfg,
+                    "agentic_math.output_dir",
+                    default="outputs/agentic_math",
+                )
+            )
+        )
+        try:
+            result = agentic_math.preflight(
+                cfg,
+                run,
+                configured_output / ".execution_readiness",
+            )
+        except Exception as exc:
+            result = {
+                "benchmark": "agentic_math",
+                "ok": False,
+                "returncode": None,
+                "report_path": None,
+                "report": None,
+                "error": f"{type(exc).__name__}: {exc}",
+                "will_run_model": False,
+                "will_run_gateway": False,
+                "will_run_grading": False,
+                "will_initialize_wandb": False,
+            }
+        checks.append(result)
+        if not result["ok"]:
+            errors.append(
+                "Agentic Math execution-readiness check failed before model "
+                f"execution: {result.get('error') or 'unknown error'}"
+            )
+
+    if (
+        "agentic_swe_assorted" in enabled_benchmarks
+        and bool(
+            OmegaConf.select(
+                cfg,
+                "agentic_swe_assorted.run_openclaw",
+                default=True,
+            )
+        )
+    ):
+        configured_output = Path(
+            str(
+                OmegaConf.select(
+                    cfg,
+                    "agentic_swe_assorted.output_dir",
+                    default="outputs/agentic_swe_assorted",
+                )
+            )
+        )
+        try:
+            result = agentic_swe_assorted.preflight(
+                cfg,
+                configured_output / ".execution_readiness",
+            )
+        except Exception as exc:
+            result = {
+                "benchmark": "agentic_swe_assorted",
+                "ok": False,
+                "returncode": None,
+                "report_path": None,
+                "report": None,
+                "error": f"{type(exc).__name__}: {exc}",
+                "will_run_model": False,
+                "will_run_gateway": False,
+                "will_run_grading": False,
+                "will_initialize_wandb": False,
+            }
+        checks.append(result)
+        if not result["ok"]:
+            errors.append(
+                "Agentic SWE-Assorted execution-readiness check failed before "
+                f"model execution: {result.get('error') or 'unknown error'}"
+            )
+
+    return {
+        "ok": not errors,
+        "errors": errors,
+        "checks": checks,
+        "will_run_model": False,
+    }
+
 # Set config path
 config_dir = Path("configs")
 base_cfg_name = "base_config.yaml"
@@ -411,6 +750,15 @@ parser.add_argument("--config", "-c", type=str)
 parser.add_argument("--select-config", "-s", action="store_true", default=False)
 parser.add_argument("--base-config", type=str, default=base_cfg_name)
 parser.add_argument("--yes", "-y", action="store_true", default=False)
+parser.add_argument(
+    "--allow-invalid-token-allocation",
+    action="store_true",
+    default=False,
+    help=(
+        "Explicitly bypass critical benchmark token-allocation errors. "
+        "--yes alone never bypasses these errors."
+    ),
+)
 parser.add_argument(
     "--preflight",
     action="store_true",
@@ -461,8 +809,6 @@ custom_cfg = OmegaConf.merge(base_cfg, custom_cfg)
 cfg_dict = OmegaConf.to_container(custom_cfg, resolve=True)
 assert isinstance(cfg_dict, dict), "instance.config must be a DictConfig"
 enabled_benchmarks = enabled_benchmarks_from_config(custom_cfg)
-dispatch_validation = dispatch_validation_from_config(custom_cfg)
-runtime_validation = summarize_runtime_validation(custom_cfg, enabled_benchmarks)
 
 if args.preflight:
     payload = build_preflight_payload(
@@ -477,6 +823,14 @@ if args.preflight:
     print(f"  base_config: {payload['base_config']}")
     print(f"  model: {payload['model']}")
     print(f"  enabled_benchmarks: {', '.join(enabled_benchmarks) if enabled_benchmarks else '(none)'}")
+    print(
+        "  wandb_target: "
+        f"{payload['wandb']['entity']}/{payload['wandb']['project']}"
+    )
+    print(
+        "  wandb_scope_contract: "
+        f"{'passed' if payload['runtime_validation']['wandb_scope']['ok'] else 'failed'}"
+    )
     print("  W&B/Weave/model/evaluator execution: skipped")
     if payload["runtime_validation"]["errors"]:
         print("  runtime_errors:")
@@ -493,6 +847,9 @@ if args.preflight:
         print(f"  preflight_json: {preflight_json_path}")
 
     raise SystemExit(0 if payload["ok"] else 2)
+
+dispatch_validation = dispatch_validation_from_config(custom_cfg)
+runtime_validation = summarize_runtime_validation(custom_cfg, enabled_benchmarks)
 
 if not dispatch_validation["ok"]:
     raise SystemExit(
@@ -521,6 +878,7 @@ from evaluator.evaluate_utils.progress_tracker import (
     initialize_progress_tracker, start_benchmark_tracking,
     complete_benchmark_tracking, finish_progress_tracking
 )
+from evaluator.evaluate_utils.benchmark_checkpoint import BenchmarkCheckpointStore
 
 # 環境変数からAPIキーを取得
 def get_api_key_from_env(service_name):
@@ -610,6 +968,25 @@ if run:
 WandbConfigSingleton.initialize(run, llm=None, config_override=cfg_dict)
 cfg = WandbConfigSingleton.get_instance().config
 
+# Resolve remote datasets and validate mutable runtime prerequisites before the
+# inference engine or any paid benchmark request starts.
+execution_readiness = summarize_execution_readiness(
+    cfg,
+    run,
+    enabled_benchmarks,
+)
+if run is not None:
+    run.summary["execution_readiness_ok"] = bool(execution_readiness["ok"])
+    run.summary["execution_readiness_check_count"] = len(
+        execution_readiness["checks"]
+    )
+if not execution_readiness["ok"]:
+    print("\nExecution readiness failed before model execution:", flush=True)
+    for error in execution_readiness["errors"]:
+        print(f"  - {error}", flush=True)
+    _finish_wandb_run(exit_code=2)
+    raise SystemExit(2)
+
 # Save configuration as artifact
 artifact = wandb.Artifact("config", type="config")
 artifact.add_file(custom_cfg_path)
@@ -622,28 +999,314 @@ blend_run(run_chain=True)
 try:
     validation_summary = summarize_token_validation(cfg, enabled_benchmarks)
     print_token_validation_summary(validation_summary)
-
-    if validation_summary["has_errors"]:
-        response = "y" if args.yes else input("\nContinue anyway? (y/N): ").strip().lower()
-        if response not in ['y', 'yes']:
-            print("Evaluation aborted by user.")
-            if run:
-                _finish_wandb_run(exit_code=1)
-            exit(1)
-    elif validation_summary["has_warnings"]:
-        response = "y" if args.yes else input("\nContinue? (Y/n): ").strip().lower()
-        if response in ['n', 'no']:
-            print("Evaluation aborted by user.")
-            if run:
-                _finish_wandb_run(exit_code=1)
-            exit(1)
 except Exception as e:
-    print(f"⚠️  Token validation failed: {e}")
-    print("Proceeding with evaluation...")
+    print(f"Token validation failed before model execution: {e}", flush=True)
+    _finish_wandb_run(exit_code=2)
+    raise SystemExit(2) from e
+
+if validation_summary["has_errors"] and not args.allow_invalid_token_allocation:
+    print(
+        "Critical token-allocation errors block model execution. "
+        "Fix the benchmark configuration or use "
+        "--allow-invalid-token-allocation for an intentional experiment.",
+        flush=True,
+    )
+    _finish_wandb_run(exit_code=2)
+    raise SystemExit(2)
+if validation_summary["has_errors"]:
+    print(
+        "WARNING: explicitly bypassing critical token-allocation errors.",
+        flush=True,
+    )
+elif validation_summary["has_warnings"]:
+    response = "y" if args.yes else input("\nContinue? (Y/n): ").strip().lower()
+    if response in ['n', 'no']:
+        print("Evaluation aborted by user.")
+        _finish_wandb_run(exit_code=1)
+        raise SystemExit(1)
 
 # プログレストラッカーを初期化
 tracker = initialize_progress_tracker(enabled_benchmarks)
 tracker.start_tracking()
+checkpoint_run_root = Path(
+    str(
+        OmegaConf.select(
+            cfg,
+            "output.resolved_run_root",
+            default=f"outputs/taiwan_full_eval_runs/{getattr(run, 'id', 'local')}",
+        )
+    )
+)
+
+
+def _plain_config_value(value):
+    if OmegaConf.is_config(value):
+        return OmegaConf.to_container(value, resolve=True)
+    return value
+
+
+def _benchmark_code_fingerprint(benchmark_name):
+    scripts_root = Path(__file__).resolve().parent
+    evaluator_root = scripts_root / "evaluator"
+    paths = [
+        evaluator_root / f"{benchmark_name}.py",
+    ]
+    direct_inference_benchmarks = set(BENCHMARK_MAP) - {
+        "agentic_math",
+        "swebench",
+        "swebench_pro",
+        "deepswe",
+        "agentic_swe_assorted",
+        "bfcl",
+        "aggregate",
+        "aggregate_taiwan",
+    }
+    if benchmark_name in direct_inference_benchmarks:
+        paths.extend(
+            [
+                scripts_root / "llm_inference_adapter.py",
+                evaluator_root / "evaluate_utils" / "llm_async_processor.py",
+                evaluator_root / "evaluate_utils" / "llm_response_checkpoint.py",
+                evaluator_root / "evaluate_utils" / "provider_rate_limiter.py",
+            ]
+        )
+    if benchmark_name == "agentic_math":
+        paths.extend(
+            [
+                scripts_root / "tools" / "run_agentic_math_openclaw.py",
+                scripts_root / "tools" / "run_openclaw_agent_protocol.py",
+            ]
+        )
+    if benchmark_name in {"swebench", "swebench_pro"}:
+        paths.append(scripts_root / "tools" / "run_swebench_pro_openclaw.py")
+    if benchmark_name == "deepswe":
+        paths.append(scripts_root / "tools" / "run_deepswe_openclaw.py")
+    if benchmark_name == "agentic_swe_assorted":
+        paths.extend(
+            [
+                scripts_root / "tools" / "run_agentic_swe_assorted.py",
+                scripts_root / "tools" / "run_swebench_pro_openclaw.py",
+                scripts_root / "tools" / "run_deepswe_openclaw.py",
+            ]
+        )
+    if benchmark_name == "jaster":
+        paths.append(evaluator_root / "jaster_translation.py")
+    if benchmark_name == "script_adherence":
+        paths.append(evaluator_root / "mtbench.py")
+    if benchmark_name == "bfcl":
+        paths.extend(
+            [
+                evaluator_root / "bfcl.py",
+                evaluator_root / "bfcl_v4.py",
+                evaluator_root
+                / "evaluate_utils"
+                / "bfcl_pkg"
+                / "bfcl"
+                / "_llm_response_generation.py",
+                evaluator_root
+                / "evaluate_utils"
+                / "bfcl_v4_pkg"
+                / "bfcl_eval"
+                / "_llm_response_generation.py",
+            ]
+        )
+        paths.extend(
+            sorted(
+                path
+                for package in ("bfcl_pkg", "bfcl_v4_pkg")
+                for path in (evaluator_root / "evaluate_utils" / package).rglob("*.py")
+            )
+        )
+    if benchmark_name == "aggregate_taiwan":
+        paths.append(
+            Path(__file__).resolve().parents[1]
+            / "taxonomies"
+            / "nejumi45_taiwan.yaml"
+        )
+
+    digest = hashlib.sha256()
+    for path in sorted(set(paths)):
+        if not path.is_file():
+            continue
+        digest.update(str(path.relative_to(Path(__file__).resolve().parents[1])).encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def _benchmark_config_fingerprint(cfg, benchmark_name):
+    common_keys = (
+        "api",
+        "model",
+        "generator",
+        "testmode",
+        "batch_size",
+        "inference_interval",
+        "error_handling",
+        "network",
+        "provider_rate_limit",
+        "num_few_shots",
+    )
+    payload = {
+        "schema_version": 2,
+        "benchmark": benchmark_name,
+        "code": _benchmark_code_fingerprint(benchmark_name),
+        "common": {
+            key: _plain_config_value(
+                OmegaConf.select(cfg, key, default=None)
+            )
+            for key in common_keys
+        },
+        "benchmark_config": _plain_config_value(
+            OmegaConf.select(cfg, benchmark_name, default=None)
+        ),
+    }
+    if benchmark_name == "jaster":
+        payload["jaster_translation"] = _plain_config_value(
+            OmegaConf.select(cfg, "jaster_translation", default=None)
+        )
+        payload["tmmluplus_robustness"] = bool(
+            OmegaConf.select(cfg, "run.tmmluplus_robustness", default=False)
+        )
+    if benchmark_name in {"aggregate", "aggregate_taiwan"}:
+        payload["run"] = _plain_config_value(
+            OmegaConf.select(cfg, "run", default={})
+        )
+        payload["taiwan_aggregate"] = _plain_config_value(
+            OmegaConf.select(cfg, "taiwan_aggregate", default=None)
+        )
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+benchmark_checkpoints = BenchmarkCheckpointStore(
+    checkpoint_run_root / "benchmark_checkpoints",
+    run_id=str(getattr(run, "id", "local")),
+    resume_enabled=allow_wandb_resume,
+    config_fingerprints={
+        benchmark_name: _benchmark_config_fingerprint(cfg, benchmark_name)
+        for benchmark_name in BENCHMARK_MAP
+    },
+)
+allow_legacy_benchmark_checkpoint_migration = bool(
+    OmegaConf.select(
+        cfg,
+        "output.allow_legacy_benchmark_checkpoint_migration",
+        default=False,
+    )
+)
+trusted_fingerprint_mismatch_benchmarks = set(
+    OmegaConf.select(
+        cfg,
+        "output.trust_completed_checkpoint_fingerprint_mismatch",
+        default=[],
+    )
+    or []
+)
+
+
+def _benchmark_is_resumable(benchmark_name):
+    if not benchmark_checkpoints.is_completed(benchmark_name):
+        raw_checkpoint = benchmark_checkpoints.load_raw(benchmark_name)
+        remote_completed = bool(
+            run is not None
+            and run.summary.get(
+                f"benchmark_completed_{benchmark_name}",
+                False,
+            )
+        )
+        legacy_completed = bool(
+            raw_checkpoint
+            and raw_checkpoint.get("status") == "completed"
+            and "config_fingerprint" not in raw_checkpoint
+        )
+        if (
+            allow_legacy_benchmark_checkpoint_migration
+            and legacy_completed
+            and remote_completed
+        ):
+            benchmark_checkpoints.mark_completed(benchmark_name)
+            if run is not None:
+                run.summary[
+                    f"benchmark_checkpoint_migrated_{benchmark_name}"
+                ] = True
+            print(
+                "Migrated legacy completion marker after matching local run ID "
+                f"and W&B completion evidence: {benchmark_name}",
+                flush=True,
+            )
+            return True
+        fingerprint_mismatch_completed = bool(
+            raw_checkpoint
+            and raw_checkpoint.get("status") == "completed"
+            and raw_checkpoint.get("config_fingerprint")
+        )
+        if (
+            benchmark_name in trusted_fingerprint_mismatch_benchmarks
+            and fingerprint_mismatch_completed
+            and remote_completed
+        ):
+            benchmark_checkpoints.mark_completed(benchmark_name)
+            if run is not None:
+                run.summary[
+                    f"benchmark_checkpoint_fingerprint_migrated_{benchmark_name}"
+                ] = True
+            print(
+                "Migrated explicitly trusted completion marker after matching "
+                "local run ID and W&B completion evidence: "
+                f"{benchmark_name}",
+                flush=True,
+            )
+            return True
+        return False
+    if run is None:
+        return True
+    remote_completed = bool(
+        run.summary.get(f"benchmark_completed_{benchmark_name}", False)
+    )
+    if not remote_completed:
+        print(
+            "Local completion marker exists but W&B completion evidence is "
+            f"missing for {benchmark_name}; re-running safely.",
+            flush=True,
+        )
+    return remote_completed
+
+
+def _execute_tracked_benchmark(benchmark_name, callback):
+    if _benchmark_is_resumable(benchmark_name):
+        if run is not None:
+            run.summary[f"benchmark_error_{benchmark_name}"] = None
+        print(
+            f"Skipping completed benchmark on explicit resume: {benchmark_name}",
+            flush=True,
+        )
+        complete_benchmark_tracking(benchmark_name, {"resumed": 1})
+        return None
+
+    start_benchmark_tracking(benchmark_name)
+    benchmark_checkpoints.mark_started(benchmark_name)
+    try:
+        result = callback()
+    except BaseException as exc:
+        benchmark_checkpoints.mark_failed(benchmark_name, exc)
+        if run is not None:
+            run.summary[f"benchmark_completed_{benchmark_name}"] = False
+            run.summary[f"benchmark_error_{benchmark_name}"] = (
+                f"{type(exc).__name__}: {exc}"
+            )
+        raise
+    if run is not None:
+        run.summary[f"benchmark_completed_{benchmark_name}"] = True
+        run.summary[f"benchmark_error_{benchmark_name}"] = None
+    benchmark_checkpoints.mark_completed(benchmark_name)
+    complete_benchmark_tracking(benchmark_name)
+    return result
 
 # vLLMコンテナの起動処理を追加
 # Start vLLM container if needed (for vllm/vllm-docker API types)
@@ -672,136 +1335,100 @@ if run:
 
 # BFCL
 if cfg.run.bfcl:
-    start_benchmark_tracking('bfcl')
-    bfcl.evaluate()
-    complete_benchmark_tracking('bfcl')
+    _execute_tracked_benchmark("bfcl", bfcl.evaluate)
 
 # Agentic Math evaluation
 if cfg.run.get('agentic_math', False):
-    start_benchmark_tracking('agentic_math')
-    agentic_math.evaluate()
-    complete_benchmark_tracking('agentic_math')
+    _execute_tracked_benchmark("agentic_math", agentic_math.evaluate)
 
 # SWE-Bench Verified evaluation
 if cfg.run.swebench:
-    start_benchmark_tracking('swebench')
     if cfg.swebench.background_eval:
-        # 評価プロセスの実行時間が長いため、他のベンチと並行でバックグラウンド実行する
-        # evaluate() はコールバック（wait_and_log_metrics）を返す実装に統一
-        swebench_postprocess = swe_bench.evaluate()
+        if _benchmark_is_resumable("swebench"):
+            print("Skipping completed benchmark on explicit resume: swebench", flush=True)
+            complete_benchmark_tracking("swebench", {"resumed": 1})
+            swebench_postprocess = None
+        else:
+            start_benchmark_tracking("swebench")
+            benchmark_checkpoints.mark_started("swebench")
+            swebench_postprocess = swe_bench.evaluate()
     else:
-        swe_bench.evaluate()
-    complete_benchmark_tracking('swebench')
+        _execute_tracked_benchmark("swebench", swe_bench.evaluate)
 
 # SWE-bench Pro agentic evaluation
 if cfg.run.get('swebench_pro', False):
-    start_benchmark_tracking('swebench_pro')
-    swebench_pro.evaluate()
-    complete_benchmark_tracking('swebench_pro')
+    _execute_tracked_benchmark("swebench_pro", swebench_pro.evaluate)
 
 # DeepSWE agentic evaluation
 if cfg.run.get('deepswe', False):
-    start_benchmark_tracking('deepswe')
-    deepswe.evaluate()
-    complete_benchmark_tracking('deepswe')
+    _execute_tracked_benchmark("deepswe", deepswe.evaluate)
 
 # Agentic SWE-Assorted evaluation
 if cfg.run.get('agentic_swe_assorted', False):
-    start_benchmark_tracking('agentic_swe_assorted')
-    agentic_swe_assorted.evaluate()
-    complete_benchmark_tracking('agentic_swe_assorted')
+    _execute_tracked_benchmark(
+        "agentic_swe_assorted",
+        agentic_swe_assorted.evaluate,
+    )
 
 # mt-bench evaluation
 if is_run_flag_enabled(cfg.run.get("mtbench", False)):
-    start_benchmark_tracking('mtbench')
-    mtbench.evaluate()
-    complete_benchmark_tracking('mtbench')
+    _execute_tracked_benchmark("mtbench", mtbench.evaluate)
 
 # Traditional Chinese script adherence, derived from mtbench_output_table.
 if is_run_flag_enabled(cfg.run.get("script_adherence", False)):
-    start_benchmark_tracking('script_adherence')
-    script_adherence.evaluate()
-    complete_benchmark_tracking('script_adherence')
+    _execute_tracked_benchmark("script_adherence", script_adherence.evaluate)
 
 # jbbq
 if cfg.run.jbbq:
-    start_benchmark_tracking('jbbq')
-    jbbq.evaluate()
-    complete_benchmark_tracking('jbbq')
+    _execute_tracked_benchmark("jbbq", jbbq.evaluate)
 
 # toxicity
 if cfg.run.toxicity:
-    start_benchmark_tracking('toxicity')
-    toxicity.evaluate()
-    complete_benchmark_tracking('toxicity')
+    _execute_tracked_benchmark("toxicity", toxicity.evaluate)
 
 # JTruthfulQA
 if cfg.run.jtruthfulqa:
-    start_benchmark_tracking('jtruthfulqa')
-    jtruthfulqa.evaluate()
-    complete_benchmark_tracking('jtruthfulqa')
+    _execute_tracked_benchmark("jtruthfulqa", jtruthfulqa.evaluate)
 
 # hle
 if cfg.run.hle:
-    start_benchmark_tracking('hle')
-    hle.evaluate()
-    complete_benchmark_tracking('hle')
+    _execute_tracked_benchmark("hle", hle.evaluate)
 
 # HalluLens
 if cfg.run.hallulens:
-    start_benchmark_tracking('hallulens')
-    hallulens.evaluate()
-    complete_benchmark_tracking('hallulens')
+    _execute_tracked_benchmark("hallulens", hallulens.evaluate)
 
 # HalluLens zh-TW
 if is_run_flag_enabled(cfg.run.get("hallulens_zh_tw", False)):
-    start_benchmark_tracking('hallulens_zh_tw')
-    hallulens_zh_tw.evaluate()
-    complete_benchmark_tracking('hallulens_zh_tw')
+    _execute_tracked_benchmark("hallulens_zh_tw", hallulens_zh_tw.evaluate)
 
 # ARC-AGI
 if cfg.run.arc_agi:
-    start_benchmark_tracking('arc_agi')
-    arc_agi.evaluate()
-    complete_benchmark_tracking('arc_agi')
+    _execute_tracked_benchmark("arc_agi", arc_agi.evaluate)
 
 # M-IFEval
 if cfg.run.m_ifeval:
-    start_benchmark_tracking('m_ifeval')
-    m_ifeval.evaluate()
-    complete_benchmark_tracking('m_ifeval')
+    _execute_tracked_benchmark("m_ifeval", m_ifeval.evaluate)
 
 # IFEval zh-TW
 if is_run_flag_enabled(cfg.run.get("ifeval_zh_tw", False)):
-    start_benchmark_tracking('ifeval_zh_tw')
-    ifeval_zh_tw.evaluate()
-    complete_benchmark_tracking('ifeval_zh_tw')
+    _execute_tracked_benchmark("ifeval_zh_tw", ifeval_zh_tw.evaluate)
 
 # TS-Bench
 if is_run_flag_enabled(cfg.run.get("ts_bench", False)):
-    start_benchmark_tracking('ts_bench')
-    ts_bench.evaluate()
-    complete_benchmark_tracking('ts_bench')
+    _execute_tracked_benchmark("ts_bench", ts_bench.evaluate)
 
 # TWBias
 if is_run_flag_enabled(cfg.run.get("twbias", False)):
-    start_benchmark_tracking('twbias')
-    twbias.evaluate()
-    complete_benchmark_tracking('twbias')
+    _execute_tracked_benchmark("twbias", twbias.evaluate)
 
 # TCEval-v2 selected
 if is_run_flag_enabled(cfg.run.get("tceval_v2", False)):
-    start_benchmark_tracking('tceval_v2')
-    tceval_v2.evaluate()
-    complete_benchmark_tracking('tceval_v2')
+    _execute_tracked_benchmark("tceval_v2", tceval_v2.evaluate)
 
 # Evaluation phase
-if cfg.run.jaster:
-    start_benchmark_tracking('jaster')
-    # llm-jp-eval evaluation
+def _evaluate_jaster_complete():
     jaster.evaluate()
-    complete_benchmark_tracking('jaster')
-
     #### open weight model base evaluation
     # 1. evaluation for translation task in jaster with comet
     # APIタイプに応じてvLLMサーバー/コンテナをシャットダウン
@@ -830,24 +1457,40 @@ if cfg.run.jaster:
             # llmインスタンスは同じものを使い続ける
             pass
 
+
+if cfg.run.jaster:
+    _execute_tracked_benchmark("jaster", _evaluate_jaster_complete)
+
 if cfg.run.swebench and cfg.swebench.background_eval:
     # SWE-Bench評価完了を待ってから集計・W&Bロギングを確実に実施
     if callable(swebench_postprocess):
-        swebench_postprocess()
-    else:
-        print("SWE-Bench background eval returned no callback; skipping explicit wait.")
+        try:
+            swebench_postprocess()
+        except BaseException as exc:
+            benchmark_checkpoints.mark_failed("swebench", exc)
+            if run is not None:
+                run.summary["benchmark_completed_swebench"] = False
+                run.summary["benchmark_error_swebench"] = (
+                    f"{type(exc).__name__}: {exc}"
+                )
+            raise
+        benchmark_checkpoints.mark_completed("swebench")
+        if run is not None:
+            run.summary["benchmark_completed_swebench"] = True
+            run.summary["benchmark_error_swebench"] = None
+        complete_benchmark_tracking("swebench")
+    elif not _benchmark_is_resumable("swebench"):
+        raise RuntimeError(
+            "SWE-Bench background evaluation returned no completion callback"
+        )
 
 # Aggregation
 if cfg.run.aggregate:
-    start_benchmark_tracking('aggregate')
-    aggregate.evaluate()
-    complete_benchmark_tracking('aggregate')
+    _execute_tracked_benchmark("aggregate", aggregate.evaluate)
 
 # Taiwan leaderboard aggregation
 if is_run_flag_enabled(cfg.run.get("aggregate_taiwan", False)):
-    start_benchmark_tracking('aggregate_taiwan')
-    aggregate_taiwan.evaluate()
-    complete_benchmark_tracking('aggregate_taiwan')
+    _execute_tracked_benchmark("aggregate_taiwan", aggregate_taiwan.evaluate)
 
 # プログレストラッキング終了
 finish_progress_tracking()

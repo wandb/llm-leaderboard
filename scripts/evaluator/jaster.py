@@ -17,12 +17,16 @@ from .evaluate_utils import (
     jaster_metrics_dict,
     controllability_dict,
     task_to_sub_category,
-    LLMAsyncProcessor,
     extract_answer_with_pattern,
     AnswerPatternId,
     normalize,
     text_formatter,
     evaluate_robustness,
+)
+from .evaluate_utils.llm_response_checkpoint import (
+    LLMResponseCheckpointStore,
+    default_checkpoint_root,
+    run_checkpointed_batch,
 )
 
 
@@ -52,6 +56,22 @@ def evaluate_n_shot(few_shots: bool):
     run = instance.run
     cfg = instance.config
     llm = instance.llm
+    if (
+        hasattr(llm, "async_client")
+        and not hasattr(llm, "_get_async_client")
+    ):
+        # A paid run can reach JASTER after this module was updated while its
+        # process still has the pre-loop-local adapter loaded. Give each
+        # independently executed shot phase a fresh client so it cannot inherit
+        # an AsyncOpenAI client owned by an already closed event loop.
+        from llm_inference_adapter import get_llm_inference_engine
+
+        llm = get_llm_inference_engine()
+        print(
+            "JASTER legacy live-run isolation: using a fresh inference client "
+            "for this shot phase",
+            flush=True,
+        )
 
     # download dataset
     dataset_name = "jaster"
@@ -62,10 +82,13 @@ def evaluate_n_shot(few_shots: bool):
         print(f"skip {dataset_name} because it is not found in {artifact_dir}")
         raise FileNotFoundError(f"dataset_dir not found: {dataset_dir}")
 
-    tasks = [
-        "tmmluplus",
-        "jhumaneval",
-    ]
+    configured_tasks = cfg[dataset_name].get("tasks", None)
+    tasks = (
+        list(configured_tasks)
+        if configured_tasks is not None
+        else ["tmmluplus", "jhumaneval"]
+    )
+    require_configured_task_files = configured_tasks is not None
 
     if cfg.run.get("tmmluplus_robustness", False) and few_shots:
         tasks.extend(["tmmluplus_IncorrectChoice", "tmmluplus_SymbolChoice"])
@@ -82,6 +105,8 @@ def evaluate_n_shot(few_shots: bool):
         num_few_shots = 0
 
     evaluation_results = []
+    all_inputs = []
+    request_keys = []
     for task in tasks:
         # execute evaluation
         for subset in ("test", "dev"):
@@ -98,7 +123,15 @@ def evaluate_n_shot(few_shots: bool):
             if subset == "dev" and task == "mgsm":
                 task_data_path = dataset_dir / "train" / f"mgsm.json" # mgsm is not in the dev set
             if not task_data_path.exists():
-                print(f"skip {task} because it is not found in {artifact_dir}")
+                if require_configured_task_files:
+                    raise FileNotFoundError(
+                        f"JASTER required task file not found: {task_data_path}"
+                    )
+                print(
+                    "Skipping legacy optional JASTER task file because no "
+                    f"explicit jaster.tasks list was configured: {task_data_path}",
+                    flush=True,
+                )
                 continue
             with task_data_path.open(encoding="utf-8") as f:
                 task_data = json.load(f)
@@ -118,7 +151,6 @@ def evaluate_n_shot(few_shots: bool):
             samples = task_data["samples"][:num_samples]
 
             for idx, sample in enumerate(samples):
-                inputs = []
                 # compose messages
                 messages = []
 
@@ -164,7 +196,11 @@ def evaluate_n_shot(few_shots: bool):
                 generator_config = _to_plain_dict(getattr(cfg, "generator", {}))
                 override_max_tokens = _get_override_max_tokens(cfg, dataset_name)
                 generator_config["max_tokens"] = override_max_tokens or task_data["output_length"]
-                inputs.extend([messages, generator_config])
+                request_index = len(all_inputs)
+                all_inputs.append([messages, generator_config])
+                request_keys.append(
+                    f"{num_few_shots}shot:{task}:{subset}:{idx}"
+                )
                 
                 for metrics in metrics_list:
                     metrics_func: callable = jaster_metrics_dict[metrics]
@@ -196,19 +232,41 @@ def evaluate_n_shot(few_shots: bool):
                             "reasoning_content_len": None,
                             "reasoning_content_preview": None,
                             "raw_output_is_empty": None,
-                            "inputs": inputs,
+                            "request_index": request_index,
                         }
                     )
 
-    all_inputs = [er["inputs"] for er in evaluation_results]
-    llm_ap = LLMAsyncProcessor(
+    if not all_inputs:
+        raise RuntimeError(
+            f"JASTER {num_few_shots}-shot produced no evaluation requests"
+        )
+
+    configured_checkpoint_dir = cfg[dataset_name].get("checkpoint_dir", None)
+    checkpoint_root = (
+        Path(configured_checkpoint_dir)
+        if configured_checkpoint_dir
+        else default_checkpoint_root(run, dataset_name)
+    )
+    checkpoint_store = LLMResponseCheckpointStore(
+        checkpoint_root / f"{num_few_shots}shot",
+        model_name=cfg.model.pretrained_model_name_or_path,
+    )
+    results = run_checkpointed_batch(
         llm=llm,
         inputs=all_inputs,
+        keys=request_keys,
+        checkpoint_store=checkpoint_store,
+        label=f"JASTER {num_few_shots}-shot",
     )
-    results = llm_ap.get_results()
+    if len(results) != len(all_inputs):
+        raise RuntimeError(
+            f"JASTER {num_few_shots}-shot response count mismatch: "
+            f"{len(results)}/{len(all_inputs)}"
+        )
 
     # Process all results uniformly
-    for response, evaluation_result in tqdm(zip(results, evaluation_results)):
+    for evaluation_result in tqdm(evaluation_results):
+        response = results[evaluation_result["request_index"]]
         raw_output = response.content
         
         # For jhumaneval, don't split by \n\n to preserve code blocks
@@ -290,7 +348,11 @@ def evaluate_n_shot(few_shots: bool):
         evaluation_result["reasoning_content_len"] = len(response.reasoning_content or "")
         evaluation_result["reasoning_content_preview"] = (response.reasoning_content or "")[:200]
         evaluation_result["raw_output_is_empty"] = (raw_output == "")
-        del evaluation_result["metrics_func"], evaluation_result["control_func"], evaluation_result["inputs"]
+        del (
+            evaluation_result["metrics_func"],
+            evaluation_result["control_func"],
+            evaluation_result["request_index"],
+        )
         
     # Handle all tasks uniformly
     output_df = pd.DataFrame(evaluation_results)

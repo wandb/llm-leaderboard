@@ -466,7 +466,9 @@ Agentic coding:
   Taiwan aggregate / Total Score
 ```
 
-簡体字混入は、既存ベンチの点数から直接減点するのではなく、独立したALT指標として扱う方針です。
+簡体字混入は既存ベンチの点数を直接減点するペナルティではなく、
+MT-Bench-TWの回答から算出する独立したALT評価単位です。現在のtaxonomyでは
+ALTカテゴリの必須単位であり、ALTカテゴリ得点を経由してTotal Scoreにも反映されます。
 
 ## 現在の作業仮説
 

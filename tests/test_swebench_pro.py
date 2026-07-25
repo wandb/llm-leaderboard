@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -67,6 +68,46 @@ def test_swebench_default_policy_allows_pip_and_blocks_external_fetches():
     assert denied("python - <<'PY'\nimport requests\nrequests.get('https://example.com')\nPY")
 
 
+def test_swebench_summary_separates_scoreable_stops_from_unscoreable_failures(tmp_path):
+    module = load_script_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    args = SimpleNamespace(
+        model="provider/model",
+        openclaw_num_workers=2,
+        openclaw_task_start_min_interval_seconds=1.0,
+        max_input_tokens=1_000_000,
+        max_cumulative_input_tokens=1_000_000,
+        max_cumulative_output_tokens=500_000,
+        max_tool_calls=40,
+        max_agent_turns=40,
+        max_tool_wall_seconds=120,
+    )
+    patches = [
+        {
+            "instance_id": "scoreable-stop",
+            "patch": "diff --git a/a b/a\n",
+            "openclaw_disqualified_reason": "runtime_budget_exceeded",
+        },
+        {
+            "instance_id": "unscoreable-failure",
+            "patch": "",
+            "openclaw_disqualified_reason": "provider_transient_exhausted",
+        },
+    ]
+
+    module.write_outputs(
+        tmp_path,
+        patches,
+        [{"instance_id": "scoreable-stop"}, {"instance_id": "unscoreable-failure"}],
+        args,
+    )
+
+    summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    assert summary["runtime_budget_exceeded_patches"] == 1
+    assert summary["scoreable_stop_patches"] == 1
+    assert summary["unscoreable_failure_patches"] == 1
+    assert summary["disqualified_patches"] == 2
+
+
 def test_swebench_weave_agents_verifier_failure_is_per_instance_evidence(
     tmp_path, monkeypatch
 ):
@@ -105,6 +146,134 @@ def test_swebench_weave_agents_verifier_failure_is_per_instance_evidence(
         "weave_agents_conversation_id"
     ]
     assert evidence["weave_agents_verifier_json"].endswith(".json")
+
+
+def test_swebench_weave_agents_verifier_failure_raises_when_fail_fast(
+    tmp_path, monkeypatch
+):
+    module = load_script_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+
+    monkeypatch.setattr(
+        module,
+        "verify_native_weave_agents_trace",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("trace was missing")),
+    )
+    args = SimpleNamespace(
+        verify_weave_agents=True,
+        dry_run=False,
+        fail_fast_trace_evidence=True,
+        weave_agents_entity="llm-leaderboard",
+        weave_agents_project="tc-leaderboard",
+        weave_agents_agent_name="nejumi-taiwan-openclaw",
+        weave_agents_env_file=tmp_path / ".env",
+        weave_agents_limit=50,
+        weave_agents_verification_timeout=0,
+        weave_agents_poll_seconds=1,
+        model="wandb-inference/zai-org/GLM-5.2",
+    )
+
+    with pytest.raises(module.RequiredWeaveAgentsTraceError, match="trace was missing"):
+        module.verify_weave_agents_for_attempt(
+            sample_row(),
+            tmp_path,
+            args,
+            session_key="run:swe:example__repo-1:attempt-1",
+            agent_id="tw-swe-test-agent",
+            sidecar={"tool_call_count": 3},
+        )
+
+
+def test_swebench_reverifies_cached_native_trace_without_model_rerun(
+    tmp_path, monkeypatch
+):
+    module = load_script_module(
+        REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py"
+    )
+    row = sample_row()
+    task_dir = tmp_path / row["instance_id"]
+    task_dir.mkdir()
+    record = {
+        "instance_id": row["instance_id"],
+        "weave_agents_required": True,
+        "weave_agents_ok": False,
+        "weave_agents_conversation_id_contains": "agent:test:conversation",
+        "openclaw_tool_call_count": 3,
+    }
+    (task_dir / "patch_record.json").write_text(json.dumps(record), encoding="utf-8")
+    observed = {}
+
+    def verify(**kwargs):
+        observed.update(kwargs)
+        return {
+            "weave_agents_required": True,
+            "weave_agents_ok": True,
+            "weave_agents_trace_id": "trace-123",
+            "weave_agents_conversation_id": "agent:test:conversation",
+            "weave_agents_conversation_id_contains": "agent:test:conversation",
+            "weave_agents_conversation_url": "https://wandb.example/conversation",
+            "weave_agents_url": "https://wandb.example/agents",
+        }
+
+    monkeypatch.setattr(module, "verify_native_weave_agents_trace", verify)
+    args = SimpleNamespace(
+        weave_agents_entity="llm-leaderboard",
+        weave_agents_project="tc-leaderboard",
+        weave_agents_agent_name="nejumi-taiwan-openclaw",
+        weave_agents_env_file=tmp_path / ".env",
+        weave_agents_limit=50,
+        weave_agents_poll_seconds=1,
+        native_trace_cached_reverification_timeout=0,
+        model="anthropic/claude-sonnet-4-6",
+    )
+
+    refreshed = module.reverify_cached_native_trace(row, task_dir, args, record)
+
+    assert refreshed["weave_agents_ok"] is True
+    assert refreshed["weave_agents_trace_id"] == "trace-123"
+    assert observed["conversation_id_contains"] == "agent:test:conversation"
+    assert observed["required_texts"] == [f"instance_id: {row['instance_id']}"]
+    assert observed["require_tool_trace"] is True
+    saved = json.loads((task_dir / "patch_record.json").read_text(encoding="utf-8"))
+    assert saved["weave_agents_ok"] is True
+
+
+def test_swebench_model_truncation_is_scoreable_non_retryable_and_preserves_patch():
+    module = load_script_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    sidecar = {
+        "model_completion": {
+            "ok": False,
+            "failure_category": "model",
+            "reason": "model_output_truncated",
+            "scoreable": True,
+            "retryable": False,
+        }
+    }
+
+    reason = module.sidecar_model_failure_reason(sidecar)
+
+    assert reason == "model_output_truncated"
+    assert reason in module.SCOREABLE_OPENCLAW_DISQUALIFIED_REASONS
+    assert module.should_force_empty_patch({"openclaw_disqualified_reason": reason}) is False
+
+
+def test_swebench_provider_failure_still_forces_empty_patch():
+    module = load_script_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+
+    assert module.sidecar_model_failure_reason({"model_completion": {"ok": True}}) is None
+    assert module.should_force_empty_patch(
+        {"openclaw_disqualified_reason": "provider_transient_exhausted"}
+    ) is True
+
+
+def test_swebench_runtime_budget_stop_preserves_current_patch():
+    module = load_script_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+
+    assert module.should_force_empty_patch(
+        {"openclaw_disqualified_reason": "runtime_budget_exceeded"}
+    ) is False
+    assert module.should_force_empty_patch(
+        {"openclaw_disqualified_reason": "time_up"}
+    ) is False
 
 
 def test_swebench_openclaw_context_tokens_updates_existing_model_entry():
@@ -203,6 +372,151 @@ def test_swebench_copy_archive_excludes_git_history(tmp_path):
         names = tar.getnames()
     assert "./src.py" in names
     assert not any(name == "./.git" or name.startswith("./.git/") for name in names)
+
+
+def test_swebench_copy_archive_dereferences_hard_links(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    checkout = tmp_path / "checkout"
+    package_dir = checkout / "node_modules" / ".pnpm" / "package"
+    package_dir.mkdir(parents=True)
+    package_file = package_dir / "index.js"
+    package_file.write_text("module.exports = true;\n", encoding="utf-8")
+    linked_file = checkout / "node_modules" / "linked-index.js"
+    linked_file.parent.mkdir(parents=True, exist_ok=True)
+    linked_file.hardlink_to(package_file)
+    archive = tmp_path / "checkout.tgz"
+
+    module.create_checkout_archive(checkout, archive)
+
+    with tarfile.open(archive, "r:gz") as tar:
+        package_member = tar.getmember("./node_modules/.pnpm/package/index.js")
+        linked_member = tar.getmember("./node_modules/linked-index.js")
+    assert package_member.isfile()
+    assert linked_member.isfile()
+
+
+def test_swebench_tracked_archive_materializes_skip_worktree_files(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=checkout,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=checkout,
+        check=True,
+    )
+    tracked = checkout / ".editorconfig"
+    tracked.write_text("root = true\n", encoding="utf-8")
+    subprocess.run(["git", "add", ".editorconfig"], cwd=checkout, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "baseline"], cwd=checkout, check=True)
+    subprocess.run(
+        ["git", "update-index", "--skip-worktree", ".editorconfig"],
+        cwd=checkout,
+        check=True,
+    )
+    tracked.unlink()
+    assert (
+        subprocess.run(
+            ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+            cwd=checkout,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        == ""
+    )
+    archive = tmp_path / "tracked.tgz"
+
+    module.create_checkout_tracked_archive(checkout, archive)
+
+    with tarfile.open(archive, "r:gz") as tar:
+        member = tar.extractfile("./.editorconfig")
+        assert member is not None
+        assert member.read() == b"root = true\n"
+
+
+def test_swebench_rebuilds_exact_head_without_tracking_ignored_dependencies(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=checkout,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=checkout,
+        check=True,
+    )
+    (checkout / ".gitignore").write_text("node_modules/\ngenerated.py\n", encoding="utf-8")
+    (checkout / "src.py").write_text("VALUE = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", ".gitignore", "src.py"], cwd=checkout, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "baseline"], cwd=checkout, check=True)
+    dependency = checkout / "node_modules" / "package" / "index.js"
+    dependency.parent.mkdir(parents=True)
+    dependency.write_text("module.exports = true;\n", encoding="utf-8")
+    (checkout / "generated.py").write_text("VERSION = 'runtime'\n", encoding="utf-8")
+
+    expected_tree = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=checkout,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    manifest = module.checkout_head_tree_manifest(checkout)
+    assert {entry["path"] for entry in manifest} == {".gitignore", "src.py"}
+
+    reconstructed = tmp_path / "reconstructed"
+    shutil.copytree(checkout, reconstructed, ignore=shutil.ignore_patterns(".git"))
+    subprocess.run(["git", "init", "-q"], cwd=reconstructed, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=reconstructed,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=reconstructed,
+        check=True,
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            module.CHECKOUT_BASELINE_REBUILD_SCRIPT,
+            str(reconstructed),
+            expected_tree,
+        ],
+        input=json.dumps(manifest),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout.strip() == expected_tree
+    assert dependency.relative_to(checkout).joinpath().as_posix() not in {
+        entry["path"] for entry in module.checkout_head_tree_manifest(reconstructed)
+    }
+    assert (reconstructed / "node_modules" / "package" / "index.js").is_file()
+    assert (reconstructed / "generated.py").is_file()
+    assert (
+        subprocess.run(
+            ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+            cwd=reconstructed,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        == ""
+    )
 
 
 def test_nemoclaw_checkout_transfer_uses_sandbox_upload(tmp_path, monkeypatch):
@@ -505,12 +819,14 @@ def test_openclaw_prompt_includes_runtime_budget_when_configured():
         max_input_tokens=1_000_000,
         max_cumulative_input_tokens=1_000_000,
         max_cumulative_output_tokens=500_000,
+        max_output_tokens_per_response=65_536,
     )
 
     assert "## Runtime Budget" in prompt
     assert "Maximum tool calls: 40" in prompt
     assert "Maximum agent turns: 40" in prompt
     assert "Per-turn input-token cap: 1000000" in prompt
+    assert "Per-response output-token cap: 65536" in prompt
     assert "Cumulative input-token cap: 1000000" in prompt
     assert "Cumulative output-token cap: 500000" in prompt
     assert "hard evaluation limits" in prompt
@@ -738,12 +1054,33 @@ def test_swebench_registers_nemoclaw_gateway_task_agent_when_no_local(tmp_path, 
     metadata = json.loads((task_dir / "openclaw_task_agent.json").read_text(encoding="utf-8"))
     assert metadata["config_path"] == "/sandbox/.openclaw/openclaw.json"
     assert metadata["exec_timeout"] == {"timeoutSec": 240}
+    assert metadata["registration_spec"]["model"] == args.model
+    assert metadata["registration_spec"]["max_agent_turns"] == 40
+    assert metadata["registration_key"] == module.task_agent_registration_key(
+        metadata["registration_spec"]
+    )
     assert metadata["gateway_registered"]["ok"] is True
+    first_registration_key = metadata["registration_key"]
+
+    module.write_task_openclaw_config(row, checkout_dir, task_dir, args)
+    assert len(calls) == 1
+
+    args.max_agent_turns = 41
+    module.write_task_openclaw_config(row, checkout_dir, task_dir, args)
+    assert len(calls) == 2
+    updated_metadata = json.loads(
+        (task_dir / "openclaw_task_agent.json").read_text(encoding="utf-8")
+    )
+    assert updated_metadata["registration_key"] != first_registration_key
+    assert updated_metadata["registration_spec"]["max_agent_turns"] == 41
     assert module.task_live_session_dir(checkout_dir, task_dir, args) is None
     assert (
         module.task_live_sandbox_session_dir(checkout_dir, args, agent_id)
         == f"/sandbox/.openclaw/agents/{agent_id}/sessions"
     )
+    module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS.clear()
+    module.write_task_openclaw_config(row, checkout_dir, task_dir, args)
+    assert len(calls) == 3
     module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS.clear()
 
 
@@ -883,7 +1220,7 @@ def test_openclaw_protocol_runtime_budget_detects_overages():
     }
 
 
-def test_swebench_runtime_budget_exceeded_returns_disqualified_metadata(tmp_path, monkeypatch):
+def test_swebench_runtime_budget_exceeded_returns_scoreable_metadata(tmp_path, monkeypatch):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
     row = sample_row()
     checkout_dir = tmp_path / "checkout"
@@ -956,7 +1293,7 @@ def test_swebench_runtime_budget_exceeded_returns_disqualified_metadata(tmp_path
 
     assert metadata["openclaw_disqualified_reason"] == "runtime_budget_exceeded"
     assert metadata["runtime_budget"]["ok"] is False
-    assert module.should_force_empty_patch(metadata)
+    assert module.should_force_empty_patch(metadata) is False
 
 
 def test_swebench_hard_conversation_order_violation_returns_disqualified_metadata(tmp_path, monkeypatch):
@@ -1463,7 +1800,7 @@ def test_swebench_budget_disqualification_allows_nemoclaw_audit_failure(
     assert metadata["openclaw_disqualified_reason"] == "runtime_budget_exceeded"
     assert metadata["runtime_budget"]["ok"] is False
     assert metadata["nemoclaw_session_audit_ok"] is False
-    assert module.should_force_empty_patch(metadata)
+    assert module.should_force_empty_patch(metadata) is False
 
 
 def test_swebench_cached_scoreable_disqualification_allows_failed_session_audit(tmp_path):
@@ -1534,6 +1871,32 @@ def test_swebench_cached_scoreable_disqualification_allows_failed_session_audit(
     }
 
 
+def test_swebench_cached_provider_failure_is_retried(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    cache_key = {
+        "instance_id": "example__repo-1",
+        "nemoclaw_sandbox": "nejumi-taiwan",
+        "verify_weave_agents": False,
+    }
+    task_dir = tmp_path / "task"
+    task_dir.mkdir()
+    (task_dir / "patch_record.json").write_text(
+        json.dumps(
+            {
+                "instance_id": "example__repo-1",
+                "patch": "",
+                "cache_key": cache_key,
+                "patch_capture_version": module.PATCH_CAPTURE_VERSION,
+                "openclaw_disqualified_reason": "provider_transient_exhausted",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    assert module.load_cached_patch_record(task_dir, cache_key, "repair") is None
+
+
 def test_swebench_sidecar_usage_reads_result_meta_and_runtime_budget():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
 
@@ -1565,7 +1928,7 @@ def test_swebench_sidecar_usage_reads_result_meta_and_runtime_budget():
     ) == {"inputTokens": 11, "outputTokens": 3, "cacheReadInputTokens": 31}
 
 
-def test_swebench_nemoclaw_copy_mode_syncs_when_checkout_not_visible(tmp_path, monkeypatch):
+def test_swebench_nemoclaw_copy_mode_always_resyncs_existing_checkout(tmp_path, monkeypatch):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
     checkout_dir = tmp_path / "checkout-example"
     checkout_dir.mkdir()
@@ -1576,7 +1939,13 @@ def test_swebench_nemoclaw_copy_mode_syncs_when_checkout_not_visible(tmp_path, m
         nemoclaw_checkout_transfer_mode="copy",
     )
 
-    monkeypatch.setattr(module, "nemoclaw_checkout_visible", lambda checkout, parsed_args: False)
+    monkeypatch.setattr(
+        module,
+        "nemoclaw_checkout_visible",
+        lambda checkout, parsed_args: pytest.fail(
+            "copy mode must not trust an existing sandbox checkout"
+        ),
+    )
     monkeypatch.setattr(
         module,
         "sync_checkout_to_nemoclaw_copy",
@@ -1592,6 +1961,96 @@ def test_swebench_nemoclaw_copy_mode_syncs_when_checkout_not_visible(tmp_path, m
         "mode": "copy",
         "sandbox_checkout_dir": f"/sandbox/checkouts/{checkout_dir.name}",
     }
+
+
+def test_swebench_copy_checkout_path_is_scoped_to_output_run(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    checkout_dir = tmp_path / "checkout-example"
+    checkout_dir.mkdir()
+
+    def args_for(output_dir):
+        return SimpleNamespace(
+            output_dir=output_dir,
+            nemoclaw_sandbox="nejumi-taiwan",
+            nemoclaw_checkout_sandbox_root="/sandbox/checkouts",
+            nemoclaw_checkout_transfer_mode="copy",
+        )
+
+    first = module.sandbox_checkout_dir(checkout_dir, args_for(tmp_path / "run-a"))
+    first_again = module.sandbox_checkout_dir(checkout_dir, args_for(tmp_path / "run-a"))
+    second = module.sandbox_checkout_dir(checkout_dir, args_for(tmp_path / "run-b"))
+
+    assert first == first_again
+    assert first != second
+    assert first.parent == Path("/sandbox/checkouts")
+    assert first.name.startswith(f"{checkout_dir.name}-")
+
+
+def test_swebench_copy_archives_are_scoped_to_parallel_sandbox_checkout(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    checkout_dir = tmp_path / "openclaw_checkout"
+
+    first = module.sandbox_checkout_archive_paths(
+        checkout_dir,
+        "/sandbox/checkouts/deepswe/task-a/openclaw_checkout",
+    )
+    first_again = module.sandbox_checkout_archive_paths(
+        checkout_dir,
+        "/sandbox/checkouts/deepswe/task-a/openclaw_checkout",
+    )
+    second = module.sandbox_checkout_archive_paths(
+        checkout_dir,
+        "/sandbox/checkouts/deepswe/task-b/openclaw_checkout",
+    )
+
+    assert first == first_again
+    assert first != second
+    assert first[0].endswith(".tgz")
+    assert first[1].endswith("-tracked.tgz")
+
+
+def test_swebench_copy_rejects_dirty_host_checkout(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    tracked = tmp_path / "tracked.py"
+    tracked.write_text("VALUE = 1\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "tracked.py"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "baseline"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    baseline = module.assert_clean_checkout_for_sandbox_copy(tmp_path)
+    assert baseline["host_status"] == "clean"
+    assert baseline["host_head_commit"]
+    assert baseline["host_head_tree"]
+    tracked.write_text("VALUE = 2\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="dirty host checkout"):
+        module.assert_clean_checkout_for_sandbox_copy(tmp_path)
 
 
 def test_swebench_nemoclaw_copy_mode_requires_git_checkout(tmp_path, monkeypatch):
@@ -1701,6 +2160,11 @@ def test_swebench_main_copy_mode_captures_patch_in_sandbox(tmp_path, monkeypatch
     )
 
     monkeypatch.setattr(module, "parse_args", lambda: args)
+    monkeypatch.setattr(
+        module,
+        "ensure_nemoclaw_openclaw_permissions",
+        lambda parsed_args: None,
+    )
     monkeypatch.setattr(module, "read_jsonl", lambda path: [row])
     monkeypatch.setattr(module, "prepare_checkout", lambda task_row, checkout_root, reset: tmp_path / "checkout")
     (tmp_path / "checkout").mkdir()
@@ -1725,6 +2189,232 @@ def test_swebench_main_copy_mode_captures_patch_in_sandbox(tmp_path, monkeypatch
     assert captured["sandbox_patch"] is True
     patches = json.loads((args.output_dir / "patches.json").read_text(encoding="utf-8"))
     assert patches[0]["patch"].startswith("diff --git")
+
+
+def test_swebench_main_defers_and_recovers_provider_transient_task(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    row = sample_row()
+    row["instance_id"] = "provider-recovery-task"
+    attempts = []
+    args = SimpleNamespace(
+        dataset_jsonl=tmp_path / "dataset.jsonl",
+        output_dir=tmp_path / "out",
+        checkout_root=tmp_path / "checkouts",
+        prefix="openclaw",
+        instance_id=None,
+        limit=None,
+        redo=True,
+        dry_run=False,
+        no_reset=False,
+        skip_agent=False,
+        model="wandb-inference/zai-org/GLM-5.2",
+        thinking="high",
+        deny_tool=None,
+        deny_argument_pattern=None,
+        max_input_tokens=1_000_000,
+        max_tool_calls=40,
+        nemoclaw_sandbox="nejumi-taiwan",
+        nemoclaw_checkout_sandbox_root="/sandbox/checkouts",
+        nemoclaw_checkout_transfer_mode="copy",
+        openclaw_num_workers=1,
+        provider_recovery_rounds=1,
+        provider_recovery_base_seconds=0,
+    )
+    monkeypatch.setattr(module, "parse_args", lambda: args)
+    monkeypatch.setattr(module, "ensure_nemoclaw_openclaw_permissions", lambda parsed_args: None)
+    monkeypatch.setattr(module, "read_jsonl", lambda path: [row])
+    checkout_dir = tmp_path / "checkout"
+    checkout_dir.mkdir()
+    monkeypatch.setattr(
+        module,
+        "prepare_checkout",
+        lambda task_row, checkout_root, reset: checkout_dir,
+    )
+
+    def run_openclaw_for_task(task_row, checkout, task_dir, parsed_args):
+        attempts.append(task_row["instance_id"])
+        if len(attempts) == 1:
+            return {
+                "openclaw_disqualified_reason": "provider_transient_exhausted",
+                "openclaw_usage": {"inputTokens": 10, "outputTokens": 2},
+            }
+        return {
+            "openclaw_disqualified_reason": "",
+            "tool_policy_ok": True,
+            "openclaw_usage": {"inputTokens": 20, "outputTokens": 3},
+        }
+
+    monkeypatch.setattr(module, "run_openclaw_for_task", run_openclaw_for_task)
+    monkeypatch.setattr(
+        module,
+        "capture_patch_nemoclaw",
+        lambda *args, **kwargs: "diff --git a/file b/file\n",
+    )
+
+    module.main()
+
+    assert attempts == ["provider-recovery-task", "provider-recovery-task"]
+    patches = json.loads((args.output_dir / "patches.json").read_text(encoding="utf-8"))
+    assert len(patches) == 1
+    assert patches[0]["openclaw_disqualified_reason"] == ""
+    assert patches[0]["billable_openclaw_attempt_count"] == 2
+    assert patches[0]["billable_openclaw_usage"]["inputTokens"] == 30
+    assert patches[0]["billable_openclaw_usage"]["outputTokens"] == 5
+    recovery = json.loads(
+        (args.output_dir / "provider_recovery_state.json").read_text(encoding="utf-8")
+    )
+    assert recovery["recovery_round"] == 1
+    assert recovery["exhausted"] is False
+    assert recovery["pending_instance_ids"] == []
+
+
+def test_swebench_main_recovers_one_isolated_native_trace_failure(
+    tmp_path, monkeypatch
+):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    row = sample_row()
+    row["instance_id"] = "trace-recovery-task"
+    attempts = []
+    args = SimpleNamespace(
+        dataset_jsonl=tmp_path / "dataset.jsonl",
+        output_dir=tmp_path / "out",
+        checkout_root=tmp_path / "checkouts",
+        prefix="openclaw",
+        instance_id=None,
+        limit=None,
+        redo=True,
+        dry_run=False,
+        no_reset=False,
+        skip_agent=False,
+        model="openai-direct/gpt-4.1-mini-2025-04-14",
+        thinking="off",
+        deny_tool=None,
+        deny_argument_pattern=None,
+        max_input_tokens=1_000_000,
+        max_tool_calls=40,
+        nemoclaw_sandbox="nejumi-taiwan",
+        nemoclaw_checkout_sandbox_root="/sandbox/checkouts",
+        nemoclaw_checkout_transfer_mode="copy",
+        openclaw_num_workers=1,
+        provider_recovery_rounds=0,
+        native_trace_recovery_attempts=1,
+        native_trace_recovery_max_tasks=2,
+        native_trace_recovery_base_seconds=0,
+    )
+    monkeypatch.setattr(module, "parse_args", lambda: args)
+    monkeypatch.setattr(module, "ensure_nemoclaw_openclaw_permissions", lambda parsed_args: None)
+    monkeypatch.setattr(module, "read_jsonl", lambda path: [row])
+    checkout_dir = tmp_path / "checkout"
+    checkout_dir.mkdir()
+    monkeypatch.setattr(
+        module,
+        "prepare_checkout",
+        lambda task_row, checkout_root, reset: checkout_dir,
+    )
+
+    def run_openclaw_for_task(task_row, checkout, task_dir, parsed_args):
+        attempts.append(task_row["instance_id"])
+        return {
+            "tool_policy_ok": True,
+            "weave_agents_required": True,
+            "weave_agents_ok": len(attempts) > 1,
+            "openclaw_usage": {"inputTokens": 10, "outputTokens": 2},
+        }
+
+    monkeypatch.setattr(module, "run_openclaw_for_task", run_openclaw_for_task)
+    monkeypatch.setattr(
+        module,
+        "capture_patch_nemoclaw",
+        lambda *args, **kwargs: "diff --git a/file b/file\n",
+    )
+
+    module.main()
+
+    assert attempts == ["trace-recovery-task", "trace-recovery-task"]
+    patches = json.loads((args.output_dir / "patches.json").read_text(encoding="utf-8"))
+    assert patches[0]["weave_agents_ok"] is True
+    assert patches[0]["billable_openclaw_attempt_count"] == 2
+    assert patches[0]["billable_openclaw_usage"]["inputTokens"] == 20
+    recovery = json.loads(
+        (args.output_dir / "native_trace_recovery_state.json").read_text(encoding="utf-8")
+    )
+    assert recovery["pending_instance_ids"] == []
+    assert recovery["attempted_instance_ids"] == ["trace-recovery-task"]
+    assert recovery["broad_failure"] is False
+
+
+def test_swebench_native_trace_broad_failure_stops_before_paid_recovery(
+    tmp_path, monkeypatch
+):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    rows = []
+    for index in range(3):
+        row = sample_row()
+        row["instance_id"] = f"trace-failure-{index}"
+        rows.append(row)
+    attempts = []
+    args = SimpleNamespace(
+        dataset_jsonl=tmp_path / "dataset.jsonl",
+        output_dir=tmp_path / "out",
+        checkout_root=tmp_path / "checkouts",
+        prefix="openclaw",
+        instance_id=None,
+        limit=None,
+        redo=True,
+        dry_run=False,
+        no_reset=False,
+        skip_agent=False,
+        model="openai-direct/gpt-4.1-mini-2025-04-14",
+        thinking="off",
+        deny_tool=None,
+        deny_argument_pattern=None,
+        max_input_tokens=1_000_000,
+        max_tool_calls=40,
+        nemoclaw_sandbox="nejumi-taiwan",
+        nemoclaw_checkout_sandbox_root="/sandbox/checkouts",
+        nemoclaw_checkout_transfer_mode="copy",
+        openclaw_num_workers=1,
+        provider_recovery_rounds=0,
+        native_trace_recovery_attempts=1,
+        native_trace_recovery_max_tasks=2,
+        native_trace_recovery_base_seconds=0,
+    )
+    monkeypatch.setattr(module, "parse_args", lambda: args)
+    monkeypatch.setattr(module, "ensure_nemoclaw_openclaw_permissions", lambda parsed_args: None)
+    monkeypatch.setattr(module, "read_jsonl", lambda path: rows)
+    checkout_dir = tmp_path / "checkout"
+    checkout_dir.mkdir()
+    monkeypatch.setattr(
+        module,
+        "prepare_checkout",
+        lambda task_row, checkout_root, reset: checkout_dir,
+    )
+
+    def run_openclaw_for_task(task_row, checkout, task_dir, parsed_args):
+        attempts.append(task_row["instance_id"])
+        return {
+            "tool_policy_ok": True,
+            "weave_agents_required": True,
+            "weave_agents_ok": False,
+            "openclaw_usage": {"inputTokens": 10, "outputTokens": 2},
+        }
+
+    monkeypatch.setattr(module, "run_openclaw_for_task", run_openclaw_for_task)
+    monkeypatch.setattr(
+        module,
+        "capture_patch_nemoclaw",
+        lambda *args, **kwargs: "diff --git a/file b/file\n",
+    )
+
+    with pytest.raises(module.NativeTraceRecoveryError, match="No paid"):
+        module.main()
+
+    assert attempts == [row["instance_id"] for row in rows]
+    recovery = json.loads(
+        (args.output_dir / "native_trace_recovery_state.json").read_text(encoding="utf-8")
+    )
+    assert recovery["broad_failure"] is True
+    assert recovery["attempted_instance_ids"] == []
 
 
 def test_swebench_runtime_budget_summary_uses_configured_caps_for_dry_run():
@@ -1767,6 +2457,75 @@ def test_swebench_outer_openclaw_timeout_is_scoreable_time_up_not_retry():
     assert module.non_scoreable_openclaw_failure_reason(completed, None) is None
 
 
+def test_swebench_outer_timeout_without_sidecar_still_verifies_native_trace(
+    tmp_path, monkeypatch
+):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    row = sample_row()
+    checkout_dir = tmp_path / "checkout"
+    checkout_dir.mkdir()
+    task_dir = tmp_path / "task"
+    observed = {}
+
+    def fake_run_command(command, cwd=None, timeout=None, check=True):
+        return subprocess.CompletedProcess(
+            command,
+            124,
+            stdout="",
+            stderr="Command timed out after 40 seconds",
+        )
+
+    def fake_verify(row_arg, task_dir_arg, args_arg, **kwargs):
+        observed.update(kwargs)
+        return {
+            **module.default_weave_agents_evidence(
+                args_arg,
+                required=True,
+                session_key=kwargs["session_key"],
+                agent_id=kwargs["agent_id"],
+            ),
+            "weave_agents_ok": True,
+            "weave_agents_required": True,
+            "weave_agents_trace_id": "trace-time-up",
+        }
+
+    monkeypatch.setattr(module, "run_command", fake_run_command)
+    monkeypatch.setattr(module, "verify_weave_agents_for_attempt", fake_verify)
+    monkeypatch.setattr(
+        module,
+        "ensure_nemoclaw_checkout_ready",
+        lambda checkout_dir, task_dir, args: None,
+    )
+    args = SimpleNamespace(
+        agent="test-agent",
+        allow_failed_preflight=False,
+        deny_argument_pattern=None,
+        deny_tool=None,
+        dry_run=False,
+        max_input_tokens=1_000_000,
+        max_tool_calls=60,
+        model="openai-direct/example-model",
+        no_local=False,
+        openclaw_max_attempts=2,
+        openclaw_retry_base_seconds=0,
+        openclaw_timeout=30,
+        profile=None,
+        session_prefix=None,
+        thinking="high",
+        use_task_agent=False,
+        verify_weave_agents=True,
+        weave_sidecar=False,
+    )
+
+    metadata = module.run_openclaw_for_task(row, checkout_dir, task_dir, args)
+
+    assert metadata["openclaw_disqualified_reason"] == "time_up"
+    assert metadata["weave_agents_ok"] is True
+    assert metadata["weave_agents_required"] is True
+    assert metadata["weave_agents_trace_id"] == "trace-time-up"
+    assert observed["sidecar"] == {"tool_call_count": 1}
+
+
 def test_swebench_returncode_zero_provider_timeout_sidecar_is_transient():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
     completed = subprocess.CompletedProcess(["cmd"], 0, stdout="", stderr="")
@@ -1796,6 +2555,65 @@ def test_swebench_returncode_zero_provider_timeout_sidecar_is_transient():
     assert "Request timed out before a response was generated" in module.sidecar_error_text(
         sidecar, ""
     )
+
+
+def test_swebench_success_sidecar_does_not_treat_prompt_timeout_text_as_provider_failure():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    completed = subprocess.CompletedProcess(["cmd"], 0, stdout="", stderr="")
+    sidecar = {
+        "returncode": 0,
+        "stdout_json": {
+            "status": "ok",
+            "summary": "completed",
+            "result": {
+                "finalPromptText": "If a command times out, narrow the command.",
+                "finalAssistantVisibleText": "A unit test timed out before the fix.",
+                "executionTrace": {
+                    "attempts": [{"result": "success", "stage": "assistant"}],
+                },
+            },
+        },
+        "runtime_budget": {
+            "ok": True,
+            "violations": [],
+            "live": {"live_provider_timeout_count": 0, "exceeded_limits": []},
+        },
+        "tool_policy_ok": True,
+        "tool_policy_violations": [],
+    }
+
+    assert not module.sidecar_provider_timeout(sidecar)
+    assert not module.is_transient_openclaw_failure(completed, sidecar)
+
+
+def test_swebench_provider_timeout_accepts_explicit_stdout_json_error_field():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    sidecar = {
+        "stdout_json": {
+            "status": "error",
+            "errorMessage": "FailoverError: LLM request timed out",
+        },
+        "runtime_budget": {"ok": True, "violations": []},
+    }
+
+    assert module.sidecar_provider_timeout(sidecar)
+
+
+def test_swebench_nonzero_failure_does_not_scan_prompt_or_assistant_payload():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    completed = subprocess.CompletedProcess(["cmd"], 1, stdout="", stderr="")
+    sidecar = {
+        "stdout_json": {
+            "status": "ok",
+            "prompt": "If a command times out, inspect the failure.",
+            "messages": [{"role": "assistant", "content": "A unit test timed out earlier."}],
+        },
+        "runtime_budget": {"ok": True, "violations": []},
+        "tool_policy_ok": True,
+        "tool_policy_violations": [],
+    }
+
+    assert not module.is_transient_openclaw_failure(completed, sidecar)
 
 
 def test_swebench_live_provider_timeout_overrides_runtime_budget_violation():
@@ -2121,6 +2939,9 @@ def test_swebench_provider_timeout_runtime_budget_sidecar_retries_before_disqual
                                 "live_provider_timeout_count": 1,
                             },
                         },
+                        "stdout_json": {
+                            "result": {"meta": {"agentMeta": {"usage": {"input": 10, "output": 2}}}}
+                        },
                         "weave_sidecar": {"ok": True},
                     }
                 ),
@@ -2143,6 +2964,9 @@ def test_swebench_provider_timeout_runtime_budget_sidecar_retries_before_disqual
                     "tool_call_count": 10,
                     "tool_error_count": 0,
                     "runtime_budget": {"ok": True, "violations": []},
+                    "stdout_json": {
+                        "result": {"meta": {"agentMeta": {"usage": {"input": 20, "output": 4}}}}
+                    },
                     "weave_sidecar": {"ok": True},
                 }
             ),
@@ -2183,6 +3007,10 @@ def test_swebench_provider_timeout_runtime_budget_sidecar_retries_before_disqual
     assert metadata["attempt_number"] == 2
     assert metadata["openclaw_disqualified_reason"] == ""
     assert metadata["openclaw_returncode"] == 0
+    assert metadata["openclaw_usage"] == {"input": 20, "output": 4}
+    assert metadata["billable_openclaw_attempt_count"] == 2
+    assert metadata["billable_openclaw_usage"]["inputTokens"] == 30
+    assert metadata["billable_openclaw_usage"]["outputTokens"] == 6
     failures = [
         json.loads(line)
         for line in (task_dir / "openclaw_transient_failures.jsonl")
@@ -2527,6 +3355,67 @@ def test_capture_patch_includes_untracked_files(tmp_path):
     assert "+NEW_VALUE = 3" in patch
 
 
+def test_capture_patch_includes_model_staged_changes(tmp_path):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    (tmp_path / "tracked.py").write_text("VALUE = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "tracked.py"], cwd=tmp_path, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_path, check=True, capture_output=True, text=True)
+
+    (tmp_path / "tracked.py").write_text("VALUE = 2\n", encoding="utf-8")
+    (tmp_path / "staged_new.py").write_text("STAGED = True\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "tracked.py", "staged_new.py"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    patch = module.capture_patch(tmp_path)
+
+    assert "diff --git a/tracked.py b/tracked.py" in patch
+    assert "+VALUE = 2" in patch
+    assert "diff --git a/staged_new.py b/staged_new.py" in patch
+    assert "new file mode" in patch
+    assert "+STAGED = True" in patch
+
+
+def test_capture_patch_nemoclaw_diffs_against_head(tmp_path, monkeypatch):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    calls = []
+
+    def fake_run_nemoclaw_text_command(args, command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(module, "run_nemoclaw_text_command", fake_run_nemoclaw_text_command)
+    args = SimpleNamespace(
+        nemoclaw_checkout_sandbox_root="/sandbox/checkouts",
+        nemoclaw_checkout_transfer_mode="copy",
+        nemoclaw_sandbox="nejumi-taiwan",
+    )
+
+    module.capture_patch_nemoclaw(tmp_path / "checkout", args)
+
+    diff_call = next(command for command in calls if "git diff" in command[2])
+    assert diff_call[2] == 'git diff --binary HEAD -- "$@"'
+
+
 def test_capture_patch_excludes_selected_test_files(tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True, text=True)
@@ -2552,6 +3441,13 @@ def test_capture_patch_excludes_selected_test_files(tmp_path):
     (tmp_path / "lib" / "new_module.py").write_text("NEW_VALUE = 3\n", encoding="utf-8")
     (tmp_path / "test").mkdir()
     (tmp_path / "test" / "test_new_module.py").write_text("def test_new(): pass\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "lib/new_module.py", "test/test_new_module.py"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
     patch = module.capture_patch(tmp_path, ["test/test_new_module.py"])
 
@@ -2636,8 +3532,9 @@ def test_evaluator_passes_session_prefix_to_swebench_runner(tmp_path, monkeypatc
     module = load_script_module(REPO_ROOT / "scripts" / "evaluator" / "swebench_pro.py")
     commands = []
 
-    def fake_run_command(command):
+    def fake_run_command(command, **kwargs):
         commands.append(command)
+        assert kwargs["timeout"] == 28_800
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
     monkeypatch.setattr(module, "_run_command", fake_run_command)
@@ -2675,8 +3572,9 @@ def test_evaluator_passes_non_dry_run_limit_to_swebench_runner(tmp_path, monkeyp
     module = load_script_module(REPO_ROOT / "scripts" / "evaluator" / "swebench_pro.py")
     commands = []
 
-    def fake_run_command(command):
+    def fake_run_command(command, **kwargs):
         commands.append(command)
+        assert kwargs["timeout"] == 28_800
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
     monkeypatch.setattr(module, "_run_command", fake_run_command)
@@ -2710,8 +3608,9 @@ def test_evaluator_defaults_nemoclaw_openclaw_config_path_to_swebench_runner(
     module = load_script_module(REPO_ROOT / "scripts" / "evaluator" / "swebench_pro.py")
     commands = []
 
-    def fake_run_command(command):
+    def fake_run_command(command, **kwargs):
         commands.append(command)
+        assert kwargs["timeout"] == 28_800
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
     monkeypatch.setattr(module, "_run_command", fake_run_command)
@@ -2734,3 +3633,22 @@ def test_evaluator_defaults_nemoclaw_openclaw_config_path_to_swebench_runner(
         command[command.index("--nemoclaw-openclaw-config-path") + 1]
         == "/sandbox/.openclaw/openclaw.json"
     )
+
+
+def test_evaluator_rejects_no_local_swebench_without_named_sandbox(tmp_path):
+    from omegaconf import OmegaConf
+
+    module = load_script_module(REPO_ROOT / "scripts" / "evaluator" / "swebench_pro.py")
+    cfg = OmegaConf.create(
+        {
+            "model": {"pretrained_model_name_or_path": "provider/model"},
+            "swebench_pro": {
+                "checkout_root": str(tmp_path / "checkouts"),
+                "no_local": True,
+                "nemoclaw_sandbox": None,
+            },
+        }
+    )
+
+    with pytest.raises(ValueError, match="swebench_pro.nemoclaw_sandbox"):
+        module._run_openclaw(cfg, tmp_path / "dataset.jsonl", tmp_path / "outputs")

@@ -582,6 +582,18 @@ api_inference_model_map = {
         is_fc_model=True,
         underscore_to_dot=True,
     ),
+    "Claude-FC": ModelConfig(
+        model_name=None,
+        display_name="Claude",
+        url="https://www.anthropic.com/",
+        org="Anthropic",
+        license="Proprietary",
+        model_handler=ClaudeHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
     "claude-opus-4-20250514": ModelConfig(
         model_name="claude-opus-4-20250514",
         display_name="Claude-Opus-4-20250514 (Prompt)",

@@ -25,10 +25,14 @@ generator:
     provider:
       order:
         - z-ai/fp8
+        - siliconflow/fp8
+        - streamlake/fp8
       only:
         - z-ai/fp8
-      allow_fallbacks: false
-      require_parameters: true
+        - siliconflow/fp8
+        - streamlake/fp8
+      allow_fallbacks: true
+      require_parameters: false
 
 jaster:
   override_max_tokens: 32768

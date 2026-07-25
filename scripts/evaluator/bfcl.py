@@ -13,6 +13,7 @@ from pathlib import Path
 import datetime
 import hashlib
 from config_singleton import WandbConfigSingleton
+from omegaconf import OmegaConf
 from types import SimpleNamespace
 
 # Import directly from bfcl_pkg
@@ -92,6 +93,10 @@ def evaluate():
     instance = WandbConfigSingleton.get_instance()
     run = instance.run
     cfg = instance.config
+    if str(OmegaConf.select(cfg, "bfcl.version", default="v3")).lower() == "v4":
+        from evaluator.bfcl_v4 import evaluate_v4
+
+        return evaluate_v4()
      
     # デフォルト設定を取得
     default_config = get_default_config()

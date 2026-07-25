@@ -13,7 +13,11 @@ import weave
 from matplotlib.colors import TABLEAU_COLORS
 
 from config_singleton import WandbConfigSingleton
-from .evaluate_utils import LLMAsyncProcessor
+from .evaluate_utils.llm_response_checkpoint import (
+    LLMResponseCheckpointStore,
+    default_checkpoint_root,
+    run_checkpointed_batch,
+)
 
 
 def _to_plain_dict(value) -> dict:
@@ -295,8 +299,8 @@ def evaluate():
         # Run inference in parallel
         # YAMLで切替可能: cfg.arc_agi.error_handling.request_failure.mode: soft|hard
         # 互換: cfg.arc_agi.soft_fail_on_error: true|false
-        # デフォルト（ARC-AGIのみ）: soft
-        soft_fail = True
+        # Provider/infrastructure failures must not become model wrong answers.
+        soft_fail = False
         try:
             mode = getattr(cfg.arc_agi, "error_handling").get("request_failure", {}).get("mode", None)
             if mode is not None:
@@ -311,8 +315,20 @@ def evaluate():
         except Exception:
             pass
 
-        llm_ap = LLMAsyncProcessor(llm=llm, inputs=all_inputs, soft_fail_on_error=soft_fail)
-        results = llm_ap.get_results()
+        results = run_checkpointed_batch(
+            llm=llm,
+            inputs=all_inputs,
+            keys=(
+                f"{task['id']}:{task['test_example_id']}:{task['num_attempts']}"
+                for task in tasks
+            ),
+            checkpoint_store=LLMResponseCheckpointStore(
+                default_checkpoint_root(run, f"{dataset_name}_{arc_version}"),
+                model_name=cfg.model.pretrained_model_name_or_path,
+            ),
+            processor_kwargs={"soft_fail_on_error": soft_fail},
+            label=f"ARC-AGI-{arc_version}",
+        )
 
         # Evaluation
         evaluation_results = []

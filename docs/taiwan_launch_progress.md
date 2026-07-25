@@ -1,3 +1,13 @@
+### 2026-07-24 BFCL v4 Taiwan upgrade
+- BFCL v4 `full` is now the Taiwan default: 17 categories, 496 logical cases, parallel/long-context/format-sensitivity excluded, multi-turn capped at 3 turns, and deterministic maximum 30 cases per category with seed `20260724`. Official memory/web Agentic categories remain in launch scoring.
+- The localized artifact is published as `llm-leaderboard/tc-leaderboard/bfcl-v4-zh-tw:production` v0. The 12-category/346-case `core` profile is retained only for provider diagnostics and is not a leaderboard result.
+- Translation audit passed for 3,244 fields with zero executable-schema mismatches and zero Japanese kana. Upstream is pinned to `6ea57973c7a6097fd7c5915698c54c17c5b1b6c8`.
+- OpenAI Direct canary `iig4no3j` and Anthropic Direct canary `xiige94o` each completed 12/12 core-category rows with zero timeouts and zero inference errors; both passed the BFCL-only W&B completion verifier.
+- OpenAI-compatible OSS handling passed a local HTTP integration test through the actual SDK/adapter/BFCL handler/tool-call parsing path.
+- Web search defaults to direct DuckDuckGo HTML with bounded retry, pacing, and SQLite cache. SerpAPI remains YAML-selectable and requires a key only when selected. English and Traditional-Chinese direct-search probes passed with zero retries.
+- Full status: dataset/runtime/preflight ready; a fresh 496-case provider run and completion verification are still required for release evidence.
+- Detailed specification and commands: `docs/bfcl_upgrade_status.md`.
+
 ### 2026-07-11 DeepSWE-Essential / DeepSWE-50 Budgeted implementation
 - Added DeepSWE as an independent Agentic SWE candidate, distinct from SWE-Bench Pro. It is intentionally budgeted rather than a reproduction of the unbounded original DeepSWE leaderboard: default caps are `max_tool_calls=40`, `max_agent_turns=40`, `max_input_tokens=1000000`, `max_cumulative_input_tokens=1000000`, `max_cumulative_output_tokens=500000`, and `max_tool_wall_seconds=300`.
 - Data preparation is local and Pier-compatible. `scripts/data_uploader/prepare_deepswe.py` reads `external/deep-swe/tasks` and writes fixed manifests under `data/taiwan/deepswe`: `pilot_16`, `leaderboard_50`, and `full` task-name lists plus metadata JSONL. No task source is embedded in prompts.

@@ -1,8 +1,8 @@
 {
   "id": "nejumi-budget-guard",
   "name": "Nejumi Budget Guard",
-  "version": "0.1.0",
-  "description": "Blocks OpenClaw tool calls before execution and audits agent-turn hook coverage for Nejumi budgets.",
+  "version": "0.3.0",
+  "description": "Enforces runtime budgets and isolates each benchmark task workspace.",
   "contracts": {
     "trustedToolPolicies": [
       "budget-guard"
@@ -74,6 +74,45 @@
       "blockReasonPrefix": {
         "type": "string",
         "default": "NEJUMI_BUDGET_GUARD_BLOCKED"
+      },
+      "workspaceIsolationEnabled": {
+        "type": "boolean",
+        "default": false
+      },
+      "liveConfigPath": {
+        "type": "string",
+        "default": ""
+      },
+      "agentWorkspaces": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "workspace",
+            "tmp",
+            "home"
+          ],
+          "properties": {
+            "workspace": {
+              "type": "string"
+            },
+            "tmp": {
+              "type": "string"
+            },
+            "home": {
+              "type": "string"
+            },
+            "readOnlyRoots": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            }
+          }
+        },
+        "default": {}
       }
     }
   },

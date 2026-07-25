@@ -1,11 +1,23 @@
-"""
-YAML設定のトークン配分バリデーション機能
+"""Validate benchmark output-token allocation before paid evaluation."""
 
-reasoning機能使用時に出力用トークンが十分に確保されているかをチェックします。
-"""
-import warnings
-from typing import Dict, Any, Optional, Tuple
+from typing import Optional, Tuple
+
 from omegaconf import DictConfig
+
+
+BENCHMARK_MIN_OUTPUT_TOKENS = {
+    # These evaluators produce long-form answers and must not inherit the short-answer
+    # global default. Keep these in sync with the production base configurations.
+    "mtbench": 1024,
+    "hle": 4096,
+}
+
+RUNNER_MANAGED_TOKEN_BUDGETS = {
+    "agentic_math",
+    "agentic_swe_assorted",
+    "deepswe",
+    "swebench_pro",
+}
 
 
 def get_reasoning_tokens(cfg: DictConfig) -> Optional[int]:
@@ -65,18 +77,35 @@ def check_token_allocation(cfg: DictConfig, benchmark_name: str) -> Tuple[bool, 
     Returns:
         (is_valid, message): バリデーション結果とメッセージ
     """
+    if benchmark_name in RUNNER_MANAGED_TOKEN_BUDGETS:
+        return True, (
+            f"✓ {benchmark_name}: OpenClaw runner固有のturn/tool/token予算を"
+            "別途検証します（共通generator.max_tokensは未使用）"
+        )
+
     reasoning_tokens = get_reasoning_tokens(cfg)
     max_output_tokens = get_max_output_tokens(cfg, benchmark_name)
     
     # 最大出力トークンが取得できない場合は警告
     if max_output_tokens is None:
         return False, f"⚠️  {benchmark_name}: 最大出力トークン数が設定されていません"
+
+    minimum_output_tokens = BENCHMARK_MIN_OUTPUT_TOKENS.get(benchmark_name)
+    if minimum_output_tokens is not None and max_output_tokens < minimum_output_tokens:
+        return False, (
+            f"❌ {benchmark_name}: 最大出力トークンがベンチマーク最低値を下回っています\n"
+            f"   設定値: {max_output_tokens}\n"
+            f"   最低値: {minimum_output_tokens}\n"
+            "   ベンチマーク固有のgenerator_config.max_tokensを設定してください"
+        )
     
     # reasoning機能が使用されていない場合
     if reasoning_tokens is None:
-        # reasoning未使用時は、トークン数が0以上であれば十分（択一問題など1トークンでもOK）
         if max_output_tokens > 0:
-            return True, f"✓ {benchmark_name}: Reasoning機能未使用 - トークン数OK ({max_output_tokens})"
+            return True, (
+                f"✓ {benchmark_name}: 出力トークン数OK ({max_output_tokens}; "
+                "Reasoning機能未使用)"
+            )
         else:
             return False, f"❌ {benchmark_name}: 最大出力トークンが0以下です ({max_output_tokens})"
     
@@ -142,7 +171,7 @@ def pre_evaluation_check(cfg: DictConfig, benchmark_name: str) -> bool:
     return True
 
 
-def validate_all_benchmarks(cfg: DictConfig) -> Dict[str, Tuple[bool, str]]:
+def validate_all_benchmarks(cfg: DictConfig) -> dict[str, Tuple[bool, str]]:
     """
     すべてのベンチマークのトークン配分をチェック
     

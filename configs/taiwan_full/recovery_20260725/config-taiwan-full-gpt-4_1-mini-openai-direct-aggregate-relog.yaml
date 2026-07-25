@@ -1,0 +1,43 @@
+wandb:
+  entity: llm-leaderboard
+  project: tc-leaderboard
+  expected_entity: llm-leaderboard
+  expected_project: tc-leaderboard
+  run_name: "taiwan/full/openai/gpt-4.1-mini: direct"
+
+api: openai_responses
+
+model:
+  pretrained_model_name_or_path: gpt-4.1-mini-2025-04-14
+
+output:
+  resolved_run_root: outputs/taiwan_full_eval_first_wave_20260725_recovery/aggregate_relog/gpt-4_1-mini-openai-direct
+  allow_legacy_benchmark_checkpoint_migration: false
+  trust_completed_checkpoint_fingerprint_mismatch: []
+
+run:
+  bfcl: false
+  agentic_math: false
+  swebench: false
+  swebench_pro: false
+  deepswe: false
+  agentic_swe_assorted: false
+  mtbench: false
+  script_adherence: false
+  jbbq: false
+  toxicity: false
+  jtruthfulqa: false
+  hle: false
+  hallulens: false
+  hallulens_zh_tw: false
+  arc_agi: false
+  m_ifeval: false
+  ifeval_zh_tw: false
+  ts_bench: false
+  twbias: false
+  tceval_v2: false
+  jaster: false
+  jmmlu_robustness: false
+  tmmluplus_robustness: false
+  aggregate: false
+  aggregate_taiwan: true

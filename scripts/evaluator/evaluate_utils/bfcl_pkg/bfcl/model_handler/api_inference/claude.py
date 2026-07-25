@@ -40,6 +40,7 @@ class ClaudeHandler(BaseHandler):
         
         # 設定ファイルから実際のモデル名を取得
         self.actual_model_name = cfg.model.pretrained_model_name_or_path
+        self.effort = cfg.generator.get("effort")
         
         if cfg.api == "anthropic":
             self.model_style = ModelStyle.Anthropic
@@ -141,7 +142,9 @@ class ClaudeHandler(BaseHandler):
         model_name = getattr(self, 'actual_model_name', self.model_name)
         
         # モデル名から動的にmax_tokensを決定（公式トークン制限に基づく）
-        if "opus" in model_name.lower():
+        if "fable" in model_name.lower():
+            return 128000
+        elif "opus" in model_name.lower():
             return 64000  # Claude Opus 4: 64,000 tokens
         elif "sonnet" in model_name.lower():
             if "3-7" in model_name.lower():
@@ -182,14 +185,18 @@ class ClaudeHandler(BaseHandler):
         # 設定ファイルから取得した実際のモデル名を使用
         model_name = getattr(self, 'actual_model_name', self.model_name)
         
-        api_response, query_latency = self.generate_with_backoff(
+        request_kwargs = dict(
             model=model_name,
             max_tokens=self._get_max_tokens(),
             tools=inference_data["tools"],
-            temperature=self.temperature,
             messages=messages,
             timeout=1200,
         )
+        if "fable" not in model_name.lower():
+            request_kwargs["temperature"] = self.temperature
+        if self.effort:
+            request_kwargs["output_config"] = {"effort": self.effort}
+        api_response, query_latency = self.generate_with_backoff(**request_kwargs)
         
         return api_response, query_latency
 
@@ -334,14 +341,19 @@ class ClaudeHandler(BaseHandler):
 
         # Need to set timeout to avoid auto-error when requesting large context length
         # https://github.com/anthropics/anthropic-sdk-python#long-requests
-        return self.generate_with_backoff(
-            model=self.model_name,
+        model_name = getattr(self, "actual_model_name", self.model_name)
+        request_kwargs = dict(
+            model=model_name,
             max_tokens=self._get_max_tokens(),
-            temperature=self.temperature,
             system=inference_data["system_prompt"],
             messages=inference_data["message"],
             timeout=1200,
         )
+        if "fable" not in model_name.lower():
+            request_kwargs["temperature"] = self.temperature
+        if self.effort:
+            request_kwargs["output_config"] = {"effort": self.effort}
+        return self.generate_with_backoff(**request_kwargs)
 
     def _pre_query_processing_prompting(self, test_entry: dict) -> dict:
         functions: list = test_entry["function"]

@@ -3,6 +3,12 @@
   "source": "external/deep-swe/tasks",
   "source_task_count": 113,
   "seed": 20260711,
+  "agentic_swe_assorted_default_high_subset": "essential_anchored_high_10_model_fidelity_cost_balanced",
+  "agentic_swe_assorted_default_high_status": {
+    "status": "frozen",
+    "frozen_at": "2026-07-24",
+    "change_policy": "Do not modify task membership in place. Create a new subset name and switch defaults only after explicit approval."
+  },
   "language_distribution": {
     "go": 34,
     "javascript": 5,
@@ -664,6 +670,98 @@
         "min_pass_rate": 0.12,
         "max_pass_rate": 0.9,
         "max_candidates_per_language": 5
+      }
+    },
+    "essential_anchored_high_8_wandb_glm52_cap100_10m_lang_balanced": {
+      "display_name": "DeepSWE-Essential-Anchored-High-8-WandB-GLM52-Cap100-10M-Lang-Balanced",
+      "status": "historical_frozen",
+      "frozen_at": "2026-07-15",
+      "default_for_agentic_swe_assorted": false,
+      "change_policy": "Do not modify this subset's task list in place. Create a new subset name for any future alternative.",
+      "count": 8,
+      "language_distribution": {
+        "go": 3,
+        "python": 2,
+        "typescript": 3
+      },
+      "task_names_path": "subsets/essential_anchored_high_8_wandb_glm52_cap100_10m_lang_balanced_task_names.json",
+      "metadata_jsonl_path": "subsets/essential_anchored_high_8_wandb_glm52_cap100_10m_lang_balanced.jsonl",
+      "selection_metrics": {
+        "n": 40.0,
+        "mae": 0.08782139022676921,
+        "pearson": 0.9167662704520108,
+        "spearman": 0.9051499470035442,
+        "kendall": 0.762300561201369,
+        "r2": 0.6596668033078129
+      },
+      "selection_summary_path": "../../../outputs/deepswe_subset_analysis/essential_anchored_high_8_wandb_glm52_cap100_10m_lang_balanced_selection_summary.json",
+      "selection_constraints": {
+        "language_counts": {
+          "go": 3,
+          "python": 2,
+          "typescript": 3
+        },
+        "base_subset": "essential_8",
+        "budgeted_subset": "budgeted_high_8",
+        "must_include": [],
+        "exclude_task_names": [
+          "kcp-go-multiplexed-kcp-streams",
+          "superjson-error-stack-serialization",
+          "termenv-preserve-ansi-resets",
+          "ts-pattern-match-each"
+        ],
+        "max_avg_cost_usd": 5.0,
+        "max_avg_steps": 75.0,
+        "max_avg_input_tokens": 7000000.0,
+        "budget_model": "glm-5-2",
+        "budget_effort": "max",
+        "max_model_avg_steps": 100.0,
+        "max_model_avg_input_tokens": 10000000.0,
+        "min_pass_rate": 0.12,
+        "max_pass_rate": 0.9,
+        "max_candidates_per_language": 5
+      }
+    },
+    "essential_anchored_high_10_model_fidelity_cost_balanced": {
+      "display_name": "DeepSWE-Essential-Anchored-High-10-Model-Fidelity-Cost-Balanced",
+      "status": "frozen_default",
+      "frozen_at": "2026-07-24",
+      "default_for_agentic_swe_assorted": true,
+      "change_policy": "Do not modify this subset's task list in place. Create a new subset name for any future alternative.",
+      "count": 10,
+      "language_distribution": {
+        "go": 4,
+        "python": 3,
+        "typescript": 3
+      },
+      "task_names_path": "subsets/essential_anchored_high_10_model_fidelity_cost_balanced_task_names.json",
+      "metadata_jsonl_path": "subsets/essential_anchored_high_10_model_fidelity_cost_balanced.jsonl",
+      "selection_metrics": {
+        "n": 40.0,
+        "mae": 0.06004394943094129,
+        "pearson": 0.9470468963713088,
+        "spearman": 0.9320565914635588,
+        "kendall": 0.8013928976732341,
+        "selection_aware_leave_one_model_family_out": {
+          "n": 40.0,
+          "mae": 0.07719296208734212,
+          "pearson": 0.9211417078954856,
+          "spearman": 0.8965393865487309,
+          "kendall": 0.7532982115358966
+        }
+      },
+      "selection_summary_path": "../../../outputs/deepswe_subset_analysis/essential_anchored_high_10_extension_review_20260723_summary.json",
+      "selection_constraints": {
+        "base_subset": "essential_anchored_high_8_wandb_glm52_cap100_10m_lang_balanced",
+        "anchored_task_count": 8,
+        "extension_task_count": 2,
+        "language_counts": {
+          "go": 4,
+          "python": 3,
+          "typescript": 3
+        },
+        "max_p90_steps": 150.0,
+        "max_p90_input_tokens": 13000000.0
       }
     }
   },

@@ -1,9 +1,15 @@
 wandb:
   entity: 'llm-leaderboard'
   project: 'tc-leaderboard'
+  expected_entity: 'llm-leaderboard'
+  expected_project: 'tc-leaderboard'
 
 testmode: false
 inference_interval: 0
+
+output:
+  allow_legacy_benchmark_checkpoint_migration: false
+  trust_completed_checkpoint_fingerprint_mismatch: []
 
 error_handling:
   request_failure:
@@ -16,11 +22,17 @@ provider_rate_limit:
   request_jitter_sec: 0.0
 
 network:
+  progress_interval_sec: 60
   http_timeout:
     connect: 10.0
     read: 300.0
     write: 300.0
     pool: 30.0
+  retry:
+    # Item checkpoints preserve completed work, so a sustained outage should
+    # fail clearly instead of holding the entire benchmark for up to 30 minutes.
+    max_time_sec: 300
+    max_tries: 8
 
 openai:
   http_timeout:
@@ -99,9 +111,14 @@ jaster:
   message_intro: '以下是一項任務的說明，附帶的輸入提供了更多上下文。請撰寫適當的回答以完成該任務。'
   artifacts_path: 'llm-leaderboard/tc-leaderboard/tmmluplus_robust:production'
   dataset_dir: 'tmmluplus_robust'
+  tasks:
+    - tmmluplus
   override_max_tokens: null
 
 mtbench:
+  generator_config:
+    max_tokens: 1024
+    temperature: 0.7
   question_artifacts_path: 'llm-leaderboard/tc-leaderboard/mtbench_tw_question:production'
   question_artifacts_path_test: 'llm-leaderboard/tc-leaderboard/mtbench_tw_question:production'
   referenceanswer_artifacts_path: 'llm-leaderboard/tc-leaderboard/mtbench_tw_referenceanswer:production'
@@ -169,7 +186,10 @@ twbias:
   testmode_max_samples_per_task: 2
 
 bfcl:
-  test_category: "java javascript live_irrelevance live_multiple live_relevance live_simple multi_turn_base multi_turn_miss_func multi_turn_miss_param simple multiple irrelevance"
+  version: "v4"
+  profile: "full"
+  artifact_profile: "full"
+  test_category: "simple_python simple_java simple_javascript multiple irrelevance live_simple live_multiple live_irrelevance live_relevance multi_turn_base multi_turn_miss_func multi_turn_miss_param memory_kv memory_vector memory_rec_sum web_search_base web_search_no_snippet"
   temperature: 0.01
   num_threads: 4
   provider_min_request_interval_sec: 2.0
@@ -177,9 +197,24 @@ bfcl:
   request_timeout_sec: 300
   case_timeout_sec: 600
   case_timeout_retries: 0
+  resume_existing_results: true
+  retry_failed_cases: true
   consecutive_failure_fail_fast: 5
   progress_poll_sec: 5
-  artifacts_path: 'llm-leaderboard/tc-leaderboard/bfcl-zh-tw:production'
+  artifacts_path: 'llm-leaderboard/tc-leaderboard/bfcl-v4-zh-tw:production'
+  web_search:
+    backend: "ddgs"
+    ddgs_backend: "auto"
+    endpoint: "https://html.duckduckgo.com/html/"
+    timeout_sec: 20
+    max_attempts: 4
+    retry_base_sec: 2
+    min_request_interval_sec: 2
+    request_jitter_sec: 0.25
+    cache_path: "outputs/bfcl_v4/web_search_cache.sqlite3"
+    cache_ttl_sec: 0
+    fetch_max_bytes: 2000000
+    fetch_max_chars: 20000
   generator_config:
     max_tokens: 8096
     temperature: 0.01
@@ -197,6 +232,8 @@ bfcl:
       execution_result_role: "tool"
 
 swebench_pro:
+  benchmark_timeout_seconds: 28800
+  grading_timeout_seconds: 14400
   artifacts_path: 'llm-leaderboard/tc-leaderboard/swebench-pro-public:production'
   dataset_dir: 'swebench_pro_public'
   subset: 'leaderboard_compact_40'
@@ -245,6 +282,7 @@ swebench_pro:
   block_network: false
 
 deepswe:
+  benchmark_timeout_seconds: 129600
   artifacts_path: null
   dataset_dir: 'deepswe'
   local_dataset_dir: 'data/taiwan/deepswe'
@@ -262,7 +300,7 @@ deepswe:
   prefix: 'deepswe-openclaw'
   n_concurrent: 1
   openclaw_timeout: 3600
-  openclaw_max_attempts: 1
+  openclaw_max_attempts: 2
   openclaw_retry_base_seconds: 15
   max_input_tokens: 1000000
   max_cumulative_input_tokens: 1000000
@@ -309,6 +347,8 @@ deepswe:
     - '\b(curl|wget)\b'
 
 agentic_swe_assorted:
+  benchmark_timeout_seconds: 50400
+  preflight_timeout_seconds: 180
   output_dir: 'outputs/agentic_swe_assorted'
   results_dir: null
   run_openclaw: true
@@ -318,19 +358,25 @@ agentic_swe_assorted:
   openclaw_model: null
   thinking: 'high'
   tier_weights: 'low=1,middle=1,high=1'
-  low_middle_jsonl: 'data/taiwan/swebench_lite_assorted/subsets/low_middle_v2_72.jsonl'
-  low_middle_instance_ids_json: 'data/taiwan/swebench_lite_assorted/subsets/low_middle_v2_72_instance_ids.json'
+  # Optional completed DeepSWE results.jsonl files. When set, validate and reuse
+  # the frozen High-10 instead of paying to run those tasks again.
+  reuse_high_results_jsonl: []
+  # Optional complete Low/Middle patches.json assembled by the budget-stop
+  # repair workflow. Regrade it without repeating paid successful rollouts.
+  reuse_low_middle_patches_json: null
+  low_middle_jsonl: 'data/taiwan/swebench_lite_assorted/subsets/low_middle_v3_40.jsonl'
+  low_middle_instance_ids_json: 'data/taiwan/swebench_lite_assorted/subsets/low_middle_v3_40_instance_ids.json'
   low_middle_limit: null
   low_limit: null
   middle_limit: null
-  deepswe_metadata_jsonl: 'data/taiwan/deepswe/subsets/essential_anchored_high_8_glm52max_cap100_10m_lang_balanced.jsonl'
-  deepswe_task_names_file: 'data/taiwan/deepswe/subsets/essential_anchored_high_8_glm52max_cap100_10m_lang_balanced_task_names.json'
+  deepswe_metadata_jsonl: 'data/taiwan/deepswe/subsets/essential_anchored_high_10_model_fidelity_cost_balanced.jsonl'
+  deepswe_task_names_file: 'data/taiwan/deepswe/subsets/essential_anchored_high_10_model_fidelity_cost_balanced_task_names.json'
   deepswe_tasks_root: 'external/deep-swe/tasks'
   deepswe_public_trials_json: 'outputs/deepswe_subset_analysis/deepswe_v1_1_trials.json'
   deepswe_public_model: null
   deepswe_public_effort: null
   deepswe_budget_preflight: 'error'
-  deepswe_preflight_hard_stat: 'p75'
+  deepswe_preflight_hard_stat: 'p90'
   allow_deepswe_budget_mismatch: false
   high_limit: null
   official_swebench_repo: 'external/SWE-bench'
@@ -345,17 +391,17 @@ agentic_swe_assorted:
   swe_openclaw_timeout: 900
   high_openclaw_timeout: 1800
   eval_timeout: 1800
-  openclaw_max_attempts: 1
+  openclaw_max_attempts: 2
   openclaw_retry_base_seconds: 15
   max_input_tokens: 1000000
   max_cumulative_input_tokens: 1000000
-  high_max_cumulative_input_tokens: 12000000
+  high_max_cumulative_input_tokens: 14000000
   max_cumulative_output_tokens: 500000
   require_actual_token_usage: true
   max_tool_calls: 40
-  high_max_tool_calls: 120
+  high_max_tool_calls: 200
   max_agent_turns: 40
-  high_max_agent_turns: 120
+  high_max_agent_turns: 150
   max_tool_wall_seconds: 120
   llm_response_idle_timeout_seconds: 900
   nemoclaw_bin: 'nemoclaw'
@@ -391,6 +437,8 @@ agentic_swe_assorted:
     - '\b(curl|wget)\b'
 
 agentic_math:
+  benchmark_timeout_seconds: 21600
+  preflight_timeout_seconds: 180
   artifacts_path: 'llm-leaderboard/tc-leaderboard/agentic-math-olymmath-hard-zh-tw:production'
   dataset_dir: 'agentic_math_olymmath_hard_zh_tw'
   subset: 'leaderboard'
@@ -414,6 +462,10 @@ agentic_math:
   num_workers: 8
   task_start_min_interval_seconds: 5.0
   openclaw_timeout: 900
+  openclaw_max_attempts: 2
+  openclaw_retry_base_seconds: 15
+  provider_recovery_rounds: 2
+  provider_recovery_base_seconds: 60
   max_input_tokens: 500000
   max_cumulative_input_tokens: 500000
   max_cumulative_output_tokens: 500000
@@ -435,6 +487,8 @@ agentic_math:
 hle:
   artifact_path: 'llm-leaderboard/tc-leaderboard/hle-zh-tw:production'
   dataset_dir: 'hle-zh-tw'
+  generator_config:
+    max_tokens: 4096
   system_prompt: |
     請用以下格式回答：
     說明: {你對所選答案的說明}
@@ -482,6 +536,9 @@ hallulens_zh_tw:
         effort: low
 
 arc_agi:
+  error_handling:
+    request_failure:
+      mode: hard
   arc_agi_1_artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-1_public-eval_50:production"
   arc_agi_2_artifacts_path: "llm-leaderboard/nejumi-leaderboard4/arc-agi-2_public-eval_50:production"
   max_output_tokens: 4096

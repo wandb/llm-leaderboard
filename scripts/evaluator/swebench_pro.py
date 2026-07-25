@@ -9,6 +9,7 @@ import wandb
 import weave
 
 from config_singleton import WandbConfigSingleton
+from evaluator.evaluate_utils.subprocess_runner import run_streaming_command
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -80,44 +81,12 @@ def _json_cli_arg(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
-def _run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
-    print("Running:", " ".join(command))
-    proc = subprocess.Popen(
-        command,
-        cwd=str(REPO_ROOT),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        bufsize=1,
-        start_new_session=True,
-    )
-    stdout_parts: list[str] = []
-    assert proc.stdout is not None
-    while True:
-        try:
-            line = proc.stdout.readline()
-        except KeyboardInterrupt:
-            if proc.poll() is None:
-                print(
-                    "Received KeyboardInterrupt while SWE-Bench Pro runner is still active; "
-                    "continuing to wait for the isolated child process.",
-                    flush=True,
-                )
-                continue
-            raise
-        if line:
-            print(line, end="", flush=True)
-            stdout_parts.append(line)
-            continue
-        if proc.poll() is not None:
-            break
-    returncode = proc.wait()
-    stdout = "".join(stdout_parts)
-    if returncode != 0:
-        raise RuntimeError(
-            f"Command failed with return code {returncode}: {command}\n{stdout[-4000:]}"
-        )
-    return subprocess.CompletedProcess(command, returncode, stdout=stdout, stderr="")
+def _run_command(
+    command: list[str],
+    *,
+    timeout: float | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return run_streaming_command(command, cwd=REPO_ROOT, timeout=timeout)
 
 
 def _dataset_paths(cfg, run) -> tuple[Path, Path]:
@@ -213,6 +182,16 @@ def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
     if openclaw_tool_profile:
         command.extend(["--openclaw-tool-profile", str(openclaw_tool_profile)])
     nemoclaw_sandbox = _cfg_get(cfg.swebench_pro, "nemoclaw_sandbox")
+    no_local = bool(_cfg_get(cfg.swebench_pro, "no_local", False))
+    if no_local and (
+        nemoclaw_sandbox is None
+        or not str(nemoclaw_sandbox).strip()
+        or str(nemoclaw_sandbox).strip().lower() in {"none", "null"}
+    ):
+        raise ValueError(
+            "swebench_pro.nemoclaw_sandbox must name an isolated NeMoClaw "
+            "sandbox when swebench_pro.no_local is true"
+        )
     if nemoclaw_sandbox:
         command.extend(["--nemoclaw-sandbox", str(nemoclaw_sandbox)])
         command.extend(["--nemoclaw-bin", str(_cfg_get(cfg.swebench_pro, "nemoclaw_bin", "nemoclaw"))])
@@ -286,7 +265,7 @@ def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
         )
     if _cfg_get(cfg.swebench_pro, "allow_failed_preflight", False):
         command.append("--allow-failed-preflight")
-    if _cfg_get(cfg.swebench_pro, "no_local", False):
+    if no_local:
         command.append("--no-local")
     if _cfg_get(cfg.swebench_pro, "weave_sidecar", False) or _cfg_get(
         cfg.swebench_pro, "weave_sidecar_strict", False
@@ -327,7 +306,12 @@ def _run_openclaw(cfg, jsonl_path: Path, output_dir: Path) -> Path:
         limit = _cfg_get(cfg.swebench_pro, "limit")
         if limit is not None:
             command.extend(["--limit", str(int(limit))])
-    _run_command(command)
+    _run_command(
+        command,
+        timeout=float(
+            _cfg_get(cfg.swebench_pro, "benchmark_timeout_seconds", 28_800)
+        ),
+    )
     return output_dir / "openclaw" / "patches.json"
 
 
@@ -362,7 +346,12 @@ def _run_official_eval(cfg, csv_path: Path, patch_path: Path, output_dir: Path) 
     if _cfg_get(cfg.swebench_pro, "block_network", False):
         command.append("--block-network")
 
-    _run_command(command)
+    _run_command(
+        command,
+        timeout=float(
+            _cfg_get(cfg.swebench_pro, "grading_timeout_seconds", 14_400)
+        ),
+    )
     summary_path = output_dir / "official_eval" / "summary.json"
     return json.loads(summary_path.read_text(encoding="utf-8"))
 

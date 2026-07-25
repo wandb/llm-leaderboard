@@ -221,6 +221,31 @@ def wandb_completion_payload():
             "summary_metrics": {
                 "agentic_math/accuracy": {"ok": True, "value": 0.86},
             },
+            "tables": [
+                {
+                    "name": "agentic_math_output_table",
+                    "columns_ok": True,
+                    "missing_columns": [],
+                    "required_columns": [
+                        "nemoclaw_session_copy_source",
+                        "nemoclaw_session_copied_bytes",
+                    ],
+                    "row_observability_ok": True,
+                    "row_observability_invalid_row_count": 0,
+                    "row_observability_checked_rows": 100,
+                    "row_observability_expected_rows": 100,
+                    "row_observability_required_copy_source_columns": [
+                        "nemoclaw_session_copy_source"
+                    ],
+                    "row_observability_required_positive_int_columns": [
+                        "nemoclaw_session_copied_bytes"
+                    ],
+                    "row_observability_allowed_copy_sources": [
+                        "stdout_agent_meta",
+                        "live_runtime_budget",
+                    ],
+                }
+            ],
         },
     }
     return add_wandb_run_metadata(payload)

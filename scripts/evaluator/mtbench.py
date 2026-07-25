@@ -1,14 +1,15 @@
 import datetime
-import hashlib
 import json
 import os
 import asyncio
+import re
 import numpy as np
 import pandas as pd
 import wandb
 import weave
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional, Tuple, Literal, Awaitable
+from pathlib import Path
+from typing import List, Dict, Any, Optional, Literal, Awaitable
 import shortuuid
 import time
 from pydantic import BaseModel
@@ -54,6 +55,80 @@ class MatchSingle:
 class JudgeSingle(BaseModel):
     explanation: str
     rating: Literal["[[0]]", "[[1]]", "[[2]]", "[[3]]", "[[4]]", "[[5]]", "[[6]]", "[[7]]", "[[8]]", "[[9]]", "[[10]]"]
+
+
+def _safe_component(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", str(value)).strip("-") or "item"
+
+
+def _atomic_write_json(path: Path, payload: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, path)
+
+
+def _answer_payload(answer: Answer) -> Dict[str, Any]:
+    return {
+        "question_id": answer.question_id,
+        "model_id": answer.model_id,
+        "choices": answer.choices,
+        "tstamp": answer.tstamp,
+        "answer_id": answer.answer_id,
+    }
+
+
+def _load_answer_checkpoint(
+    path: Path,
+    *,
+    question_id: int,
+    model_id: str,
+) -> Optional[Answer]:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if (
+        payload.get("question_id") != question_id
+        or payload.get("model_id") != model_id
+        or not isinstance(payload.get("choices"), list)
+    ):
+        return None
+    return Answer(
+        question_id=question_id,
+        model_id=model_id,
+        choices=payload["choices"],
+        tstamp=payload.get("tstamp"),
+        answer_id=str(payload.get("answer_id") or shortuuid.uuid()),
+    )
+
+
+def _load_judge_checkpoint(
+    path: Path,
+    *,
+    question_id: int,
+    turn: int,
+    judge_index: int,
+) -> Optional[Dict[str, Any]]:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if (
+        payload.get("question_id") != question_id
+        or payload.get("turn") != turn
+        or payload.get("judge_index") != judge_index
+        or not isinstance(payload.get("score"), int)
+    ):
+        return None
+    return payload
 
 def load_questions(question_file: str, begin: Optional[int] = None, end: Optional[int] = None) -> List[Question]:
     """質問をファイルから読み込む"""
@@ -171,6 +246,7 @@ async def generate_model_answer(
     default_generator_config: Dict[str, Any],
     temperature_overrides: Dict[str, float],
     turn1_task: Optional[Awaitable] = None,
+    checkpoint_path: Optional[Path] = None,
 ) -> Answer:
     """モデルの回答を生成する（非同期）"""
     default_temperature = default_generator_config.get("temperature", 0.0)
@@ -192,6 +268,8 @@ async def generate_model_answer(
     content = response.content if hasattr(response, 'content') else str(response)
     answer.choices[0]["turns"].append(content)
     answer.tstamp = time.time()
+    if checkpoint_path is not None:
+        _atomic_write_json(checkpoint_path, _answer_payload(answer))
     return answer
 
 def task_to_sub_category(category):
@@ -235,13 +313,21 @@ async def async_evaluate():
     llm = instance.llm
     cfg = instance.config
     
-    # ハッシュを作成してmodel_idに追加（重複を避けるため）
-    mnaum_data = str(datetime.datetime.now())
-    encoded_data = mnaum_data.encode()
-    hash_object = hashlib.sha256(encoded_data)
-    hashed_string = hash_object.hexdigest()
     if cfg.mtbench.model_id is None:
-        cfg.mtbench.model_id = f'{cfg.model.pretrained_model_name_or_path.replace("/", "--")}_hash_{hashed_string}' 
+        stable_run_id = str(getattr(run, "id", "") or "local")
+        cfg.mtbench.model_id = (
+            f'{cfg.model.pretrained_model_name_or_path.replace("/", "--")}'
+            f'__run_{_safe_component(stable_run_id)}'
+        )
+    configured_checkpoint_dir = cfg.mtbench.get("checkpoint_dir", None)
+    checkpoint_root = Path(
+        configured_checkpoint_dir
+        or f"outputs/mtbench_checkpoints/{_safe_component(str(getattr(run, 'id', 'local')))}"
+    )
+    answer_checkpoint_dir = checkpoint_root / "answers"
+    judge_checkpoint_dir = checkpoint_root / "judgments"
+    answer_checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    judge_checkpoint_dir.mkdir(parents=True, exist_ok=True)
     
     # ファイルパス
     # 質問
@@ -285,35 +371,64 @@ async def async_evaluate():
     temperature_overrides = cfg.mtbench.get("temperature_override", {}) 
 
     llm_ap = LLMAsyncProcessor(llm=llm, inputs=[])
-    model_answers = {cfg.mtbench.model_id: {
-        q.question_id: Answer(question_id=q.question_id, model_id=cfg.mtbench.model_id, choices=[{"turns": []}])
-        for q in questions
-    }}
+    model_answers = {cfg.mtbench.model_id: {}}
+    for question in questions:
+        checkpoint_path = answer_checkpoint_dir / f"{question.question_id}.json"
+        answer = _load_answer_checkpoint(
+            checkpoint_path,
+            question_id=question.question_id,
+            model_id=cfg.mtbench.model_id,
+        )
+        model_answers[cfg.mtbench.model_id][question.question_id] = answer or Answer(
+            question_id=question.question_id,
+            model_id=cfg.mtbench.model_id,
+            choices=[{"turns": []}],
+        )
 
-    # turn1が終わり次第並行でJudgeを実施するため、turn1とturn2のタスクを分けて管理する
-    turn1_tasks = {
-        q.question_id: asyncio.create_task(generate_model_answer(
-            q, llm_ap, model_answers[cfg.mtbench.model_id][q.question_id],
-            default_generator_config, temperature_overrides,
-        )) for q in questions
-    }
-    turn2_tasks = {
-        q.question_id: asyncio.create_task(generate_model_answer(
-            q, llm_ap, model_answers[cfg.mtbench.model_id][q.question_id],
-            default_generator_config, temperature_overrides,
-            turn1_task=turn1_tasks[q.question_id],
-        )) for q in questions
-    }
+    async def completed_answer(answer: Answer) -> Answer:
+        return answer
+
+    turn1_tasks = {}
+    turn2_tasks = {}
+    for question in questions:
+        answer = model_answers[cfg.mtbench.model_id][question.question_id]
+        checkpoint_path = answer_checkpoint_dir / f"{question.question_id}.json"
+        turns = answer.choices[0].get("turns", [])
+        turn1_tasks[question.question_id] = asyncio.create_task(
+            completed_answer(answer)
+            if len(turns) >= 1
+            else generate_model_answer(
+                question,
+                llm_ap,
+                answer,
+                default_generator_config,
+                temperature_overrides,
+                checkpoint_path=checkpoint_path,
+            )
+        )
+        turn2_tasks[question.question_id] = asyncio.create_task(
+            completed_answer(answer)
+            if len(turns) >= 2
+            else generate_model_answer(
+                question,
+                llm_ap,
+                answer,
+                default_generator_config,
+                temperature_overrides,
+                turn1_task=turn1_tasks[question.question_id],
+                checkpoint_path=checkpoint_path,
+            )
+        )
 
     # 回答生成タスクをProgressbar付きで並列実行
-    generate_results = asyncio.create_task( # Judgeと並列で行うためにここではawaitしない
-        atqdm.gather(*turn1_tasks.values(), *turn2_tasks.values(), desc="Generating MT-Bench answers"),
-        name="generate_answer_tasks",
-    )
-
-    # OpenAIの場合、推論とJudgeが同じAPIになるため、Rate Limit対策として推論がすべて終わるのを待つ
-    if cfg.api == 'openai':
-        await generate_results
+    try:
+        await atqdm.gather(
+            *turn1_tasks.values(),
+            *turn2_tasks.values(),
+            desc="Generating MT-Bench answers",
+        )
+    finally:
+        await llm_ap.close_async_client()
 
     # 2. 評価
     print("3. リファレンス回答を読み込み中...")
@@ -328,7 +443,11 @@ async def async_evaluate():
 
     # ジャッジを作成
     judges = make_judge_single(cfg.mtbench.judge.model, judge_prompts)
-    output_file = f"data/{cfg.mtbench.bench_name}/model_judgment/{cfg.mtbench.judge.model}_single"
+    output_file = str(
+        checkpoint_root
+        / "model_judgment"
+        / f"{_safe_component(cfg.mtbench.judge.model)}_single"
+    )
 
     # データチェック
     check_data(questions, model_answers, ref_answers, models, judges)
@@ -369,7 +488,11 @@ async def async_evaluate():
     )
 
     judge_count = cfg.mtbench.get('judge_count', 1)
-    matches *= judge_count
+    indexed_matches = [
+        (match, judge_index)
+        for judge_index in range(judge_count)
+        for match in matches
+    ]
 
     # マッチ統計
     match_stat = {
@@ -379,7 +502,7 @@ async def async_evaluate():
         "baseline": None,
         "model_list": models,
         "total_num_questions": len(questions),
-        "total_num_matches": len(matches),
+        "total_num_matches": len(indexed_matches),
         "output_path": output_file,
     }
     
@@ -409,12 +532,30 @@ async def async_evaluate():
     judge_llm_ap = LLMAsyncProcessor(llm=client, batch_size=judge_parallel, inference_interval=0., soft_fail_on_error=soft_fail_judge)
 
     # LLMAsyncProcessor に渡す inputs を作成
-    async def wait_answer_and_judge(match, judge_llm_ap, generate_answer_task):
+    async def wait_answer_and_judge(
+        match,
+        judge_index,
+        judge_llm_ap,
+        generate_answer_task,
+    ):
         question = match.question
         answer = await generate_answer_task
         judge = match.judge
         ref_answer = match.ref_answer
         multi_turn = match.multi_turn
+        turn = 2 if multi_turn else 1
+        checkpoint_path = (
+            judge_checkpoint_dir
+            / f"q{question.question_id}-turn{turn}-judge{judge_index}.json"
+        )
+        cached = _load_judge_checkpoint(
+            checkpoint_path,
+            question_id=question.question_id,
+            turn=turn,
+            judge_index=judge_index,
+        )
+        if cached is not None:
+            return cached
 
         kwargs = {}
         if ref_answer is not None:
@@ -443,43 +584,66 @@ async def async_evaluate():
             {"role": "user", "content": user_prompt}
         ]
         judge_result = await judge_llm_ap.process_single_async(messages, **judge_params)
-        return judge_result, user_prompt
-
-    judge_tasks = [wait_answer_and_judge(
-        match, judge_llm_ap,
-        turn2_tasks[match.question.question_id] if match.multi_turn
-        else turn1_tasks[match.question.question_id],
-    ) for match in matches]
-
-    # JudgeをProgressbar付きで並列実行
-    print(f"Processing judge results (OpenAI API parallel, batch={judge_parallel})...")
-    judge_results = await atqdm.gather(*judge_tasks, desc="Judging MT-Bench")
-
-    results = []
-    for match, (judge_result, judge_prompt) in zip(matches, judge_results):
-        question_id = match.question.question_id
-        turn = 1 if not match.multi_turn else 2
+        if (
+            not getattr(judge_result, "parsed_output", None)
+            or not getattr(judge_result.parsed_output, "rating", None)
+        ):
+            raise RuntimeError(
+                f"MT-Bench judge returned no score for question {question.question_id}, "
+                f"turn {turn}, judge_index {judge_index}"
+            )
         result = {
-            "question_id": question_id,
+            "question_id": question.question_id,
             "model": match.model,
             "judge_model": match.judge.model_name,
             "judge_prompt_template": match.judge.prompt_template["name"],
-            "judge_prompt": judge_prompt,
+            "judge_prompt": user_prompt,
             "judgment": judge_result.parsed_output.explanation,
-            "score": int(judge_result.parsed_output.rating.replace("[[", "").replace("]]", "")),
+            "score": int(
+                judge_result.parsed_output.rating.replace("[[", "").replace("]]", "")
+            ),
             "turn": turn,
+            "judge_index": judge_index,
             "tstamp": datetime.datetime.now().timestamp(),
         }
-        # ファイル出力
-        if output_file:
-            output_file_path = os.path.join(
-                output_file.replace(".jsonl", ""),
-                f"{match.model}__{turn}turn.jsonl"
-            )
-            os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
-            with open(output_file_path, "a") as f:
-                f.write(json.dumps(result, ensure_ascii=False) + "\n")
-        results.append(result)
+        _atomic_write_json(checkpoint_path, result)
+        return result
+
+    judge_tasks = [
+        wait_answer_and_judge(
+            match,
+            judge_index,
+            judge_llm_ap,
+            turn2_tasks[match.question.question_id]
+            if match.multi_turn
+            else turn1_tasks[match.question.question_id],
+        )
+        for match, judge_index in indexed_matches
+    ]
+
+    # JudgeをProgressbar付きで並列実行
+    print(f"Processing judge results (OpenAI API parallel, batch={judge_parallel})...")
+    try:
+        results = await atqdm.gather(*judge_tasks, desc="Judging MT-Bench")
+    finally:
+        await judge_llm_ap.close_async_client()
+    expected_results = len(questions) * 2 * judge_count
+    if len(results) != expected_results:
+        raise RuntimeError(
+            f"MT-Bench checkpoint set is incomplete: {len(results)}/{expected_results}"
+        )
+    for turn in (1, 2):
+        output_file_path = os.path.join(
+            output_file,
+            f"{cfg.mtbench.model_id}__{turn}turn.jsonl",
+        )
+        os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
+        with open(output_file_path, "w", encoding="utf-8") as handle:
+            for result in sorted(
+                (row for row in results if row["turn"] == turn),
+                key=lambda row: (row["question_id"], row["judge_index"]),
+            ):
+                handle.write(json.dumps(result, ensure_ascii=False) + "\n")
 
     print("6. 結果を集計中...")
     # 3. 結果を集計してwandb.Tableとしてログに記録
@@ -508,8 +672,7 @@ async def async_evaluate():
 
     df_judge = df_judge[df_judge.model == cfg.mtbench.model_id]
     df_judge.model = df_judge.model.str.replace("--", "/")
-    df_judge['hash'] = df_judge.model.apply(lambda x: x.split('_hash_')[-1])
-    df_judge['model'] = df_judge.model.apply(lambda x: x.split('_hash_')[0])
+    df_judge["model"] = cfg.model.pretrained_model_name_or_path
     df_judge = df_judge.sort_values(['question_id', 'turn'])
 
     # テーブルをマージ

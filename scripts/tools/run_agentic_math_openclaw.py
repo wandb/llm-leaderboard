@@ -25,6 +25,9 @@ from typing import Any
 TOOLS_DIR = Path(__file__).resolve().parent
 if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
+EVALUATE_UTILS_DIR = TOOLS_DIR.parent / "evaluator" / "evaluate_utils"
+if str(EVALUATE_UTILS_DIR) not in sys.path:
+    sys.path.insert(0, str(EVALUATE_UTILS_DIR))
 
 from weave_agents_native_trace import (
     DEFAULT_AGENT_NAME as DEFAULT_WEAVE_AGENTS_AGENT_NAME,
@@ -38,28 +41,50 @@ from weave_agents_native_trace import (
 from openclaw_model_params import (
     apply_openclaw_model_overrides,
     apply_openclaw_model_params,
+    openclaw_max_output_tokens_from_args,
     openclaw_model_overrides_from_args,
     openclaw_model_params_from_args,
+)
+from nemoclaw_gateway_restart import (
+    NeMoClawGatewayRestartError,
+    reload_nemoclaw_gateway_process,
+)
+from openclaw_usage import (
+    attach_billable_openclaw_usage,
+    ensure_billable_openclaw_usage,
+    merge_prior_billable_openclaw_usage,
+    summarize_billable_openclaw_records,
+)
+from subprocess_runner import (
+    CancellableCommandRunner,
+    nemoclaw_sandbox_from_command,
+    nemoclaw_sandbox_lease,
 )
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROTOCOL_RUNNER = REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py"
-RUNNER_VERSION = "agentic-math-openclaw-2026-07-10-timeup-parallel-v2"
+RUNNER_VERSION = "agentic-math-openclaw-2026-07-24-task-fs-isolation-v5"
 NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
 DEFAULT_MAX_INPUT_TOKENS = 500_000
 DEFAULT_MAX_TOOL_CALLS = 40
 DEFAULT_MAX_AGENT_TURNS = 40
 DEFAULT_MAX_TOOL_WALL_SECONDS = 120
 OPENCLAW_BUDGET_GUARD_PLUGIN_ID = "nejumi-budget-guard"
-OPENCLAW_BUDGET_GUARD_PLUGIN_VERSION = "0.1.0"
+OPENCLAW_BUDGET_GUARD_PLUGIN_VERSION = "0.3.0"
 OPENCLAW_BUDGET_GUARD_BLOCK_PREFIX = "NEJUMI_BUDGET_GUARD_BLOCKED"
 SCOREABLE_OPENCLAW_DISQUALIFIED_REASONS = {
     "runtime_budget_exceeded",
     "tool_policy_violation",
     "conversation_order_violation",
     "time_up",
+    "model_output_truncated",
+    "openclaw_no_response",
 }
+
+
+class ProviderRecoveryExhaustedError(RuntimeError):
+    """Raised after healthy Math tasks finish and provider recovery remains pending."""
 DEFAULT_DENIED_TOOLS = [
     "code_execution",
     "web_search",
@@ -107,26 +132,23 @@ BOXED_RE = re.compile(r"\\boxed\{\s*0*([0-9]{1,3})\s*\}")
 INT_RE = re.compile(r"\b0*([0-9]{1,3})\b")
 
 
+def nemoclaw_gateway_agent_registered_in_current_process(agent_id: str) -> bool:
+    return any(
+        registered_agent_id == agent_id
+        for _registered_args, registered_agent_id in _REGISTERED_NEMOCLAW_GATEWAY_AGENTS
+    )
+
+
+_COMMAND_RUNNER = CancellableCommandRunner()
+
+
 def run_command(
     command: list[str],
     cwd: Path,
     timeout: int | None = None,
     check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
-    try:
-        result = subprocess.run(
-            command,
-            cwd=str(cwd),
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-        stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
-        timeout_message = f"\nCommand timed out after {timeout} seconds"
-        result = subprocess.CompletedProcess(command, 124, stdout=stdout, stderr=stderr + timeout_message)
+    result = _COMMAND_RUNNER.run(command, cwd=cwd, timeout=timeout)
     if check and result.returncode != 0:
         raise RuntimeError(
             "Command failed\n"
@@ -436,28 +458,22 @@ def restart_nemoclaw_gateway_after_task_agent_registration(
         or not bool(getattr(args, "restart_gateway_after_task_agent_registration", True))
     ):
         return
-    command = [
-        str(getattr(args, "nemoclaw_bin", "nemoclaw")),
-        "sandbox",
-        "gateway",
-        "restart",
-        str(getattr(args, "nemoclaw_sandbox")),
-        "--quiet",
-    ]
     print(
         f"Restarting NeMoClaw Gateway after {label} task-agent registration.",
         flush=True,
     )
-    with _NEMOCLAW_EXEC_LOCK:
-        result = run_nemoclaw_subprocess(command, timeout=timeout)
-    if result.returncode != 0:
+    try:
+        with _NEMOCLAW_EXEC_LOCK:
+            reload_nemoclaw_gateway_process(
+                sandbox=str(getattr(args, "nemoclaw_sandbox")),
+                timeout_seconds=timeout,
+            )
+    except NeMoClawGatewayRestartError as exc:
         raise RuntimeError(
             "NeMoClaw Gateway restart failed after task-agent registration\n"
-            f"cmd: {' '.join(shlex.quote(part) for part in command)}\n"
-            f"returncode: {result.returncode}\n"
-            f"stdout:\n{result.stdout}\n"
-            f"stderr:\n{result.stderr}"
-        )
+            f"error: {exc}\n"
+            f"evidence: {json.dumps(exc.evidence, ensure_ascii=False)}"
+        ) from exc
     print(
         f"NeMoClaw Gateway restarted after {label} task-agent registration.",
         flush=True,
@@ -490,6 +506,8 @@ def register_nemoclaw_gateway_task_agent(
             "deny_argument_patterns": effective_deny_argument_patterns(args),
             "openclaw_model_overrides": openclaw_model_overrides_from_args(args),
             "openclaw_model_params": openclaw_model_params_from_args(args),
+            "workspace_isolation_enabled": True,
+            "workspace_read_only_roots": [],
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -532,6 +550,12 @@ if not isinstance(openclaw_model_params, dict):
 openclaw_model_overrides = budget.get("openclaw_model_overrides")
 if not isinstance(openclaw_model_overrides, dict):
     openclaw_model_overrides = {}
+workspace_isolation_enabled = bool(budget.get("workspace_isolation_enabled"))
+workspace_read_only_roots = [
+    str(item)
+    for item in budget.get("workspace_read_only_roots", [])
+    if isinstance(item, str) and item
+]
 deny_argument_patterns = [
     str(item)
     for item in budget.get("deny_argument_patterns", [])
@@ -686,11 +710,27 @@ existing_session_key_prefixes = [
 for prefix in session_key_prefixes:
     if prefix and prefix not in existing_session_key_prefixes:
         existing_session_key_prefixes.append(prefix)
+existing_agent_workspaces = (
+    dict(existing_budget_config.get("agentWorkspaces"))
+    if isinstance(existing_budget_config.get("agentWorkspaces"), dict)
+    else {}
+)
+private_tmp = str(Path(agent_dir) / "runtime_tmp")
+private_home = str(Path(agent_dir) / "runtime_home")
+Path(private_tmp).mkdir(parents=True, exist_ok=True)
+Path(private_home).mkdir(parents=True, exist_ok=True)
+existing_agent_workspaces[agent_id] = {
+    "workspace": workspace,
+    "tmp": private_tmp,
+    "home": private_home,
+    "readOnlyRoots": workspace_read_only_roots,
+}
 current_deny_tools = list(deny_tools_for_guard)
 current_deny_argument_patterns = list(deny_argument_patterns)
 
 budget_guard["config"] = {
     "enabled": True,
+    "liveConfigPath": str(config_path),
     "maxToolCalls": max_tool_calls,
     "maxAgentTurns": max_agent_turns,
     "maxCumulativeInputTokens": max_cumulative_input_tokens,
@@ -701,6 +741,8 @@ budget_guard["config"] = {
     "denyTools": current_deny_tools,
     "denyArgumentPatterns": current_deny_argument_patterns,
     "blockReasonPrefix": "NEJUMI_BUDGET_GUARD_BLOCKED",
+    "workspaceIsolationEnabled": workspace_isolation_enabled,
+    "agentWorkspaces": existing_agent_workspaces,
 }
 budget_guard["hooks"] = {
     "allowConversationAccess": True,
@@ -800,6 +842,9 @@ PY
         ],
         timeout=60,
     )
+    _REGISTERED_NEMOCLAW_GATEWAY_AGENTS[:] = [
+        item for item in _REGISTERED_NEMOCLAW_GATEWAY_AGENTS if item[1] != agent_id
+    ]
     _REGISTERED_NEMOCLAW_GATEWAY_AGENTS.append((args, agent_id))
     return {
         "ok": True,
@@ -1177,6 +1222,7 @@ def write_task_openclaw_config(
                 and existing.get("config_path") == canonical_config_path
                 and isinstance(existing.get("gateway_registered"), dict)
                 and existing["gateway_registered"].get("ok") is True
+                and nemoclaw_gateway_agent_registered_in_current_process(agent_id)
             ):
                 return agent_id, None
 
@@ -1337,7 +1383,48 @@ def disable_remote_lookup_tools(config: dict[str, Any]) -> None:
             fetch["enabled"] = False
 
 
-def build_prompt(row: dict[str, Any], max_tool_wall_seconds: int | None = DEFAULT_MAX_TOOL_WALL_SECONDS) -> str:
+def _math_runtime_budget_lines(
+    *,
+    max_tool_calls: int | None,
+    max_agent_turns: int | None,
+    max_input_tokens: int | None,
+    max_cumulative_input_tokens: int | None,
+    max_cumulative_output_tokens: int | None,
+    max_output_tokens_per_response: int | None,
+) -> list[str]:
+    labels = (
+        ("Maximum tool calls", max_tool_calls),
+        ("Maximum agent turns", max_agent_turns),
+        ("Per-turn input-token cap", max_input_tokens),
+        ("Per-response output-token cap", max_output_tokens_per_response),
+        ("Cumulative input-token cap", max_cumulative_input_tokens),
+        ("Cumulative output-token cap", max_cumulative_output_tokens),
+    )
+    limits = [f"- {label}: {int(value)}" for label, value in labels if int(value or 0) > 0]
+    if not limits:
+        return []
+    return [
+        "",
+        "## Runtime Budget",
+        "",
+        *limits,
+        "",
+        "These are hard evaluation limits. If any limit is exhausted, execution stops immediately and your current answer is submitted, even if incomplete; no extra cleanup turn is guaranteed.",
+        "Keep tool use and reasoning focused, and produce the exact final ANSWER line before the remaining budget becomes low.",
+    ]
+
+
+def build_prompt(
+    row: dict[str, Any],
+    max_tool_wall_seconds: int | None = DEFAULT_MAX_TOOL_WALL_SECONDS,
+    *,
+    max_tool_calls: int | None = None,
+    max_agent_turns: int | None = None,
+    max_input_tokens: int | None = None,
+    max_cumulative_input_tokens: int | None = None,
+    max_cumulative_output_tokens: int | None = None,
+    max_output_tokens_per_response: int | None = None,
+) -> str:
     benchmark = str(row.get("benchmark", "Agentic Math"))
     answer_format = str(row.get("answer_format", "integer_0_999"))
     wall_limit = int(max_tool_wall_seconds or 0)
@@ -1382,6 +1469,14 @@ def build_prompt(row: dict[str, Any], max_tool_wall_seconds: int | None = DEFAUL
             "- If you intend to use a tool, call the tool before writing any `ANSWER:` line.",
             "- Do not write provisional, symbolic, or placeholder answers such as `ANSWER: \\boxed{F_n}`.",
             "- Do not include `ANSWER:` or `\\boxed{...}` in the same assistant turn as a tool call.",
+            *_math_runtime_budget_lines(
+                max_tool_calls=max_tool_calls,
+                max_agent_turns=max_agent_turns,
+                max_input_tokens=max_input_tokens,
+                max_cumulative_input_tokens=max_cumulative_input_tokens,
+                max_cumulative_output_tokens=max_cumulative_output_tokens,
+                max_output_tokens_per_response=max_output_tokens_per_response,
+            ),
             "",
             "Return your final response with one line exactly in this format:",
             "",
@@ -1591,10 +1686,22 @@ def sidecar_provider_timeout(sidecar: dict[str, Any] | None) -> bool:
     )
 
 
+def sidecar_model_failure_reason(sidecar: dict[str, Any] | None) -> str | None:
+    if not isinstance(sidecar, dict):
+        return None
+    status = sidecar.get("model_completion")
+    if not isinstance(status, dict) or status.get("failure_category") != "model":
+        return None
+    reason = str(status.get("reason") or "").strip()
+    return reason or None
+
+
 def is_transient_openclaw_failure(
     result: subprocess.CompletedProcess[str],
     sidecar: dict[str, Any] | None,
 ) -> bool:
+    if sidecar_model_failure_reason(sidecar):
+        return False
     if isinstance(sidecar, dict):
         if sidecar.get("tool_policy_ok") is False or sidecar.get("tool_policy_violations"):
             return False
@@ -2597,14 +2704,32 @@ def run_openclaw_for_task(
     args: argparse.Namespace,
 ) -> dict[str, Any]:
     result_path = task_dir / "result.json"
-    prompt_text = build_prompt(row, max_tool_wall_seconds=int(getattr(args, "max_tool_wall_seconds", 0) or 0))
+    prompt_text = build_prompt(
+        row,
+        max_tool_wall_seconds=int(getattr(args, "max_tool_wall_seconds", 0) or 0),
+        max_tool_calls=getattr(args, "max_tool_calls", None),
+        max_agent_turns=getattr(args, "max_agent_turns", None),
+        max_input_tokens=getattr(args, "max_input_tokens", None),
+        max_cumulative_input_tokens=resolved_max_cumulative_input_tokens(args),
+        max_cumulative_output_tokens=resolved_max_cumulative_output_tokens(args),
+        max_output_tokens_per_response=openclaw_max_output_tokens_from_args(args),
+    )
     cache_key = build_cache_key(row, prompt_text, args)
-    if result_path.exists() and not args.redo:
+    prior_record_for_billing: dict[str, Any] | None = None
+    provider_recovery_active = bool(getattr(args, "_provider_recovery_active", False))
+    if result_path.exists() and (not args.redo or provider_recovery_active):
         existing = json.loads(result_path.read_text(encoding="utf-8"))
-        if cached_result_matches_cache(existing, cache_key):
+        if not provider_recovery_active and cached_result_matches_cache(existing, cache_key):
             existing = backfill_record_usage(existing, result_path)
+            existing = ensure_billable_openclaw_usage(existing)
+            result_path.write_text(
+                json.dumps(existing, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
             print(f"Reusing existing Agentic Math result: {row['task_id']}", flush=True)
             return existing
+        if cache_key_matches(existing, cache_key):
+            prior_record_for_billing = ensure_billable_openclaw_usage(existing)
         print(
             f"Existing Agentic Math result is stale for {row['task_id']}; "
             "cache key changed or cached OpenClaw error is transient, rerunning.",
@@ -2617,6 +2742,7 @@ def run_openclaw_for_task(
     if not args.redo:
         recovered = recover_existing_success_sidecar(row, task_dir, cache_key, args)
         if recovered is not None:
+            recovered = ensure_billable_openclaw_usage(recovered)
             result_path.write_text(
                 json.dumps(recovered, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
@@ -2637,6 +2763,7 @@ def run_openclaw_for_task(
     last_result: subprocess.CompletedProcess[str] | None = None
     last_sidecar_path: Path | None = None
     last_attempt_metadata: dict[str, Any] = {}
+    billable_attempts: list[dict[str, Any]] = []
     for attempt_number in range(1, max_attempts + 1):
         attempt_id = f"{int(time.time())}-{os.getpid()}-{attempt_number}"
         session_key = f"{resolve_session_prefix(args)}:{row['task_id']}:{attempt_id}"
@@ -2722,7 +2849,9 @@ def run_openclaw_for_task(
         if args.dry_run:
             command.append("--dry-run")
 
+        attempt_started_at = time.time()
         result = run_command(command, cwd=REPO_ROOT, timeout=args.openclaw_timeout + 60, check=False)
+        attempt_ended_at = time.time()
         last_result = result
         last_sidecar_path = sidecar_path
         last_attempt_metadata = attempt_metadata
@@ -2766,7 +2895,30 @@ def run_openclaw_for_task(
                 sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 sidecar = None
-        if result.returncode == 0 and not is_transient_openclaw_failure(result, sidecar):
+        billable_attempts.append(
+            {
+                "attempt_id": attempt_id,
+                "attempt_number": attempt_number,
+                "returncode": result.returncode,
+                "wall_clock_seconds": attempt_ended_at - attempt_started_at,
+                "openclaw_result_path": str(sidecar_path) if sidecar_path.exists() else "",
+                "usage": sidecar_usage(sidecar) if isinstance(sidecar, dict) else {},
+            }
+        )
+        model_failure_reason = sidecar_model_failure_reason(sidecar)
+        if model_failure_reason:
+            attempt_metadata["openclaw_disqualified_reason"] = model_failure_reason
+            attempt_metadata["model_completion"] = sidecar.get("model_completion", {})
+            print(
+                f"OpenClaw model-side incomplete response for {row['task_id']}: "
+                f"{model_failure_reason}; recording as incorrect and not retrying.",
+                flush=True,
+            )
+        if (
+            result.returncode == 0
+            and model_failure_reason is None
+            and not is_transient_openclaw_failure(result, sidecar)
+        ):
             break
 
         if result_path.exists() and not args.redo:
@@ -2777,6 +2929,16 @@ def run_openclaw_for_task(
                     f"OpenClaw returned {result.returncode} for {row['task_id']}, "
                     "but a matching result.json is available; reusing it.",
                     flush=True,
+                )
+                existing_prior = prior_record_for_billing or existing
+                existing = attach_billable_openclaw_usage(existing, billable_attempts)
+                existing = merge_prior_billable_openclaw_usage(
+                    existing,
+                    existing_prior,
+                )
+                result_path.write_text(
+                    json.dumps(existing, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
                 )
                 return existing
 
@@ -2864,6 +3026,8 @@ def run_openclaw_for_task(
                 )
             )
         record = build_openclaw_error_record(row, result, sidecar_path, cache_key, attempt_metadata)
+        record = attach_billable_openclaw_usage(record, billable_attempts)
+        record = merge_prior_billable_openclaw_usage(record, prior_record_for_billing)
         result_path.write_text(
             json.dumps(record, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
@@ -2915,6 +3079,8 @@ def run_openclaw_for_task(
         )
     )
     record = build_scored_record_from_sidecar(row, sidecar_path, sidecar, cache_key, attempt_metadata)
+    record = attach_billable_openclaw_usage(record, billable_attempts)
+    record = merge_prior_billable_openclaw_usage(record, prior_record_for_billing)
     result_path.write_text(
         json.dumps(record, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
@@ -2955,6 +3121,7 @@ def write_summary(output_dir: Path, results: list[dict[str, Any]], args: argpars
             bucket["correct"] += 1
     for bucket in by_subject.values():
         bucket["accuracy"] = bucket["correct"] / bucket["total"] if bucket["total"] else 0.0
+    billable = summarize_billable_openclaw_records(results)
     summary = {
         "total_instances": total,
         "answered_instances": len(scored),
@@ -2967,6 +3134,10 @@ def write_summary(output_dir: Path, results: list[dict[str, Any]], args: argpars
         "model": args.model,
         "thinking": args.thinking,
         "runner_version": RUNNER_VERSION,
+        "billable_openclaw_usage": billable["usage"],
+        "billable_openclaw_attempt_count": billable["attempt_count"],
+        "billable_openclaw_retry_count": billable["retry_count"],
+        "billable_openclaw_wall_seconds": billable["wall_seconds"],
         "num_workers": int(getattr(args, "num_workers", 1) or 1),
         "task_start_min_interval_seconds": float(
             getattr(args, "task_start_min_interval_seconds", 0.0) or 0.0
@@ -3135,7 +3306,31 @@ def parse_args() -> argparse.Namespace:
         default=15.0,
         help="Linear backoff base seconds between transient OpenClaw retries.",
     )
+    parser.add_argument(
+        "--provider-recovery-rounds",
+        type=int,
+        default=2,
+        help=(
+            "Recovery rounds for only provider-transient tasks after healthy tasks "
+            "finish. Exhaustion leaves a resumable invalid run, not model errors."
+        ),
+    )
+    parser.add_argument(
+        "--provider-recovery-base-seconds",
+        type=float,
+        default=60.0,
+        help="Exponential cooldown base between provider recovery rounds.",
+    )
     parser.add_argument("--allow-failed-preflight", action="store_true")
+    parser.add_argument(
+        "--preflight-only",
+        action="store_true",
+        help=(
+            "Validate the dataset, task identifiers, NeMoClaw sandbox permissions, "
+            "and runtime arguments, then exit before Gateway registration, OpenClaw, "
+            "Weave verification, or model execution."
+        ),
+    )
     parser.add_argument("--no-local", action="store_true")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--dry-run", action="store_true")
@@ -3170,6 +3365,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    _COMMAND_RUNNER.reset()
     args = parse_args()
     if getattr(args, "weave_sidecar", False) or getattr(args, "weave_sidecar_strict", False):
         raise SystemExit(
@@ -3179,8 +3375,48 @@ def main() -> None:
     rows = read_jsonl(args.dataset_jsonl)
     if args.limit is not None:
         rows = rows[: args.limit]
+    if not rows:
+        raise SystemExit("Agentic Math preflight failed: selected dataset is empty.")
+    task_ids = [str(row.get("task_id") or "").strip() for row in rows]
+    if any(not task_id for task_id in task_ids):
+        raise SystemExit("Agentic Math preflight failed: every row must have a task_id.")
+    duplicate_task_ids = sorted(
+        task_id for task_id in set(task_ids) if task_ids.count(task_id) > 1
+    )
+    if duplicate_task_ids:
+        raise SystemExit(
+            "Agentic Math preflight failed: duplicate task_id values: "
+            + ", ".join(duplicate_task_ids)
+        )
+    if bool(getattr(args, "no_local", False)) and not getattr(
+        args, "nemoclaw_sandbox", None
+    ):
+        raise SystemExit(
+            "Agentic Math preflight failed: --no-local requires --nemoclaw-sandbox."
+        )
     args.output_dir.mkdir(parents=True, exist_ok=True)
     ensure_nemoclaw_openclaw_permissions(args)
+    if bool(getattr(args, "preflight_only", False)):
+        report = {
+            "schema_version": 1,
+            "benchmark": "agentic_math",
+            "ok": True,
+            "dataset_jsonl": str(args.dataset_jsonl.resolve()),
+            "selected_task_count": len(rows),
+            "unique_task_count": len(set(task_ids)),
+            "nemoclaw_sandbox": getattr(args, "nemoclaw_sandbox", None),
+            "no_local": bool(getattr(args, "no_local", False)),
+            "num_workers": max(1, int(getattr(args, "num_workers", 1) or 1)),
+            "will_run_model": False,
+            "will_run_gateway": False,
+            "will_run_weave_verification": False,
+        }
+        (args.output_dir / "preflight.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return
 
     results_by_index: dict[int, dict[str, Any]] = {}
     partial_results_path = args.output_dir / "results.partial.jsonl"
@@ -3203,6 +3439,12 @@ def main() -> None:
             prompt_text = build_prompt(
                 row,
                 max_tool_wall_seconds=int(getattr(args, "max_tool_wall_seconds", 0) or 0),
+                max_tool_calls=getattr(args, "max_tool_calls", None),
+                max_agent_turns=getattr(args, "max_agent_turns", None),
+                max_input_tokens=getattr(args, "max_input_tokens", None),
+                max_cumulative_input_tokens=resolved_max_cumulative_input_tokens(args),
+                max_cumulative_output_tokens=resolved_max_cumulative_output_tokens(args),
+                max_output_tokens_per_response=openclaw_max_output_tokens_from_args(args),
             )
             cache_key = build_cache_key(row, prompt_text, args)
             if cached_result_matches_cache(record, cache_key):
@@ -3244,51 +3486,139 @@ def main() -> None:
             f"{task_start_limiter.min_interval_seconds:.1f}s",
             flush=True,
         )
-    if num_workers == 1:
-        for index, row in enumerate(rows, start=1):
-            task_dir = args.output_dir / str(row["task_id"])
-            try:
-                completed_index, record = run_one(index, row)
-                results_by_index[completed_index] = record
-            except Exception as exc:
-                error_path = write_task_error(task_dir, row, exc)
-                merge_disk_results()
-                write_jsonl(partial_results_path, ordered_results())
-                print(
-                    f"Agentic Math task failed: {row['task_id']} (details: {error_path})",
-                    file=sys.stderr,
-                    flush=True,
-                )
-                raise
-            write_jsonl(partial_results_path, ordered_results())
-    else:
+    if num_workers > 1:
         pre_register_task_agents()
+
+    def is_deferred_provider_failure(record: dict[str, Any]) -> bool:
+        return record.get("openclaw_disqualified_reason") == "provider_transient_exhausted"
+
+    def write_provider_recovery_state(
+        pending: list[tuple[int, dict[str, Any]]],
+        *,
+        recovery_round: int,
+        exhausted: bool,
+    ) -> None:
+        state = {
+            "runner_version": RUNNER_VERSION,
+            "updated_at": time.time(),
+            "recovery_round": recovery_round,
+            "max_recovery_rounds": max(
+                0, int(getattr(args, "provider_recovery_rounds", 2) or 0)
+            ),
+            "exhausted": exhausted,
+            "pending_task_ids": [str(row["task_id"]) for _, row in pending],
+            "completed_task_ids": [
+                str(rows[index - 1]["task_id"]) for index in sorted(results_by_index)
+            ],
+        }
+        (args.output_dir / "provider_recovery_state.json").write_text(
+            json.dumps(state, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    def record_failure(row: dict[str, Any], exc: Exception) -> None:
+        task_dir = args.output_dir / str(row["task_id"])
+        error_path = write_task_error(task_dir, row, exc)
+        merge_disk_results()
+        write_jsonl(partial_results_path, ordered_results())
+        print(
+            f"Agentic Math task failed: {row['task_id']} (details: {error_path})",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    def run_pending_batch(
+        pending: list[tuple[int, dict[str, Any]]],
+    ) -> list[tuple[int, dict[str, Any]]]:
+        deferred: list[tuple[int, dict[str, Any]]] = []
+        if num_workers == 1:
+            for index, row in pending:
+                try:
+                    completed_index, record = run_one(index, row)
+                except Exception as exc:
+                    record_failure(row, exc)
+                    raise
+                if is_deferred_provider_failure(record):
+                    deferred.append((index, row))
+                    print(
+                        "Deferring provider-transient Agentic Math task until the "
+                        f"recovery round: {row['task_id']}",
+                        flush=True,
+                    )
+                else:
+                    results_by_index[completed_index] = record
+                write_jsonl(partial_results_path, ordered_results())
+            return deferred
+
         executor = ThreadPoolExecutor(max_workers=num_workers)
+        failed = False
         try:
             future_to_task = {
                 executor.submit(run_one, index, row): (index, row)
-                for index, row in enumerate(rows, start=1)
+                for index, row in pending
             }
             for future in as_completed(future_to_task):
                 index, row = future_to_task[future]
-                task_dir = args.output_dir / str(row["task_id"])
                 try:
                     completed_index, record = future.result()
-                    results_by_index[completed_index] = record
                 except Exception as exc:
-                    error_path = write_task_error(task_dir, row, exc)
-                    merge_disk_results()
-                    write_jsonl(partial_results_path, ordered_results())
+                    failed = True
+                    record_failure(row, exc)
+                    _COMMAND_RUNNER.cancel_all()
+                    for pending_future in future_to_task:
+                        pending_future.cancel()
+                    raise
+                if is_deferred_provider_failure(record):
+                    deferred.append((index, row))
                     print(
-                        f"Agentic Math task failed: {row['task_id']} (details: {error_path})",
-                        file=sys.stderr,
+                        "Deferring provider-transient Agentic Math task until the "
+                        f"recovery round: {row['task_id']}",
                         flush=True,
                     )
-                    executor.shutdown(wait=False, cancel_futures=True)
-                    raise
+                else:
+                    results_by_index[completed_index] = record
                 write_jsonl(partial_results_path, ordered_results())
         finally:
-            executor.shutdown(wait=True, cancel_futures=False)
+            executor.shutdown(wait=True, cancel_futures=failed)
+        return deferred
+
+    pending = list(enumerate(rows, start=1))
+    max_recovery_rounds = max(
+        0, int(getattr(args, "provider_recovery_rounds", 2) or 0)
+    )
+    for recovery_round in range(max_recovery_rounds + 1):
+        setattr(args, "_provider_recovery_active", recovery_round > 0)
+        if recovery_round > 0:
+            cooldown = max(
+                0.0,
+                float(getattr(args, "provider_recovery_base_seconds", 60.0) or 0.0),
+            ) * (2 ** (recovery_round - 1))
+            print(
+                f"Agentic Math provider recovery round {recovery_round}/"
+                f"{max_recovery_rounds}: {len(pending)} deferred tasks; "
+                f"cooldown {cooldown:.1f}s.",
+                flush=True,
+            )
+            if cooldown:
+                time.sleep(cooldown)
+        pending = run_pending_batch(pending)
+        write_provider_recovery_state(
+            pending,
+            recovery_round=recovery_round,
+            exhausted=bool(pending and recovery_round >= max_recovery_rounds),
+        )
+        if not pending:
+            break
+    setattr(args, "_provider_recovery_active", False)
+    if pending:
+        merge_disk_results()
+        write_jsonl(partial_results_path, ordered_results())
+        pending_ids = ", ".join(str(row["task_id"]) for _, row in pending)
+        raise ProviderRecoveryExhaustedError(
+            "Agentic Math provider recovery remained pending after all healthy tasks "
+            f"completed: {pending_ids}. Resume the same output directory to retry only "
+            "these tasks."
+        )
 
     results = ordered_results()
     write_jsonl(args.output_dir / "results.jsonl", results)
@@ -3297,4 +3627,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    if "--preflight-only" in sys.argv:
+        main()
+    else:
+        _sandbox = nemoclaw_sandbox_from_command(sys.argv[1:])
+        with nemoclaw_sandbox_lease(_sandbox):
+            main()

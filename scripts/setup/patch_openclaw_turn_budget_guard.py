@@ -23,7 +23,7 @@ import subprocess
 from pathlib import Path
 
 
-PATCH_MARKER = "Nejumi patch v4: enforce budget guard turns and cumulative actual tokens"
+PATCH_MARKER = "Nejumi patch v5: enforce budget guard turns and cumulative actual tokens"
 DIAGNOSTIC_PATCH_MARKER = "Nejumi patch v4: expose model call usage to budget guard"
 EXEC_TIMEOUT_PATCH_MARKER = "Nejumi patch v1: clamp exec tool timeout to configured max"
 EXTENDED_THINKING_PATCH_MARKER = (
@@ -33,6 +33,7 @@ OLD_EXTENDED_THINKING_PATCH_MARKERS = (
     "Nejumi patch v1: permit xhigh/max thinking levels through provider validation",
 )
 OLD_PATCH_MARKERS = (
+    "Nejumi patch v4: enforce budget guard turns and cumulative actual tokens",
     "Nejumi patch v3: enforce budget guard turns and cumulative actual tokens",
     "Nejumi patch v2: enforce budget guard maxAgentTurns before model stream dispatch",
     "Nejumi patch: enforce budget guard maxAgentTurns before model stream dispatch",
@@ -42,7 +43,7 @@ OLD_DIAGNOSTIC_PATCH_MARKERS = (
 )
 
 HELPER_BLOCK = r"""
-			// Nejumi patch v4: enforce budget guard turns and cumulative actual tokens.
+			// Nejumi patch v5: enforce budget guard turns and cumulative actual tokens.
 			const extractNejumiBudgetGuardConfig = (runtimeConfig) => {
 				const entry = runtimeConfig?.plugins?.entries?.["nejumi-budget-guard"];
 				if (!entry || typeof entry !== "object" || entry.enabled === false) return null;
@@ -191,11 +192,100 @@ HELPER_BLOCK = r"""
 				}
 				return null;
 			};
+			const allNejumiAssistantUsagesFromMessages = () => {
+				const messages = Array.isArray(activeSession?.messages) ? activeSession.messages : [];
+				const usages = [];
+				for (const message of messages) {
+					if (message?.role !== "assistant") continue;
+					const usage = nejumiMessageUsage(message);
+					if (usage) usages.push(usage);
+				}
+				return usages;
+			};
+			const allNejumiAssistantUsagesFromSessionFile = () => {
+				const sessionFile = params.sessionFile;
+				if (!sessionFile) return [];
+				let text = "";
+				try {
+					text = readFileSync(sessionFile, "utf8");
+				} catch {
+					return [];
+				}
+				const usages = [];
+				const seen = /* @__PURE__ */ new Set();
+				for (const [index, rawLine] of text.split(/\r?\n/).entries()) {
+					const line = rawLine?.trim();
+					if (!line) continue;
+					let entry;
+					try {
+						entry = JSON.parse(line);
+					} catch {
+						continue;
+					}
+					const message = entry?.message;
+					if (message?.role !== "assistant") continue;
+					const usage = nejumiMessageUsage(message);
+					if (!usage) continue;
+					const identity = String(entry?.id ?? message?.id ?? `line-${index}`);
+					if (seen.has(identity)) continue;
+					seen.add(identity);
+					usages.push(usage);
+				}
+				return usages;
+			};
 			let nejumiObservedAgentTurns = 0;
 			let nejumiCumulativeInputTokens = 0;
 			let nejumiCumulativeOutputTokens = 0;
 			let nejumiUsageObservationCount = 0;
 			let nejumiPendingUsageViolation = null;
+			const reconcileNejumiBudgetGuardUsageFromSession = () => {
+				if (!nejumiBudgetGuardTurnConfig) return;
+				let usages = allNejumiAssistantUsagesFromSessionFile();
+				if (usages.length === 0) usages = allNejumiAssistantUsagesFromMessages();
+				if (usages.length === 0) {
+					if (nejumiBudgetGuardTurnConfig.requireActualTokenUsage && nejumiObservedAgentTurns > 0) {
+						nejumiPendingUsageViolation ??= {
+							kind: "missing_actual_token_usage",
+							fields: { observedCalls: nejumiObservedAgentTurns, source: "session_reconciliation" }
+						};
+					}
+					return;
+				}
+				let inputTokens = 0;
+				let outputTokens = 0;
+				for (const usage of usages) {
+					inputTokens += nejumiUsageInputTokens(usage) ?? 0;
+					outputTokens += nejumiUsageOutputTokens(usage) ?? 0;
+				}
+				nejumiCumulativeInputTokens = inputTokens;
+				nejumiCumulativeOutputTokens = outputTokens;
+				nejumiUsageObservationCount = Math.max(nejumiUsageObservationCount, usages.length);
+				if (String(nejumiPendingUsageViolation?.kind || "").startsWith("missing_actual_")) {
+					nejumiPendingUsageViolation = null;
+				}
+				if (nejumiBudgetGuardTurnConfig.maxCumulativeInputTokens && inputTokens > nejumiBudgetGuardTurnConfig.maxCumulativeInputTokens) {
+					nejumiPendingUsageViolation ??= {
+						kind: "cumulative_input_tokens_limit_exceeded",
+						fields: {
+							observed: inputTokens,
+							limit: nejumiBudgetGuardTurnConfig.maxCumulativeInputTokens,
+							observedCalls: usages.length,
+							source: "session_reconciliation"
+						}
+					};
+				}
+				if (nejumiBudgetGuardTurnConfig.maxCumulativeOutputTokens && outputTokens > nejumiBudgetGuardTurnConfig.maxCumulativeOutputTokens) {
+					nejumiPendingUsageViolation ??= {
+						kind: "cumulative_output_tokens_limit_exceeded",
+						fields: {
+							observed: outputTokens,
+							limit: nejumiBudgetGuardTurnConfig.maxCumulativeOutputTokens,
+							observedCalls: usages.length,
+							source: "session_reconciliation"
+						}
+					};
+				}
+			};
 			const applyNejumiBudgetGuardModelCallUsage = (usage, callId, observedCalls) => {
 				if (!nejumiBudgetGuardTurnConfig) return;
 				const hasUsage = nejumiUsageHasNonzeroActualTokens(usage);
@@ -271,6 +361,7 @@ HELPER_BLOCK = r"""
 			const applyNejumiBudgetGuardTurnAndUsageCap = (streamFn) => {
 				if (!nejumiBudgetGuardTurnConfig) return streamFn;
 				return (model, context, options) => {
+					reconcileNejumiBudgetGuardUsageFromSession();
 					if (nejumiPendingUsageViolation) {
 						recoverNejumiPendingUsageViolation();
 					}

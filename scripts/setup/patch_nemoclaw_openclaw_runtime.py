@@ -20,6 +20,16 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+TOOLS_DIR = REPO_ROOT / "scripts" / "tools"
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
+
+from nemoclaw_gateway_restart import (  # noqa: E402
+    NeMoClawGatewayRestartError,
+    reload_nemoclaw_gateway_process,
+)
+
+
 DEFAULT_PATCH_SCRIPT = REPO_ROOT / "scripts" / "setup" / "patch_openclaw_turn_budget_guard.py"
 DEFAULT_OPENCLAW_PACKAGE_DIR = "/usr/local/lib/node_modules/openclaw"
 DEFAULT_REMOTE_PATCH_SCRIPT = "/tmp/patch_openclaw_turn_budget_guard.py"
@@ -37,6 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--container-id", default=os.environ.get("NEMOCLAW_SANDBOX_CONTAINER_ID", ""))
     parser.add_argument("--docker-bin", default=os.environ.get("DOCKER_BIN", "docker"))
     parser.add_argument("--nemoclaw-bin", default=os.environ.get("NEMOCLAW_BIN", "nemoclaw"))
+    parser.add_argument("--openshell-bin", default=os.environ.get("OPENSHELL_BIN", "openshell"))
     parser.add_argument("--patch-script", type=Path, default=DEFAULT_PATCH_SCRIPT)
     parser.add_argument("--remote-patch-script", default=DEFAULT_REMOTE_PATCH_SCRIPT)
     parser.add_argument("--openclaw-package-dir", default=DEFAULT_OPENCLAW_PACKAGE_DIR)
@@ -196,20 +207,25 @@ def patch_container_openclaw(
 
 def restart_gateway(
     *,
-    nemoclaw_bin: str,
+    openshell_bin: str,
+    docker_bin: str,
+    container_id: str,
     sandbox: str,
     timeout_seconds: float,
 ) -> dict[str, Any]:
-    result = run_command(
-        [nemoclaw_bin, "sandbox", "gateway", "restart", sandbox, "--quiet"],
-        timeout_seconds=timeout_seconds,
-    )
-    require_success(result, action=f"restart NeMoClaw Gateway for sandbox {sandbox}")
-    return {
-        "returncode": result.returncode,
-        "stdout": result.stdout,
-        "stderr": result.stderr,
-    }
+    try:
+        return reload_nemoclaw_gateway_process(
+            docker_bin=docker_bin,
+            openshell_bin=openshell_bin,
+            container_id=container_id,
+            sandbox=sandbox,
+            timeout_seconds=timeout_seconds,
+        )
+    except NeMoClawGatewayRestartError as exc:
+        raise CommandError(
+            f"restart NeMoClaw Gateway for sandbox {sandbox} failed: {exc}; "
+            f"evidence={json.dumps(exc.evidence, ensure_ascii=False)}"
+        ) from exc
 
 
 def main() -> None:
@@ -246,7 +262,9 @@ def main() -> None:
         )
         if not args.no_restart_gateway and not args.check_only:
             payload["gateway_restart"] = restart_gateway(
-                nemoclaw_bin=args.nemoclaw_bin,
+                openshell_bin=args.openshell_bin,
+                docker_bin=args.docker_bin,
+                container_id=container_id,
                 sandbox=args.sandbox,
                 timeout_seconds=args.timeout_seconds,
             )

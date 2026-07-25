@@ -122,6 +122,8 @@ async def _one_request(
             return {
                 "index": index,
                 "ok": True,
+                "response_id": getattr(response, "id", None),
+                "response_model": getattr(response, "model", None),
                 "elapsed_sec": elapsed,
                 "finish_reason": getattr(choice, "finish_reason", None),
                 "tool_call_count": len(tool_calls),

@@ -14,11 +14,13 @@ PREPARE = importlib.util.module_from_spec(PREPARE_SPEC)
 assert PREPARE_SPEC.loader is not None
 PREPARE_SPEC.loader.exec_module(PREPARE)
 
-if "evaluator" not in sys.modules:
+_existing_evaluator = sys.modules.get("evaluator")
+_existing_evaluate_utils = sys.modules.get("evaluator.evaluate_utils")
+if _existing_evaluator is None:
     evaluator_pkg = types.ModuleType("evaluator")
     evaluator_pkg.__path__ = [str(REPO_ROOT / "scripts" / "evaluator")]
     sys.modules["evaluator"] = evaluator_pkg
-if "evaluator.evaluate_utils" not in sys.modules:
+if _existing_evaluate_utils is None:
     evaluate_utils_stub = types.ModuleType("evaluator.evaluate_utils")
     evaluate_utils_stub.__path__ = [
         str(REPO_ROOT / "scripts" / "evaluator" / "evaluate_utils")
@@ -32,6 +34,17 @@ HALLULENS_SPEC = importlib.util.spec_from_file_location("evaluator.hallulens", H
 HALLULENS = importlib.util.module_from_spec(HALLULENS_SPEC)
 assert HALLULENS_SPEC.loader is not None
 HALLULENS_SPEC.loader.exec_module(HALLULENS)
+
+# The stub is an import aid for this module only. Leaving it in sys.modules
+# makes unrelated evaluator tests depend on collection order.
+if _existing_evaluate_utils is None:
+    sys.modules.pop("evaluator.evaluate_utils", None)
+else:
+    sys.modules["evaluator.evaluate_utils"] = _existing_evaluate_utils
+if _existing_evaluator is None:
+    sys.modules.pop("evaluator", None)
+else:
+    sys.modules["evaluator"] = _existing_evaluator
 
 
 def test_quoted_name_from_prompt_prefers_display_name():

@@ -1,0 +1,8 @@
+# Preserve benchmark source text verbatim. Issue bodies and patches can contain
+# intentional trailing whitespace that is part of the evaluated input.
+data/taiwan/swebench_lite_assorted/subsets/*.csv -diff -whitespace
+data/taiwan/swebench_pro_public/subsets/*.csv -diff -whitespace
+
+# Vendored BFCL v4 upstream snapshot. Local integration code remains subject to
+# the repository's normal whitespace checks.
+scripts/evaluator/evaluate_utils/bfcl_v4_pkg/** -whitespace

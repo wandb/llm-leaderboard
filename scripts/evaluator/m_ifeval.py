@@ -20,7 +20,11 @@ from .evaluate_utils.m_ifeval_utils import (
 )
 from .evaluate_utils import (
     apply_chat_template,
-    LLMAsyncProcessor,
+)
+from .evaluate_utils.llm_response_checkpoint import (
+    LLMResponseCheckpointStore,
+    default_checkpoint_root,
+    run_checkpointed_batch,
 )
 
 
@@ -140,11 +144,16 @@ def evaluate():
     print("LLMで応答生成中...")
     
     # LLMで応答生成
-    llm_ap = LLMAsyncProcessor(
+    results = run_checkpointed_batch(
         llm=llm,
         inputs=all_inputs,
+        keys=(str(er["key"]) for er in evaluation_results),
+        checkpoint_store=LLMResponseCheckpointStore(
+            default_checkpoint_root(run, "m_ifeval"),
+            model_name=cfg.model.pretrained_model_name_or_path,
+        ),
+        label="M-IFEval",
     )
-    results = llm_ap.get_results()
     
     # 結果をevaluation_resultsに保存
     for response, evaluation_result in tqdm(zip(results, evaluation_results), 

@@ -335,6 +335,11 @@ def complete_agentic_swe_assorted_summary():
 
 def complete_taiwan_full_summary():
     return {
+        "GLP": 34.5,
+        "ALT": 67.0,
+        "Overall": 48.4285714286,
+        "taiwan_missing_required_count": 0,
+        "taiwan_pending_count": 1,
         "mtbench_leaderboard_table": {"_type": "table-file", "nrows": 1},
         "arc_agi_leaderboard_table": {"_type": "table-file", "nrows": 1},
         "agentic_math_leaderboard_table": {"_type": "table-file", "nrows": 1},
@@ -355,7 +360,113 @@ def complete_taiwan_full_summary():
         "taiwan_alt_radar_table": {"_type": "table-file", "nrows": 6},
         "bfcl_timeout_count": 0,
         "bfcl_inference_error_count": 0,
+        "bfcl_profile": "full",
+        "bfcl_profile_case_count": 496,
     }
+
+
+def complete_bfcl_summary():
+    return {
+        "bfcl_runtime_case_count": 12,
+        "bfcl_profile_case_count": 12,
+        "bfcl_timeout_count": 0,
+        "bfcl_inference_error_count": 0,
+        "bfcl_version": "v4",
+        "bfcl_profile": "core",
+        "bfcl_upstream_commit": "a" * 40,
+        "bfcl_leaderboard_table": {
+            "_type": "table-file",
+            "nrows": 1,
+        },
+        "bfcl_output_table": {
+            "_type": "table-file",
+            "nrows": 12,
+            "path": "media/table/bfcl_output.table.json",
+            "columns": [
+                "model",
+                "id",
+                "category",
+                "prompt",
+                "output",
+                "accuracy",
+                "possible_answer",
+                "reasoning_content",
+                "input_token_count",
+                "output_token_count",
+                "timeout",
+                "error",
+            ],
+        },
+    }
+
+
+def test_verify_bfcl_v4_canary_accepts_complete_zero_error_run():
+    module = load_module()
+    run = FakeRun(summary=complete_bfcl_summary())
+
+    result = module.verify_run(
+        run,
+        module.BENCHMARK_SPECS["bfcl"],
+        expected_total=12,
+    )
+
+    assert result["ok"] is True
+    output_table_evidence = result["required_evidence"]["tables"][1]
+    assert "row_observability" not in output_table_evidence
+
+
+def test_verify_bfcl_v4_accepts_runtime_prerequisite_rows_beyond_logical_total():
+    module = load_module()
+    summary = complete_bfcl_summary()
+    summary["bfcl_profile_case_count"] = 12
+    summary["bfcl_runtime_case_count"] = 15
+    summary["bfcl_output_table"]["nrows"] = 15
+    run = FakeRun(summary=summary)
+
+    result = module.verify_run(
+        run,
+        module.BENCHMARK_SPECS["bfcl"],
+        expected_total=12,
+    )
+
+    assert result["ok"] is True
+    assert result["required_evidence"]["summary_metrics"] == [
+        "bfcl_profile_case_count",
+        "bfcl_runtime_case_count",
+    ]
+    assert any(
+        check["name"] == "output_total_metric"
+        and check["value"] == 15
+        and check["ok"]
+        for check in result["checks"]
+    )
+    assert any(
+        check["name"] == "output_table"
+        and check["nrows"] == 15
+        and check["ok"]
+        for check in result["checks"]
+    )
+
+
+def test_verify_bfcl_v4_canary_rejects_runtime_errors():
+    module = load_module()
+    summary = complete_bfcl_summary()
+    summary["bfcl_inference_error_count"] = 1
+    run = FakeRun(summary=summary)
+
+    result = module.verify_run(
+        run,
+        module.BENCHMARK_SPECS["bfcl"],
+        expected_total=12,
+    )
+
+    assert result["ok"] is False
+    assert any(
+        check["name"] == "bfcl_runtime_error_metric"
+        and check.get("metric") == "bfcl_inference_error_count"
+        and not check["ok"]
+        for check in result["checks"]
+    )
 
 
 def test_verify_agentic_math_wandb_completion_accepts_complete_run():
@@ -899,6 +1010,49 @@ def test_verify_taiwan_full_completion_rejects_missing_required_table():
     )
 
 
+def test_verify_taiwan_full_completion_rejects_missing_aggregate_scalar():
+    module = load_module()
+    summary = complete_taiwan_full_summary()
+    del summary["GLP"]
+    run = FakeRun(summary=summary)
+
+    result = module.verify_full_taiwan_run(
+        run,
+        taxonomy_path=REPO_ROOT / "taxonomies" / "nejumi45_taiwan.yaml",
+    )
+
+    assert result["ok"] is False
+    assert any(
+        check["name"] == "aggregate_score_metric"
+        and check["metric"] == "GLP"
+        and not check["ok"]
+        for check in result["checks"]
+    )
+
+
+def test_verify_taiwan_full_completion_rejects_bfcl_core_profile():
+    module = load_module()
+    summary = complete_taiwan_full_summary()
+    summary["bfcl_profile"] = "core"
+    summary["bfcl_profile_case_count"] = 346
+    run = FakeRun(summary=summary)
+
+    result = module.verify_full_taiwan_run(
+        run,
+        taxonomy_path=REPO_ROOT / "taxonomies" / "nejumi45_taiwan.yaml",
+    )
+
+    assert result["ok"] is False
+    assert any(
+        check["name"] == "bfcl_release_profile" and not check["ok"]
+        for check in result["checks"]
+    )
+    assert any(
+        check["name"] == "bfcl_release_case_count" and not check["ok"]
+        for check in result["checks"]
+    )
+
+
 def test_verify_taiwan_full_completion_allows_bfcl_timeout_count_as_scored_incorrect():
     module = load_module()
     summary = complete_taiwan_full_summary()
@@ -1006,6 +1160,56 @@ def test_verify_agentic_swe_assorted_completion_accepts_complete_weighted_run():
     )
     assert any(
         check["name"] == "result_artifact_files" and check["ok"]
+        for check in result["checks"]
+    )
+
+
+def test_parse_agentic_swe_assorted_tier_counts_is_case_insensitive():
+    module = load_module()
+
+    assert module._parse_agentic_swe_assorted_tier_counts(
+        "Low=20,MIDDLE=20, high=10"
+    ) == {"low": 20, "middle": 20, "high": 10}
+
+
+def test_verify_agentic_swe_assorted_tier_counts_is_case_insensitive():
+    module = load_module()
+    observed_tier_counts = {"Low": 20, "MIDDLE": 20, "high": 10}
+    summary = complete_agentic_swe_assorted_summary()
+    summary.update(
+        {
+            "agentic_swe/total_instances": 50,
+            "agentic_swe/resolved_instances": 12,
+            "agentic_swe_output_table": {
+                "_type": "table-file",
+                "nrows": 50,
+                "path": "media/table/agentic_swe_output_table_0.table.json",
+                "columns": AGENTIC_SWE_OUTPUT_COLUMNS
+                + AGENTIC_SWE_ASSORTED_OUTPUT_COLUMNS,
+            },
+        }
+    )
+    run = FakeRun(
+        summary=summary,
+        artifacts=[complete_swe_assorted_result_artifact()],
+        table_files={
+            "media/table/agentic_swe_output_table_0.table.json": assorted_table_payload(
+                observed_tier_counts
+            )
+        },
+    )
+
+    result = module.verify_run(
+        run,
+        module.BENCHMARK_SPECS["agentic_swe"],
+        expected_total=50,
+        require_agentic_swe_assorted=True,
+        agentic_swe_assorted_tier_counts={"Low": 20, "Middle": 20, "High": 10},
+    )
+
+    assert result["ok"] is True
+    assert any(
+        check["name"] == "agentic_swe_assorted_tier_counts" and check["ok"]
         for check in result["checks"]
     )
 

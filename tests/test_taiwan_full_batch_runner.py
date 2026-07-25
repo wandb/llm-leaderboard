@@ -1,6 +1,7 @@
 import importlib.util
 import hashlib
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -235,6 +236,29 @@ def test_default_wandb_verify_benchmarks_by_phase():
     assert module.default_wandb_verify_benchmarks("nonagentic") == []
 
 
+def test_stream_run_appends_attempt_history(tmp_path):
+    module = load_module()
+    log_path = tmp_path / "run.log"
+
+    assert module.stream_run(
+        [sys.executable, "-c", "print('first')"],
+        log_path,
+        dict(os.environ),
+    ) == 0
+    assert module.stream_run(
+        [sys.executable, "-c", "print('second')"],
+        log_path,
+        dict(os.environ),
+    ) == 0
+
+    log_text = log_path.read_text(encoding="utf-8")
+    assert log_text.count("attempt started at") == 2
+    assert log_text.count("attempt finished at") == 2
+    assert "first" in log_text
+    assert "second" in log_text
+    assert log_text.index("first") < log_text.index("second")
+
+
 def test_build_wandb_verify_command_adds_expected_totals_and_full_options():
     module = load_module()
 
@@ -277,6 +301,43 @@ def test_build_wandb_verify_command_can_require_nemoclaw_session_audit():
     )
 
     assert "--require-nemoclaw-session-audit" in command
+
+
+def test_build_wandb_verify_command_can_require_assorted_contract():
+    module = load_module()
+    command = module.build_wandb_verify_command(
+        python="python3",
+        run_id="run-1",
+        benchmark="agentic_swe",
+        num_few_shots=2,
+        include_pending=False,
+        require_aggregate=True,
+        require_agentic_swe_assorted=True,
+        expected_total_override=79,
+    )
+    assert "--require-agentic-swe-assorted" in command
+    assert command[command.index("--expected-total") + 1] == "79"
+
+
+def test_expected_total_for_config_uses_math_limit_and_assorted_tiers(tmp_path):
+    module = load_module()
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+run:
+  agentic_swe_assorted: true
+agentic_math:
+  limit: 50
+agentic_swe_assorted:
+  low_limit: 36
+  middle_limit: 35
+  high_limit: 8
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    assert module.expected_total_for_config(config_path, "agentic_math") == 50
+    assert module.expected_total_for_config(config_path, "agentic_swe") == 79
 
 
 def test_build_wandb_verify_command_can_write_json_with_env_file(tmp_path):

@@ -2,10 +2,12 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const PLUGIN_ID = "nejumi-budget-guard";
 const TRUSTED_TOOL_POLICY_ID = "budget-guard";
 const GLOBAL_KEY = Symbol.for("nejumi.openclaw.budgetGuard.v1");
+const LANDLOCK_LAUNCHER = fileURLToPath(new URL("../landlock_exec.py", import.meta.url));
 
 const CONFIG_SCHEMA = {
   type: "object",
@@ -71,6 +73,33 @@ const CONFIG_SCHEMA = {
       type: "string",
       default: "NEJUMI_BUDGET_GUARD_BLOCKED",
     },
+    workspaceIsolationEnabled: {
+      type: "boolean",
+      default: false,
+    },
+    liveConfigPath: {
+      type: "string",
+      default: "",
+    },
+    agentWorkspaces: {
+      type: "object",
+      additionalProperties: {
+        type: "object",
+        additionalProperties: false,
+        required: ["workspace", "tmp", "home"],
+        properties: {
+          workspace: { type: "string" },
+          tmp: { type: "string" },
+          home: { type: "string" },
+          readOnlyRoots: {
+            type: "array",
+            items: { type: "string" },
+            default: [],
+          },
+        },
+      },
+      default: {},
+    },
   },
 };
 
@@ -119,6 +148,28 @@ function asString(value) {
 
 function normalizeConfig(config) {
   const raw = config && typeof config === "object" ? config : {};
+  const rawWorkspaces =
+    raw.agentWorkspaces && typeof raw.agentWorkspaces === "object"
+      ? raw.agentWorkspaces
+      : {};
+  const agentWorkspaces = {};
+  for (const [id, value] of Object.entries(rawWorkspaces)) {
+    if (!value || typeof value !== "object") {
+      continue;
+    }
+    const workspace = asString(value.workspace);
+    const tmp = asString(value.tmp);
+    const home = asString(value.home);
+    if (!workspace || !tmp || !home) {
+      continue;
+    }
+    agentWorkspaces[String(id)] = {
+      workspace,
+      tmp,
+      home,
+      readOnlyRoots: asStringArray(value.readOnlyRoots),
+    };
+  }
   return {
     enabled: raw.enabled !== false,
     maxToolCalls: asPositiveInteger(raw.maxToolCalls),
@@ -128,6 +179,9 @@ function normalizeConfig(config) {
     denyTools: asStringArray(raw.denyTools || raw.deny_tools),
     denyArgumentPatterns: asStringArray(raw.denyArgumentPatterns || raw.deny_argument_patterns),
     blockReasonPrefix: String(raw.blockReasonPrefix || "NEJUMI_BUDGET_GUARD_BLOCKED"),
+    workspaceIsolationEnabled: raw.workspaceIsolationEnabled === true,
+    agentWorkspaces,
+    liveConfigPath: asString(raw.liveConfigPath),
     stateRoot: asString(raw.stateRoot),
     auditFile: asString(raw.auditFile),
   };
@@ -166,6 +220,9 @@ function hasBudgetKeys(value) {
     "denyArgumentPatterns" in value ||
     "deny_argument_patterns" in value ||
     "blockReasonPrefix" in value ||
+    "workspaceIsolationEnabled" in value ||
+    "agentWorkspaces" in value ||
+    "liveConfigPath" in value ||
     "stateRoot" in value ||
     "auditFile" in value
   );
@@ -263,6 +320,7 @@ function runState(key) {
       blockedKind: "",
       blockedObserved: 0,
       blockedLimit: 0,
+      warningStages: [],
     };
     state.runs.set(key, value);
   }
@@ -278,6 +336,7 @@ function initialRunState() {
     blockedKind: "",
     blockedObserved: 0,
     blockedLimit: 0,
+    warningStages: [],
   };
 }
 
@@ -293,6 +352,7 @@ function normalizeRunState(raw) {
     blockedKind: asString(raw.blockedKind),
     blockedObserved: asPositiveInteger(raw.blockedObserved),
     blockedLimit: asPositiveInteger(raw.blockedLimit),
+    warningStages: asStringArray(raw.warningStages),
   };
 }
 
@@ -305,7 +365,83 @@ function serializeRunState(value) {
     blockedKind: asString(value.blockedKind),
     blockedObserved: asPositiveInteger(value.blockedObserved),
     blockedLimit: asPositiveInteger(value.blockedLimit),
+    warningStages: asStringArray(value.warningStages),
   };
+}
+
+const BUDGET_WARNING_STAGES = [
+  { id: "half", ratio: 0.5 },
+  { id: "converge", ratio: 0.75 },
+  { id: "finalize", ratio: 0.875 },
+  { id: "urgent", ratio: 0.95 },
+];
+
+function pendingBudgetWarning(config, state) {
+  if (config.maxToolCalls <= 0) return null;
+  const ratio = state.toolCalls / config.maxToolCalls;
+  let selected = null;
+  for (const stage of BUDGET_WARNING_STAGES) {
+    if (ratio >= stage.ratio && !state.warningStages.includes(stage.id)) selected = stage;
+  }
+  if (!selected) return null;
+  state.warningStages.push(selected.id);
+  const remaining = Math.max(0, config.maxToolCalls - state.toolCalls);
+  const action = selected.id === "urgent"
+    ? "Stop all investigation. Preserve the best working patch now and use another tool only if it is essential to complete or verify that patch."
+    : selected.id === "finalize"
+      ? "Finish the minimal patch now. Avoid new exploratory work and run only focused verification."
+      : selected.id === "converge"
+        ? "Conclude exploration and prioritize implementation, targeted tests, and a clean final diff."
+        : "Checkpoint your progress and ensure a viable minimal patch exists before spending the remaining budget.";
+  const turnLimit = config.maxAgentTurns > 0
+    ? ` The independent hard agent-turn limit is ${config.maxAgentTurns} and may stop execution sooner.`
+    : "";
+  return [
+    "[NEJUMI RUNTIME BUDGET WARNING]",
+    `Tool calls used: ${state.toolCalls}/${config.maxToolCalls}; ${remaining} remain.${turnLimit}`,
+    "When any hard runtime budget is exhausted, execution stops immediately: the current git diff is submitted for coding tasks, or the current answer is submitted for answer tasks, even if incomplete. No extra cleanup turn is guaranteed.",
+    `ACTION REQUIRED: ${action}`,
+  ].join("\n");
+}
+
+function pendingAgentTurnWarning(config, state) {
+  if (config.maxAgentTurns <= 0) return null;
+  const nextTurn = state.agentTurns + 1;
+  const ratio = nextTurn / config.maxAgentTurns;
+  let selected = null;
+  for (const stage of BUDGET_WARNING_STAGES) {
+    const id = `turn:${stage.id}`;
+    if (ratio >= stage.ratio && !state.warningStages.includes(id)) selected = { ...stage, id };
+  }
+  if (!selected) return null;
+  state.warningStages.push(selected.id);
+  const remaining = Math.max(0, config.maxAgentTurns - nextTurn);
+  const action = selected.id === "turn:urgent"
+    ? "Stop exploring. Complete the best viable patch or exact final answer in this turn."
+    : selected.id === "turn:finalize"
+      ? "Finalize the solution now and avoid starting any new line of investigation."
+      : selected.id === "turn:converge"
+        ? "Converge on the current approach; prioritize implementation or a complete final derivation."
+        : "Checkpoint progress now and ensure a viable submission exists before using more turns.";
+  return [
+    "[NEJUMI RUNTIME BUDGET WARNING]",
+    `Agent turn starting: ${nextTurn}/${config.maxAgentTurns}; ${remaining} turns remain after this one.`,
+    "When any hard runtime budget is exhausted, execution stops immediately: the current git diff is submitted for coding tasks, or the current answer is submitted for answer tasks, even if incomplete. No extra cleanup turn is guaranteed.",
+    `ACTION REQUIRED: ${action}`,
+  ].join("\n");
+}
+
+function appendWarningToToolMessage(message, warning) {
+  if (!isRecord(message)) return message;
+  const updated = { ...message };
+  if (Array.isArray(message.content)) {
+    updated.content = [...message.content, { type: "text", text: warning }];
+  } else if (typeof message.content === "string") {
+    updated.content = `${message.content}\n\n${warning}`;
+  } else {
+    updated.content = [{ type: "text", text: warning }];
+  }
+  return updated;
 }
 
 function defaultOpenClawHome() {
@@ -320,11 +456,20 @@ function defaultOpenClawHome() {
 }
 
 function defaultOpenClawConfigPath() {
+  if (process.env.OPENCLAW_STATE_DIR) {
+    return path.join(process.env.OPENCLAW_STATE_DIR, "openclaw.json");
+  }
   return path.join(defaultOpenClawHome(), "openclaw.json");
 }
 
-function readLiveBudgetConfig() {
-  const configPath = process.env.OPENCLAW_CONFIG_PATH || defaultOpenClawConfigPath();
+function readLiveBudgetConfig(explicitConfigPath = "") {
+  const configPath =
+    process.env.OPENCLAW_CONFIG_PATH ||
+    (process.env.OPENCLAW_STATE_DIR ? defaultOpenClawConfigPath() : "") ||
+    explicitConfigPath;
+  if (!configPath) {
+    return undefined;
+  }
   try {
     const raw = JSON.parse(fs.readFileSync(configPath, "utf8"));
     return getPath(raw, ["plugins", "entries", PLUGIN_ID, "config"]);
@@ -546,6 +691,249 @@ function policyBlockResult(config, violation, event, ctx) {
   };
 }
 
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", `'\"'\"'`)}'`;
+}
+
+function workspaceSpec(config, event, ctx) {
+  if (!config.workspaceIsolationEnabled) {
+    return null;
+  }
+  const id = agentId(event, ctx);
+  return id ? config.agentWorkspaces[id] || null : null;
+}
+
+function pathInside(candidate, root) {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function canonicalizeTarget(rawPath, workspace) {
+  const absolute = path.resolve(workspace, String(rawPath));
+  let cursor = absolute;
+  const suffix = [];
+  while (!fs.existsSync(cursor)) {
+    const parent = path.dirname(cursor);
+    if (parent === cursor) {
+      break;
+    }
+    suffix.unshift(path.basename(cursor));
+    cursor = parent;
+  }
+  const canonicalParent = fs.realpathSync(cursor);
+  return path.resolve(canonicalParent, ...suffix);
+}
+
+function collectDerivedPaths(event) {
+  const values = [];
+  const derived = event?.derivedPaths;
+  if (Array.isArray(derived)) {
+    values.push(...derived);
+  } else if (derived && typeof derived === "object") {
+    for (const value of Object.values(derived)) {
+      if (Array.isArray(value)) {
+        values.push(...value);
+      } else if (typeof value === "string") {
+        values.push(value);
+      }
+    }
+  }
+  return values.filter((value) => typeof value === "string" && value.length > 0);
+}
+
+function collectDirectPathParams(params) {
+  if (!params || typeof params !== "object") {
+    return [];
+  }
+  const keys = new Set([
+    "path",
+    "file",
+    "file_path",
+    "filePath",
+    "target_path",
+    "targetPath",
+    "directory",
+    "dir",
+    "cwd",
+    "workdir",
+  ]);
+  const values = [];
+  for (const [key, value] of Object.entries(params)) {
+    if (!keys.has(key)) {
+      continue;
+    }
+    if (typeof value === "string" && value.length > 0) {
+      values.push(value);
+    } else if (Array.isArray(value)) {
+      values.push(...value.filter((item) => typeof item === "string" && item.length > 0));
+    }
+  }
+  return values;
+}
+
+function collectPatchPaths(params) {
+  if (!params || typeof params !== "object") {
+    return [];
+  }
+  const patch = [params.patch, params.input, params.content]
+    .find((value) => typeof value === "string");
+  if (!patch) {
+    return [];
+  }
+  const paths = [];
+  const pattern = /^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$/gm;
+  for (const match of patch.matchAll(pattern)) {
+    if (match[1]) {
+      paths.push(match[1].trim());
+    }
+  }
+  return paths;
+}
+
+function toolMutatesFilesystem(name) {
+  const normalized = String(name || "").toLowerCase();
+  return ["write", "edit", "apply_patch", "patch", "delete", "move"].some(
+    (token) => normalized === token || normalized.includes(token),
+  );
+}
+
+function toolUsesDirectFilesystem(name) {
+  const normalized = String(name || "").toLowerCase();
+  return [
+    "read",
+    "write",
+    "edit",
+    "apply_patch",
+    "patch",
+    "glob",
+    "grep",
+    "find",
+    "list",
+  ].some((token) => normalized === token || normalized.includes(token));
+}
+
+function workspaceBlockResult(event, ctx, target, workspace) {
+  return {
+    block: true,
+    blockReason: [
+      "NEJUMI_WORKSPACE_GUARD_BLOCKED",
+      "cross_task_filesystem_access",
+      `agentId=${agentId(event, ctx) || "unknown"}`,
+      `toolName=${toolName(event) || "n/a"}`,
+      `target=${encodeURIComponent(String(target || ""))}`,
+      `workspace=${encodeURIComponent(workspace)}`,
+      "Continue using only the current task workspace; do not inspect sibling tasks or shared temporary files.",
+    ].join(" "),
+  };
+}
+
+function wrapExecParams(params, spec) {
+  if (!params || typeof params !== "object") {
+    return null;
+  }
+  const commandKey =
+    typeof params.command === "string"
+      ? "command"
+      : typeof params.cmd === "string"
+        ? "cmd"
+        : null;
+  if (!commandKey) {
+    return null;
+  }
+  const workspace = path.resolve(spec.workspace);
+  const privateTmp = path.resolve(spec.tmp);
+  const privateHome = path.resolve(spec.home);
+  fs.mkdirSync(privateTmp, { recursive: true, mode: 0o700 });
+  fs.mkdirSync(privateHome, { recursive: true, mode: 0o700 });
+  const readOnlyArgs = spec.readOnlyRoots
+    .filter((root) => typeof root === "string" && root.length > 0 && fs.existsSync(root))
+    .flatMap((root) => ["--read-only", root]);
+  const launcherArgs = [
+    LANDLOCK_LAUNCHER,
+    "--workspace",
+    workspace,
+    "--tmp",
+    privateTmp,
+    "--home",
+    privateHome,
+    ...readOnlyArgs,
+    "--",
+    "/bin/bash",
+    "-lc",
+    params[commandKey],
+  ];
+  const cacheRoot = path.join(privateHome, ".cache");
+  const envValues = {
+    HOME: privateHome,
+    TMPDIR: privateTmp,
+    TMP: privateTmp,
+    TEMP: privateTmp,
+    XDG_CACHE_HOME: cacheRoot,
+    PIP_CACHE_DIR: path.join(cacheRoot, "pip"),
+    npm_config_cache: path.join(cacheRoot, "npm"),
+  };
+  const wrapped = [
+    "exec",
+    "env",
+    ...Object.entries(envValues).map(([key, value]) => `${key}=${shellQuote(value)}`),
+    "/usr/bin/python3",
+  ];
+  wrapped.push(...launcherArgs.map(shellQuote));
+  return {
+    ...params,
+    [commandKey]: wrapped.join(" "),
+  };
+}
+
+function workspaceGuardDecision(config, event, ctx) {
+  const spec = workspaceSpec(config, event, ctx);
+  if (!spec) {
+    return undefined;
+  }
+  const name = toolName(event);
+  const normalized = String(name || "").toLowerCase();
+  const params = event?.params ?? event?.arguments ?? event?.args ?? event?.input;
+  if (toolArgumentsMayExecute(name)) {
+    const rewritten = wrapExecParams(params, spec);
+    if (!rewritten) {
+      return workspaceBlockResult(event, ctx, "missing_exec_command", spec.workspace);
+    }
+    return { params: rewritten };
+  }
+  if (!toolUsesDirectFilesystem(normalized)) {
+    return undefined;
+  }
+
+  const rawTargets = [
+    ...collectDerivedPaths(event),
+    ...collectDirectPathParams(params),
+    ...collectPatchPaths(params),
+  ];
+  const workspace = fs.realpathSync(spec.workspace);
+  const writableRoots = [workspace, spec.tmp, spec.home]
+    .filter((value) => fs.existsSync(value))
+    .map((value) => fs.realpathSync(value));
+  const readableRoots = [
+    ...writableRoots,
+    ...spec.readOnlyRoots
+      .filter((value) => fs.existsSync(value))
+      .map((value) => fs.realpathSync(value)),
+  ];
+  const allowedRoots = toolMutatesFilesystem(normalized) ? writableRoots : readableRoots;
+  for (const rawTarget of rawTargets) {
+    let target;
+    try {
+      target = canonicalizeTarget(rawTarget, workspace);
+    } catch {
+      return workspaceBlockResult(event, ctx, rawTarget, workspace);
+    }
+    if (!allowedRoots.some((root) => pathInside(target, root))) {
+      return workspaceBlockResult(event, ctx, target, workspace);
+    }
+  }
+  return undefined;
+}
+
 function blockResult(config, kind, observed, limit, event, ctx) {
   const reason = [
     config.blockReasonPrefix,
@@ -605,16 +993,30 @@ function writeAudit(config, phase, event, ctx, details) {
 }
 
 function pluginConfig(api, event, ctx) {
-  const candidates = [
+  const staticCandidates = [
     getPath(event, ["context", "pluginConfig"]),
     getPath(event, ["pluginConfig"]),
     getPath(ctx, ["pluginConfig"]),
     getPath(ctx, ["config", "plugins", "entries", PLUGIN_ID, "config"]),
     getPath(ctx, ["config", "plugins", "entries", PLUGIN_ID]),
-    readLiveBudgetConfig(),
     api.pluginConfig,
     getPath(api, ["config", "plugins", "entries", PLUGIN_ID, "config"]),
     getPath(api, ["config", "plugins", "entries", PLUGIN_ID]),
+  ];
+  let liveConfigPath = "";
+  for (const candidate of staticCandidates) {
+    const extracted = extractBudgetConfig(candidate);
+    if (extracted && typeof extracted.liveConfigPath === "string" && extracted.liveConfigPath) {
+      liveConfigPath = extracted.liveConfigPath;
+      break;
+    }
+  }
+  const candidates = [
+    // Task agents are registered dynamically while the Gateway is running.
+    // OpenClaw hook contexts can retain the startup config, so the on-disk
+    // config must be the source of truth whenever it is available.
+    readLiveBudgetConfig(liveConfigPath),
+    ...staticCandidates,
   ];
   for (const candidate of candidates) {
     const extracted = extractBudgetConfig(candidate);
@@ -629,8 +1031,16 @@ function handleBeforeToolCall(api, event, ctx, phase) {
   const config = pluginConfig(api, event, ctx);
   const inScope = scoped(config, event, ctx);
   const hasPolicy = config.denyTools.length > 0 || config.denyArgumentPatterns.length > 0;
-  if (!inScope || (config.maxToolCalls <= 0 && !hasPolicy)) {
-    if (config.maxToolCalls > 0 || config.maxAgentTurns > 0 || hasPolicy) {
+  const workspaceDecision = inScope ? workspaceGuardDecision(config, event, ctx) : undefined;
+  const hasWorkspaceGuard = Boolean(workspaceSpec(config, event, ctx));
+  if (workspaceDecision?.block) {
+    writeAudit(config, `${phase}_workspace_block`, event, ctx, {
+      result: workspaceDecision,
+    });
+    return workspaceDecision;
+  }
+  if (!inScope || (config.maxToolCalls <= 0 && !hasPolicy && !hasWorkspaceGuard)) {
+    if (config.maxToolCalls > 0 || config.maxAgentTurns > 0 || hasPolicy || hasWorkspaceGuard) {
       writeAudit(config, `${phase}_skip`, event, ctx, { inScope });
     }
     return undefined;
@@ -641,7 +1051,7 @@ function handleBeforeToolCall(api, event, ctx, phase) {
       writeAudit(config, `${phase}_seen`, event, ctx, {
         state: serializeRunState(state),
       });
-      return undefined;
+      return workspaceDecision;
     }
     const violation = policyViolation(config, event);
     if (violation) {
@@ -668,7 +1078,7 @@ function handleBeforeToolCall(api, event, ctx, phase) {
         observed: state.toolCalls,
         state: serializeRunState(state),
       });
-      return undefined;
+      return workspaceDecision;
     }
     const nextToolCall = state.toolCalls + 1;
     if (nextToolCall > config.maxToolCalls) {
@@ -691,7 +1101,7 @@ function handleBeforeToolCall(api, event, ctx, phase) {
       observed: nextToolCall,
       state: serializeRunState(state),
     });
-    return undefined;
+    return workspaceDecision;
   });
 }
 
@@ -708,10 +1118,40 @@ function handleBeforeAgentReplyAudit(api, event, ctx) {
   return undefined;
 }
 
+function handleAgentTurnPrepare(api, event, ctx) {
+  const config = pluginConfig(api, event, ctx);
+  if (!scoped(config, event, ctx) || config.maxAgentTurns <= 0) return undefined;
+  return mutateRunState(config, runKey(event, ctx), (state) => {
+    const warning = pendingAgentTurnWarning(config, state);
+    if (!warning) return undefined;
+    writeAudit(config, "agent_turn_budget_warning", event, ctx, {
+      warning,
+      state: serializeRunState(state),
+    });
+    return { appendContext: warning };
+  });
+}
+
+function handleToolResultPersist(api, event, ctx) {
+  const config = pluginConfig(api, event, ctx);
+  const inScope = scoped(config, event, ctx);
+  if (!inScope || config.maxToolCalls <= 0) return undefined;
+  return mutateRunState(config, runKey(event, ctx), (state) => {
+    const warning = pendingBudgetWarning(config, state);
+    if (!warning) return undefined;
+    const result = { message: appendWarningToToolMessage(event?.message, warning) };
+    writeAudit(config, "tool_result_budget_warning", event, ctx, {
+      warning,
+      state: serializeRunState(state),
+    });
+    return result;
+  });
+}
+
 export default definePluginEntry({
   id: PLUGIN_ID,
   name: "Nejumi Budget Guard",
-  description: "Blocks OpenClaw tool calls before execution and audits agent-turn hook coverage for Nejumi budgets.",
+  description: "Warns models as runtime budgets run low and blocks tool calls before hard limits are exceeded.",
   configSchema: CONFIG_SCHEMA,
   register(api) {
     if (typeof api.registerTrustedToolPolicy === "function") {
@@ -721,6 +1161,12 @@ export default definePluginEntry({
         evaluate: async (event, ctx) => handleBeforeToolCall(api, event, ctx, "trusted_tool_policy"),
       });
     }
+
+    api.on(
+      "agent_turn_prepare",
+      async (event, ctx) => handleAgentTurnPrepare(api, event, ctx),
+      { priority: 10000, timeoutMs: 1000 },
+    );
 
     api.on(
       "before_agent_run",
@@ -782,6 +1228,12 @@ export default definePluginEntry({
     api.on(
       "before_tool_call",
       async (event, ctx) => handleBeforeToolCall(api, event, ctx, "before_tool_call"),
+      { priority: 10000, timeoutMs: 1000 },
+    );
+
+    api.on(
+      "tool_result_persist",
+      (event, ctx) => handleToolResultPersist(api, event, ctx),
       { priority: 10000, timeoutMs: 1000 },
     );
 

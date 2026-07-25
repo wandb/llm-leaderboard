@@ -1,3 +1,4 @@
+import asyncio
 import json
 import sys
 import types
@@ -16,6 +17,11 @@ if "mistralai" not in sys.modules:
     sys.modules["mistralai"] = mistralai_stub
 
 from llm_inference_adapter import (
+    AnthropicClient,
+    _LoopLocalAsyncClientMixin,
+    _normalize_anthropic_messages,
+    _normalize_openai_responses_input,
+    _normalize_openai_responses_tools,
     _parse_tool_call_arguments,
     _parse_structured_response_content,
 )
@@ -25,6 +31,204 @@ from pydantic import BaseModel, Field
 class StructuredFunctionCalls(BaseModel):
     function_calls: list[dict] = Field(default_factory=list)
     unavailable_reason: str = ""
+
+
+def test_anthropic_client_maps_effort_to_output_config(monkeypatch):
+    captured = {}
+
+    class FakeMessages:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return types.SimpleNamespace(
+                content=[types.SimpleNamespace(type="text", text="ok")]
+            )
+
+    class FakeAnthropic:
+        def __init__(self, **_kwargs):
+            self.messages = FakeMessages()
+
+    monkeypatch.setattr("llm_inference_adapter.Anthropic", FakeAnthropic)
+    client = AnthropicClient(
+        api_key="test",
+        model="claude-fable-5",
+        max_tokens=128_000,
+        effort="xhigh",
+    )
+
+    response = asyncio.run(client.ainvoke([{"role": "user", "content": "hello"}]))
+
+    assert response.content == "ok"
+    assert captured["model"] == "claude-fable-5"
+    assert captured["max_tokens"] == 128_000
+    assert captured["output_config"] == {"effort": "xhigh"}
+    assert "effort" not in captured
+    assert "thinking" not in captured
+
+
+def test_openai_responses_normalizes_chat_tool_schema_and_history():
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "weather",
+                "description": "Forecast",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+    assert _normalize_openai_responses_tools(tools) == [
+        {
+            "type": "function",
+            "name": "weather",
+            "description": "Forecast",
+            "parameters": {"type": "object", "properties": {}},
+        }
+    ]
+
+    history = _normalize_openai_responses_input(
+        [
+            {"role": "system", "content": "policy"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call-1",
+                        "type": "function",
+                        "function": {
+                            "name": "weather",
+                            "arguments": '{"city":"Taipei"}',
+                        },
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call-1", "content": "sunny"},
+        ]
+    )
+    assert history == [
+        {"role": "developer", "content": "policy"},
+        {
+            "type": "function_call",
+            "call_id": "call-1",
+            "name": "weather",
+            "arguments": '{"city":"Taipei"}',
+        },
+        {
+            "type": "function_call_output",
+            "call_id": "call-1",
+            "output": "sunny",
+        },
+    ]
+
+
+def test_anthropic_normalizes_chat_tool_history():
+    messages, system = _normalize_anthropic_messages(
+        [
+            {"role": "system", "content": "policy"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call-1",
+                        "type": "function",
+                        "function": {
+                            "name": "weather",
+                            "arguments": '{"city":"Taipei"}',
+                        },
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call-1", "content": "sunny"},
+        ]
+    )
+    assert system == "policy"
+    assert messages[0] == {
+        "role": "assistant",
+        "content": [
+            {
+                "type": "tool_use",
+                "id": "call-1",
+                "name": "weather",
+                "input": {"city": "Taipei"},
+            }
+        ],
+    }
+    assert messages[1]["content"][0]["type"] == "tool_result"
+
+
+def test_anthropic_client_sends_tools_and_parses_tool_use(monkeypatch):
+    captured = {}
+
+    class FakeMessages:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return types.SimpleNamespace(
+                content=[
+                    types.SimpleNamespace(
+                        type="tool_use",
+                        id="call-7",
+                        name="weather",
+                        input={"city": "Taipei"},
+                    )
+                ],
+                usage=types.SimpleNamespace(input_tokens=11, output_tokens=7),
+            )
+
+    class FakeAnthropic:
+        def __init__(self, **_kwargs):
+            self.messages = FakeMessages()
+
+    monkeypatch.setattr("llm_inference_adapter.Anthropic", FakeAnthropic)
+    client = AnthropicClient(api_key="test", model="claude-test", max_tokens=64)
+    response = asyncio.run(
+        client.ainvoke(
+            [{"role": "user", "content": "weather?"}],
+            tools=[
+                {
+                    "name": "weather",
+                    "description": "Forecast",
+                    "input_schema": {"type": "object", "properties": {}},
+                }
+            ],
+        )
+    )
+
+    assert captured["tools"][0]["name"] == "weather"
+    assert response.tool_calls[0].name == "weather"
+    assert response.tool_calls[0].arguments == {"city": "Taipei"}
+    assert response.prompt_tokens == 11
+    assert response.completion_tokens == 7
+
+
+def test_anthropic_client_drops_top_p_when_temperature_is_configured(monkeypatch):
+    captured = {}
+
+    class FakeMessages:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return types.SimpleNamespace(
+                content=[types.SimpleNamespace(type="text", text="ok")],
+                usage=types.SimpleNamespace(input_tokens=3, output_tokens=1),
+            )
+
+    class FakeAnthropic:
+        def __init__(self, **_kwargs):
+            self.messages = FakeMessages()
+
+    monkeypatch.setattr("llm_inference_adapter.Anthropic", FakeAnthropic)
+    client = AnthropicClient(api_key="test", model="claude-test", max_tokens=64)
+
+    asyncio.run(
+        client.ainvoke(
+            [{"role": "user", "content": "hello"}],
+            temperature=0.01,
+            top_p=1.0,
+        )
+    )
+
+    assert captured["temperature"] == 0.01
+    assert "top_p" not in captured
 
 
 def test_parse_tool_call_arguments_accepts_valid_json():
@@ -105,3 +309,33 @@ def test_parse_structured_response_content_repairs_unclosed_json_code_fence():
 
     assert normalized == '{"function_calls": [], "unavailable_reason": ""}'
     assert parsed.function_calls == []
+
+
+def test_loop_local_async_client_reopens_cleanly_across_event_loops():
+    created = []
+
+    class FakeAsyncClient:
+        def __init__(self):
+            self.is_closed = False
+            created.append(self)
+
+        async def close(self):
+            self.is_closed = True
+
+    class Holder(_LoopLocalAsyncClientMixin):
+        def __init__(self):
+            self._initialize_loop_local_async_client(FakeAsyncClient)
+
+    holder = Holder()
+
+    async def use_and_close():
+        client = holder._get_async_client()
+        await holder.aclose()
+        return client
+
+    first = asyncio.run(use_and_close())
+    second = asyncio.run(use_and_close())
+
+    assert first is not second
+    assert first.is_closed
+    assert second.is_closed

@@ -33,7 +33,7 @@ _fetch_or_read = _essential._fetch_or_read
 _read_json = _essential._read_json
 
 
-DEFAULT_SUBSET_NAME = "essential_anchored_high_8_glm52max_cap100_10m_lang_balanced"
+DEFAULT_SUBSET_NAME = "essential_anchored_high_8_wandb_glm52_cap100_10m_lang_balanced"
 DEFAULT_SUBSET_TASKS = (
     REPO_ROOT
     / "data"

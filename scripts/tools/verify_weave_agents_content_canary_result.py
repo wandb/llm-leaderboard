@@ -329,7 +329,10 @@ def request_model_aliases(model_id: str | None) -> list[str]:
         aliases.append(value.removeprefix("openai-direct/"))
     if "/" in value:
         provider, remainder = value.split("/", 1)
-        if (provider.endswith("-direct") or provider == "wandb-inference") and remainder:
+        if (
+            provider.endswith("-direct")
+            or provider in {"openrouter", "wandb-inference"}
+        ) and remainder:
             aliases.append(remainder)
         aliases.append(value.rsplit("/", 1)[-1])
     return list(dict.fromkeys(alias for alias in aliases if alias))

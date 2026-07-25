@@ -1,27 +1,34 @@
 models:
-  - slug: glm-5_2-openrouter-reasoning
-    source_config: config-zai-glm-5_2-openrouter.yaml
-    run_name: "taiwan/full/z-ai/glm-5.2: openrouter-reasoning"
-    japanese_runname: "z-ai/glm-5.2: openrouter-reasoning-xhigh"
-    openclaw_model: "openrouter-direct/z-ai/glm-5.2"
+  - slug: gpt-5_6-luna-openai-direct-high
+    source_config: config-gpt-5_6-luna.yaml
+    run_name: "taiwan/full/openai/gpt-5.6-luna: high"
+    japanese_runname: "openai/gpt-5.6-luna: high"
+    openclaw_model: "openai-direct/gpt-5.6-luna"
     openclaw_model_overrides:
-      maxTokens: 4096
-    openclaw_model_params:
-      provider:
-        order:
-          - z-ai/fp8
-        only:
-          - z-ai/fp8
-        allow_fallbacks: false
-        require_parameters: true
-    reasoning_effort: null
+      maxTokens: 65536
+    agentic_swe_assorted_high_openclaw_model_overrides:
+      maxTokens: 65536
+    reasoning_effort: high
     agentic_thinking: high
     swe_thinking: high
     math_limit: 50
     math_openclaw_timeout: 900
     swe_subset: "leaderboard_compact_40"
     canary: true
-    notes: "Preferred one-model full canary before multi-model expansion."
+    notes: "Primary direct-API canary while shared OpenRouter credits are protected."
+
+  - slug: gpt-4_1-mini-openai-direct
+    source_config: config-gpt-4.1-mini-2025-04-14.yaml
+    run_name: "taiwan/full/openai/gpt-4.1-mini: direct"
+    japanese_runname: "openai/gpt-4.1-mini-2025-04-14"
+    openclaw_model: "openai-direct/gpt-4.1-mini-2025-04-14"
+    reasoning_effort: null
+    agentic_thinking: "off"
+    swe_thinking: "off"
+    math_limit: 50
+    math_openclaw_timeout: 900
+    swe_subset: "leaderboard_compact_40"
+    notes: "Lower-cost OpenAI-direct baseline."
 
   - slug: glm-5_2-wandb-inference
     source_config: config-zai-glm-5_2-wandb-inference.yaml
@@ -29,14 +36,65 @@ models:
     japanese_runname: "z-ai/glm-5.2: wandb-inference"
     openclaw_model: "wandb-inference/zai-org/GLM-5.2"
     openclaw_model_overrides:
-      maxTokens: 4096
+      maxTokens: 32768
+    agentic_swe_assorted_high_openclaw_model_overrides:
+      maxTokens: 65536
+    reasoning_effort: null
+    agentic_thinking: max
+    swe_thinking: max
+    math_limit: 50
+    math_openclaw_timeout: 900
+    swe_subset: "leaderboard_compact_40"
+    notes: "Available for cost-free harness and behavior checks; account for provider quantization when interpreting scores."
+
+  - slug: claude-fable-5-anthropic-direct-high
+    source_config: config-anthropic-claude-fable-5.yaml
+    run_name: "taiwan/full/anthropic/claude-fable-5: high"
+    japanese_runname: "anthropic/claude-fable-5: high"
+    openclaw_model: "anthropic/claude-fable-5"
+    openclaw_model_overrides:
+      maxTokens: 128000
+    agentic_swe_assorted_high_openclaw_model_overrides:
+      maxTokens: 128000
     reasoning_effort: null
     agentic_thinking: high
     swe_thinking: high
     math_limit: 50
     math_openclaw_timeout: 900
     swe_subset: "leaderboard_compact_40"
-    notes: "Alternative GLM-5.2 route for users with W&B Inference access; use after live probe confirms credentials and model availability."
+    final_only: true
+    notes: "Anthropic-direct release candidate. Explicit opt-in is required because of cost."
+
+  - slug: glm-5_2-openrouter-reasoning
+    source_config: config-zai-glm-5_2-openrouter.yaml
+    run_name: "taiwan/full/z-ai/glm-5.2: openrouter-reasoning"
+    japanese_runname: "z-ai/glm-5.2: openrouter-reasoning-xhigh"
+    openclaw_model: "openrouter/z-ai/glm-5.2"
+    openclaw_model_overrides:
+      maxTokens: 32768
+    agentic_swe_assorted_high_openclaw_model_overrides:
+      maxTokens: 65536
+    openclaw_model_params:
+      provider:
+        order:
+          - z-ai/fp8
+          - siliconflow/fp8
+          - streamlake/fp8
+        only:
+          - z-ai/fp8
+          - siliconflow/fp8
+          - streamlake/fp8
+        allow_fallbacks: true
+        require_parameters: false
+    reasoning_effort: null
+    agentic_thinking: high
+    swe_thinking: high
+    math_limit: 50
+    math_openclaw_timeout: 900
+    swe_subset: "leaderboard_compact_40"
+    suspended: true
+    suspension_reason: "Shared OpenRouter credits are reserved for an active Japanese Nejumi evaluation."
+    notes: "Retained for future use with explicit provider ordering; do not enable during the shared-credit protection window."
 
   - slug: claude-opus-4_7-openrouter-xhigh
     source_config: config-anthropic-claude-opus-4-7-openrouter.yaml
@@ -47,7 +105,9 @@ models:
     agentic_thinking: high
     swe_thinking: high
     final_only: true
-    notes: "Extreme cost tier. Do not use for harness tests, smoke runs, or one-model canary; reserve for final release-candidate leaderboard runs only."
+    suspended: true
+    suspension_reason: "Shared OpenRouter credits are reserved for an active Japanese Nejumi evaluation."
+    notes: "Extreme cost tier. Retained for future final release-candidate runs only."
 
   - slug: gemini-3_1-pro-preview-openrouter
     source_config: config-gemini-3_1-pro-preview-openrouter.yaml
@@ -57,6 +117,9 @@ models:
     reasoning_effort: null
     agentic_thinking: high
     swe_thinking: high
+    suspended: true
+    suspension_reason: "Shared OpenRouter credits are reserved for an active Japanese Nejumi evaluation."
+
   - slug: qwen3_6-max-preview-openrouter
     source_config: config-qwen-qwen3_6-max-preview-openrouter.yaml
     run_name: "taiwan/full/qwen/qwen3.6-max-preview: openrouter-reasoning"
@@ -65,6 +128,9 @@ models:
     reasoning_effort: null
     agentic_thinking: high
     swe_thinking: high
+    suspended: true
+    suspension_reason: "Shared OpenRouter credits are reserved for an active Japanese Nejumi evaluation."
+
   - slug: claude-sonnet-4_6-openrouter-high
     source_config: config-anthropic-claude-sonnet-4-6-openrouter.yaml
     run_name: "taiwan/full/anthropic/claude-sonnet-4.6: extended-thinking"
@@ -73,6 +139,9 @@ models:
     reasoning_effort: null
     agentic_thinking: high
     swe_thinking: high
+    suspended: true
+    suspension_reason: "Shared OpenRouter credits are reserved for an active Japanese Nejumi evaluation."
+
   - slug: deepseek-v4-pro-thinking-max
     source_config: config-deepseek-v4-pro.yaml
     run_name: "taiwan/full/deepseek/deepseek-v4-pro: thinking-max"
@@ -81,3 +150,6 @@ models:
     reasoning_effort: null
     agentic_thinking: max
     swe_thinking: max
+    suspended: true
+    suspension_reason: "Not part of the current OpenAI/Anthropic launch matrix."
+    notes: "Retained for later mainland-China model coverage."
