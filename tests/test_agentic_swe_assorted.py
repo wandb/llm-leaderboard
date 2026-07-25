@@ -834,7 +834,9 @@ def test_deepswe_command_can_use_high_specific_cumulative_input_cap(tmp_path):
         deny_argument_pattern=[],
     )
 
-    command = module.build_deepswe_command(args, tmp_path / "high_tasks.json")
+    task_names_path = tmp_path / "high_tasks.json"
+    task_names_path.write_text(json.dumps(["task-a"]) + "\n", encoding="utf-8")
+    command = module.build_deepswe_command(args, task_names_path)
 
     idx = command.index("--max-cumulative-input-tokens")
     assert command[idx + 1] == "3000000"
@@ -845,6 +847,80 @@ def test_deepswe_command_can_use_high_specific_cumulative_input_cap(tmp_path):
     }
     idx = command.index("--openclaw-model-overrides-json")
     assert json.loads(command[idx + 1]) == {"maxTokens": 65536}
+    idx = command.index("--job-name")
+    assert command[idx + 1].startswith("assorted-deepswe-")
+    assert len(command[idx + 1].rsplit("-", 1)[-1]) == 12
+
+
+def test_deepswe_job_name_is_stable_and_changes_with_pending_tasks(tmp_path):
+    module = load_module(SCRIPT)
+    args = SimpleNamespace(
+        output_dir=tmp_path / "out",
+        prefix="assorted",
+        model="openai-direct/test",
+        openclaw_model_params_json="{}",
+        high_openclaw_model_params_json=None,
+        openclaw_model_overrides_json="{}",
+        high_openclaw_model_overrides_json=None,
+        thinking="high",
+        agent="main",
+        high_workers=2,
+        high_openclaw_timeout=1800,
+        openclaw_max_attempts=1,
+        openclaw_retry_base_seconds=15.0,
+        provider_recovery_rounds=2,
+        provider_recovery_base_seconds=60.0,
+        native_trace_recovery_attempts=1,
+        native_trace_recovery_base_seconds=15.0,
+        max_input_tokens=1_000_000,
+        max_cumulative_input_tokens=1_000_000,
+        high_max_cumulative_input_tokens=3_000_000,
+        max_cumulative_output_tokens=500_000,
+        max_tool_calls=40,
+        high_max_tool_calls=60,
+        max_agent_turns=40,
+        high_max_agent_turns=80,
+        max_tool_wall_seconds=120,
+        llm_response_idle_timeout_seconds=900.0,
+        nemoclaw_bin="nemoclaw",
+        nemoclaw_sandbox="nejumi-taiwan",
+        nemoclaw_workdir="/sandbox",
+        nemoclaw_openclaw_config_path="/sandbox/.openclaw/openclaw.json",
+        nemoclaw_checkout_transfer_mode="copy",
+        nemoclaw_checkout_transfer_timeout=600,
+        openclaw_tool_profile="coding",
+        task_agent_prefix="tw-swe-assorted",
+        session_prefix="agentic-swe-assorted",
+        weave_agents_entity="llm-leaderboard",
+        weave_agents_project="tc-leaderboard",
+        weave_agents_agent_name="nejumi-taiwan-openclaw",
+        weave_agents_limit=100,
+        weave_agents_verification_timeout=120.0,
+        weave_agents_poll_seconds=5.0,
+        require_actual_token_usage=True,
+        verify_weave_agents=True,
+        use_task_agent=True,
+        dry_run=False,
+        deny_tool=[],
+        deny_argument_pattern=[],
+        deepswe_tasks_root=tmp_path / "tasks",
+    )
+    task_names_path = tmp_path / "pending.json"
+    task_names_path.write_text(json.dumps(["task-a"]) + "\n", encoding="utf-8")
+
+    first = module.build_deepswe_command(args, task_names_path)
+    second = module.build_deepswe_command(args, task_names_path)
+    first_name = first[first.index("--job-name") + 1]
+    second_name = second[second.index("--job-name") + 1]
+    assert first_name == second_name
+
+    task_names_path.write_text(
+        json.dumps(["task-a", "task-b"]) + "\n",
+        encoding="utf-8",
+    )
+    changed = module.build_deepswe_command(args, task_names_path)
+    changed_name = changed[changed.index("--job-name") + 1]
+    assert changed_name != first_name
 
 
 def test_swe_command_forwards_openclaw_model_params_json(tmp_path):

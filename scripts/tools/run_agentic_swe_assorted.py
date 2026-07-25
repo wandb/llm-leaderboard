@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -999,6 +1000,10 @@ def build_lite_eval_command(
 
 
 def build_deepswe_command(args: argparse.Namespace, task_names_path: Path) -> list[str]:
+    if not task_names_path.is_file():
+        raise FileNotFoundError(
+            f"DeepSWE task names file does not exist: {task_names_path}"
+        )
     high_max_tool_calls = (
         args.high_max_tool_calls
         if args.high_max_tool_calls is not None
@@ -1026,7 +1031,7 @@ def build_deepswe_command(args: argparse.Namespace, task_names_path: Path) -> li
         "--jobs-dir",
         str(args.output_dir / "high" / "pier_jobs"),
         "--job-name",
-        args.prefix + "-deepswe",
+        "__DEEPSWE_JOB_NAME__",
         "--model",
         args.model,
         "--openclaw-model-params-json",
@@ -1116,6 +1121,25 @@ def build_deepswe_command(args: argparse.Namespace, task_names_path: Path) -> li
         command.extend(["--deny-tool", denied_tool])
     for pattern in args.deny_argument_pattern:
         command.extend(["--deny-argument-pattern", pattern])
+    job_name_index = command.index("--job-name") + 1
+    identity_command = list(command)
+    identity_command[job_name_index] = ""
+    identity_payload = {
+        "schema_version": 1,
+        "command": identity_command,
+        "task_names_sha256": hashlib.sha256(
+            task_names_path.read_bytes()
+        ).hexdigest(),
+    }
+    job_hash = hashlib.sha256(
+        json.dumps(
+            identity_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()[:12]
+    command[job_name_index] = f"{args.prefix}-deepswe-{job_hash}"
     return command
 
 
