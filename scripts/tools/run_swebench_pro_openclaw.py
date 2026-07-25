@@ -244,6 +244,31 @@ def nemoclaw_gateway_agent_registered_in_current_process(agent_id: str) -> bool:
     )
 
 
+def nemoclaw_gateway_agent_is_live(args: argparse.Namespace, agent_id: str) -> bool:
+    """Check registrations created by a parent process against the live Gateway."""
+    if not uses_nemoclaw_gateway_task_agent(args):
+        return False
+    try:
+        result = run_nemoclaw_text_command(
+            args,
+            ["openclaw", "gateway", "call", "agents.list", "--json"],
+            timeout=45,
+            check=False,
+        )
+        if result.returncode != 0:
+            return False
+        stdout = result.stdout
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", errors="replace")
+        payload = json.loads(str(stdout or "{}"))
+    except (json.JSONDecodeError, OSError, RuntimeError, subprocess.TimeoutExpired):
+        return False
+    return any(
+        isinstance(entry, dict) and str(entry.get("id") or "") == agent_id
+        for entry in payload.get("agents", [])
+    )
+
+
 _COMMAND_RUNNER = CancellableCommandRunner()
 
 
@@ -1748,6 +1773,7 @@ NON_SCOREABLE_OPENCLAW_FAILURE_PATTERNS = [
     ("insufficient_quota", r"\binsufficient_quota\b|exceeded your current quota"),
     ("authentication", r"\b401\b|unauthorized|invalid[_ -]?api[_ -]?key|incorrect api key|User not found"),
     ("workspace_vanished", r"\bWorkspaceVanishedError\b|workspace appears to have disappeared"),
+    ("gateway_agent_missing", r"\bunknown agent id\b"),
     ("unknown_model", r"\bmodel .*not found\b|\bunknown model\b|\bNo provider\b"),
     ("nemoclaw_session_audit_failed", r"\bNeMoClaw session audit failed\b"),
 ]
@@ -2791,14 +2817,18 @@ def gateway_task_agent_registration_is_reusable(
         existing = json.loads(marker_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return False
-    return bool(
+    marker_matches = bool(
         isinstance(existing, dict)
         and existing.get("registration_key") == context["registration_key"]
         and existing.get("registration_spec") == context["registration_spec"]
         and isinstance(existing.get("gateway_registered"), dict)
         and existing["gateway_registered"].get("ok") is True
-        and nemoclaw_gateway_agent_registered_in_current_process(context["agent_id"])
     )
+    if not marker_matches:
+        return False
+    if nemoclaw_gateway_agent_registered_in_current_process(context["agent_id"]):
+        return True
+    return nemoclaw_gateway_agent_is_live(args, context["agent_id"])
 
 
 def write_task_openclaw_config(
@@ -3208,6 +3238,41 @@ def run_openclaw_for_task(
                 flush=True,
             )
             break
+        non_scoreable_reason = non_scoreable_openclaw_failure_reason(result, sidecar)
+        if non_scoreable_reason:
+            recovery = None
+            if non_scoreable_reason == "workspace_vanished" and attempt_number < max_attempts:
+                recovery = recover_workspace_vanished_failure(task_dir, result, sidecar)
+            if recovery:
+                append_transient_failure(
+                    task_dir,
+                    {
+                        "instance_id": row["instance_id"],
+                        "attempt_id": attempt_id,
+                        "attempt_number": attempt_number,
+                        "max_attempts": max_attempts,
+                        "returncode": result.returncode,
+                        "openclaw_result_path": str(sidecar_path),
+                        "failure_text": sidecar_error_text(
+                            sidecar, openclaw_failure_text(result, sidecar)
+                        ),
+                        "recovered_non_scoreable_reason": non_scoreable_reason,
+                        "recovery": recovery,
+                    },
+                )
+                delay = max(0.0, float(args.openclaw_retry_base_seconds)) * attempt_number
+                print(
+                    f"OpenClaw recoverable workspace attestation failure for {row['instance_id']} on attempt "
+                    f"{attempt_number}/{max_attempts}; retrying after {delay:.1f}s.",
+                    flush=True,
+                )
+                if delay:
+                    time.sleep(delay)
+                continue
+            raise RuntimeError(
+                f"OpenClaw non-scoreable setup/provider failure for {row['instance_id']}: "
+                f"{non_scoreable_reason}"
+            )
         if is_runtime_budget_exceeded(sidecar):
             metadata["openclaw_disqualified_reason"] = "runtime_budget_exceeded"
             metadata["runtime_budget"] = sidecar.get("runtime_budget")
@@ -3243,39 +3308,6 @@ def run_openclaw_for_task(
                 flush=True,
             )
             break
-        non_scoreable_reason = non_scoreable_openclaw_failure_reason(result, sidecar)
-        if non_scoreable_reason:
-            recovery = None
-            if non_scoreable_reason == "workspace_vanished" and attempt_number < max_attempts:
-                recovery = recover_workspace_vanished_failure(task_dir, result, sidecar)
-            if recovery:
-                append_transient_failure(
-                    task_dir,
-                    {
-                        "instance_id": row["instance_id"],
-                        "attempt_id": attempt_id,
-                        "attempt_number": attempt_number,
-                        "max_attempts": max_attempts,
-                        "returncode": result.returncode,
-                        "openclaw_result_path": str(sidecar_path),
-                        "failure_text": sidecar_error_text(sidecar, openclaw_failure_text(result, sidecar)),
-                        "recovered_non_scoreable_reason": non_scoreable_reason,
-                        "recovery": recovery,
-                    },
-                )
-                delay = max(0.0, float(args.openclaw_retry_base_seconds)) * attempt_number
-                print(
-                    f"OpenClaw recoverable workspace attestation failure for {row['instance_id']} on attempt "
-                    f"{attempt_number}/{max_attempts}; retrying after {delay:.1f}s.",
-                    flush=True,
-                )
-                if delay:
-                    time.sleep(delay)
-                continue
-            raise RuntimeError(
-                f"OpenClaw non-scoreable setup/provider failure for {row['instance_id']}: "
-                f"{non_scoreable_reason}"
-            )
         if is_transient_openclaw_failure(result, sidecar):
             append_transient_failure(
                 task_dir,

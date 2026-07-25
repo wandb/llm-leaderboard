@@ -959,6 +959,82 @@ def test_swebench_rejects_openclaw_agent_id_rewrite(monkeypatch):
         )
 
 
+def test_swebench_gateway_registration_reuses_live_agent_from_parent_process(
+    tmp_path, monkeypatch
+):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    row = sample_row()
+    checkout_dir = tmp_path / "checkout"
+    task_dir = tmp_path / "task"
+    task_dir.mkdir()
+    args = SimpleNamespace(
+        deny_argument_pattern=None,
+        deny_tool=None,
+        max_agent_turns=40,
+        max_cumulative_input_tokens=1_000_000,
+        max_cumulative_output_tokens=500_000,
+        max_input_tokens=1_000_000,
+        max_tool_calls=40,
+        max_tool_wall_seconds=120,
+        model="openai-direct/gpt-5.6-luna",
+        nemoclaw_checkout_sandbox_root="/sandbox/checkouts/task",
+        nemoclaw_openclaw_config_path="/sandbox/.openclaw/openclaw.json",
+        nemoclaw_sandbox="nejumi-taiwan",
+        no_local=True,
+        openclaw_tool_profile="coding",
+        redo=False,
+        require_actual_token_usage=True,
+        session_prefix="test-session",
+        task_agent_prefix="tw-swe",
+        thinking="high",
+        use_task_agent=True,
+    )
+    context = module.gateway_task_agent_registration_context(
+        row, checkout_dir, task_dir, args
+    )
+    context["marker_path"].write_text(
+        json.dumps(
+            {
+                "registration_key": context["registration_key"],
+                "registration_spec": context["registration_spec"],
+                "gateway_registered": {"ok": True},
+            }
+        ),
+        encoding="utf-8",
+    )
+    module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS.clear()
+    monkeypatch.setattr(
+        module,
+        "nemoclaw_gateway_agent_is_live",
+        lambda _args, agent_id: agent_id == context["agent_id"],
+    )
+
+    assert module.gateway_task_agent_registration_is_reusable(
+        row, checkout_dir, task_dir, args
+    )
+
+
+def test_swebench_unknown_gateway_agent_is_non_scoreable_before_budget_failure():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
+    completed = subprocess.CompletedProcess(
+        ["cmd"],
+        1,
+        stdout="",
+        stderr='GatewayClientRequestError: invalid agent params: unknown agent id "task-agent"',
+    )
+    sidecar = {
+        "runtime_budget": {
+            "ok": False,
+            "violations": [{"type": "missing_actual_token_usage"}],
+        }
+    }
+
+    assert module.non_scoreable_openclaw_failure_reason(completed, sidecar) == (
+        "gateway_agent_missing"
+    )
+    assert module.is_runtime_budget_exceeded(sidecar)
+
+
 def test_swebench_nemoclaw_task_agent_config_is_sandbox_visible(tmp_path):
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_swebench_pro_openclaw.py")
     row = sample_row()
@@ -1145,7 +1221,14 @@ def test_swebench_registers_nemoclaw_gateway_task_agent_when_no_local(tmp_path, 
     )
     module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS.clear()
     module.write_task_openclaw_config(row, checkout_dir, task_dir, args)
-    assert len(calls) == 3
+    assert calls[2]["command"] == [
+        "openclaw",
+        "gateway",
+        "call",
+        "agents.list",
+        "--json",
+    ]
+    assert len(calls) == 4
     module._REGISTERED_NEMOCLAW_GATEWAY_AGENTS.clear()
 
 
