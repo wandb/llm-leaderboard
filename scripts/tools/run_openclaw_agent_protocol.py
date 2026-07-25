@@ -2032,8 +2032,22 @@ def copy_nemoclaw_session_file(
         return {"attempted": False, "ok": None, "reason": "not_nemoclaw"}
     raw_meta = extract_openclaw_meta(sidecar)
     agent_meta = raw_meta.get("agentMeta") if isinstance(raw_meta.get("agentMeta"), dict) else {}
-    session_file = agent_meta.get("sessionFile") if isinstance(agent_meta, dict) else None
-    session_source = "stdout_agent_meta"
+    live_budget = sidecar.get("live_runtime_budget")
+    final_session = (
+        live_budget.get("final_assistant_session_file")
+        if isinstance(live_budget, dict)
+        and live_budget.get("final_assistant_idle_salvaged") is True
+        and live_budget.get("final_assistant_session_source") == "nemoclaw_sandbox"
+        else None
+    )
+    if isinstance(final_session, str) and final_session.startswith("/"):
+        # A delegated subagent can remain active after the parent has emitted its
+        # final answer. The parent session remains the auditable benchmark record.
+        session_file = final_session
+        session_source = "final_assistant_idle_salvage"
+    else:
+        session_file = agent_meta.get("sessionFile") if isinstance(agent_meta, dict) else None
+        session_source = "stdout_agent_meta"
     if not isinstance(session_file, str) or not session_file.startswith("/"):
         live_session = live_nemoclaw_session_file(sidecar)
         if isinstance(live_session, str):

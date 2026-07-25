@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -137,3 +138,58 @@ def test_reload_gateway_uses_supervisor_process_without_lifecycle_restart(monkey
     assert evidence["mode"] == "supervisor_process_reload"
     assert calls[0][:5] == ["docker", "exec", "-u", "root", "container-123"]
     assert not any("nemoclaw" in part for part in calls[0])
+
+
+def test_restart_reconciles_cli_health_timeout_when_sandbox_is_healthy(monkeypatch):
+    restart_output = (
+        "Failure layer: health timeout - gateway restart failed for 'nejumi-taiwan'.\n"
+        "gateway process restarted but health did not pass before timeout\n"
+    )
+
+    class FakeProcess:
+        def __init__(self):
+            self.stdout = io.StringIO(restart_output)
+            self.returncode = 1
+            self.pid = 1234
+
+        def poll(self):
+            return self.returncode
+
+    class FakeSelector:
+        def register(self, *_args, **_kwargs):
+            return None
+
+        def select(self, timeout):
+            return []
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(gateway.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
+    monkeypatch.setattr(gateway.selectors, "DefaultSelector", FakeSelector)
+    monkeypatch.setattr(gateway, "_terminate_process_group", lambda proc: None)
+    monkeypatch.setattr(
+        gateway.subprocess,
+        "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="OpenClaw: running\nDocker health: healthy\n",
+            stderr="",
+        ),
+    )
+
+    evidence = gateway.restart_nemoclaw_gateway(
+        nemoclaw_bin="nemoclaw",
+        sandbox="nejumi-taiwan",
+    )
+
+    assert evidence["ok"] is True
+    assert evidence["mode"] == "health_timeout_reconciled"
+    assert evidence["returncode"] == 1
+    assert evidence["status_command"] == [
+        "nemoclaw",
+        "sandbox",
+        "status",
+        "nejumi-taiwan",
+    ]

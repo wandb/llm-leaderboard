@@ -987,6 +987,57 @@ if "Nejumi patch: expose explicit OTel flush" not in plugin_text:
 """,
         f"{plugin_path}: service.stop flush",
     )
+if "Nejumi patch: finalize open runs before flush" not in plugin_text:
+    plugin_text = replace_once(
+        plugin_text,
+        """    async function flush(reason, ctx) {
+        try {
+            await flushOTel();
+        }
+        catch (err) {
+            const targetLogger = ctx?.logger ?? logger;
+            targetLogger?.warn?.(`weave: flushOTel failed during ${reason}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+    }
+""",
+        """    // Nejumi patch: finalize open runs before flush. OpenClaw can emit
+    // agent_end without the diagnostic run.completed event when a parent agent
+    // has answered but a delegated subagent keeps the CLI alive. Flushing an
+    // open chat span exports only the already-closed tool spans.
+    function finalizeRunsBeforeFlush(reason, event) {
+        const runIds = new Set();
+        if (reason === "agent_end" && event?.runId)
+            runIds.add(event.runId);
+        if (reason === "session_end" && event?.sessionKey) {
+            const runId = runIdBySession.get(event.sessionKey);
+            if (runId)
+                runIds.add(runId);
+        }
+        if (reason === "stop") {
+            for (const runId of registries.turns.keys())
+                runIds.add(runId);
+            for (const runId of params.hookState.chatCallsByRun.keys())
+                runIds.add(runId);
+        }
+        const outcome = reason === "agent_end" && event?.success === true
+            ? "completed"
+            : "aborted";
+        for (const runId of runIds)
+            onRunFinalize({ runId, outcome, sessionKey: event?.sessionKey });
+    }
+    async function flush(reason, ctx, event) {
+        finalizeRunsBeforeFlush(reason, event);
+        try {
+            await flushOTel();
+        }
+        catch (err) {
+            const targetLogger = ctx?.logger ?? logger;
+            targetLogger?.warn?.(`weave: flushOTel failed during ${reason}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+    }
+""",
+        f"{plugin_path}: finalize open runs before flush",
+    )
 if "diagnostic(event, meta, privateData = {})" not in plugin_text:
     plugin_text = replace_once(
         plugin_text,
@@ -1116,7 +1167,7 @@ if 'plugin.flush?.("agent_end"' not in index_text:
         """        api.on("session_start", (event, ctx) => hooks.session_start?.(event, ctx));
         api.on("session_end", async (event, ctx) => {
             const result = await hooks.session_end?.(event, ctx);
-            await plugin.flush?.("session_end", ctx);
+            await plugin.flush?.("session_end", ctx, event);
             return result;
         });
 """,
@@ -1129,12 +1180,25 @@ if 'plugin.flush?.("agent_end"' not in index_text:
 """,
         """        api.on("agent_end", async (event, ctx) => {
             const result = await hooks.agent_end?.(event, ctx);
-            await plugin.flush?.("agent_end", ctx);
+            await plugin.flush?.("agent_end", ctx, event);
             return result;
         });
         api.on("message_received", (event, ctx) => hooks.message_received?.(event, ctx));
 """,
         f"{index_path}: agent_end flush",
+    )
+if 'plugin.flush?.("agent_end", ctx, event)' not in index_text:
+    index_text = replace_once(
+        index_text,
+        'await plugin.flush?.("session_end", ctx);',
+        'await plugin.flush?.("session_end", ctx, event);',
+        f"{index_path}: session_end finalization event",
+    )
+    index_text = replace_once(
+        index_text,
+        'await plugin.flush?.("agent_end", ctx);',
+        'await plugin.flush?.("agent_end", ctx, event);',
+        f"{index_path}: agent_end finalization event",
     )
 write_if_changed(index_path, index_text, original_index)
 
@@ -1142,11 +1206,12 @@ for path, needle in (
     (chat_path, "recordModelContent(deps, llm, privateData?.modelContent"),
     (llm_state_path, 'setJsonAttr(handle.llm.span, "gen_ai.input.messages"'),
     (tool_path, "toolContent?.toolOutput ?? captured?.result"),
-    (plugin_path, "async function flush(reason, ctx)"),
+    (plugin_path, "async function flush(reason, ctx, event)"),
+    (plugin_path, "finalizeRunsBeforeFlush"),
     (plugin_path, "preserve active traces across duplicate service starts"),
     (plugin_path, "return { service, registries, getStatus, flush, handlers };"),
     (index_path, "resolveTrustedInternalDiagnosticEvent"),
-    (index_path, 'plugin.flush?.("agent_end"'),
+    (index_path, 'plugin.flush?.("agent_end", ctx, event)'),
 ):
     if needle not in path.read_text(encoding="utf-8"):
         raise SystemExit(f"Missing expected private-content/flush patch in {path}: {needle}")

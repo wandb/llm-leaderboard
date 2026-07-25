@@ -317,6 +317,35 @@ def restart_nemoclaw_gateway(
                 )
                 retry["removed_stale_lock"] = removed_lock
                 return retry
+            if (
+                "gateway process restarted but health did not pass before timeout"
+                in output.lower()
+            ):
+                status_command = [nemoclaw_bin, "sandbox", "status", sandbox]
+                status_result = subprocess.run(
+                    status_command,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=30,
+                )
+                status_output = (status_result.stdout or "") + (status_result.stderr or "")
+                healthy = (
+                    status_result.returncode == 0
+                    and "OpenClaw: running" in status_output
+                    and "Docker health: healthy" in status_output
+                )
+                if healthy:
+                    return {
+                        "ok": True,
+                        "mode": "health_timeout_reconciled",
+                        "command": command,
+                        "returncode": proc.returncode,
+                        "output": output,
+                        "status_command": status_command,
+                        "status_returncode": status_result.returncode,
+                        "status_output": status_output,
+                    }
             raise NeMoClawGatewayRestartError(
                 f"NeMoClaw Gateway restart failed with exit code {proc.returncode}",
                 {

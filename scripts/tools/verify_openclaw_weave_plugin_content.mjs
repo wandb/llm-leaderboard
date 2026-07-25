@@ -238,12 +238,16 @@ plugin.handlers.diagnostic({
     toolOutput: ` + "`${marker}_PRIVATE_TOOL_RESULT`" + `,
   },
 });
-plugin.handlers.diagnostic({
-  type: "run.completed",
+const agentEndEvent = {
   runId: "run-1",
-  sessionKey: "session-1",
-  outcome: "completed",
-}, trusted);
+  success: true,
+  messages: [],
+  durationMs: 100,
+};
+await plugin.handlers.hook.agent_end?.(agentEndEvent, {});
+// Deliberately omit diagnostic run.completed. This mirrors final-answer idle
+// salvage when a delegated subagent keeps the CLI alive after the parent ends.
+await plugin.flush("agent_end", {logger}, agentEndEvent);
 
 await plugin.service.stop({logger});
 await flushOTel();

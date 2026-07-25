@@ -854,6 +854,49 @@ def test_copy_nemoclaw_session_file_uses_live_runtime_budget_session_when_stdout
     assert audit["copy"]["source"] == "live_runtime_budget"
 
 
+def test_copy_nemoclaw_session_file_prefers_salvaged_parent_over_active_subagent(
+    tmp_path,
+    monkeypatch,
+):
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
+    parent_session = "/sandbox/tasks/high/sessions/parent.jsonl"
+    subagent_session = "/sandbox/tasks/high/sessions/subagent.jsonl"
+    sidecar = {
+        "stdout_json": {
+            "meta": {
+                "agentMeta": {
+                    "sessionFile": subagent_session,
+                }
+            }
+        },
+        "live_runtime_budget": {
+            "session_source": "nemoclaw_sandbox",
+            "session_file": subagent_session,
+            "final_assistant_idle_salvaged": True,
+            "final_assistant_session_source": "nemoclaw_sandbox",
+            "final_assistant_session_file": parent_session,
+        },
+    }
+    args = Namespace(nemoclaw_bin="nemoclaw", nemoclaw_sandbox="nejumi-taiwan")
+    copied = (
+        '{"type":"message","message":{"role":"user","content":"task"}}\n'
+        '{"type":"message","message":{"role":"assistant","content":"done"}}\n'
+    )
+
+    def fake_run(command, text, capture_output, check, env):
+        assert command[-1] == parent_session
+        return subprocess.CompletedProcess(command, 0, stdout=copied, stderr="")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    status = module.copy_nemoclaw_session_file(sidecar, args, tmp_path, {"PATH": "/bin"})
+
+    assert status["ok"] is True
+    assert status["sandbox_session_file"] == parent_session
+    assert status["source"] == "final_assistant_idle_salvage"
+    assert Path(status["copied_session_file"]).read_text(encoding="utf-8") == copied
+
+
 def test_nemoclaw_session_audit_requires_copied_checked_session():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_openclaw_agent_protocol.py")
     sidecar = {

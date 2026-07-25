@@ -1663,6 +1663,33 @@ SCOREABLE_AGENT_STOP_REASONS = {
 }
 
 
+def reusable_high_result_problems(
+    result: dict[str, Any],
+    *,
+    task_name: str,
+    model: str,
+) -> list[str]:
+    problems: list[str] = []
+    result_model = reused_high_result_model(result)
+    if result_model != model:
+        problems.append(
+            f"model mismatch for {task_name}: expected {model}, found {result_model or 'missing'}"
+        )
+    score = result.get("score")
+    if isinstance(score, bool) or not isinstance(score, (int, float)):
+        problems.append(f"non-numeric score for {task_name}")
+    if result.get("exception") is not None:
+        problems.append(f"exception recorded for {task_name}")
+    reason = str(result.get("openclaw_disqualified_reason") or "").strip()
+    if reason and reason not in SCOREABLE_AGENT_STOP_REASONS:
+        problems.append(f"unscoreable failure for {task_name}: {reason}")
+    if result.get("weave_agents_ok") is not True:
+        problems.append(f"native trace verification failed for {task_name}")
+    if result.get("nemoclaw_session_audit_ok") is not True:
+        problems.append(f"NeMoClaw session audit failed for {task_name}")
+    return problems
+
+
 def load_reused_high_results(
     paths: list[Path],
     *,
@@ -1685,23 +1712,13 @@ def load_reused_high_results(
             if task_name in by_task:
                 problems.append(f"duplicate task result: {task_name}")
                 continue
-            result_model = reused_high_result_model(result)
-            if result_model != model:
-                problems.append(
-                    f"model mismatch for {task_name}: expected {model}, found {result_model or 'missing'}"
+            problems.extend(
+                reusable_high_result_problems(
+                    result,
+                    task_name=task_name,
+                    model=model,
                 )
-            score = result.get("score")
-            if isinstance(score, bool) or not isinstance(score, (int, float)):
-                problems.append(f"non-numeric score for {task_name}")
-            if result.get("exception") is not None:
-                problems.append(f"exception recorded for {task_name}")
-            reason = str(result.get("openclaw_disqualified_reason") or "").strip()
-            if reason and reason not in SCOREABLE_AGENT_STOP_REASONS:
-                problems.append(f"unscoreable failure for {task_name}: {reason}")
-            if result.get("weave_agents_ok") is not True:
-                problems.append(f"native trace verification failed for {task_name}")
-            if result.get("nemoclaw_session_audit_ok") is not True:
-                problems.append(f"NeMoClaw session audit failed for {task_name}")
+            )
             by_task[task_name] = result
 
     missing = [task for task in expected if task not in by_task]
@@ -1713,6 +1730,47 @@ def load_reused_high_results(
     if problems:
         raise ValueError("Cannot reuse High results:\n- " + "\n- ".join(problems))
     return [by_task[task] for task in expected]
+
+
+def load_checkpointable_high_results(
+    paths: list[Path],
+    *,
+    metadata_rows: list[dict[str, Any]],
+    model: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Load only valid High rows so interrupted paid runs can resume cheaply."""
+    expected = [str(row["task_name"]) for row in metadata_rows]
+    expected_set = set(expected)
+    by_task: dict[str, dict[str, Any]] = {}
+    rejected: dict[str, list[str]] = {}
+    sources: list[str] = []
+    for path in paths:
+        if not path.is_file():
+            continue
+        sources.append(str(path.resolve()))
+        for result in read_jsonl(path):
+            task_name = str(result.get("task_name") or "").rsplit("/", 1)[-1]
+            if not task_name or task_name not in expected_set:
+                continue
+            row_problems = reusable_high_result_problems(
+                result,
+                task_name=task_name,
+                model=model,
+            )
+            if row_problems:
+                if task_name not in by_task:
+                    rejected[task_name] = row_problems
+                continue
+            by_task[task_name] = result
+            rejected.pop(task_name, None)
+    reused = [by_task[task] for task in expected if task in by_task]
+    pending = [task for task in expected if task not in by_task]
+    return reused, {
+        "sources": sources,
+        "reused_task_names": [task for task in expected if task in by_task],
+        "pending_task_names": pending,
+        "rejected": rejected,
+    }
 
 
 SCOREABLE_LITE_STOP_REASONS = SCOREABLE_AGENT_STOP_REASONS
@@ -2731,8 +2789,55 @@ def main() -> None:
                 [str(path.resolve()) for path in args.reuse_high_results_jsonl],
             )
         else:
-            run_command(build_deepswe_command(args, high_task_names))
-            high_result_rows = read_jsonl(high_results_path) if high_results_path.exists() else []
+            checkpoint_path = args.output_dir / "inputs" / "high_resume_checkpoint.jsonl"
+            checkpoint_rows, resume_report = load_checkpointable_high_results(
+                [checkpoint_path, high_results_path],
+                metadata_rows=high_metadata_rows,
+                model=args.model,
+            )
+            write_json(
+                args.output_dir / "inputs" / "high_resume_report.json",
+                resume_report,
+            )
+            if checkpoint_rows:
+                write_jsonl(checkpoint_path, checkpoint_rows)
+            pending_task_names = resume_report["pending_task_names"]
+            new_result_rows: list[dict[str, Any]] = []
+            if pending_task_names:
+                pending_task_names_path = (
+                    args.output_dir / "inputs" / "deepswe_high_pending_task_names.json"
+                )
+                write_json(pending_task_names_path, pending_task_names)
+                print(
+                    "Agentic SWE-Assorted High resume: "
+                    f"reusing {len(checkpoint_rows)}/{len(high_metadata_rows)} "
+                    f"scoreable results; running {len(pending_task_names)} pending tasks.",
+                    flush=True,
+                )
+                run_command(build_deepswe_command(args, pending_task_names_path))
+                if high_results_path.exists():
+                    new_result_rows = read_jsonl(high_results_path)
+            else:
+                print(
+                    "Agentic SWE-Assorted High resume: all selected tasks already "
+                    "have scoreable results; no paid High rollouts started.",
+                    flush=True,
+                )
+            by_task = {
+                str(row.get("task_name") or "").rsplit("/", 1)[-1]: row
+                for row in checkpoint_rows
+            }
+            for row in new_result_rows:
+                task_name = str(row.get("task_name") or "").rsplit("/", 1)[-1]
+                if task_name:
+                    by_task[task_name] = row
+            expected_task_names = [str(row["task_name"]) for row in high_metadata_rows]
+            high_result_rows = [
+                by_task[task_name]
+                for task_name in expected_task_names
+                if task_name in by_task
+            ]
+            write_jsonl(high_results_path, high_result_rows)
         output_rows.extend(deepswe_rows(metadata_rows=high_metadata_rows, result_rows=high_result_rows))
 
     validate_output_rows(output_rows)

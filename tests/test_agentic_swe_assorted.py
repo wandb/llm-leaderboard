@@ -350,6 +350,71 @@ def test_load_reused_high_results_rejects_unscoreable_trace(tmp_path):
     assert "native trace verification failed for one" in message
 
 
+def test_load_checkpointable_high_results_reuses_valid_rows_and_leaves_failures_pending(
+    tmp_path,
+):
+    module = load_module(SCRIPT)
+    checkpoint = tmp_path / "checkpoint.jsonl"
+    current = tmp_path / "current.jsonl"
+    checkpoint.write_text(
+        json.dumps(_reusable_high_result("one")) + "\n",
+        encoding="utf-8",
+    )
+    failed = _reusable_high_result("two")
+    failed["exception"] = {"exception_type": "RequiredWeaveAgentsTraceError"}
+    failed["weave_agents_ok"] = None
+    current.write_text(
+        json.dumps(failed)
+        + "\n"
+        + json.dumps(_reusable_high_result("three"))
+        + "\n",
+        encoding="utf-8",
+    )
+
+    rows, report = module.load_checkpointable_high_results(
+        [checkpoint, current],
+        metadata_rows=[
+            {"task_name": "one"},
+            {"task_name": "two"},
+            {"task_name": "three"},
+            {"task_name": "four"},
+        ],
+        model="openrouter/z-ai/glm-5.2",
+    )
+
+    assert [row["task_name"] for row in rows] == [
+        "datacurve/one",
+        "datacurve/three",
+    ]
+    assert report["reused_task_names"] == ["one", "three"]
+    assert report["pending_task_names"] == ["two", "four"]
+    assert "exception recorded for two" in report["rejected"]["two"]
+    assert "native trace verification failed for two" in report["rejected"]["two"]
+
+
+def test_load_checkpointable_high_results_keeps_valid_checkpoint_over_new_invalid_row(
+    tmp_path,
+):
+    module = load_module(SCRIPT)
+    checkpoint = tmp_path / "checkpoint.jsonl"
+    current = tmp_path / "current.jsonl"
+    valid = _reusable_high_result("one")
+    invalid = _reusable_high_result("one")
+    invalid["exception"] = {"exception_type": "Interrupted"}
+    checkpoint.write_text(json.dumps(valid) + "\n", encoding="utf-8")
+    current.write_text(json.dumps(invalid) + "\n", encoding="utf-8")
+
+    rows, report = module.load_checkpointable_high_results(
+        [checkpoint, current],
+        metadata_rows=[{"task_name": "one"}],
+        model="openrouter/z-ai/glm-5.2",
+    )
+
+    assert rows == [valid]
+    assert report["pending_task_names"] == []
+    assert report["rejected"] == {}
+
+
 def _reusable_lite_patch(
     instance_id: str,
     *,
