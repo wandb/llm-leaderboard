@@ -927,7 +927,11 @@ from evaluator.evaluate_utils.progress_tracker import (
     initialize_progress_tracker, start_benchmark_tracking,
     complete_benchmark_tracking, finish_progress_tracking
 )
-from evaluator.evaluate_utils.benchmark_checkpoint import BenchmarkCheckpointStore
+from evaluator.evaluate_utils.benchmark_checkpoint import (
+    BenchmarkCheckpointStore,
+    aggregate_requires_refresh,
+    bfcl_completion_evidence_is_clean,
+)
 from evaluator.evaluate_utils.benchmark_completion_evidence import (
     validate_agentic_math_completion,
 )
@@ -1302,6 +1306,7 @@ trusted_fingerprint_mismatch_benchmarks = set(
     )
     or []
 )
+benchmarks_executed_this_process: set[str] = set()
 
 
 def _benchmark_is_resumable(benchmark_name):
@@ -1313,6 +1318,27 @@ def _benchmark_is_resumable(benchmark_name):
             False,
         )
     )
+    if (
+        benchmark_name == "bfcl"
+        and remote_completed
+        and not bfcl_completion_evidence_is_clean(run.summary)
+    ):
+        print(
+            "BFCL completion evidence contains non-timeout infrastructure "
+            "errors; retrying only failed cases.",
+            flush=True,
+        )
+        remote_completed = False
+    if aggregate_requires_refresh(
+        benchmark_name,
+        benchmarks_executed_this_process,
+    ):
+        print(
+            "Upstream benchmark results changed in this process; "
+            f"recomputing {benchmark_name}.",
+            flush=True,
+        )
+        return False
 
     if (
         benchmark_checkpoints.completed_snapshot_matches_config(benchmark_name)
@@ -1500,6 +1526,7 @@ def _execute_tracked_benchmark(benchmark_name, callback):
         run.summary[f"benchmark_completed_{benchmark_name}"] = True
         run.summary[f"benchmark_error_{benchmark_name}"] = None
     benchmark_checkpoints.mark_completed(benchmark_name)
+    benchmarks_executed_this_process.add(benchmark_name)
     complete_benchmark_tracking(benchmark_name)
     return result
 

@@ -205,6 +205,8 @@ bfcl:
   resume_existing_results: true
   retry_failed_cases: true
   consecutive_failure_fail_fast: 5
+  infrastructure_recovery_rounds: 2
+  infrastructure_recovery_base_seconds: 60
   progress_poll_sec: 5
   artifacts_path: 'llm-leaderboard/tc-leaderboard/bfcl-v4-zh-tw:production'
   web_search:

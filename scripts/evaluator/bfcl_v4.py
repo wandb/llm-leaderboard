@@ -6,9 +6,10 @@ import json
 import importlib.util
 import os
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 import wandb
@@ -55,6 +56,10 @@ WEB_SEARCH_BACKENDS = {
     "serpapi": "serpapi",
     "serp_api": "serpapi",
 }
+
+
+class BFCLInfrastructureError(RuntimeError):
+    """Raised when BFCL has non-model failures after bounded recovery."""
 
 
 def _plain_dict(value: Any) -> dict:
@@ -373,6 +378,63 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _collect_retryable_generation_failures(
+    result_dir: Path,
+    model_registry_name: str,
+) -> list[dict[str, str]]:
+    from bfcl_eval._llm_response_generation import _retryable_failed_result
+
+    model_dir = result_dir / model_registry_name.replace("/", "_")
+    failures: list[dict[str, str]] = []
+    for path in model_dir.rglob("BFCL_v4_*_result.json"):
+        for row in _read_jsonl(path):
+            if _retryable_failed_result(row):
+                failures.append(
+                    {
+                        "id": str(row.get("id") or ""),
+                        "error": str(row.get("error") or "inference_error"),
+                        "path": str(path),
+                    }
+                )
+    return sorted(failures, key=lambda row: (row["id"], row["path"]))
+
+
+def _run_generation_with_recovery(
+    *,
+    generation_main: Callable[[SimpleNamespace], Any],
+    generation_args: SimpleNamespace,
+    result_dir: Path,
+    model_registry_name: str,
+    recovery_rounds: int,
+    recovery_base_seconds: float,
+    sleep: Callable[[float], None] = time.sleep,
+) -> list[dict[str, str]]:
+    generation_main(generation_args)
+    failures = _collect_retryable_generation_failures(
+        result_dir,
+        model_registry_name,
+    )
+    for recovery_round in range(1, recovery_rounds + 1):
+        if not failures:
+            break
+        delay = recovery_base_seconds * (2 ** (recovery_round - 1))
+        ids = ", ".join(row["id"] for row in failures)
+        print(
+            "BFCL v4 infrastructure recovery "
+            f"{recovery_round}/{recovery_rounds}: retrying "
+            f"{len(failures)} failed cases after {delay:.1f}s: {ids}",
+            flush=True,
+        )
+        if delay > 0:
+            sleep(delay)
+        generation_main(generation_args)
+        failures = _collect_retryable_generation_failures(
+            result_dir,
+            model_registry_name,
+        )
+    return failures
+
+
 def _collect_output_rows(
     result_dir: Path,
     score_dir: Path,
@@ -471,10 +533,16 @@ def _collect_output_rows(
 
     timeout_count = sum(bool(row.get("timeout")) for row in result_by_id.values())
     inference_error_count = sum(
-        bool(row.get("error"))
-        or (
-            isinstance(row.get("result"), str)
-            and row["result"].startswith("Error during inference:")
+        not (
+            bool(row.get("timeout"))
+            or row.get("error") == "bfcl_case_timeout"
+        )
+        and (
+            bool(row.get("error"))
+            or (
+                isinstance(row.get("result"), str)
+                and row["result"].startswith("Error during inference:")
+            )
         )
         for row in result_by_id.values()
     )
@@ -553,6 +621,8 @@ def evaluate_v4() -> None:
         "watchdog_interval_sec": 30,
         "stall_fail_fast_sec": 900,
         "consecutive_failure_fail_fast": 5,
+        "infrastructure_recovery_rounds": 2,
+        "infrastructure_recovery_base_seconds": 60,
         "profile": "full",
         "artifact_profile": "full",
         "web_search": {},
@@ -607,44 +677,61 @@ def evaluate_v4() -> None:
         reset_search_stats()
 
     reused_generation = None
+    remaining_generation_failures: list[dict[str, str]] = []
     if bool(bfcl_cfg["run_generation"]):
-        generation_main(
-            SimpleNamespace(
-                model=model_registry_name,
-                test_category=categories,
-                temperature=float(bfcl_cfg["temperature"]),
-                include_input_log=bool(bfcl_cfg["include_input_log"]),
-                exclude_state_log=bool(bfcl_cfg["exclude_state_log"]),
-                num_threads=int(bfcl_cfg["num_threads"]),
-                num_gpus=int(bfcl_cfg.get("num_gpus") or 1),
-                backend=str(bfcl_cfg.get("backend", "vllm")),
-                gpu_memory_utilization=float(
-                    bfcl_cfg.get("gpu_memory_utilization", 0.9)
-                ),
-                result_dir=result_dir,
-                run_ids=bool(bfcl_cfg["run_ids"]),
-                allow_overwrite=bool(bfcl_cfg["allow_overwrite"]),
-                resume_existing_results=bool(
-                    bfcl_cfg["resume_existing_results"]
-                ),
-                retry_failed_cases=bool(bfcl_cfg["retry_failed_cases"]),
-                skip_server_setup=bool(bfcl_cfg.get("skip_server_setup", True)),
-                local_model_path=bfcl_cfg.get("local_model_path"),
-                lora_modules=None,
-                enable_lora=False,
-                max_lora_rank=None,
-                case_timeout_sec=float(bfcl_cfg["case_timeout_sec"]),
-                watchdog_interval_sec=float(bfcl_cfg["watchdog_interval_sec"]),
-                stall_fail_fast_sec=float(bfcl_cfg["stall_fail_fast_sec"]),
-                consecutive_failure_fail_fast=int(
-                    bfcl_cfg["consecutive_failure_fail_fast"]
-                ),
-                max_cases_per_category=(
-                    int(bfcl_cfg.get("testmode_cases_per_category", 2))
-                    if bool(getattr(cfg, "testmode", False))
-                    else None
-                ),
+        recovery_rounds = int(bfcl_cfg["infrastructure_recovery_rounds"])
+        recovery_base_seconds = float(
+            bfcl_cfg["infrastructure_recovery_base_seconds"]
+        )
+        if recovery_rounds < 0:
+            raise ValueError("bfcl.infrastructure_recovery_rounds must be >= 0")
+        if recovery_base_seconds < 0:
+            raise ValueError(
+                "bfcl.infrastructure_recovery_base_seconds must be >= 0"
             )
+        generation_args = SimpleNamespace(
+            model=model_registry_name,
+            test_category=categories,
+            temperature=float(bfcl_cfg["temperature"]),
+            include_input_log=bool(bfcl_cfg["include_input_log"]),
+            exclude_state_log=bool(bfcl_cfg["exclude_state_log"]),
+            num_threads=int(bfcl_cfg["num_threads"]),
+            num_gpus=int(bfcl_cfg.get("num_gpus") or 1),
+            backend=str(bfcl_cfg.get("backend", "vllm")),
+            gpu_memory_utilization=float(
+                bfcl_cfg.get("gpu_memory_utilization", 0.9)
+            ),
+            result_dir=result_dir,
+            run_ids=bool(bfcl_cfg["run_ids"]),
+            allow_overwrite=bool(bfcl_cfg["allow_overwrite"]),
+            resume_existing_results=bool(
+                bfcl_cfg["resume_existing_results"]
+            ),
+            retry_failed_cases=bool(bfcl_cfg["retry_failed_cases"]),
+            skip_server_setup=bool(bfcl_cfg.get("skip_server_setup", True)),
+            local_model_path=bfcl_cfg.get("local_model_path"),
+            lora_modules=None,
+            enable_lora=False,
+            max_lora_rank=None,
+            case_timeout_sec=float(bfcl_cfg["case_timeout_sec"]),
+            watchdog_interval_sec=float(bfcl_cfg["watchdog_interval_sec"]),
+            stall_fail_fast_sec=float(bfcl_cfg["stall_fail_fast_sec"]),
+            consecutive_failure_fail_fast=int(
+                bfcl_cfg["consecutive_failure_fail_fast"]
+            ),
+            max_cases_per_category=(
+                int(bfcl_cfg.get("testmode_cases_per_category", 2))
+                if bool(getattr(cfg, "testmode", False))
+                else None
+            ),
+        )
+        remaining_generation_failures = _run_generation_with_recovery(
+            generation_main=generation_main,
+            generation_args=generation_args,
+            result_dir=result_dir,
+            model_registry_name=model_registry_name,
+            recovery_rounds=recovery_rounds,
+            recovery_base_seconds=recovery_base_seconds,
         )
     else:
         reused_generation = _validate_reused_generation_results(
@@ -767,3 +854,20 @@ def evaluate_v4() -> None:
         f"{len(output_rows)} runtime rows, "
         f"{timeout_count} timeouts, {inference_error_count} inference errors"
     )
+    if inference_error_count:
+        if not remaining_generation_failures:
+            remaining_generation_failures = (
+                _collect_retryable_generation_failures(
+                    result_dir,
+                    model_registry_name,
+                )
+            )
+        failed_ids = ", ".join(
+            row["id"] for row in remaining_generation_failures
+        )
+        details = f": {failed_ids}" if failed_ids else ""
+        raise BFCLInfrastructureError(
+            "BFCL v4 retained "
+            f"{inference_error_count} non-timeout infrastructure errors "
+            f"after bounded recovery{details}"
+        )

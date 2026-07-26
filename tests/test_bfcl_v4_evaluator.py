@@ -214,6 +214,128 @@ def test_testmode_uses_partial_evaluation_contract():
     assert 'partial_eval=bool(getattr(cfg, "testmode", False))' in source
 
 
+def _write_generation_result(
+    result_dir: Path,
+    *,
+    entry: dict,
+) -> None:
+    model_dir = result_dir / "Configured_Model"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    (model_dir / "BFCL_v4_web_search_base_result.json").write_text(
+        json.dumps(entry) + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_generation_recovery_retries_only_infrastructure_failures(tmp_path):
+    result_dir = tmp_path / "result"
+    calls = []
+    sleeps = []
+
+    def fake_generation(_args):
+        calls.append(1)
+        entry = (
+            {
+                "id": "web_search_base_1",
+                "error": "web_search_backend_error",
+                "result": "Error during inference: backend unavailable",
+            }
+            if len(calls) == 1
+            else {"id": "web_search_base_1", "result": []}
+        )
+        _write_generation_result(result_dir, entry=entry)
+
+    failures = bfcl_v4._run_generation_with_recovery(
+        generation_main=fake_generation,
+        generation_args=bfcl_v4.SimpleNamespace(),
+        result_dir=result_dir,
+        model_registry_name="Configured/Model",
+        recovery_rounds=2,
+        recovery_base_seconds=3,
+        sleep=sleeps.append,
+    )
+
+    assert len(calls) == 2
+    assert sleeps == [3]
+    assert failures == []
+
+
+def test_generation_recovery_reports_failures_after_bound(tmp_path):
+    result_dir = tmp_path / "result"
+    calls = []
+
+    def fake_generation(_args):
+        calls.append(1)
+        _write_generation_result(
+            result_dir,
+            entry={
+                "id": "web_search_base_1",
+                "error": "web_search_backend_error",
+                "result": "Error during inference: backend unavailable",
+            },
+        )
+
+    failures = bfcl_v4._run_generation_with_recovery(
+        generation_main=fake_generation,
+        generation_args=bfcl_v4.SimpleNamespace(),
+        result_dir=result_dir,
+        model_registry_name="Configured/Model",
+        recovery_rounds=2,
+        recovery_base_seconds=0,
+    )
+
+    assert len(calls) == 3
+    assert [failure["id"] for failure in failures] == [
+        "web_search_base_1"
+    ]
+
+
+def test_output_error_count_excludes_model_timeout(tmp_path, monkeypatch):
+    result_dir = tmp_path / "result"
+    score_dir = tmp_path / "score"
+    model_dir = result_dir / "Configured_Model"
+    model_dir.mkdir(parents=True)
+    score_dir.mkdir()
+    (model_dir / "BFCL_v4_simple_python_result.json").write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "id": "simple_python_1",
+                        "error": "bfcl_case_timeout",
+                        "timeout": True,
+                        "result": "Error during inference: case timeout",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "id": "simple_python_2",
+                        "error": "web_search_backend_error",
+                        "result": "Error during inference: backend unavailable",
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "bfcl_eval.utils.extract_test_category",
+        lambda entry_id: "simple_python",
+    )
+
+    _rows, timeout_count, inference_error_count = (
+        bfcl_v4._collect_output_rows(
+            result_dir,
+            score_dir,
+            "Configured/Model",
+        )
+    )
+
+    assert timeout_count == 1
+    assert inference_error_count == 1
+
+
 def test_score_alignment_follows_parallel_result_completion_order():
     from bfcl_eval.eval_checker.eval_runner import _subset_entries_by_model_ids
 

@@ -8,7 +8,32 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 
-from evaluator.evaluate_utils.benchmark_checkpoint import BenchmarkCheckpointStore
+from evaluator.evaluate_utils.benchmark_checkpoint import (
+    BenchmarkCheckpointStore,
+    aggregate_requires_refresh,
+    bfcl_completion_evidence_is_clean,
+)
+
+
+def test_bfcl_completion_requires_zero_infrastructure_errors():
+    assert bfcl_completion_evidence_is_clean(
+        {"bfcl_inference_error_count": 0}
+    )
+    assert not bfcl_completion_evidence_is_clean(
+        {"bfcl_inference_error_count": 7}
+    )
+    assert not bfcl_completion_evidence_is_clean({})
+
+
+def test_aggregate_refreshes_after_upstream_execution_only():
+    assert aggregate_requires_refresh("aggregate_taiwan", {"bfcl"})
+    assert aggregate_requires_refresh("aggregate", {"agentic_math"})
+    assert not aggregate_requires_refresh("aggregate", set())
+    assert not aggregate_requires_refresh(
+        "aggregate_taiwan",
+        {"aggregate"},
+    )
+    assert not aggregate_requires_refresh("bfcl", {"agentic_math"})
 
 
 def test_completed_benchmark_is_skipped_only_for_explicit_resume(tmp_path):

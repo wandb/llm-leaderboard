@@ -7,6 +7,29 @@ from pathlib import Path
 from typing import Any, Mapping
 
 
+AGGREGATE_BENCHMARKS = frozenset({"aggregate", "aggregate_taiwan"})
+
+
+def bfcl_completion_evidence_is_clean(summary: Mapping[str, Any]) -> bool:
+    try:
+        return int(summary.get("bfcl_inference_error_count")) == 0
+    except (TypeError, ValueError):
+        return False
+
+
+def aggregate_requires_refresh(
+    benchmark: str,
+    executed_benchmarks: set[str],
+) -> bool:
+    return bool(
+        benchmark in AGGREGATE_BENCHMARKS
+        and any(
+            name not in AGGREGATE_BENCHMARKS
+            for name in executed_benchmarks
+        )
+    )
+
+
 class BenchmarkCheckpointStore:
     def __init__(
         self,

@@ -260,8 +260,9 @@ def _contains_web_search_backend_failure(value):
 def _retryable_failed_result(entry):
     if not isinstance(entry, dict):
         return False
+    if entry.get("error") == "bfcl_case_timeout" or entry.get("timeout"):
+        return False
     if entry.get("error") in {
-        "bfcl_case_timeout",
         "inference_error",
         "web_search_backend_error",
     }:

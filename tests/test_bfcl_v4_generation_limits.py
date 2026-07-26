@@ -94,6 +94,14 @@ def test_retryable_failure_includes_provider_and_web_backend_errors():
     assert not generation._retryable_failed_result(
         {"id": "simple_python_1", "result": []}
     )
+    assert not generation._retryable_failed_result(
+        {
+            "id": "simple_python_2",
+            "result": "Error during inference: case timeout",
+            "error": "bfcl_case_timeout",
+            "timeout": True,
+        }
+    )
 
 
 def test_successful_inference_marks_web_backend_failure_as_infrastructure_error():
