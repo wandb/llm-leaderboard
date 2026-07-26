@@ -13,6 +13,9 @@ model:
 generator:
   max_tokens: 128000
   effort: high
+  unsupported_params:
+    - temperature
+    - top_p
 
 jaster:
   override_max_tokens: 128000

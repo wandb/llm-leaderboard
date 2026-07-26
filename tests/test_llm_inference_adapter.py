@@ -234,6 +234,42 @@ def test_anthropic_client_drops_top_p_when_temperature_is_configured(monkeypatch
     assert "top_p" not in captured
 
 
+def test_anthropic_client_omits_yaml_declared_unsupported_params(monkeypatch):
+    captured = {}
+
+    class FakeMessages:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return types.SimpleNamespace(
+                content=[types.SimpleNamespace(type="text", text="ok")],
+                usage=types.SimpleNamespace(input_tokens=3, output_tokens=1),
+            )
+
+    class FakeAnthropic:
+        def __init__(self, **_kwargs):
+            self.messages = FakeMessages()
+
+    monkeypatch.setattr("llm_inference_adapter.Anthropic", FakeAnthropic)
+    client = AnthropicClient(
+        api_key="test",
+        model="claude-sonnet-5",
+        max_tokens=64,
+        unsupported_params=["temperature", "top_p"],
+    )
+
+    asyncio.run(
+        client.ainvoke(
+            [{"role": "user", "content": "hello"}],
+            temperature=0.01,
+            top_p=1.0,
+        )
+    )
+
+    assert "temperature" not in captured
+    assert "top_p" not in captured
+    assert "unsupported_params" not in captured
+
+
 def test_parse_tool_call_arguments_accepts_valid_json():
     parsed = _parse_tool_call_arguments('{"city": "Tokyo", "days": 3}')
     assert parsed == {"city": "Tokyo", "days": 3}

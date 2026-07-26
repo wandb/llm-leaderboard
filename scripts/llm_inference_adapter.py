@@ -1793,6 +1793,14 @@ class AnthropicClient(BaseLLMClient):
     def __init__(self, api_key, model, **kwargs):
         self.client = Anthropic(api_key=api_key)
         self.model = model
+        unsupported_params = kwargs.pop("unsupported_params", [])
+        if isinstance(unsupported_params, str):
+            unsupported_params = [unsupported_params]
+        self.unsupported_params = {
+            str(param).strip()
+            for param in unsupported_params
+            if str(param).strip()
+        }
         self.kwargs = kwargs
         
         self.allowed_params = {
@@ -1810,6 +1818,16 @@ class AnthropicClient(BaseLLMClient):
         filtered_messages, system_message = _normalize_anthropic_messages(messages)
         
         all_kwargs = {**self.kwargs, **kwargs}
+        request_unsupported_params = all_kwargs.pop("unsupported_params", [])
+        if isinstance(request_unsupported_params, str):
+            request_unsupported_params = [request_unsupported_params]
+        unsupported_params = self.unsupported_params | {
+            str(param).strip()
+            for param in request_unsupported_params
+            if str(param).strip()
+        }
+        for param in unsupported_params:
+            all_kwargs.pop(param, None)
         effort = all_kwargs.pop("effort", None)
         mapped_params = map_common_params(all_kwargs, self.param_mapping)
         filtered_params = filter_params(mapped_params, self.allowed_params)
