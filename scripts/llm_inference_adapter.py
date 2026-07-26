@@ -703,6 +703,36 @@ class BaseLLMClient(ABC):
         raise NotImplementedError
 
 
+def _create_owned_async_openai_client(client_type, client_kwargs):
+    """Create an OpenAI client with an explicitly owned HTTPX transport.
+
+    OpenAI's implicit AsyncHttpxClientWrapper schedules `aclose()` from
+    `__del__`. In a multi-benchmark process, garbage collection can happen
+    after the owning event loop has closed. Supplying a plain AsyncClient keeps
+    transport shutdown under the evaluator's explicit loop lifecycle.
+    """
+    kwargs = dict(client_kwargs)
+    if kwargs.get("http_client") is not None:
+        return client_type(**kwargs)
+
+    http_client = httpx.AsyncClient(
+        timeout=kwargs.get("timeout", openai.DEFAULT_TIMEOUT),
+        limits=openai.DEFAULT_CONNECTION_LIMITS,
+        follow_redirects=True,
+    )
+    kwargs["http_client"] = http_client
+    try:
+        return client_type(**kwargs)
+    except Exception:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(http_client.aclose())
+        else:
+            loop.create_task(http_client.aclose())
+        raise
+
+
 class _LoopLocalAsyncClientMixin:
     """Keep HTTPX/OpenAI async clients on the event loop that owns them."""
 
@@ -975,7 +1005,10 @@ class OpenAIClient(_LoopLocalAsyncClientMixin):
             client_kwargs["project"] = project
 
         self._initialize_loop_local_async_client(
-            lambda: openai.AsyncOpenAI(**client_kwargs)
+            lambda: _create_owned_async_openai_client(
+                openai.AsyncOpenAI,
+                client_kwargs,
+            )
         )
         self.client = openai.OpenAI(**client_kwargs)
         self.model = model
@@ -1281,7 +1314,10 @@ class OpenAIResponsesClient(_LoopLocalAsyncClientMixin, BaseLLMClient):
             "timeout": timeout,
         }
         self._initialize_loop_local_async_client(
-            lambda: openai.AsyncOpenAI(**async_client_kwargs)
+            lambda: _create_owned_async_openai_client(
+                openai.AsyncOpenAI,
+                async_client_kwargs,
+            )
         )
         self.model = model
         self.kwargs = kwargs
@@ -1390,7 +1426,10 @@ class AzureOpenAIResponsesClient(OpenAIResponsesClient):
             "timeout": timeout,
         }
         self._initialize_loop_local_async_client(
-            lambda: openai.AsyncAzureOpenAI(**async_client_kwargs)
+            lambda: _create_owned_async_openai_client(
+                openai.AsyncAzureOpenAI,
+                async_client_kwargs,
+            )
         )
         self.model = azure_deployment
         self.kwargs = kwargs
@@ -1923,7 +1962,10 @@ class AzureOpenAIClient(_LoopLocalAsyncClientMixin, BaseLLMClient):
             "timeout": timeout,
         }
         self._initialize_loop_local_async_client(
-            lambda: openai.AsyncAzureOpenAI(**async_client_kwargs)
+            lambda: _create_owned_async_openai_client(
+                openai.AsyncAzureOpenAI,
+                async_client_kwargs,
+            )
         )
         self.azure_deployment = azure_deployment
         self.kwargs = kwargs

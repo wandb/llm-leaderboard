@@ -21,6 +21,7 @@ if "mistralai" not in sys.modules:
 from llm_inference_adapter import (
     AnthropicClient,
     _LoopLocalAsyncClientMixin,
+    _create_owned_async_openai_client,
     _normalize_anthropic_messages,
     _normalize_openai_responses_input,
     _normalize_openai_responses_tools,
@@ -341,6 +342,100 @@ def test_loop_local_async_client_reopens_cleanly_across_event_loops():
     assert first is not second
     assert first.is_closed
     assert second.is_closed
+
+
+def test_openai_async_client_uses_explicitly_owned_http_transport(monkeypatch):
+    created_http_clients = []
+
+    class FakeHttpClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.is_closed = False
+            created_http_clients.append(self)
+
+        async def aclose(self):
+            self.is_closed = True
+
+    class FakeOpenAIClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self._client = kwargs["http_client"]
+
+        async def close(self):
+            await self._client.aclose()
+
+    monkeypatch.setattr(
+        "llm_inference_adapter.httpx.AsyncClient",
+        FakeHttpClient,
+    )
+
+    client = _create_owned_async_openai_client(
+        FakeOpenAIClient,
+        {"api_key": "test", "timeout": "configured-timeout"},
+    )
+
+    assert len(created_http_clients) == 1
+    assert client.kwargs["http_client"] is created_http_clients[0]
+    assert created_http_clients[0].kwargs == {
+        "timeout": "configured-timeout",
+        "limits": __import__("openai").DEFAULT_CONNECTION_LIMITS,
+        "follow_redirects": True,
+    }
+    asyncio.run(client.close())
+    assert created_http_clients[0].is_closed
+
+
+def test_openai_async_client_preserves_caller_owned_http_transport(monkeypatch):
+    caller_http_client = object()
+
+    class FakeOpenAIClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    def fail_if_created(**kwargs):
+        raise AssertionError("unexpected replacement HTTP client")
+
+    monkeypatch.setattr(
+        "llm_inference_adapter.httpx.AsyncClient",
+        fail_if_created,
+    )
+
+    client = _create_owned_async_openai_client(
+        FakeOpenAIClient,
+        {"api_key": "test", "http_client": caller_http_client},
+    )
+
+    assert client.kwargs["http_client"] is caller_http_client
+
+
+def test_openai_async_client_closes_transport_when_construction_fails(monkeypatch):
+    created_http_clients = []
+
+    class FakeHttpClient:
+        def __init__(self, **kwargs):
+            self.is_closed = False
+            created_http_clients.append(self)
+
+        async def aclose(self):
+            self.is_closed = True
+
+    class BrokenOpenAIClient:
+        def __init__(self, **kwargs):
+            raise ValueError("invalid client configuration")
+
+    monkeypatch.setattr(
+        "llm_inference_adapter.httpx.AsyncClient",
+        FakeHttpClient,
+    )
+
+    with pytest.raises(ValueError, match="invalid client configuration"):
+        _create_owned_async_openai_client(
+            BrokenOpenAIClient,
+            {"api_key": "test"},
+        )
+
+    assert len(created_http_clients) == 1
+    assert created_http_clients[0].is_closed
 
 
 def test_loop_local_async_client_rejects_unclosed_cross_loop_reuse():
