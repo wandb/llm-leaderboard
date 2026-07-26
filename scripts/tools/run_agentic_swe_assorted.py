@@ -124,6 +124,12 @@ PRICE_PER_MILLION: dict[str, dict[str, float]] = {
         "cacheRead": 0.30,
         "cacheWrite": 3.75,
     },
+    "anthropic/claude-sonnet-5": {
+        "input": 3.00,
+        "output": 15.00,
+        "cacheRead": 0.30,
+        "cacheWrite": 3.75,
+    },
     "openrouter-direct/z-ai/glm-5.2": {
         "input": 0.95,
         "output": 3.00,

@@ -717,6 +717,47 @@ def test_non_scoreable_openclaw_failure_detects_configuration_and_quota_errors()
     )
 
 
+def test_model_truncation_takes_precedence_over_session_audit_failure():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    completed = subprocess.CompletedProcess(
+        ["cmd"],
+        1,
+        stdout="",
+        stderr="NeMoClaw session audit failed",
+    )
+    sidecar = {
+        "model_completion": {
+            "ok": False,
+            "failure_category": "model",
+            "reason": "model_output_truncated",
+            "scoreable": True,
+            "retryable": False,
+        },
+        "nemoclaw_session_audit": {
+            "required": True,
+            "ok": False,
+            "errors": ["missing_assistant_or_tool_activity"],
+        },
+    }
+
+    assert module.sidecar_model_failure_reason(sidecar) == "model_output_truncated"
+    assert module.non_scoreable_openclaw_failure_reason(completed, sidecar) is None
+    assert not module.is_transient_openclaw_failure(completed, sidecar)
+
+
+def test_signal_terminated_cached_result_is_not_reusable():
+    module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
+    record = {
+        "correct": False,
+        "scoring_method": "openclaw_error",
+        "scoring_error": "",
+        "openclaw_returncode": -15,
+        "openclaw_disqualified_reason": "",
+    }
+
+    assert not module.cached_result_is_reusable(record)
+
+
 def test_non_scoreable_openclaw_failure_does_not_catch_transient_timeout():
     module = load_module(REPO_ROOT / "scripts" / "tools" / "run_agentic_math_openclaw.py")
     completed = subprocess.CompletedProcess(

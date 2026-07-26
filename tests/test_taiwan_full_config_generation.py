@@ -537,6 +537,51 @@ def test_anthropic_fable_manifest_generates_direct_routes(tmp_path):
     assert cfg.agentic_swe_assorted.openclaw_model_overrides.maxTokens == 128000
 
 
+@pytest.mark.parametrize(
+    ("slug", "api", "model", "openclaw_model", "sandbox", "thinking"),
+    [
+        (
+            "gpt-5_6-sol-openai-direct-max",
+            "openai_responses",
+            "gpt-5.6-sol",
+            "openai-direct/gpt-5.6-sol",
+            "nejumi-tw-sol",
+            "max",
+        ),
+        (
+            "claude-sonnet-5-anthropic-direct-high",
+            "anthropic",
+            "claude-sonnet-5",
+            "anthropic/claude-sonnet-5",
+            "nejumi-tw-sonnet5",
+            "high",
+        ),
+    ],
+)
+def test_parallel_direct_models_generate_isolated_sandbox_configs(
+    tmp_path,
+    slug,
+    api,
+    model,
+    openclaw_model,
+    sandbox,
+    thinking,
+):
+    args = _args(tmp_path, "full", manifest=FULL_EVAL_MANIFEST)
+    args.model = [slug]
+
+    [config_path] = generate_configs(args)
+    cfg = OmegaConf.load(config_path)
+
+    assert cfg.api == api
+    assert cfg.model.pretrained_model_name_or_path == model
+    assert cfg.agentic_math.openclaw_model == openclaw_model
+    assert cfg.agentic_math.nemoclaw_sandbox == sandbox
+    assert cfg.agentic_swe_assorted.nemoclaw_sandbox == sandbox
+    assert cfg.agentic_math.thinking == thinking
+    assert cfg.agentic_swe_assorted.thinking == thinking
+
+
 def test_active_full_manifest_retains_suspended_openrouter_routes_safely():
     manifest = OmegaConf.to_container(OmegaConf.load(FULL_EVAL_MANIFEST), resolve=True)
     models = manifest["models"]

@@ -143,6 +143,13 @@ raise SystemExit(1)
     assert model["reasoning"] is True
     assert model["params"] == model_params
 
+    openai_provider = config["models"]["providers"]["openai-direct"]
+    sol = next(item for item in openai_provider["models"] if item["id"] == "gpt-5.6-sol")
+    assert sol["api"] == "openai-responses"
+    assert sol["reasoning"] is True
+    assert sol["contextWindow"] == 1_000_000
+    assert sol["maxTokens"] == 65_536
+
     secrets = json.loads(secret_file.read_text(encoding="utf-8"))
     assert secrets["wandb"]["apiKey"] == "wandb-test"
     assert secrets["openai"]["apiKey"] == "openai-test"
@@ -161,10 +168,15 @@ raise SystemExit(1)
     )
     assert fable["contextWindow"] == 1_000_000
     assert fable["maxTokens"] == 128_000
-    sonnet = next(
+    legacy_sonnet = next(
         item for item in anthropic_provider["models"] if item["id"] == "claude-sonnet-4-6"
+    )
+    assert legacy_sonnet["api"] == "anthropic-messages"
+    assert legacy_sonnet["maxTokens"] == 64_000
+    sonnet = next(
+        item for item in anthropic_provider["models"] if item["id"] == "claude-sonnet-5"
     )
     assert sonnet["api"] == "anthropic-messages"
     assert sonnet["reasoning"] is True
     assert sonnet["contextWindow"] == 1_000_000
-    assert sonnet["maxTokens"] == 64_000
+    assert sonnet["maxTokens"] == 128_000

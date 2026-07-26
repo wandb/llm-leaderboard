@@ -47,7 +47,44 @@ models:
     swe_subset: "leaderboard_compact_40"
     cash_cost_exempt: true
     cash_cost_exempt_reason: "W&B employee Inference access; no project cash charge."
+    nemoclaw_sandbox: nejumi-taiwan
     notes: "Available for cost-free harness and behavior checks; account for provider quantization when interpreting scores."
+
+  - slug: gpt-5_6-sol-openai-direct-max
+    source_config: config-gpt-5_6-sol.yaml
+    run_name: "taiwan/full/openai/gpt-5.6-sol: max"
+    japanese_runname: "openai/gpt-5.6-sol: max"
+    openclaw_model: "openai-direct/gpt-5.6-sol"
+    openclaw_model_overrides:
+      maxTokens: 65536
+    agentic_swe_assorted_high_openclaw_model_overrides:
+      maxTokens: 65536
+    reasoning_effort: max
+    agentic_thinking: max
+    swe_thinking: max
+    math_limit: 50
+    math_openclaw_timeout: 900
+    swe_subset: "leaderboard_compact_40"
+    nemoclaw_sandbox: nejumi-tw-sol
+    notes: "OpenAI-direct frontier reference; isolated sandbox permits true model-level concurrency."
+
+  - slug: claude-sonnet-5-anthropic-direct-high
+    source_config: config-anthropic-claude-sonnet-5-direct.yaml
+    run_name: "taiwan/full/anthropic/claude-sonnet-5: direct-high"
+    japanese_runname: "anthropic/claude-sonnet-5: direct-high"
+    openclaw_model: "anthropic/claude-sonnet-5"
+    openclaw_model_overrides:
+      maxTokens: 128000
+    agentic_swe_assorted_high_openclaw_model_overrides:
+      maxTokens: 128000
+    reasoning_effort: null
+    agentic_thinking: high
+    swe_thinking: high
+    math_limit: 50
+    math_openclaw_timeout: 900
+    swe_subset: "leaderboard_compact_40"
+    nemoclaw_sandbox: nejumi-tw-sonnet5
+    notes: "Anthropic-direct reference; isolated sandbox permits true model-level concurrency."
 
   - slug: claude-fable-5-anthropic-direct-high
     source_config: config-anthropic-claude-fable-5.yaml

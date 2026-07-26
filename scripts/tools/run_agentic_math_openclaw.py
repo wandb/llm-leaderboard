@@ -1732,6 +1732,12 @@ def non_scoreable_openclaw_failure_reason(
     sidecar: dict[str, Any] | None,
 ) -> str | None:
     """Return a setup/provider failure reason that must not become an incorrect answer."""
+    # A model-side terminal outcome remains scoreable even when the same sidecar
+    # also reports an audit symptom, such as reasoning-only output without a
+    # user-visible assistant message. Do not let the secondary audit failure
+    # turn a model truncation into a run-wide infrastructure failure.
+    if sidecar_model_failure_reason(sidecar):
+        return None
     if result.returncode == 0:
         return None
     text = openclaw_failure_text(result, sidecar)
@@ -1744,6 +1750,11 @@ def non_scoreable_openclaw_failure_reason(
 def cached_result_is_reusable(record: dict[str, Any]) -> bool:
     if record_scoreable_disqualification(record):
         return True
+    returncode = record.get("openclaw_returncode")
+    if isinstance(returncode, int) and not isinstance(returncode, bool) and returncode < 0:
+        # Negative subprocess return codes mean the runner was terminated by a
+        # signal. That is an interrupted rollout, not a model answer.
+        return False
     if record.get("scoring_method") != "openclaw_error":
         return True
     text = str(record.get("scoring_error") or "")

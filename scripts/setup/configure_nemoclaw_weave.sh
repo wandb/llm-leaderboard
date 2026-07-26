@@ -359,6 +359,7 @@ print(str(bool(
     and "gpt-4.1-nano-2025-04-14" in model_ids
     and "gpt-4.1-mini-2025-04-14" in model_ids
     and "gpt-5.6-luna" in model_ids
+    and "gpt-5.6-sol" in model_ids
 )).lower())
 PY
 }
@@ -411,6 +412,7 @@ print(str(bool(
     and api_key.get("source") == "file"
     and api_key.get("provider") == "nejumi-anthropic"
     and api_key.get("id") == "/anthropic/apiKey"
+    and "claude-sonnet-5" in model_ids
     and "claude-fable-5" in model_ids
 )).lower())
 PY
@@ -660,6 +662,15 @@ if skip_openai_direct != "1":
                 "contextWindow": 1000000,
                 "maxTokens": 65536,
             },
+            {
+                "id": "gpt-5.6-sol",
+                "name": "gpt-5.6-sol",
+                "api": "openai-responses",
+                "reasoning": True,
+                "input": ["text", "image"],
+                "contextWindow": 1000000,
+                "maxTokens": 65536,
+            },
         ],
     )
     for model in openai_direct.get("models") or []:
@@ -691,6 +702,15 @@ if skip_anthropic_direct != "1":
                 "input": ["text", "image"],
                 "contextWindow": 1_000_000,
                 "maxTokens": 64_000,
+            },
+            {
+                "id": "claude-sonnet-5",
+                "name": "claude-sonnet-5",
+                "api": "anthropic-messages",
+                "reasoning": True,
+                "input": ["text", "image"],
+                "contextWindow": 1_000_000,
+                "maxTokens": 128_000,
             },
             {
                 "id": "claude-fable-5",
