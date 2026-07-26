@@ -1,0 +1,342 @@
+wandb:
+  run_name: 'taiwan/full/anthropic/claude-sonnet-5: direct-high'
+  entity: llm-leaderboard
+  project: tc-leaderboard
+  expected_entity: llm-leaderboard
+  expected_project: tc-leaderboard
+api: anthropic
+batch_size: 4
+model:
+  pretrained_model_name_or_path: claude-sonnet-5
+  bfcl_model_id: Claude-FC
+  base_model: unknown
+  size_category: api
+  size: null
+  release_date: null
+generator:
+  max_tokens: 128000
+  effort: high
+jaster:
+  override_max_tokens: 128000
+jbbq:
+  generator_config:
+    max_tokens: 128000
+toxicity:
+  generator_config:
+    max_tokens: 128000
+jtruthfulqa:
+  generator_config:
+    max_tokens: 128000
+swebench:
+  max_tokens: 128000
+  fc_enabled: true
+mtbench:
+  generator_config:
+    max_tokens: 128000
+bfcl:
+  generator_config:
+    max_tokens: 128000
+  allow_overwrite: false
+  run_generation: true
+  num_threads: 4
+  provider_min_request_interval_sec: 2.0
+  provider_request_jitter_sec: 0.5
+  provider_rate_limit_key: bfcl:claude-sonnet-5-anthropic-direct-high
+  consecutive_failure_fail_fast: 5
+hallulens:
+  generator_config:
+    max_tokens: 128000
+hle:
+  generator_config:
+    max_tokens: 128000
+arc_agi:
+  max_output_tokens: 128000
+m_ifeval:
+  generator_config:
+    max_tokens: 128000
+testmode: false
+execution:
+  cash_cost_exempt: false
+  cash_cost_exempt_reason: ''
+run:
+  agentic_math: true
+  bfcl: true
+  swebench: false
+  swebench_pro: false
+  deepswe: false
+  agentic_swe_assorted: true
+  mtbench: true
+  jbbq: false
+  toxicity: false
+  jtruthfulqa: false
+  hle: true
+  hallulens: false
+  hallulens_zh_tw: true
+  arc_agi: true
+  m_ifeval: false
+  ifeval_zh_tw: true
+  ts_bench: true
+  twbias: false
+  tceval_v2: true
+  script_adherence: true
+  jaster: true
+  jmmlu_robustness: false
+  tmmluplus_robustness: true
+  aggregate: false
+  aggregate_taiwan: true
+provider_rate_limit:
+  enabled: true
+  key: llm:claude-sonnet-5-anthropic-direct-high
+  min_request_interval_sec: 1.0
+  request_jitter_sec: 0.25
+agentic_math:
+  subset: leaderboard
+  limit: 50
+  output_dir: outputs/taiwan_full_eval_parallel_wave_20260726/agentic_math/claude-sonnet-5-anthropic-direct-high
+  prefix: taiwan-math-claude-sonnet-5-anthropic-direct-high
+  task_agent_prefix: tw-math-claude-sonnet-5-anthropic-direct-high
+  openclaw_model: anthropic/claude-sonnet-5
+  openclaw_model_overrides:
+    maxTokens: 128000
+  thinking: high
+  num_workers: 8
+  task_start_min_interval_seconds: 5.0
+  openclaw_timeout: 900
+  openclaw_max_attempts: 3
+  openclaw_retry_base_seconds: 15
+  max_input_tokens: 500000
+  max_cumulative_input_tokens: 500000
+  max_cumulative_output_tokens: 500000
+  require_actual_token_usage: true
+  max_tool_calls: 40
+  max_agent_turns: 40
+  max_tool_wall_seconds: 120
+  verify_weave_agents: true
+  weave_agents_entity: llm-leaderboard
+  weave_agents_project: tc-leaderboard
+  weave_agents_agent_name: nejumi-taiwan-openclaw
+  weave_agents_limit: 50
+  weave_agents_verification_timeout: 120
+  weave_agents_poll_seconds: 5
+  dry_run: false
+  run_openclaw: true
+  redo: false
+  results_dir: null
+  no_local: true
+  weave_sidecar: false
+  weave_sidecar_strict: false
+  openclaw_tool_profile: coding
+  deny_tool:
+  - code_execution
+  - process
+  - process_*
+  - web_search
+  - web_fetch
+  - browser
+  - browser_*
+  deny_argument_pattern:
+  - https?://
+  - \b(curl|wget)\b
+  - \b(?:python(?:3)?\s+-m\s+)?pip(?:3)?\s+install\b
+  - \b(requests|urllib|httpx)\.
+  nemoclaw_sandbox: nejumi-tw-sonnet5
+  nemoclaw_bin: nemoclaw
+  nemoclaw_workdir: /sandbox
+  use_task_agent: true
+  nemoclaw_openclaw_config_path: /sandbox/.openclaw/openclaw.json
+swebench_pro:
+  subset: leaderboard_compact_40
+  output_dir: outputs/taiwan_full_eval_parallel_wave_20260726/swebench_pro/claude-sonnet-5-anthropic-direct-high
+  checkout_root: outputs/taiwan_full_eval_parallel_wave_20260726/swebench_pro_checkouts/claude-sonnet-5-anthropic-direct-high
+  prefix: taiwan-swe-claude-sonnet-5-anthropic-direct-high
+  task_agent_prefix: tw-swe-claude-sonnet-5-anthropic-direct-high
+  openclaw_model: anthropic/claude-sonnet-5
+  openclaw_model_overrides:
+    maxTokens: 128000
+  thinking: high
+  openclaw_num_workers: 8
+  openclaw_task_start_min_interval_seconds: 15.0
+  openclaw_timeout: 3600
+  openclaw_max_attempts: 3
+  openclaw_retry_base_seconds: 15
+  dry_run: false
+  run_openclaw: true
+  redo: false
+  patch_path: null
+  evaluate: true
+  no_local: true
+  weave_sidecar: false
+  weave_sidecar_strict: false
+  openclaw_tool_profile: coding
+  max_input_tokens: 1000000
+  max_cumulative_input_tokens: 1000000
+  max_cumulative_output_tokens: 1000000
+  require_actual_token_usage: true
+  max_tool_calls: 40
+  max_agent_turns: 40
+  max_tool_wall_seconds: 300
+  verify_weave_agents: true
+  weave_agents_entity: llm-leaderboard
+  weave_agents_project: tc-leaderboard
+  weave_agents_agent_name: nejumi-taiwan-openclaw
+  weave_agents_limit: 50
+  weave_agents_verification_timeout: 120
+  weave_agents_poll_seconds: 5
+  deny_tool:
+  - code_execution
+  - process
+  - process_*
+  - web_search
+  - web_fetch
+  - browser
+  - browser_*
+  deny_argument_pattern:
+  - https?://
+  - \b(?:ftp|sftp|ssh)://
+  - \bgit\+
+  - \bgit\s+(?:clone|fetch|pull|ls-remote)\b
+  - \b(curl|wget)\b
+deepswe:
+  subset: pilot_16
+  local_dataset_dir: data/taiwan/deepswe
+  tasks_root: external/deep-swe/tasks
+  output_dir: outputs/taiwan_full_eval_parallel_wave_20260726/deepswe/claude-sonnet-5-anthropic-direct-high
+  job_name: deepswe-claude-sonnet-5-anthropic-direct-high
+  prefix: taiwan-deepswe-claude-sonnet-5-anthropic-direct-high
+  task_agent_prefix: tw-deepswe-claude-sonnet-5-anthropic-direct-high
+  session_prefix: deepswe-claude-sonnet-5-anthropic-direct-high
+  openclaw_model: anthropic/claude-sonnet-5
+  openclaw_model_overrides:
+    maxTokens: 128000
+  thinking: high
+  n_concurrent: 1
+  openclaw_timeout: 3600
+  openclaw_max_attempts: 2
+  openclaw_retry_base_seconds: 15
+  dry_run: false
+  run_openclaw: true
+  results_dir: null
+  no_local: true
+  use_task_agent: true
+  restart_gateway_before_run: true
+  delete: true
+  disable_verification: false
+  quiet: false
+  openclaw_tool_profile: coding
+  max_input_tokens: 1000000
+  max_cumulative_input_tokens: 1000000
+  max_cumulative_output_tokens: 500000
+  require_actual_token_usage: true
+  max_tool_calls: 40
+  max_agent_turns: 40
+  max_tool_wall_seconds: 300
+  verify_weave_agents: true
+  weave_agents_entity: llm-leaderboard
+  weave_agents_project: tc-leaderboard
+  weave_agents_agent_name: nejumi-taiwan-openclaw
+  weave_agents_limit: 50
+  weave_agents_verification_timeout: 120
+  weave_agents_poll_seconds: 5
+  deny_tool:
+  - code_execution
+  - process
+  - process_*
+  - web_search
+  - web_fetch
+  - browser
+  - browser_*
+  deny_argument_pattern:
+  - https?://
+  - \b(?:ftp|sftp|ssh)://
+  - \bgit\+
+  - \bgit\s+(?:clone|fetch|pull|ls-remote)\b
+  - \b(curl|wget)\b
+  nemoclaw_sandbox: nejumi-tw-sonnet5
+  nemoclaw_bin: nemoclaw
+  nemoclaw_workdir: /sandbox
+  nemoclaw_openclaw_config_path: /sandbox/.openclaw/openclaw.json
+agentic_swe_assorted:
+  output_dir: outputs/taiwan_full_eval_parallel_wave_20260726/agentic_swe_assorted/claude-sonnet-5-anthropic-direct-high
+  results_dir: null
+  run_openclaw: true
+  dry_run: false
+  prefix: taiwan-swe-assorted-claude-sonnet-5-anthropic-direct-high
+  task_agent_prefix: tw-swe-assorted-claude-sonnet-5-anthropic-direct-high
+  session_prefix: agentic-swe-assorted-claude-sonnet-5-anthropic-direct-high
+  openclaw_model: anthropic/claude-sonnet-5
+  openclaw_model_overrides:
+    maxTokens: 128000
+  high_openclaw_model_overrides:
+    maxTokens: 128000
+  thinking: high
+  tier_weights: low=1,middle=1,high=1
+  low_middle_jsonl: data/taiwan/swebench_lite_assorted/subsets/low_middle_v3_40.jsonl
+  low_middle_instance_ids_json: data/taiwan/swebench_lite_assorted/subsets/low_middle_v3_40_instance_ids.json
+  low_limit: 20
+  middle_limit: 20
+  high_limit: 10
+  deepswe_metadata_jsonl: data/taiwan/deepswe/subsets/essential_anchored_high_10_model_fidelity_cost_balanced.jsonl
+  deepswe_task_names_file: data/taiwan/deepswe/subsets/essential_anchored_high_10_model_fidelity_cost_balanced_task_names.json
+  deepswe_tasks_root: external/deep-swe/tasks
+  deepswe_public_trials_json: outputs/deepswe_subset_analysis/deepswe_v1_1_trials.json
+  deepswe_public_model: null
+  deepswe_public_effort: null
+  reuse_high_results_jsonl: []
+  reuse_low_middle_patches_json: null
+  deepswe_budget_preflight: error
+  deepswe_preflight_hard_stat: p90
+  allow_deepswe_budget_mismatch: false
+  official_swebench_repo: external/SWE-bench
+  checkout_root: outputs/taiwan_full_eval_parallel_wave_20260726/swebench_lite_checkouts/claude-sonnet-5-anthropic-direct-high
+  skip_low_middle: false
+  skip_high: false
+  no_docker_check: false
+  swe_workers: 4
+  high_workers: 2
+  eval_workers: 4
+  swe_task_start_min_interval_seconds: 5.0
+  swe_openclaw_timeout: 900
+  high_openclaw_timeout: 1800
+  eval_timeout: 1800
+  openclaw_max_attempts: 2
+  openclaw_retry_base_seconds: 15
+  max_input_tokens: 1000000
+  max_cumulative_input_tokens: 1000000
+  high_max_cumulative_input_tokens: 20000000
+  max_cumulative_output_tokens: 500000
+  require_actual_token_usage: true
+  max_tool_calls: 40
+  high_max_tool_calls: 200
+  max_agent_turns: 40
+  high_max_agent_turns: 180
+  max_tool_wall_seconds: 120
+  llm_response_idle_timeout_seconds: 900
+  no_local: true
+  use_task_agent: true
+  openclaw_tool_profile: coding
+  verify_weave_agents: true
+  weave_agents_entity: llm-leaderboard
+  weave_agents_project: tc-leaderboard
+  weave_agents_agent_name: nejumi-taiwan-openclaw
+  weave_agents_limit: 100
+  weave_agents_verification_timeout: 120
+  weave_agents_poll_seconds: 5
+  swebench_namespace: swebench
+  swebench_cache_level: env
+  deny_tool:
+  - code_execution
+  - web_search
+  - web_fetch
+  - browser
+  - browser_*
+  deny_argument_pattern:
+  - https?://
+  - \b(?:ftp|sftp|ssh)://
+  - \bgit\+
+  - \bgit\s+(?:clone|fetch|pull|ls-remote)\b
+  - \b(curl|wget)\b
+  nemoclaw_sandbox: nejumi-tw-sonnet5
+  nemoclaw_bin: nemoclaw
+  nemoclaw_workdir: /sandbox
+  nemoclaw_checkout_transfer_mode: copy
+  nemoclaw_openclaw_config_path: /sandbox/.openclaw/openclaw.json
