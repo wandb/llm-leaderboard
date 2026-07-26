@@ -8,16 +8,22 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import hashlib
+import importlib.util
 import json
+import math
 import os
 import re
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
 from omegaconf import OmegaConf
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SCRIPTS_ROOT = REPO_ROOT / "scripts"
 
 from external_action_approval_checks import (
     approval_results as normalized_approval_results,
@@ -38,8 +44,20 @@ from weave_content_canary_gate_contract import (
     weave_content_canary_gate_contract_issues,
 )
 
+_BENCHMARK_CHECKPOINT_SPEC = importlib.util.spec_from_file_location(
+    "_taiwan_benchmark_checkpoint",
+    SCRIPTS_ROOT / "evaluator" / "evaluate_utils" / "benchmark_checkpoint.py",
+)
+assert _BENCHMARK_CHECKPOINT_SPEC and _BENCHMARK_CHECKPOINT_SPEC.loader
+_BENCHMARK_CHECKPOINT_MODULE = importlib.util.module_from_spec(
+    _BENCHMARK_CHECKPOINT_SPEC
+)
+_BENCHMARK_CHECKPOINT_SPEC.loader.exec_module(_BENCHMARK_CHECKPOINT_MODULE)
+classify_benchmark_failure = (
+    _BENCHMARK_CHECKPOINT_MODULE.classify_benchmark_failure
+)
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+
 DEFAULT_ENV_FILE = REPO_ROOT / ".env"
 WANDB_COMPLETION_VERIFY_RUNNER = REPO_ROOT / "scripts" / "tools" / "verify_taiwan_wandb_completion.py"
 WEAVE_AGENTS_VERIFY_RUNNER = REPO_ROOT / "scripts" / "tools" / "verify_taiwan_weave_agents.py"
@@ -153,6 +171,14 @@ def nonempty_string(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
+def valid_nemoclaw_sandbox_name(value: object) -> bool:
+    return nonempty_string(value) and str(value).strip().lower() not in {
+        "none",
+        "null",
+        "false",
+    }
+
+
 def canonical_nemoclaw_openclaw_config_path(value: object) -> bool:
     return value == CANONICAL_NEMOCLAW_OPENCLAW_CONFIG_PATH
 
@@ -223,7 +249,25 @@ def resolve_weave_conversation_id_contains(
 
 def write_json(path: Path, data: dict | list) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary = path.with_name(
+        f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
+    )
+    try:
+        with temporary.open("w", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+            )
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def subprocess_output_text(value: object) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value or "")
 
 
 def sha256_file(path: Path) -> str:
@@ -315,6 +359,16 @@ def collect_selected_config_model_bindings(
             {
                 "config": config_arg(path),
                 "identifiers": model_identifier_values(loaded, phase=phase),
+                "cash_cost_exempt": bool(
+                    config_lookup(loaded, "execution.cash_cost_exempt")[1]
+                ),
+                "cash_cost_exempt_reason": str(
+                    config_lookup(
+                        loaded,
+                        "execution.cash_cost_exempt_reason",
+                    )[1]
+                    or ""
+                ),
             }
         )
     return bindings
@@ -480,8 +534,10 @@ def build_nemoclaw_agentic_config_guard(
                 issues.append("run.agentic_math must be true")
             if not run_agentic_swe_assorted:
                 issues.append("run.agentic_swe_assorted must be true")
-            if not nonempty_string(math_sandbox):
-                issues.append("agentic_math.nemoclaw_sandbox must be set")
+            if not valid_nemoclaw_sandbox_name(math_sandbox):
+                issues.append(
+                    "agentic_math.nemoclaw_sandbox must name an isolated sandbox"
+                )
             if not canonical_nemoclaw_openclaw_config_path(math_config_path):
                 issues.append(
                     "agentic_math.nemoclaw_openclaw_config_path must be "
@@ -514,8 +570,10 @@ def build_nemoclaw_agentic_config_guard(
                 observed_value=math_deny_argument_patterns,
                 required_values=REQUIRED_NEMOCLAW_AGENTIC_DENIED_ARGUMENT_PATTERNS,
             )
-            if not nonempty_string(swe_sandbox):
-                issues.append("agentic_swe_assorted.nemoclaw_sandbox must be set")
+            if not valid_nemoclaw_sandbox_name(swe_sandbox):
+                issues.append(
+                    "agentic_swe_assorted.nemoclaw_sandbox must name an isolated sandbox"
+                )
             if not canonical_nemoclaw_openclaw_config_path(swe_config_path):
                 issues.append(
                     "agentic_swe_assorted.nemoclaw_openclaw_config_path must be "
@@ -997,9 +1055,13 @@ def build_budget_approval_alignment_record(
 
 def build_wandb_resume_policy_record(args: argparse.Namespace) -> dict:
     allow_requested = bool(getattr(args, "allow_wandb_resume", False))
+    infrastructure_recovery_attempts = int(
+        getattr(args, "infrastructure_resume_attempts", 0) or 0
+    )
     config_path = getattr(args, "wandb_resume_config_json", None)
     record = {
         "allow_wandb_resume": allow_requested,
+        "infrastructure_recovery_attempts": infrastructure_recovery_attempts,
         "resume_config_json": str(config_path) if config_path else "",
         "valid": not allow_requested,
         "status": "resume_disabled" if not allow_requested else "resume_config_required",
@@ -1009,10 +1071,34 @@ def build_wandb_resume_policy_record(args: argparse.Namespace) -> dict:
             "wandb_run_id_prefix": str(getattr(args, "wandb_run_id_prefix", "") or ""),
             "phase": str(getattr(args, "phase", "") or ""),
             "explicit_user_instruction": True,
+            "infrastructure_recovery_attempts": infrastructure_recovery_attempts,
         },
         "observed": {},
     }
+    if infrastructure_recovery_attempts < 0 or infrastructure_recovery_attempts > 3:
+        record["errors"].append(
+            "--infrastructure-resume-attempts must be between 0 and 3"
+        )
+    if infrastructure_recovery_attempts and not allow_requested:
+        record["errors"].append(
+            "--infrastructure-resume-attempts requires --allow-wandb-resume"
+        )
+    if allow_requested and not nonempty_string(
+        getattr(args, "wandb_run_id_prefix", None)
+    ):
+        record["errors"].append(
+            "--allow-wandb-resume requires a non-empty --wandb-run-id-prefix"
+        )
+    base_seconds = float(
+        getattr(args, "infrastructure_resume_base_seconds", 30.0) or 0.0
+    )
+    if not math.isfinite(base_seconds) or base_seconds < 0:
+        record["errors"].append(
+            "--infrastructure-resume-base-seconds must be a finite non-negative number"
+        )
     if not allow_requested:
+        record["valid"] = not record["errors"]
+        record["status"] = "resume_disabled" if record["valid"] else "invalid"
         return record
     if not config_path:
         record["errors"].append(
@@ -1029,6 +1115,9 @@ def build_wandb_resume_policy_record(args: argparse.Namespace) -> dict:
         "wandb_run_id_prefix": payload.get("wandb_run_id_prefix"),
         "phase": payload.get("phase"),
         "explicit_user_instruction": payload.get("explicit_user_instruction"),
+        "infrastructure_recovery_attempts": payload.get(
+            "infrastructure_recovery_attempts"
+        ),
         "purpose": payload.get("purpose"),
     }
     if payload.get("allow_wandb_resume") is not True:
@@ -1052,6 +1141,13 @@ def build_wandb_resume_policy_record(args: argparse.Namespace) -> dict:
         )
     if not nonempty_string(payload.get("purpose")):
         record["errors"].append("wandb resume config must include a non-empty purpose")
+    if infrastructure_recovery_attempts > 0 and payload.get(
+        "infrastructure_recovery_attempts"
+    ) != infrastructure_recovery_attempts:
+        record["errors"].append(
+            "wandb resume config infrastructure_recovery_attempts must match "
+            "--infrastructure-resume-attempts"
+        )
     record["valid"] = not record["errors"]
     record["status"] = "valid" if record["valid"] else "invalid"
     return record
@@ -1195,6 +1291,138 @@ def stream_run(command: list[str], log_path: Path, env: dict[str, str]) -> int:
             raise
         finally:
             signal.signal(signal.SIGTERM, previous_sigterm_handler)
+
+
+def _resolve_config_path(value: str | Path) -> Path:
+    path = Path(value).expanduser()
+    if path.is_absolute() or path.exists():
+        return path.resolve()
+    candidate = CONFIG_DIR / path
+    return candidate.resolve()
+
+
+def benchmark_checkpoint_root(
+    *,
+    base_config: str,
+    model_config: Path,
+    wandb_run_id: str,
+) -> Path:
+    merged = OmegaConf.merge(
+        OmegaConf.load(_resolve_config_path(base_config)),
+        OmegaConf.load(model_config),
+    )
+    configured = OmegaConf.select(merged, "output.resolved_run_root", default=None)
+    if configured:
+        run_root = Path(str(configured)).expanduser()
+        if not run_root.is_absolute():
+            run_root = REPO_ROOT / run_root
+    else:
+        run_root = REPO_ROOT / "outputs" / "taiwan_full_eval_runs" / wandb_run_id
+    return run_root / "benchmark_checkpoints"
+
+
+def latest_failed_benchmark_checkpoint(
+    checkpoint_root: Path,
+    *,
+    wandb_run_id: str,
+    not_before: float | None = None,
+) -> dict[str, object] | None:
+    candidates: list[dict[str, object]] = []
+    for path in checkpoint_root.glob("*.json"):
+        payload, _ = load_json_object(path)
+        if payload is None:
+            continue
+        try:
+            updated_at = float(payload.get("updated_at") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if (
+            payload.get("status") != "failed"
+            or payload.get("run_id") != wandb_run_id
+            or (not_before is not None and updated_at < not_before)
+        ):
+            continue
+        failure = classify_benchmark_failure(
+            str(payload.get("error_type") or ""),
+            str(payload.get("error") or ""),
+        )
+        candidates.append(
+            {
+                "path": str(path),
+                "benchmark": str(payload.get("benchmark") or path.stem),
+                "updated_at": updated_at,
+                "error_type": str(payload.get("error_type") or ""),
+                "error": str(payload.get("error") or ""),
+                "failure_category": failure["category"],
+                "infrastructure_retryable": failure[
+                    "infrastructure_retryable"
+                ],
+                "failure_reason": failure["reason"],
+            }
+        )
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: float(item["updated_at"]))
+
+
+def run_eval_with_infrastructure_recovery(
+    command: list[str],
+    *,
+    log_path: Path,
+    env: dict[str, str],
+    checkpoint_root: Path,
+    wandb_run_id: str,
+    max_resume_attempts: int,
+    base_delay_seconds: float,
+) -> tuple[int, list[dict[str, object]]]:
+    attempts: list[dict[str, object]] = []
+    maximum = max(0, int(max_resume_attempts))
+    for attempt_index in range(maximum + 1):
+        attempt_started_at = time.time()
+        returncode = stream_run(command, log_path, env)
+        record: dict[str, object] = {
+            "attempt": attempt_index + 1,
+            "returncode": returncode,
+            "started_as_resume": attempt_index > 0,
+            "started_at": attempt_started_at,
+            "ended_at": time.time(),
+        }
+        if returncode == 0:
+            record["action"] = "completed"
+            attempts.append(record)
+            return returncode, attempts
+
+        failure = latest_failed_benchmark_checkpoint(
+            checkpoint_root,
+            wandb_run_id=wandb_run_id,
+            not_before=attempt_started_at - 1.0,
+        )
+        record["failure"] = failure
+        retries_remaining = maximum - attempt_index
+        if not failure:
+            record["action"] = "stopped_no_failed_checkpoint"
+        elif not failure["infrastructure_retryable"]:
+            record["action"] = "stopped_non_infrastructure_failure"
+        elif retries_remaining <= 0:
+            record["action"] = "stopped_recovery_exhausted"
+        else:
+            delay = max(0.0, float(base_delay_seconds)) * (2**attempt_index)
+            record["action"] = "resume_after_cooldown"
+            record["cooldown_seconds"] = delay
+            attempts.append(record)
+            print(
+                "Infrastructure failure detected in "
+                f"{failure['benchmark']} ({failure['error_type']}). "
+                f"Resuming the same W&B run after {delay:.1f}s; "
+                f"{retries_remaining} authorized attempt(s) remain.",
+                flush=True,
+            )
+            if delay:
+                time.sleep(delay)
+            continue
+        attempts.append(record)
+        return returncode, attempts
+    raise AssertionError("infrastructure recovery loop ended unexpectedly")
 
 
 def default_wandb_verify_benchmarks(phase: str) -> list[str]:
@@ -1353,6 +1581,7 @@ def run_wandb_completion_verification(
     require_agentic_swe_assorted: bool = False,
     expected_total_override: int | None = None,
     env_file: Path | None = None,
+    timeout_seconds: float = 600.0,
 ) -> dict:
     command = build_wandb_verify_command(
         python=python,
@@ -1371,15 +1600,34 @@ def run_wandb_completion_verification(
         env_file=env_file,
         json_path=output_path,
     )
-    result = subprocess.run(
-        command,
-        cwd=REPO_ROOT,
-        env=env,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        result = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        payload = {
+            "ok": False,
+            "payload_ok": False,
+            "returncode_ok": False,
+            "benchmark": benchmark,
+            "run_id": run_id,
+            "checks": [],
+            "timeout": True,
+            "timeout_seconds": timeout_seconds,
+            "command": command,
+            "returncode": 124,
+            "stdout": subprocess_output_text(exc.stdout),
+            "stderr": subprocess_output_text(exc.stderr),
+        }
+        write_json(output_path, payload)
+        return payload
     payload: dict
     try:
         payload = json.loads(result.stdout)
@@ -1549,6 +1797,57 @@ def build_run_eval_preflight_records(
     return records
 
 
+def execute_run_eval_preflight(
+    *,
+    command: list[str],
+    output_json: Path,
+    log_path: Path,
+    env: dict[str, str],
+    phase: str,
+) -> dict[str, object]:
+    """Run one static preflight and reject stale or phase-incomplete evidence."""
+    output_json.unlink(missing_ok=True)
+    returncode = stream_run(command, log_path, env)
+    payload, payload_error = load_json_object(output_json)
+    status = ""
+    phase_validation = {
+        "ok": False,
+        "phase": phase,
+        "expected_scheduled_evaluators": expected_scheduled_evaluators_for_phase(phase),
+        "observed_scheduled_evaluators": [],
+        "missing_scheduled_evaluators": expected_scheduled_evaluators_for_phase(phase),
+        "unexpected_scheduled_evaluators": [],
+        "order_matches": False,
+    }
+    ok = returncode == 0
+    if payload is None:
+        status = payload_error or "preflight JSON could not be read"
+        ok = False
+    else:
+        ok = ok and payload.get("ok") is True
+        status = str(payload.get("status") or "")
+        if payload.get("ok") is True:
+            phase_validation = validate_run_eval_preflight_phase(payload, phase)
+            ok = ok and bool(phase_validation["ok"])
+            if not phase_validation["ok"]:
+                status = (
+                    "preflight scheduled evaluator mismatch: "
+                    + json.dumps(
+                        phase_validation,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                )
+    return {
+        "ok": ok,
+        "returncode": returncode,
+        "status": status,
+        "phase_validation": phase_validation,
+        "output_json": str(output_json),
+        "log_path": str(log_path),
+    }
+
+
 def run_weave_agents_verification(
     *,
     python: str,
@@ -1563,6 +1862,7 @@ def run_weave_agents_verification(
     conversation_id_contains: str | None = None,
     expected_request_models: list[str] | None = None,
     required_texts: list[str] | None = None,
+    timeout_seconds: float = 600.0,
 ) -> dict:
     command = build_weave_agents_verify_command(
         python=python,
@@ -1576,15 +1876,33 @@ def run_weave_agents_verification(
         expected_request_models=expected_request_models,
         required_texts=required_texts,
     )
-    result = subprocess.run(
-        command,
-        cwd=REPO_ROOT,
-        env=env,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        result = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        payload = {
+            "ok": False,
+            "payload_ok": False,
+            "returncode_ok": False,
+            "agent_name": agent_name,
+            "checks": [],
+            "timeout": True,
+            "timeout_seconds": timeout_seconds,
+            "command": command,
+            "returncode": 124,
+            "stdout": subprocess_output_text(exc.stdout),
+            "stderr": subprocess_output_text(exc.stderr),
+        }
+        write_json(output_path, payload)
+        return payload
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError:
@@ -1707,6 +2025,31 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--infrastructure-resume-attempts",
+        type=int,
+        default=0,
+        help=(
+            "Automatically resume the same W&B run only after a checkpointed, "
+            "known infrastructure failure. Requires --allow-wandb-resume and an "
+            "exact matching value in the resume config. Maximum 3."
+        ),
+    )
+    parser.add_argument(
+        "--infrastructure-resume-base-seconds",
+        type=float,
+        default=30.0,
+        help="Cooldown before the first authorized infrastructure-only resume.",
+    )
+    parser.add_argument(
+        "--allow-cash-cost-exempt-execution",
+        action="store_true",
+        help=(
+            "Authorize external execution without paid-API budget packets only "
+            "when every selected generated config declares "
+            "execution.cash_cost_exempt=true with a non-empty reason."
+        ),
+    )
+    parser.add_argument(
         "--verify-wandb-completion",
         action="store_true",
         help=(
@@ -1727,6 +2070,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--wandb-verify-num-few-shots", type=int, default=2)
     parser.add_argument("--wandb-verify-include-pending", action="store_true")
     parser.add_argument("--wandb-verify-no-require-aggregate", action="store_true")
+    parser.add_argument(
+        "--verification-timeout-seconds",
+        type=float,
+        default=600.0,
+        help="Independent timeout for each post-run W&B or Weave verifier.",
+    )
     parser.add_argument(
         "--verify-weave-agents",
         action="store_true",
@@ -1824,6 +2173,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     args.base_config = normalize_run_eval_base_config_arg(args.base_config)
+    if args.verification_timeout_seconds <= 0:
+        raise SystemExit("--verification-timeout-seconds must be positive")
     if args.weave_content_canary_max_age_seconds < 0:
         args.weave_content_canary_max_age_seconds = None
     args.output_root.mkdir(parents=True, exist_ok=True)
@@ -1833,16 +2184,35 @@ def main() -> None:
     if args.limit is not None:
         configs = configs[: args.limit]
 
-    phase_requires_paid_model_api = args.phase in {"full", "nonagentic", "agentic"}
-    will_call_paid_model_api = not args.prepare_only and phase_requires_paid_model_api
-    will_execute_external_actions = not args.prepare_only and (
-        phase_requires_paid_model_api
-        or bool(args.verify_wandb_completion)
-        or bool(args.verify_weave_agents)
-    )
     selected_config_model_bindings = collect_selected_config_model_bindings(
         configs,
         phase=args.phase,
+    )
+    phase_executes_model_api = args.phase in {"full", "nonagentic", "agentic"}
+    selected_configs_cash_cost_exempt = bool(selected_config_model_bindings) and all(
+        binding.get("cash_cost_exempt") is True
+        and nonempty_string(binding.get("cash_cost_exempt_reason"))
+        and not binding.get("error")
+        for binding in selected_config_model_bindings
+    )
+    cash_cost_exempt_execution = bool(
+        args.allow_cash_cost_exempt_execution
+        and selected_configs_cash_cost_exempt
+    )
+    phase_requires_cash_budget = bool(
+        phase_executes_model_api and not cash_cost_exempt_execution
+    )
+    will_call_model_api = not args.prepare_only and phase_executes_model_api
+    will_call_paid_model_api = (
+        not args.prepare_only and phase_requires_cash_budget
+    )
+    will_execute_external_actions = not args.prepare_only and (
+        phase_executes_model_api
+        or bool(args.verify_wandb_completion)
+        or bool(args.verify_weave_agents)
+    )
+    external_action_approval_required = bool(
+        will_execute_external_actions and not cash_cost_exempt_execution
     )
     weave_agents_required_texts = weave_required_texts_for_phase(
         phase=args.phase,
@@ -1867,12 +2237,12 @@ def main() -> None:
     )
     pre_run_budget_estimate = build_pre_run_budget_estimate_record(
         args.pre_run_budget_estimate_json,
-        required_before_paid_execution=phase_requires_paid_model_api,
+        required_before_paid_execution=phase_requires_cash_budget,
         selected_config_model_bindings=selected_config_model_bindings,
     )
     external_action_approval = build_external_action_approval_record(
         args.external_action_approval_report_json,
-        required_before_external_action=will_execute_external_actions,
+        required_before_external_action=external_action_approval_required,
         expected_source_packet_path=args.external_action_approval_source_packet_json,
     )
     budget_approval_alignment = build_budget_approval_alignment_record(
@@ -1896,9 +2266,17 @@ def main() -> None:
         "include_suspended": bool(getattr(args, "include_suspended", False)),
         "run_purpose": args.run_purpose or "",
         "expected_cost_band": args.expected_cost_band or "",
-        "requires_paid_model_api": phase_requires_paid_model_api,
+        "executes_model_api": phase_executes_model_api,
+        "requires_paid_model_api": phase_requires_cash_budget,
+        "will_call_model_api": will_call_model_api,
         "will_call_paid_model_api": will_call_paid_model_api,
         "will_execute_external_actions": will_execute_external_actions,
+        "external_action_approval_required": external_action_approval_required,
+        "allow_cash_cost_exempt_execution": bool(
+            args.allow_cash_cost_exempt_execution
+        ),
+        "selected_configs_cash_cost_exempt": selected_configs_cash_cost_exempt,
+        "cash_cost_exempt_execution": cash_cost_exempt_execution,
         "model_count": len(configs),
         "configs": [config_arg(path) for path in configs],
         "selected_config_model_bindings": selected_config_model_bindings,
@@ -1906,6 +2284,8 @@ def main() -> None:
         "nemoclaw_agentic_config_guard": nemoclaw_agentic_config_guard,
         "wandb_run_id_prefix": args.wandb_run_id_prefix or "",
         "allow_wandb_resume": bool(args.allow_wandb_resume),
+        "infrastructure_resume_attempts": args.infrastructure_resume_attempts,
+        "infrastructure_resume_base_seconds": args.infrastructure_resume_base_seconds,
         "wandb_resume_policy": wandb_resume_policy,
         "verify_wandb_completion": bool(args.verify_wandb_completion),
         "wandb_verify_benchmarks": args.wandb_verify_benchmark
@@ -1940,9 +2320,17 @@ def main() -> None:
         "canary": bool(args.canary),
         "include_final_only": bool(args.include_final_only),
         "include_suspended": bool(getattr(args, "include_suspended", False)),
-        "requires_paid_model_api": phase_requires_paid_model_api,
+        "executes_model_api": phase_executes_model_api,
+        "requires_paid_model_api": phase_requires_cash_budget,
+        "will_call_model_api": will_call_model_api,
         "will_call_paid_model_api": will_call_paid_model_api,
         "will_execute_external_actions": will_execute_external_actions,
+        "external_action_approval_required": external_action_approval_required,
+        "allow_cash_cost_exempt_execution": bool(
+            args.allow_cash_cost_exempt_execution
+        ),
+        "selected_configs_cash_cost_exempt": selected_configs_cash_cost_exempt,
+        "cash_cost_exempt_execution": cash_cost_exempt_execution,
         "run_purpose": args.run_purpose or "",
         "expected_cost_band": args.expected_cost_band or "",
         "model_count": len(configs),
@@ -1952,6 +2340,8 @@ def main() -> None:
         "nemoclaw_agentic_config_guard": nemoclaw_agentic_config_guard,
         "wandb_run_id_prefix": args.wandb_run_id_prefix or "",
         "allow_wandb_resume": bool(args.allow_wandb_resume),
+        "infrastructure_resume_attempts": args.infrastructure_resume_attempts,
+        "infrastructure_resume_base_seconds": args.infrastructure_resume_base_seconds,
         "wandb_resume_policy": wandb_resume_policy,
         "verify_wandb_completion": bool(args.verify_wandb_completion),
         "wandb_verify_benchmarks": args.wandb_verify_benchmark
@@ -1972,7 +2362,7 @@ def main() -> None:
         "completion_requirements": {
             "status": "completed",
             "pre_run_budget_estimate": {
-                "required_before_paid_execution": phase_requires_paid_model_api,
+                "required_before_paid_execution": phase_requires_cash_budget,
                 "required_fields": [
                     "path",
                     "sha256",
@@ -1987,7 +2377,7 @@ def main() -> None:
                 "provider_dashboard_authoritative": True,
             },
             "external_action_approval": {
-                "required_before_external_action": will_execute_external_actions,
+                "required_before_external_action": external_action_approval_required,
                 "required_fields": [
                     "path",
                     "sha256",
@@ -2025,6 +2415,7 @@ def main() -> None:
                     "phase matches --phase",
                     "explicit_user_instruction=true",
                     "purpose is non-empty",
+                    "infrastructure_recovery_attempts matches the CLI when enabled",
                 ],
             },
             "actual_cost_estimate": "required after execution",
@@ -2108,6 +2499,19 @@ def main() -> None:
     }
     write_json(review_path, review_record)
 
+    if (
+        args.allow_cash_cost_exempt_execution
+        and not selected_configs_cash_cost_exempt
+    ):
+        review_record["status"] = "cash_cost_exemption_invalid"
+        review_record["blocking_reason"] = (
+            "Every selected generated config must declare "
+            "execution.cash_cost_exempt=true and a non-empty "
+            "execution.cash_cost_exempt_reason."
+        )
+        write_json(review_path, review_record)
+        raise SystemExit(str(review_record["blocking_reason"]))
+
     if not agentic_production_evidence_guard["ok"]:
         review_record["status"] = "agentic_production_evidence_required"
         review_record["blocking_reason"] = agentic_production_evidence_guard
@@ -2160,7 +2564,10 @@ def main() -> None:
                 + ", ".join(missing)
             )
 
-    if will_execute_external_actions and not external_action_approval.get("valid"):
+    if (
+        external_action_approval_required
+        and not external_action_approval.get("valid")
+    ):
         review_record["status"] = "external_action_approval_missing"
         review_record["missing_fields"] = [
             flag
@@ -2196,7 +2603,7 @@ def main() -> None:
             + "; ".join(str(item) for item in budget_approval_alignment["errors"])
         )
 
-    if args.allow_wandb_resume and not wandb_resume_policy.get("valid"):
+    if not wandb_resume_policy.get("valid"):
         review_record["status"] = "wandb_resume_policy_failed"
         review_record["blocking_reason"] = wandb_resume_policy
         write_json(review_path, review_record)
@@ -2226,15 +2633,57 @@ def main() -> None:
     if args.verify_weave_agents and not args.wandb_run_id_prefix:
         raise SystemExit("--verify-weave-agents requires --wandb-run-id-prefix")
 
-    manifest_rows = []
-    if args.prepare_only:
-        for path in configs:
-            print(config_arg(path))
-        return
-
     env = load_env_file(os.environ.copy(), args.env_file)
     env["PYTHONUNBUFFERED"] = "1"
     env.setdefault("WANDB_CONSOLE", "wrap")
+
+    manifest_rows = []
+    if args.prepare_only:
+        for index, record in enumerate(run_eval_preflights, start=1):
+            command = list(record["command"])
+            output_json = Path(str(record["output_json"]))
+            config_name = str(record["config"])
+            slug = Path(config_name).stem.replace("config-taiwan-full-", "")
+            log_path = args.output_root / "logs" / (
+                f"{args.phase}-{slug}.prepare-preflight.log"
+            )
+            print(
+                f"\n[{index}/{len(run_eval_preflights)}] static preflight: "
+                f"{config_name}",
+                flush=True,
+            )
+            result = execute_run_eval_preflight(
+                command=command,
+                output_json=output_json,
+                log_path=log_path,
+                env=env,
+                phase=args.phase,
+            )
+            record.update(
+                {
+                    "executed": True,
+                    "returncode": result["returncode"],
+                    "ok": result["ok"],
+                    "status": result["status"],
+                    "phase_validation": result["phase_validation"],
+                    "log_path": result["log_path"],
+                }
+            )
+            write_json(review_path, review_record)
+            if not result["ok"]:
+                review_record["status"] = "prepare_preflight_failed"
+                review_record["blocking_reason"] = record
+                write_json(review_path, review_record)
+                raise SystemExit(
+                    f"prepare-only preflight failed for {config_name}: "
+                    f"{result['status']}"
+                )
+        review_record["status"] = "prepared"
+        review_record["ended_at"] = time.time()
+        write_json(review_path, review_record)
+        for path in configs:
+            print(config_arg(path))
+        return
 
     for index, config_path in enumerate(configs, start=1):
         rel_config = config_arg(config_path)
@@ -2269,42 +2718,17 @@ def main() -> None:
         review_record["status"] = "running"
         write_json(review_path, review_record)
         preflight_log_path = args.output_root / "logs" / f"{args.phase}-{slug}.preflight.log"
-        preflight_returncode = stream_run(preflight_command, preflight_log_path, run_env)
-        preflight_ok = preflight_returncode == 0
-        preflight_status = ""
-        preflight_phase_validation = None
-        if preflight_json.exists():
-            preflight_payload, preflight_error = load_json_object(preflight_json)
-            if preflight_payload is not None:
-                preflight_ok = preflight_ok and preflight_payload.get("ok") is True
-                preflight_status = str(preflight_payload.get("status") or "")
-                if preflight_payload.get("ok") is True:
-                    preflight_phase_validation = validate_run_eval_preflight_phase(
-                        preflight_payload,
-                        args.phase,
-                    )
-                    preflight_ok = preflight_ok and bool(preflight_phase_validation["ok"])
-                    if not preflight_phase_validation["ok"]:
-                        preflight_status = (
-                            "preflight scheduled evaluator mismatch: "
-                            + json.dumps(preflight_phase_validation, ensure_ascii=False, sort_keys=True)
-                        )
-            else:
-                preflight_status = preflight_error or "preflight JSON could not be read"
-                preflight_ok = False
-        else:
-            preflight_status = "preflight JSON was not written"
-            preflight_ok = False
-        if preflight_phase_validation is None:
-            preflight_phase_validation = {
-                "ok": False,
-                "phase": args.phase,
-                "expected_scheduled_evaluators": expected_scheduled_evaluators_for_phase(args.phase),
-                "observed_scheduled_evaluators": [],
-                "missing_scheduled_evaluators": expected_scheduled_evaluators_for_phase(args.phase),
-                "unexpected_scheduled_evaluators": [],
-                "order_matches": False,
-            }
+        preflight_result = execute_run_eval_preflight(
+            command=preflight_command,
+            output_json=preflight_json,
+            log_path=preflight_log_path,
+            env=run_env,
+            phase=args.phase,
+        )
+        preflight_returncode = int(preflight_result["returncode"])
+        preflight_ok = bool(preflight_result["ok"])
+        preflight_status = str(preflight_result["status"])
+        preflight_phase_validation = preflight_result["phase_validation"]
         if not preflight_ok:
             row = {
                 "config": rel_config,
@@ -2332,7 +2756,20 @@ def main() -> None:
             raise SystemExit(
                 f"run_eval preflight failed for {rel_config}: {preflight_status}"
             )
-        returncode = stream_run(command, log_path, run_env)
+        checkpoint_root = benchmark_checkpoint_root(
+            base_config=args.base_config,
+            model_config=config_path,
+            wandb_run_id=run_env.get("WANDB_RUN_ID", ""),
+        )
+        returncode, process_attempts = run_eval_with_infrastructure_recovery(
+            command,
+            log_path=log_path,
+            env=run_env,
+            checkpoint_root=checkpoint_root,
+            wandb_run_id=run_env.get("WANDB_RUN_ID", ""),
+            max_resume_attempts=args.infrastructure_resume_attempts,
+            base_delay_seconds=args.infrastructure_resume_base_seconds,
+        )
         row = {
             "config": rel_config,
             "preflight_command": preflight_command,
@@ -2348,6 +2785,8 @@ def main() -> None:
             "wandb_entity": run_env.get("WANDB_ENTITY", ""),
             "wandb_project": run_env.get("WANDB_PROJECT", ""),
             "returncode": returncode,
+            "process_attempts": process_attempts,
+            "benchmark_checkpoint_root": str(checkpoint_root),
             "started_at": started_at,
             "ended_at": time.time(),
         }
@@ -2384,6 +2823,7 @@ def main() -> None:
                             config_path, benchmark
                         ),
                         env_file=args.env_file,
+                        timeout_seconds=args.verification_timeout_seconds,
                     )
                 )
             row["wandb_completion"] = [
@@ -2444,6 +2884,7 @@ def main() -> None:
                     phase=args.phase,
                 ),
                 required_texts=weave_agents_required_texts,
+                timeout_seconds=args.verification_timeout_seconds,
             )
             row["weave_agents_completion"] = {
                 "ok": bool(weave_result.get("ok")),
@@ -2461,6 +2902,7 @@ def main() -> None:
                 row["returncode"] = 1
                 row["weave_agents_completion_failed"] = True
                 returncode = 1
+        row["ended_at"] = time.time()
         manifest_rows.append(row)
         write_json(batch_manifest_path, manifest_rows)
         review_record["runs"] = manifest_rows

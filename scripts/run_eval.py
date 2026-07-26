@@ -16,6 +16,7 @@ import questionary
 import importlib
 import importlib.util
 
+from config_base_selection import select_base_config_name
 from utils import paginate_choices
 
 
@@ -793,11 +794,18 @@ def summarize_execution_readiness(cfg, run, enabled_benchmarks):
 
 # Set config path
 config_dir = Path("configs")
-base_cfg_name = "base_config.yaml"
 parser = ArgumentParser()
 parser.add_argument("--config", "-c", type=str)
 parser.add_argument("--select-config", "-s", action="store_true", default=False)
-parser.add_argument("--base-config", type=str, default=base_cfg_name)
+parser.add_argument(
+    "--base-config",
+    type=str,
+    default=None,
+    help=(
+        "Base config name or path. When omitted, Taiwan-scoped configs use "
+        "base_config_taiwan.yaml and all other configs use base_config.yaml."
+    ),
+)
 parser.add_argument("--yes", "-y", action="store_true", default=False)
 parser.add_argument(
     "--allow-invalid-token-allocation",
@@ -845,7 +853,8 @@ assert custom_cfg_path.exists(), f"Config file {custom_cfg_path.resolve()} does 
 
 # Configuration loading
 custom_cfg = OmegaConf.load(custom_cfg_path)
-base_cfg_path = config_dir / args.base_config
+selected_base_config = select_base_config_name(custom_cfg, args.base_config)
+base_cfg_path = config_dir / selected_base_config
 base_cfg = OmegaConf.load(base_cfg_path)
 
 # vLLM利用時にbase_urlが未指定の場合、Composeサービス名 'vllm' をデフォルト設定
@@ -1340,10 +1349,9 @@ def _benchmark_is_resumable(benchmark_name):
         )
         return False
 
-    if (
-        benchmark_checkpoints.completed_snapshot_matches_config(benchmark_name)
-        and raw_checkpoint
-        and raw_checkpoint.get("status") != "completed"
+    if benchmark_checkpoints.can_restore_completed_snapshot(
+        benchmark_name,
+        remote_completed=remote_completed,
     ):
         benchmark_checkpoints.mark_completed(benchmark_name)
         if run is not None and not _wandb_run_finished:

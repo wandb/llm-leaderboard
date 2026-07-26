@@ -1,4 +1,5 @@
 import json
+import os
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
@@ -804,11 +805,19 @@ class BaseHandler:
 
                 # Sort entries by `id` and write them back to ensure order consistency
                 sorted_entries = sorted(existing_entries.values(), key=sort_key)
-                with open(file_path, "w") as f:
-                    for entry in sorted_entries:
-                        content = json.dumps(entry) + "\n"
-                        f.write(content)
+                temporary_path = file_path.with_name(
+                    f".{file_path.name}.{os.getpid()}.tmp"
+                )
+                try:
+                    with open(temporary_path, "w") as f:
+                        for entry in sorted_entries:
+                            content = json.dumps(entry) + "\n"
+                            f.write(content)
                         f.flush()
+                        os.fsync(f.fileno())
+                    os.replace(temporary_path, file_path)
+                finally:
+                    temporary_path.unlink(missing_ok=True)
 
             else:
                 # Normal mode: Append to the end of the file

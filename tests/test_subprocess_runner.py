@@ -87,6 +87,17 @@ def test_run_streaming_command_returns_output(tmp_path):
     assert result.stdout == "ok\n"
 
 
+def test_run_streaming_command_retains_only_bounded_tail(tmp_path):
+    module = load_module()
+    result = module.run_streaming_command(
+        [sys.executable, "-c", "print('123456789')"],
+        cwd=tmp_path,
+        tail_chars=5,
+    )
+
+    assert result.stdout == "6789\n"
+
+
 def test_run_streaming_command_timeout_terminates_child_group(tmp_path):
     module = load_module()
     pid_path = tmp_path / "timeout-child.pid"
@@ -116,9 +127,39 @@ def test_nemoclaw_sandbox_lease_rejects_concurrent_owner():
     module = load_module()
     sandbox = f"pytest-{os.getpid()}-{time.time_ns()}"
     with module.NeMoClawSandboxLease(sandbox):
-        with pytest.raises(module.NeMoClawSandboxLeaseError, match="already in use"):
-            with module.NeMoClawSandboxLease(sandbox):
+        with pytest.raises(
+            module.NeMoClawSandboxLeaseError,
+            match="Timed out waiting",
+        ):
+            with module.NeMoClawSandboxLease(
+                sandbox,
+                timeout_seconds=0,
+            ):
                 pass
+
+
+def test_nemoclaw_sandbox_lease_waits_for_owner_then_acquires(tmp_path):
+    module = load_module()
+    sandbox = f"pytest-wait-{os.getpid()}-{time.time_ns()}"
+    acquired = []
+
+    def wait_for_lease():
+        with module.NeMoClawSandboxLease(
+            sandbox,
+            timeout_seconds=1,
+            poll_seconds=0.01,
+            report_interval_seconds=1,
+        ):
+            acquired.append(True)
+
+    with module.NeMoClawSandboxLease(sandbox):
+        thread = threading.Thread(target=wait_for_lease)
+        thread.start()
+        time.sleep(0.05)
+        assert acquired == []
+    thread.join(timeout=1)
+
+    assert acquired == [True]
 
 
 def test_nemoclaw_sandbox_is_parsed_from_runner_command():

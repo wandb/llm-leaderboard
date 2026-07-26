@@ -140,7 +140,8 @@ A full run is release-usable only after all of the following pass:
 1. The evaluation process exits with code 0.
 2. Every enabled benchmark has matching local and W&B completion evidence.
 3. Expected row counts and required W&B tables are present.
-4. BFCL timeout and inference-error counts are zero.
+4. BFCL timeout count is present as a non-negative scored-outcome metric, and
+   the infrastructure inference-error count is zero.
 5. Agentic W&B/Weave evidence passes the configured trace checks.
 6. Taiwan aggregation finds every required benchmark score.
 7. Required Agentic session audit fields pass row-by-row; summary counts alone
@@ -189,3 +190,111 @@ Post-recovery validation:
   deprecation warning).
 - `git diff --check` and Python compilation of the changed runtime paths
   passed.
+
+## July 26 BFCL and process-level hardening
+
+The next GLM-5.2 run exposed a BFCL v4 recovery defect after 496 logical cases
+had been generated. One failed memory prerequisite was removed from the retry
+set because its dependent main cases already existed. This made the recovery
+attempt a no-op and left later customer-memory rows based on contaminated
+state.
+
+The corrected BFCL recovery contract is:
+
+- a failed memory prerequisite invalidates its later prerequisites and all
+  dependent main cases;
+- memory state is restored from the last healthy prerequisite checkpoint;
+- stale descendant snapshots are removed before regeneration;
+- infrastructure failures are retried inline before dependencies are
+  released;
+- result writes are synchronous and atomic, and already-running cases are
+  drained and persisted before failed rows are handed to the bounded outer
+  recovery loop;
+- a recovery round that generates zero rows while failures remain is rejected
+  immediately.
+
+The affected production-shaped result copy selected exactly 10 repair rows:
+the failed prerequisite, three later prerequisites, and six dependent customer
+cases. It restored the customer snapshot from prerequisite 5.
+
+### Authorized process-level recovery
+
+The batch runner still performs no automatic resume by default. A bounded
+process-level resume is available only when all of these are true:
+
+1. `--allow-wandb-resume` is supplied;
+2. `--wandb-run-id-prefix` is non-empty;
+3. the signed/reviewed resume JSON matches the run prefix and phase;
+4. `--infrastructure-resume-attempts N` is between 1 and 3 and the resume JSON
+   contains the same `infrastructure_recovery_attempts: N`;
+5. the process wrote a new failed benchmark checkpoint during that attempt;
+6. the checkpoint classifies the failure as known provider or gateway
+   infrastructure.
+
+Example resume authorization payload:
+
+```json
+{
+  "allow_wandb_resume": true,
+  "wandb_run_id_prefix": "reviewed-run-prefix",
+  "phase": "full",
+  "explicit_user_instruction": true,
+  "purpose": "resume only reviewed transient infrastructure failures",
+  "infrastructure_recovery_attempts": 2
+}
+```
+
+Model/task timeouts, turn/tool/token budget exhaustion, operator interruption,
+authentication, permission, billing, insufficient quota, deterministic code
+errors, and unknown failures are never automatically resumed. Each process
+attempt and its decision are written to the batch manifest.
+
+### Persistence and resource bounds
+
+- BFCL result JSONL, benchmark checkpoints, direct-LLM item checkpoints,
+  Agentic Math partial results, and Agentic SWE result files use atomic replace;
+  critical checkpoints are flushed with `fsync`.
+- Long child-process output is streamed to the terminal while only a bounded
+  tail is retained in parent memory.
+- BFCL provider request timeout is 120 seconds; its case timeout remains an
+  independent 600 seconds.
+
+Post-change validation on July 26:
+
+- production-shaped BFCL repair selection and snapshot restoration passed;
+- focused BFCL, checkpoint, batch, Agentic Math, and Agentic SWE suites passed;
+- the complete repository suite passed: `1732 passed` with seven third-party
+  deprecation warnings;
+- no paid model API was called during this hardening work.
+
+## July 26 cross-boundary robustness audit
+
+A second audit covered failure classification, checkpoint restoration,
+parallel sandbox ownership, post-run verification, scheduler records, and
+cash-cost-exempt W&B execution.
+
+Corrections:
+
+- A failed rerun can no longer restore a local `last_completed` snapshot unless
+  the same W&B run still has matching remote completion evidence.
+- Agentic inner preflight JSON is deleted before every preflight, so a stale
+  passing report cannot authorize a failed current check.
+- Processes sharing a mutable NeMoClaw sandbox wait on an exclusive,
+  owner-recorded lease instead of racing config writes or failing immediately.
+  Nested commands inherit the lease and do not deadlock themselves.
+- BFCL malformed model output and case timeout remain scored model outcomes.
+  Only provider/web-search infrastructure errors enter bounded recovery.
+- BFCL now persists an exhausted infrastructure row, withholds its dependent
+  cases, and returns control to the failed-ID recovery loop. The earlier
+  implementation raised before that outer loop could run.
+- Batch reviews, checkpoint files, result manifests, and scheduler task records
+  use atomic replacement with flushed temporary files.
+- W&B and Weave post-run verifiers have an independent 600-second timeout and
+  write explicit timeout evidence instead of hanging after inference finishes.
+- Slotd/Slurm tasks retain a terminal status, return code, and end time instead
+  of remaining indistinguishable from an active task after process exit.
+- Cash-cost-exempt execution is available only with an explicit launcher flag
+  and only when every selected generated config carries both the exemption and
+  its reason. Normal paid providers retain all budget and approval gates.
+
+The focused recovery suites passed before the complete `1732`-test run.

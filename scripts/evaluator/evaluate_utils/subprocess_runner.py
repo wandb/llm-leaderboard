@@ -2,18 +2,24 @@ from __future__ import annotations
 
 import os
 import fcntl
+import hashlib
 import json
 import signal
 import subprocess
 import tempfile
 import threading
 import time
+from collections import deque
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Mapping, Sequence
 
 
 NEMOCLAW_SANDBOX_LEASE_ENV = "NEJUMI_NEMOCLAW_SANDBOX_LEASE"
+NEMOCLAW_SANDBOX_LEASE_TIMEOUT_ENV = (
+    "NEJUMI_NEMOCLAW_SANDBOX_LEASE_TIMEOUT_SECONDS"
+)
+DEFAULT_NEMOCLAW_SANDBOX_LEASE_TIMEOUT_SECONDS = 57_600.0
 
 
 class NeMoClawSandboxLeaseError(RuntimeError):
@@ -23,24 +29,76 @@ class NeMoClawSandboxLeaseError(RuntimeError):
 class NeMoClawSandboxLease:
     """Exclusive process-lifetime lease for a mutable NeMoClaw sandbox."""
 
-    def __init__(self, sandbox: str) -> None:
+    def __init__(
+        self,
+        sandbox: str,
+        *,
+        timeout_seconds: float | None = None,
+        poll_seconds: float = 5.0,
+        report_interval_seconds: float = 60.0,
+    ) -> None:
         safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in sandbox)
-        self.path = Path(tempfile.gettempdir()) / f"nejumi-nemoclaw-{safe}.lock"
+        digest = hashlib.sha256(sandbox.encode("utf-8")).hexdigest()[:12]
+        self.path = (
+            Path(tempfile.gettempdir())
+            / f"nejumi-nemoclaw-{safe[:48]}-{digest}.lock"
+        )
         self.sandbox = sandbox
+        configured_timeout = (
+            timeout_seconds
+            if timeout_seconds is not None
+            else os.environ.get(NEMOCLAW_SANDBOX_LEASE_TIMEOUT_ENV)
+        )
+        self.timeout_seconds = float(
+            configured_timeout
+            if configured_timeout is not None
+            else DEFAULT_NEMOCLAW_SANDBOX_LEASE_TIMEOUT_SECONDS
+        )
+        if self.timeout_seconds < 0:
+            raise ValueError(
+                "NeMoClaw sandbox lease timeout must be non-negative"
+            )
+        self.poll_seconds = max(0.05, float(poll_seconds))
+        self.report_interval_seconds = max(
+            self.poll_seconds,
+            float(report_interval_seconds),
+        )
         self._handle = None
 
     def __enter__(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         handle = self.path.open("a+", encoding="utf-8")
-        try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            handle.seek(0)
-            owner = handle.read().strip() or "unknown owner"
-            handle.close()
-            raise NeMoClawSandboxLeaseError(
-                f"NeMoClaw sandbox {self.sandbox!r} is already in use: {owner}"
-            ) from exc
+        started_at = time.monotonic()
+        next_report_at = started_at
+        while True:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError as exc:
+                now = time.monotonic()
+                elapsed = now - started_at
+                handle.seek(0)
+                owner = handle.read().strip() or "unknown owner"
+                if elapsed >= self.timeout_seconds:
+                    handle.close()
+                    raise NeMoClawSandboxLeaseError(
+                        f"Timed out waiting for NeMoClaw sandbox "
+                        f"{self.sandbox!r} after {elapsed:.1f}s: {owner}"
+                    ) from exc
+                if now >= next_report_at:
+                    print(
+                        "Waiting for NeMoClaw sandbox lease: "
+                        f"sandbox={self.sandbox}, elapsed={elapsed:.1f}s, "
+                        f"owner={owner}",
+                        flush=True,
+                    )
+                    next_report_at = now + self.report_interval_seconds
+                time.sleep(
+                    min(
+                        self.poll_seconds,
+                        max(0.0, self.timeout_seconds - elapsed),
+                    )
+                )
         handle.seek(0)
         handle.truncate()
         handle.write(
@@ -48,6 +106,7 @@ class NeMoClawSandboxLease:
                 {
                     "pid": os.getpid(),
                     "sandbox": self.sandbox,
+                    "wandb_run_id": os.environ.get("WANDB_RUN_ID", ""),
                     "acquired_at_unix": time.time(),
                 },
                 sort_keys=True,
@@ -55,7 +114,13 @@ class NeMoClawSandboxLease:
             + "\n"
         )
         handle.flush()
+        os.fsync(handle.fileno())
         self._handle = handle
+        print(
+            "Acquired NeMoClaw sandbox lease: "
+            f"sandbox={self.sandbox}, path={self.path}",
+            flush=True,
+        )
         return self
 
     def __exit__(self, _exc_type, _exc, _tb) -> None:
@@ -66,6 +131,10 @@ class NeMoClawSandboxLease:
         finally:
             self._handle.close()
             self._handle = None
+            print(
+                f"Released NeMoClaw sandbox lease: sandbox={self.sandbox}",
+                flush=True,
+            )
 
 
 def nemoclaw_sandbox_from_command(command: Sequence[str]) -> str | None:
@@ -210,8 +279,30 @@ def run_streaming_command(
             bufsize=1,
             start_new_session=True,
         )
-        stdout_parts: list[str] = []
+        stdout_parts: deque[str] = deque()
+        retained_stdout_chars = 0
         timed_out = threading.Event()
+
+        def retain_stdout(line: str) -> None:
+            nonlocal retained_stdout_chars
+            limit = max(0, int(tail_chars))
+            if limit == 0:
+                return
+            if len(line) >= limit:
+                stdout_parts.clear()
+                stdout_parts.append(line[-limit:])
+                retained_stdout_chars = limit
+                return
+            stdout_parts.append(line)
+            retained_stdout_chars += len(line)
+            while stdout_parts and retained_stdout_chars > limit:
+                excess = retained_stdout_chars - limit
+                first = stdout_parts[0]
+                if len(first) <= excess:
+                    retained_stdout_chars -= len(stdout_parts.popleft())
+                else:
+                    stdout_parts[0] = first[excess:]
+                    retained_stdout_chars -= excess
 
         def stop_on_timeout() -> None:
             timed_out.set()
@@ -232,7 +323,7 @@ def run_streaming_command(
         try:
             for line in proc.stdout:
                 print(line, end="", flush=True)
-                stdout_parts.append(line)
+                retain_stdout(line)
             returncode = proc.wait()
         except BaseException:
             terminate_process_group(proc)

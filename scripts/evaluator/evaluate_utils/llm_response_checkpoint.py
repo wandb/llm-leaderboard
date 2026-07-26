@@ -6,6 +6,7 @@ import inspect
 import json
 import os
 import re
+import threading
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -88,6 +89,29 @@ def _safe_component(value: str) -> str:
     return component or "item"
 
 
+def _atomic_write_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(
+        f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
+    )
+    try:
+        with temporary.open("w", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    payload,
+                    ensure_ascii=False,
+                    indent=2,
+                    default=_json_default,
+                )
+                + "\n"
+            )
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 class LLMResponseCheckpointStore:
     """Atomic, request-bound checkpoints for large evaluator batches."""
 
@@ -148,18 +172,7 @@ class LLMResponseCheckpointStore:
             ),
             "response": response_to_dict(response),
         }
-        temporary = path.with_suffix(".json.tmp")
-        temporary.write_text(
-            json.dumps(
-                payload,
-                ensure_ascii=False,
-                indent=2,
-                default=_json_default,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-        os.replace(temporary, path)
+        _atomic_write_json(path, payload)
 
 
 class JSONItemCheckpointStore:
@@ -209,18 +222,7 @@ class JSONItemCheckpointStore:
             ),
             "value": value,
         }
-        temporary = path.with_suffix(".json.tmp")
-        temporary.write_text(
-            json.dumps(
-                payload,
-                ensure_ascii=False,
-                indent=2,
-                default=_json_default,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-        os.replace(temporary, path)
+        _atomic_write_json(path, payload)
 
 
 def default_checkpoint_root(run: Any, benchmark: str) -> Path:

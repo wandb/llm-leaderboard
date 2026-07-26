@@ -45,6 +45,8 @@ models:
     math_limit: 50
     math_openclaw_timeout: 900
     swe_subset: "leaderboard_compact_40"
+    cash_cost_exempt: true
+    cash_cost_exempt_reason: "W&B employee Inference access; no project cash charge."
     notes: "Available for cost-free harness and behavior checks; account for provider quantization when interpreting scores."
 
   - slug: claude-fable-5-anthropic-direct-high

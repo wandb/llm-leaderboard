@@ -427,11 +427,25 @@ def _run_generation_with_recovery(
         )
         if delay > 0:
             sleep(delay)
-        generation_main(generation_args)
+        generation_args.force_retry_ids = [
+            row["id"] for row in failures
+        ]
+        generation_summary = generation_main(generation_args)
+        generated_case_count = (
+            generation_summary.get("generated_case_count")
+            if isinstance(generation_summary, dict)
+            else None
+        )
+        if generated_case_count == 0:
+            raise BFCLInfrastructureError(
+                "BFCL v4 recovery made no progress: the generation layer "
+                "selected zero cases while retryable failures remained"
+            )
         failures = _collect_retryable_generation_failures(
             result_dir,
             model_registry_name,
         )
+    generation_args.force_retry_ids = []
     return failures
 
 
@@ -439,7 +453,8 @@ def _collect_output_rows(
     result_dir: Path,
     score_dir: Path,
     model_registry_name: str,
-) -> tuple[list[dict[str, Any]], int, int]:
+) -> tuple[list[dict[str, Any]], int, int, int]:
+    from bfcl_eval._llm_response_generation import _retryable_failed_result
     from bfcl_eval.utils import extract_test_category
 
     model_dir_name = model_registry_name.replace("/", "_")
@@ -533,20 +548,19 @@ def _collect_output_rows(
 
     timeout_count = sum(bool(row.get("timeout")) for row in result_by_id.values())
     inference_error_count = sum(
-        not (
-            bool(row.get("timeout"))
-            or row.get("error") == "bfcl_case_timeout"
-        )
-        and (
-            bool(row.get("error"))
-            or (
-                isinstance(row.get("result"), str)
-                and row["result"].startswith("Error during inference:")
-            )
-        )
+        _retryable_failed_result(row)
         for row in result_by_id.values()
     )
-    return output_rows, timeout_count, inference_error_count
+    model_error_count = sum(
+        row.get("error") == "model_inference_error"
+        for row in result_by_id.values()
+    )
+    return (
+        output_rows,
+        timeout_count,
+        inference_error_count,
+        model_error_count,
+    )
 
 
 def _validate_reused_generation_results(
@@ -719,6 +733,9 @@ def evaluate_v4() -> None:
             consecutive_failure_fail_fast=int(
                 bfcl_cfg["consecutive_failure_fail_fast"]
             ),
+            infrastructure_recovery_rounds=recovery_rounds,
+            infrastructure_recovery_base_seconds=recovery_base_seconds,
+            force_retry_ids=[],
             max_cases_per_category=(
                 int(bfcl_cfg.get("testmode_cases_per_category", 2))
                 if bool(getattr(cfg, "testmode", False))
@@ -758,9 +775,12 @@ def evaluate_v4() -> None:
         raise RuntimeError("BFCL v4 produced an empty leaderboard")
     overall_df.rename(columns={"Model": "BFCL Model Name"}, inplace=True)
     overall_df["model_name"] = str(cfg.model.pretrained_model_name_or_path)
-    output_rows, timeout_count, inference_error_count = _collect_output_rows(
-        result_dir, score_dir, model_registry_name
-    )
+    (
+        output_rows,
+        timeout_count,
+        inference_error_count,
+        model_error_count,
+    ) = _collect_output_rows(result_dir, score_dir, model_registry_name)
     web_search_stats: dict[str, Any] = {
         "backend": web_search_config["backend"],
         "queries": 0,
@@ -794,6 +814,7 @@ def evaluate_v4() -> None:
         )
     overall_df["timeout_count"] = timeout_count
     overall_df["inference_error_count"] = inference_error_count
+    overall_df["model_error_count"] = model_error_count
 
     first = overall_df.iloc[0]
     radar_columns = (
@@ -821,6 +842,7 @@ def evaluate_v4() -> None:
             "bfcl_radar_table": wandb.Table(dataframe=radar_df),
             "bfcl_timeout_count": timeout_count,
             "bfcl_inference_error_count": inference_error_count,
+            "bfcl_model_error_count": model_error_count,
             "bfcl_timeout_policy": "score_as_incorrect",
             "bfcl_version": "v4",
             "bfcl_profile": profile,
@@ -852,7 +874,9 @@ def evaluate_v4() -> None:
         "BFCL v4 evaluation completed: "
         f"{logical_case_count} logical scored cases, "
         f"{len(output_rows)} runtime rows, "
-        f"{timeout_count} timeouts, {inference_error_count} inference errors"
+        f"{timeout_count} timeouts, "
+        f"{inference_error_count} infrastructure errors, "
+        f"{model_error_count} model response errors"
     )
     if inference_error_count:
         if not remaining_generation_failures:

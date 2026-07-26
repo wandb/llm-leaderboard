@@ -328,6 +328,8 @@ def preflight(cfg, output_dir: Path) -> dict[str, Any]:
     preflight_output_dir = output_dir / "runner"
     command = _build_assorted_command(cfg, output_dir)
     command.append("--preflight-only")
+    report_path = preflight_output_dir / "preflight.json"
+    report_path.unlink(missing_ok=True)
     try:
         result = subprocess.run(
             command,
@@ -360,7 +362,6 @@ def preflight(cfg, output_dir: Path) -> dict[str, Any]:
             "will_run_grading": False,
             "will_initialize_wandb": False,
         }
-    report_path = preflight_output_dir / "preflight.json"
     report = None
     if report_path.exists():
         try:

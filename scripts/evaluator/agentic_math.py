@@ -341,6 +341,8 @@ def preflight(cfg, run, output_dir: Path) -> dict[str, Any]:
 
     command = _build_openclaw_command(cfg, jsonl_path, output_dir)
     command.append("--preflight-only")
+    report_path = output_dir / "openclaw" / "preflight.json"
+    report_path.unlink(missing_ok=True)
     try:
         result = subprocess.run(
             command,
@@ -366,7 +368,6 @@ def preflight(cfg, run, output_dir: Path) -> dict[str, Any]:
             "will_run_grading": False,
             "will_initialize_wandb": False,
         }
-    report_path = output_dir / "openclaw" / "preflight.json"
     report = None
     if report_path.exists():
         try:

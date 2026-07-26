@@ -21,6 +21,50 @@ def load_module(path: Path):
     return module
 
 
+def load_evaluator_module(path: Path):
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    try:
+        return load_module(path)
+    finally:
+        sys.path.pop(0)
+
+
+def test_evaluator_assorted_preflight_rejects_stale_success_report(
+    tmp_path, monkeypatch
+):
+    from omegaconf import OmegaConf
+
+    evaluator = load_evaluator_module(
+        REPO_ROOT / "scripts" / "evaluator" / "agentic_swe_assorted.py"
+    )
+    output_dir = tmp_path / "output"
+    stale_report = output_dir / "runner" / "preflight.json"
+    stale_report.parent.mkdir(parents=True)
+    stale_report.write_text('{"ok": true}\n', encoding="utf-8")
+    monkeypatch.setattr(
+        evaluator.subprocess,
+        "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            command, 0, stdout="no report written", stderr=""
+        ),
+    )
+    cfg = OmegaConf.create(
+        {
+            "testmode": False,
+            "model": {"pretrained_model_name_or_path": "provider/model"},
+            "agentic_swe_assorted": {
+                "openclaw_model": "provider/model",
+                "nemoclaw_sandbox": "nejumi-taiwan",
+            },
+        }
+    )
+
+    result = evaluator.preflight(cfg, output_dir)
+
+    assert result["ok"] is False
+    assert not stale_report.exists()
+
+
 def test_agentic_swe_assorted_terminates_child_process_group(monkeypatch):
     module = load_module(SCRIPT)
     signals = []

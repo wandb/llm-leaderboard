@@ -199,14 +199,17 @@ bfcl:
   num_threads: 4
   provider_min_request_interval_sec: 2.0
   provider_request_jitter_sec: 0.5
-  request_timeout_sec: 300
+  # BFCL responses are short (the current full-run p95 is 16s). Treat a
+  # two-minute silent request as provider infrastructure failure so recovery
+  # starts while the benchmark is still running.
+  request_timeout_sec: 120
   case_timeout_sec: 600
   case_timeout_retries: 0
   resume_existing_results: true
   retry_failed_cases: true
   consecutive_failure_fail_fast: 5
   infrastructure_recovery_rounds: 2
-  infrastructure_recovery_base_seconds: 60
+  infrastructure_recovery_base_seconds: 30
   progress_poll_sec: 5
   artifacts_path: 'llm-leaderboard/tc-leaderboard/bfcl-v4-zh-tw:production'
   web_search:

@@ -12,6 +12,7 @@ from evaluator.evaluate_utils.benchmark_checkpoint import (
     BenchmarkCheckpointStore,
     aggregate_requires_refresh,
     bfcl_completion_evidence_is_clean,
+    classify_benchmark_failure,
 )
 
 
@@ -23,6 +24,33 @@ def test_bfcl_completion_requires_zero_infrastructure_errors():
         {"bfcl_inference_error_count": 7}
     )
     assert not bfcl_completion_evidence_is_clean({})
+
+
+def test_benchmark_failure_classification_is_conservative():
+    assert classify_benchmark_failure(
+        "BFCLInfrastructureError",
+        "provider read timed out",
+    )["infrastructure_retryable"]
+    assert classify_benchmark_failure(
+        "RuntimeError",
+        "child failed with ProviderRecoveryExhaustedError: 504",
+    )["infrastructure_retryable"]
+    assert classify_benchmark_failure(
+        "RuntimeError",
+        "ProviderRecoveryExhaustedError after a task mentioned token budget",
+    )["infrastructure_retryable"]
+    assert not classify_benchmark_failure(
+        "TimeoutError",
+        "task exceeded benchmark wall timeout",
+    )["infrastructure_retryable"]
+    assert not classify_benchmark_failure(
+        "RateLimitError",
+        "insufficient_quota: billing limit reached",
+    )["infrastructure_retryable"]
+    assert not classify_benchmark_failure(
+        "RuntimeError",
+        "unknown failure",
+    )["infrastructure_retryable"]
 
 
 def test_aggregate_refreshes_after_upstream_execution_only():
@@ -75,6 +103,8 @@ def test_failure_replaces_started_state_and_is_not_skipped(tmp_path):
     payload = store.load("agentic_swe_assorted")
     assert payload["status"] == "failed"
     assert payload["error_type"] == "RuntimeError"
+    assert payload["failure_category"] == "unknown"
+    assert payload["infrastructure_retryable"] is False
     assert store.is_completed("agentic_swe_assorted") is False
 
 
@@ -134,6 +164,20 @@ def test_interrupted_rerun_preserves_matching_completed_snapshot(tmp_path):
     assert payload["last_completed"]["config_fingerprint"] == "config-a"
     assert payload["last_completed"]["code_fingerprint"] == "code-a"
     assert store.completed_snapshot_matches_config("agentic_math") is True
+    assert (
+        store.can_restore_completed_snapshot(
+            "agentic_math",
+            remote_completed=False,
+        )
+        is False
+    )
+    assert (
+        store.can_restore_completed_snapshot(
+            "agentic_math",
+            remote_completed=True,
+        )
+        is True
+    )
 
 
 def test_completed_checkpoint_allows_code_drift_without_config_drift(tmp_path):

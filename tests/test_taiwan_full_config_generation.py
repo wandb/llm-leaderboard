@@ -14,6 +14,7 @@ if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
 from prepare_taiwan_full_eval_configs import (
+    DEFAULT_TAIWAN_NEMOCLAW_SANDBOX,
     DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH,
     build_override,
     generate_configs,
@@ -166,6 +167,27 @@ def test_agentic_phase_runs_only_agentic_generation(tmp_path):
     assert cfg.bfcl.provider_min_request_interval_sec == 2.0
     assert cfg.bfcl.provider_request_jitter_sec == 0.5
     assert cfg.bfcl.consecutive_failure_fail_fast == 5
+    assert cfg.execution.cash_cost_exempt is False
+    assert cfg.execution.cash_cost_exempt_reason == ""
+
+
+def test_cash_cost_exemption_is_propagated_from_manifest(tmp_path):
+    override = build_override(
+        {
+            "slug": "wandb-free-model",
+            "run_name": "wandb-free-model",
+            "openclaw_model": "wandb-inference/provider/model",
+            "cash_cost_exempt": True,
+            "cash_cost_exempt_reason": "employee account has no cash charge",
+        },
+        tmp_path / "outputs",
+        phase="full",
+    )
+
+    assert override["execution"] == {
+        "cash_cost_exempt": True,
+        "cash_cost_exempt_reason": "employee account has no cash charge",
+    }
 
 
 def test_full_phase_supports_verified_math_and_bfcl_recovery_sources(tmp_path):
@@ -264,7 +286,7 @@ def test_swebench_pro_nemoclaw_cli_override_is_swe_only(tmp_path):
     assert cfg.swebench_pro.nemoclaw_checkout_sandbox_root == "/sandbox/checkouts"
     assert cfg.swebench_pro.nemoclaw_checkout_transfer_mode == "copy"
     assert cfg.swebench_pro.nemoclaw_openclaw_config_path == DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH
-    assert "nemoclaw_sandbox" not in cfg.agentic_math
+    assert cfg.agentic_math.nemoclaw_sandbox == DEFAULT_TAIWAN_NEMOCLAW_SANDBOX
     assert "nemoclaw_sandbox" not in cfg.deepswe
 
 
@@ -334,7 +356,10 @@ def test_swebench_pro_nemoclaw_manifest_override_does_not_touch_agentic_math(tmp
         override["swebench_pro"]["nemoclaw_openclaw_config_path"]
         == DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH
     )
-    assert "nemoclaw_sandbox" not in override["agentic_math"]
+    assert (
+        override["agentic_math"]["nemoclaw_sandbox"]
+        == DEFAULT_TAIWAN_NEMOCLAW_SANDBOX
+    )
     assert "nemoclaw_sandbox" not in override["deepswe"]
 
 
@@ -359,7 +384,10 @@ def test_deepswe_nemoclaw_manifest_override_does_not_touch_other_agentic_benchma
         override["deepswe"]["nemoclaw_openclaw_config_path"]
         == DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH
     )
-    assert "nemoclaw_sandbox" not in override["agentic_math"]
+    assert (
+        override["agentic_math"]["nemoclaw_sandbox"]
+        == DEFAULT_TAIWAN_NEMOCLAW_SANDBOX
+    )
     assert "nemoclaw_sandbox" not in override["swebench_pro"]
 
 

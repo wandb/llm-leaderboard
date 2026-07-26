@@ -469,6 +469,28 @@ def test_verify_bfcl_v4_canary_rejects_runtime_errors():
     )
 
 
+def test_verify_bfcl_v4_allows_timeouts_as_scored_model_outcomes():
+    module = load_module()
+    summary = complete_bfcl_summary()
+    summary["bfcl_timeout_count"] = 3
+    run = FakeRun(summary=summary)
+
+    result = module.verify_run(
+        run,
+        module.BENCHMARK_SPECS["bfcl"],
+        expected_total=12,
+    )
+
+    assert result["ok"] is True
+    assert any(
+        check["name"] == "bfcl_runtime_error_metric"
+        and check.get("metric") == "bfcl_timeout_count"
+        and check.get("value") == 3
+        and check["ok"]
+        for check in result["checks"]
+    )
+
+
 def test_verify_agentic_math_wandb_completion_accepts_complete_run():
     module = load_module()
     run = FakeRun(

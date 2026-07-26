@@ -248,32 +248,60 @@ def _bfcl_completion_checks(
     total: int | None,
 ) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
-    for metric_name in (BFCL_TIMEOUT_METRIC, BFCL_INFERENCE_ERROR_METRIC):
-        raw_value = _metric(summary, metric_name)
-        try:
-            value = int(raw_value)
-        except (TypeError, ValueError):
-            value = None
-        if value == 0:
-            checks.append(
-                _ok_check(
-                    "bfcl_runtime_error_metric",
-                    f"{metric_name} is zero",
-                    metric=metric_name,
-                    value=value,
-                    expected=0,
-                )
+    raw_timeout_value = _metric(summary, BFCL_TIMEOUT_METRIC)
+    try:
+        timeout_value = int(raw_timeout_value)
+    except (TypeError, ValueError):
+        timeout_value = None
+    if timeout_value is None or timeout_value < 0:
+        checks.append(
+            _fail_check(
+                "bfcl_runtime_error_metric",
+                f"missing or invalid {BFCL_TIMEOUT_METRIC}",
+                metric=BFCL_TIMEOUT_METRIC,
+                value=raw_timeout_value,
+                expected="integer >= 0",
             )
-        else:
-            checks.append(
-                _fail_check(
-                    "bfcl_runtime_error_metric",
-                    f"{metric_name} must be 0",
-                    metric=metric_name,
-                    value=raw_value,
-                    expected=0,
-                )
+        )
+    else:
+        checks.append(
+            _ok_check(
+                "bfcl_runtime_error_metric",
+                (
+                    f"{BFCL_TIMEOUT_METRIC}={timeout_value}; BFCL case timeouts "
+                    "are scored as incorrect model outcomes"
+                ),
+                metric=BFCL_TIMEOUT_METRIC,
+                value=timeout_value,
+                expected="integer >= 0",
             )
+        )
+
+    raw_error_value = _metric(summary, BFCL_INFERENCE_ERROR_METRIC)
+    try:
+        error_value = int(raw_error_value)
+    except (TypeError, ValueError):
+        error_value = None
+    if error_value == 0:
+        checks.append(
+            _ok_check(
+                "bfcl_runtime_error_metric",
+                f"{BFCL_INFERENCE_ERROR_METRIC} is zero",
+                metric=BFCL_INFERENCE_ERROR_METRIC,
+                value=error_value,
+                expected=0,
+            )
+        )
+    else:
+        checks.append(
+            _fail_check(
+                "bfcl_runtime_error_metric",
+                f"{BFCL_INFERENCE_ERROR_METRIC} must be 0",
+                metric=BFCL_INFERENCE_ERROR_METRIC,
+                value=raw_error_value,
+                expected=0,
+            )
+        )
 
     version = _metric(summary, "bfcl_version")
     if version == "v4":

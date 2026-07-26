@@ -1,0 +1,7 @@
+{
+  "allow_wandb_resume": true,
+  "wandb_run_id_prefix": "tw-third-wave-20260726",
+  "phase": "full",
+  "explicit_user_instruction": true,
+  "purpose": "Resume the checkpointed GLM-5.2 W&B Inference full evaluation after fixing BFCL v4 memory-chain infrastructure recovery; reuse completed BFCL rows and continue the remaining benchmarks."
+}

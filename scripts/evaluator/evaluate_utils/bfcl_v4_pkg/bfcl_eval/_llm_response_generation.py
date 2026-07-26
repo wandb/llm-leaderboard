@@ -2,9 +2,7 @@ import argparse
 import heapq
 import multiprocessing as mp
 import os
-import queue
 import shutil
-import threading
 import time
 import traceback
 from collections import defaultdict
@@ -152,11 +150,107 @@ def get_involved_test_entries(
     )
 
 
+def _expand_retry_ids_with_dependents(
+    all_test_entries_involved,
+    retry_ids,
+):
+    expanded_ids = {
+        str(entry_id)
+        for entry_id in retry_ids
+        if entry_id
+    }
+    if not expanded_ids:
+        return expanded_ids
+
+    changed = True
+    while changed:
+        changed = False
+        for entry in all_test_entries_involved:
+            entry_id = str(entry.get("id") or "")
+            if not entry_id or entry_id in expanded_ids:
+                continue
+            if expanded_ids.intersection(entry.get("depends_on", [])):
+                expanded_ids.add(entry_id)
+                changed = True
+    return expanded_ids
+
+
+def _restore_memory_snapshots_for_resume(
+    test_cases_to_generate,
+    model_result_dir,
+):
+    regenerate_ids = {
+        str(entry.get("id") or "")
+        for entry in test_cases_to_generate
+    }
+    resume_roots = {}
+    for entry in test_cases_to_generate:
+        if not is_memory_prereq(entry["id"]):
+            continue
+        snapshot_root = (
+            model_result_dir
+            / get_directory_structure_by_id(entry["id"])
+            / "memory_snapshot"
+        )
+        key = (snapshot_root, str(entry["scenario"]))
+        current = resume_roots.get(key)
+        if current is None or len(entry.get("depends_on", [])) < len(
+            current.get("depends_on", [])
+        ):
+            resume_roots[key] = entry
+
+    for (snapshot_root, scenario), first_resume_entry in resume_roots.items():
+        checkpoint_dir = snapshot_root / "prereq_checkpoints"
+        latest_snapshot = snapshot_root / f"{scenario}_final.json"
+        prior_ids = [
+            dependency_id
+            for dependency_id in first_resume_entry.get("depends_on", [])
+            if dependency_id not in regenerate_ids
+        ]
+        if prior_ids:
+            prior_checkpoint = next(
+                (
+                    checkpoint_dir / f"{dependency_id}.json"
+                    for dependency_id in reversed(prior_ids)
+                    if (checkpoint_dir / f"{dependency_id}.json").exists()
+                ),
+                None,
+            )
+            if prior_checkpoint is None:
+                raise RuntimeError(
+                    "Cannot safely resume BFCL memory prerequisite "
+                    f"{first_resume_entry['id']}: no prior checkpoint exists "
+                    f"under {checkpoint_dir}"
+                )
+            latest_snapshot.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(prior_checkpoint, latest_snapshot)
+        else:
+            latest_snapshot.unlink(missing_ok=True)
+
+        for entry in test_cases_to_generate:
+            if (
+                is_memory_prereq(entry["id"])
+                and str(entry.get("scenario")) == scenario
+                and (
+                    model_result_dir
+                    / get_directory_structure_by_id(entry["id"])
+                    / "memory_snapshot"
+                )
+                == snapshot_root
+            ):
+                (checkpoint_dir / f"{entry['id']}.json").unlink(missing_ok=True)
+
+
 def collect_test_cases(args, model_name, all_test_categories, all_test_entries_involved):
     model_name_dir = model_name.replace("/", "_")
     model_result_dir = args.result_dir / model_name_dir
 
     existing_result = []
+    retry_ids = {
+        str(entry_id)
+        for entry_id in getattr(args, "force_retry_ids", []) or []
+        if entry_id
+    }
     resume_existing_results = bool(
         getattr(args, "resume_existing_results", True)
     )
@@ -180,14 +274,11 @@ def collect_test_cases(args, model_name, all_test_categories, all_test_entries_i
             if file_path.exists():
                 if resume_existing_results or not args.allow_overwrite:
                     rows = load_file(file_path)
-                    existing_result.extend(
-                        row
-                        for row in rows
-                        if not (
-                            retry_failed_cases
-                            and _retryable_failed_result(row)
-                        )
-                    )
+                    for row in rows:
+                        if retry_failed_cases and _retryable_failed_result(row):
+                            retry_ids.add(str(row.get("id") or ""))
+                        else:
+                            existing_result.append(row)
                 # Allow overwrite and not running specific test ids, we will delete the existing result file before generating new results
                 elif not args.run_ids:
                     file_path.unlink()
@@ -208,7 +299,15 @@ def collect_test_cases(args, model_name, all_test_categories, all_test_entries_i
                     # It's not implemented yet, but it won't affect the accuracy, as those files will be overwritten anyway (assume generation success)
                     pass
 
-    existing_ids = [entry["id"] for entry in existing_result]
+    regenerate_ids = _expand_retry_ids_with_dependents(
+        all_test_entries_involved,
+        retry_ids,
+    )
+    existing_ids = {
+        entry["id"]
+        for entry in existing_result
+        if entry["id"] not in regenerate_ids
+    }
 
     test_cases_to_generate = [
         test_case
@@ -227,6 +326,11 @@ def collect_test_cases(args, model_name, all_test_categories, all_test_entries_i
             if not is_format_sensitivity(test_case["id"])
         ]
 
+    if test_cases_to_generate:
+        _restore_memory_snapshots_for_resume(
+            test_cases_to_generate,
+            model_result_dir,
+        )
     test_cases_to_generate = clean_up_memory_prereq_entries(test_cases_to_generate)
     # TODO: Should we move these to the load_dataset_entry function?
     test_cases_to_generate = populate_initial_settings_for_memory_test_cases(
@@ -267,11 +371,39 @@ def _retryable_failed_result(entry):
         "web_search_backend_error",
     }:
         return True
+    if entry.get("infrastructure_error") is True:
+        return True
+    if entry.get("error"):
+        return _contains_web_search_backend_failure(entry)
     result = entry.get("result")
     return (
         isinstance(result, str)
         and result.startswith("Error during inference:")
     ) or _contains_web_search_backend_failure(entry)
+
+
+def _is_provider_infrastructure_exception(exc):
+    try:
+        import openai
+
+        provider_exceptions = (
+            openai.APIConnectionError,
+            openai.APITimeoutError,
+            openai.RateLimitError,
+            openai.InternalServerError,
+        )
+    except ImportError:
+        provider_exceptions = ()
+    try:
+        import httpx
+
+        transport_exceptions = (httpx.TransportError,)
+    except ImportError:
+        transport_exceptions = ()
+    return isinstance(
+        exc,
+        provider_exceptions + transport_exceptions + (ConnectionError,),
+    )
 
 
 def multi_threaded_inference(
@@ -311,10 +443,24 @@ def multi_threaded_inference(
         tqdm.write(error_block)
 
         result = f"Error during inference: {str(e)}"
+        case_timed_out = isinstance(e, TimeoutError)
+        infrastructure_error = (
+            not case_timed_out
+            and _is_provider_infrastructure_exception(e)
+        )
         metadata = {
             "traceback": traceback.format_exc(),
-            "error": "bfcl_case_timeout" if isinstance(e, TimeoutError) else "inference_error",
-            "timeout": isinstance(e, TimeoutError),
+            "error": (
+                "bfcl_case_timeout"
+                if case_timed_out
+                else (
+                    "inference_error"
+                    if infrastructure_error
+                    else "model_inference_error"
+                )
+            ),
+            "timeout": case_timed_out,
+            "infrastructure_error": infrastructure_error,
         }
     finally:
         if hasattr(handler, "end_case"):
@@ -327,6 +473,44 @@ def multi_threaded_inference(
     }
 
     return result_to_write
+
+
+def _inference_with_recovery(
+    handler,
+    test_case,
+    include_input_log,
+    exclude_state_log,
+    case_timeout_sec,
+    recovery_rounds,
+    recovery_base_seconds,
+    sleep=time.sleep,
+):
+    recovery_attempts = 0
+    while True:
+        result = multi_threaded_inference(
+            handler,
+            test_case,
+            include_input_log,
+            exclude_state_log,
+            case_timeout_sec,
+        )
+        if (
+            not _retryable_failed_result(result)
+            or recovery_attempts >= recovery_rounds
+        ):
+            if recovery_attempts:
+                result["infrastructure_recovery_attempts"] = recovery_attempts
+            return result
+
+        recovery_attempts += 1
+        delay = recovery_base_seconds * (2 ** (recovery_attempts - 1))
+        tqdm.write(
+            "BFCL v4 case infrastructure recovery "
+            f"{recovery_attempts}/{recovery_rounds}: retrying "
+            f"{test_case['id']} after {delay:.1f}s"
+        )
+        if delay > 0:
+            sleep(delay)
 
 
 def generate_results(args, model_name, test_cases_total):
@@ -357,28 +541,16 @@ def generate_results(args, model_name, test_cases_total):
     consecutive_failure_limit = max(
         0, int(getattr(args, "consecutive_failure_fail_fast", 5) or 0)
     )
-
-    # Use a separate thread to write the results to the file to avoid concurrent IO issues
-    def _writer():
-        """Consume result dicts from the queue and write them with exclusive access."""
-        while True:
-            item = write_queue.get()
-            if item is None:
-                break
-            handler.write(
-                item,
-                result_dir=args.result_dir,
-                update_mode=(
-                    args.run_ids
-                    or bool(getattr(args, "resume_existing_results", True))
-                ),
-            )
-            write_queue.task_done()
-
-    write_queue: queue.Queue = queue.Queue()
-
-    writer_thread = threading.Thread(target=_writer, daemon=True)
-    writer_thread.start()
+    infrastructure_recovery_rounds = max(
+        0, int(getattr(args, "infrastructure_recovery_rounds", 0) or 0)
+    )
+    infrastructure_recovery_base_seconds = max(
+        0.0,
+        float(
+            getattr(args, "infrastructure_recovery_base_seconds", 0)
+            or 0
+        ),
+    )
 
     try:
         if is_oss_model:
@@ -416,6 +588,8 @@ def generate_results(args, model_name, test_cases_total):
         completed = set()
         last_completed_at = time.monotonic()
         consecutive_failures = 0
+        stop_scheduling = False
+        infrastructure_failure_ids = set()
 
         with ThreadPoolExecutor(max_workers=num_threads) as pool, tqdm(
             total=len(test_cases_total),
@@ -433,12 +607,14 @@ def generate_results(args, model_name, test_cases_total):
                 _, test_case_id = heapq.heappop(ready_queue)
                 test_case = id_to_test_case[test_case_id]
                 future = pool.submit(
-                    multi_threaded_inference,
+                    _inference_with_recovery,
                     handler,
                     test_case,
                     args.include_input_log,
                     args.exclude_state_log,
                     case_timeout_sec,
+                    infrastructure_recovery_rounds,
+                    infrastructure_recovery_base_seconds,
                 )
                 in_flight[future] = test_case_id
                 in_flight_started_at[test_case_id] = time.monotonic()
@@ -472,57 +648,85 @@ def generate_results(args, model_name, test_cases_total):
                     in_flight_started_at.pop(test_case_id, None)
                     result_dict = future.result()
 
-                    # Enqueue the result for the writer thread to handle file IO
-                    write_queue.put(result_dict)
+                    handler.write(
+                        result_dict,
+                        result_dir=args.result_dir,
+                        update_mode=(
+                            args.run_ids
+                            or bool(
+                                getattr(
+                                    args,
+                                    "resume_existing_results",
+                                    True,
+                                )
+                            )
+                        ),
+                    )
 
                     # Update progress bar right after inference completes
                     pbar.update()
                     completed.add(test_case_id)
                     last_completed_at = time.monotonic()
-                    if result_dict.get("error"):
+                    infrastructure_failure = _retryable_failed_result(
+                        result_dict
+                    )
+                    if infrastructure_failure:
                         consecutive_failures += 1
+                        infrastructure_failure_ids.add(test_case_id)
                     else:
                         consecutive_failures = 0
                     if (
                         consecutive_failure_limit > 0
                         and consecutive_failures >= consecutive_failure_limit
                     ):
-                        raise RuntimeError(
-                            "BFCL v4 aborted after "
-                            f"{consecutive_failures} consecutive inference failures"
+                        stop_scheduling = True
+                        tqdm.write(
+                            "BFCL v4 stopped scheduling new cases after "
+                            f"{consecutive_failures} consecutive infrastructure "
+                            "failures; persisted failures will be retried by "
+                            "the bounded recovery loop"
                         )
 
                     # unlock children
-                    for child_id in children_of[test_case_id]:
-                        dependencies[child_id].discard(test_case_id)
-                        if not dependencies[child_id]:
-                            heapq.heappush(
-                                ready_queue,
-                                (sort_key(id_to_test_case[child_id]), child_id),
-                            )
+                    if not infrastructure_failure:
+                        for child_id in children_of[test_case_id]:
+                            dependencies[child_id].discard(test_case_id)
+                            if not dependencies[child_id]:
+                                heapq.heappush(
+                                    ready_queue,
+                                    (sort_key(id_to_test_case[child_id]), child_id),
+                                )
 
                 # refill the pool up to max_workers
-                while ready_queue and len(in_flight) < num_threads:
+                while (
+                    not stop_scheduling
+                    and ready_queue
+                    and len(in_flight) < num_threads
+                ):
                     _, test_case_id = heapq.heappop(ready_queue)
                     test_case = id_to_test_case[test_case_id]
                     future = pool.submit(
-                        multi_threaded_inference,
+                        _inference_with_recovery,
                         handler,
                         test_case,
                         args.include_input_log,
                         args.exclude_state_log,
                         case_timeout_sec,
+                        infrastructure_recovery_rounds,
+                        infrastructure_recovery_base_seconds,
                     )
                     in_flight[future] = test_case_id
                     in_flight_started_at[test_case_id] = time.monotonic()
 
     finally:
-        # Signal writer thread to finish and wait for it
-        write_queue.put(None)
-        writer_thread.join()
-
         if is_oss_model:
             handler.shutdown_local_server()
+
+    return {
+        "generated_case_count": len(completed),
+        "infrastructure_failure_ids": sorted(infrastructure_failure_ids),
+        "stopped_early": stop_scheduling,
+    }
 
 
 def main(args):
@@ -577,6 +781,7 @@ def main(args):
     else:
         args.result_dir = RESULT_PATH
 
+    generated_case_counts = {}
     for model_name in args.model:
         test_cases_total = collect_test_cases(
             args,
@@ -584,6 +789,7 @@ def main(args):
             all_test_categories,
             deepcopy(all_test_entries_involved),
         )
+        generated_case_counts[model_name] = len(test_cases_total)
 
         if len(test_cases_total) == 0:
             tqdm.write(
@@ -594,3 +800,7 @@ def main(args):
             # Sort the result files by id at the end
             for model_result_json in args.result_dir.rglob(RESULT_FILE_PATTERN):
                 sort_file_content_by_id(model_result_json)
+    return {
+        "generated_case_counts": generated_case_counts,
+        "generated_case_count": sum(generated_case_counts.values()),
+    }

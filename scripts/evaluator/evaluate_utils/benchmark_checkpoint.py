@@ -2,12 +2,104 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Any, Mapping
 
 
 AGGREGATE_BENCHMARKS = frozenset({"aggregate", "aggregate_taiwan"})
+INFRASTRUCTURE_FAILURE_TYPES = frozenset(
+    {
+        "APIConnectionError",
+        "APITimeoutError",
+        "BFCLInfrastructureError",
+        "ConnectError",
+        "ConnectTimeout",
+        "ConnectionError",
+        "InternalServerError",
+        "NeMoClawGatewayRestartError",
+        "NeMoClawSandboxLeaseError",
+        "NonScoreableOpenClawProviderTimeout",
+        "ProviderRecoveryExhaustedError",
+        "RateLimitError",
+        "ReadError",
+        "ReadTimeout",
+    }
+)
+INFRASTRUCTURE_FAILURE_MARKERS = (
+    "BFCLInfrastructureError",
+    "NeMoClawGatewayRestartError",
+    "NeMoClawSandboxLeaseError",
+    "NonScoreableOpenClawProviderTimeout",
+    "ProviderRecoveryExhaustedError",
+)
+NONRETRYABLE_PROVIDER_MARKERS = (
+    "authentication",
+    "billing",
+    "credit balance",
+    "insufficient balance",
+    "insufficient_quota",
+    "invalid api key",
+    "permission denied",
+)
+MODEL_LIMIT_FAILURE_MARKERS = (
+    "budget exceeded",
+    "case timeout",
+    "maximum agent turns",
+    "maximum tool calls",
+    "model_inference_error",
+    "time limit",
+    "token budget",
+)
+
+
+def classify_benchmark_failure(
+    error_type: str | None,
+    error: str | None,
+) -> dict[str, Any]:
+    """Classify a failed benchmark conservatively for process-level recovery."""
+    normalized_type = str(error_type or "").strip()
+    message = str(error or "")
+    message_lower = message.lower()
+
+    if normalized_type in {"KeyboardInterrupt", "SystemExit"}:
+        category = "operator_interrupt"
+        reason = "operator or process interruption is never retried automatically"
+    elif any(marker in message_lower for marker in NONRETRYABLE_PROVIDER_MARKERS):
+        category = "configuration_or_billing"
+        reason = "provider credentials, permissions, quota, or billing require operator action"
+    elif normalized_type in {"TimeoutError", "BudgetExceededError"}:
+        category = "model_or_task_limit"
+        reason = "model/task limits are scored outcomes, not infrastructure recovery"
+    elif normalized_type in INFRASTRUCTURE_FAILURE_TYPES or any(
+        marker in message for marker in INFRASTRUCTURE_FAILURE_MARKERS
+    ):
+        category = "infrastructure"
+        reason = "known transient provider or gateway infrastructure failure"
+    elif any(marker in message_lower for marker in MODEL_LIMIT_FAILURE_MARKERS):
+        category = "model_or_task_limit"
+        reason = "model/task limits are scored outcomes, not infrastructure recovery"
+    elif normalized_type in {
+        "AssertionError",
+        "FileNotFoundError",
+        "ImportError",
+        "KeyError",
+        "ModuleNotFoundError",
+        "TypeError",
+        "ValueError",
+    }:
+        category = "code_or_configuration"
+        reason = "deterministic code or configuration failures require repair"
+    else:
+        category = "unknown"
+        reason = "unclassified failures require operator review"
+
+    return {
+        "category": category,
+        "infrastructure_retryable": category == "infrastructure",
+        "reason": reason,
+    }
 
 
 def bfcl_completion_evidence_is_clean(summary: Mapping[str, Any]) -> bool:
@@ -83,12 +175,19 @@ class BenchmarkCheckpointStore:
             payload["code_fingerprint"] = code_fingerprint
         if status != "completed" and last_completed:
             payload["last_completed"] = last_completed
-        temporary = path.with_suffix(".json.tmp")
-        temporary.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
+        temporary = path.with_name(
+            f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
         )
-        os.replace(temporary, path)
+        try:
+            with temporary.open("w", encoding="utf-8") as handle:
+                handle.write(
+                    json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+                )
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def load_raw(self, benchmark: str) -> dict[str, Any] | None:
         path = self._path(benchmark)
@@ -146,6 +245,21 @@ class BenchmarkCheckpointStore:
         expected = self.config_fingerprints.get(benchmark)
         return expected is None or snapshot.get("config_fingerprint") == expected
 
+    def can_restore_completed_snapshot(
+        self,
+        benchmark: str,
+        *,
+        remote_completed: bool,
+    ) -> bool:
+        payload = self.load_raw(benchmark)
+        return bool(
+            self.resume_enabled
+            and remote_completed
+            and payload
+            and payload.get("status") != "completed"
+            and self.completed_snapshot_matches_config(benchmark)
+        )
+
     def code_drifted(self, benchmark: str) -> bool:
         payload = self.load(benchmark)
         if payload is None:
@@ -161,9 +275,13 @@ class BenchmarkCheckpointStore:
         self._write(benchmark, "completed")
 
     def mark_failed(self, benchmark: str, error: BaseException) -> None:
+        failure = classify_benchmark_failure(type(error).__name__, str(error))
         self._write(
             benchmark,
             "failed",
             error_type=type(error).__name__,
             error=str(error),
+            failure_category=failure["category"],
+            infrastructure_retryable=failure["infrastructure_retryable"],
+            failure_reason=failure["reason"],
         )

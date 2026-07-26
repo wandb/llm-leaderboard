@@ -2492,6 +2492,56 @@ def test_evaluator_math_preflight_uses_exact_runner_command(tmp_path, monkeypatc
     assert result["will_run_gateway"] is False
 
 
+def test_evaluator_math_preflight_rejects_stale_success_report(
+    tmp_path, monkeypatch
+):
+    from omegaconf import OmegaConf
+
+    agentic_module = load_script_module(
+        REPO_ROOT / "scripts" / "evaluator" / "agentic_math.py"
+    )
+    dataset_dir = tmp_path / "dataset"
+    subsets_dir = dataset_dir / "subsets"
+    subsets_dir.mkdir(parents=True)
+    (subsets_dir / "leaderboard.jsonl").write_text(
+        json.dumps({"task_id": "math_1", "question": "1+1?", "answer": "2"})
+        + "\n",
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "output"
+    stale_report = output_dir / "openclaw" / "preflight.json"
+    stale_report.parent.mkdir(parents=True)
+    stale_report.write_text('{"ok": true}\n', encoding="utf-8")
+
+    monkeypatch.setattr(
+        agentic_module.subprocess,
+        "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            command, 0, stdout="no report written", stderr=""
+        ),
+    )
+    cfg = OmegaConf.create(
+        {
+            "testmode": False,
+            "model": {"pretrained_model_name_or_path": "provider/model"},
+            "agentic_math": {
+                "local_dataset_dir": str(dataset_dir),
+                "subset": "leaderboard",
+                "limit": 1,
+                "run_openclaw": True,
+                "nemoclaw_sandbox": "nejumi-taiwan",
+                "no_local": True,
+                "weave_sidecar": False,
+            },
+        }
+    )
+
+    result = agentic_module.preflight(cfg, object(), output_dir)
+
+    assert result["ok"] is False
+    assert not stale_report.exists()
+
+
 def test_evaluator_math_reuse_preflight_rejects_incomplete_task_coverage(
     tmp_path, monkeypatch
 ):

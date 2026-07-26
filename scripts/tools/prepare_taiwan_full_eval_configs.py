@@ -17,6 +17,7 @@ CONFIG_DIR = REPO_ROOT / "configs"
 DEFAULT_MANIFEST = CONFIG_DIR / "taiwan_openai_canary_models.yaml"
 DEFAULT_OUTPUT_DIR = CONFIG_DIR / "taiwan_full" / "generated"
 DEFAULT_NEMOCLAW_OPENCLAW_CONFIG_PATH = "/sandbox/.openclaw/openclaw.json"
+DEFAULT_TAIWAN_NEMOCLAW_SANDBOX = "nejumi-taiwan"
 TAIWAN_WANDB_ENTITY = "llm-leaderboard"
 TAIWAN_WANDB_PROJECT = "tc-leaderboard"
 
@@ -235,9 +236,11 @@ def _apply_agentic_math_nemoclaw_config(
     agentic_math: dict[str, Any],
     model: dict[str, Any],
 ) -> None:
-    sandbox = model.get("agentic_math_nemoclaw_sandbox") or model.get("nemoclaw_sandbox")
-    if not sandbox:
-        return
+    sandbox = (
+        model.get("agentic_math_nemoclaw_sandbox")
+        or model.get("nemoclaw_sandbox")
+        or DEFAULT_TAIWAN_NEMOCLAW_SANDBOX
+    )
     agentic_math["nemoclaw_sandbox"] = str(sandbox)
     agentic_math["nemoclaw_bin"] = str(
         model.get("agentic_math_nemoclaw_bin") or model.get("nemoclaw_bin") or "nemoclaw"
@@ -311,9 +314,11 @@ def _apply_agentic_swe_assorted_nemoclaw_config(
     agentic_swe_assorted: dict[str, Any],
     model: dict[str, Any],
 ) -> None:
-    sandbox = model.get("agentic_swe_assorted_nemoclaw_sandbox") or model.get("nemoclaw_sandbox")
-    if not sandbox:
-        return
+    sandbox = (
+        model.get("agentic_swe_assorted_nemoclaw_sandbox")
+        or model.get("nemoclaw_sandbox")
+        or DEFAULT_TAIWAN_NEMOCLAW_SANDBOX
+    )
     agentic_swe_assorted["nemoclaw_sandbox"] = str(sandbox)
     agentic_swe_assorted["nemoclaw_bin"] = str(
         model.get("agentic_swe_assorted_nemoclaw_bin")
@@ -385,6 +390,12 @@ def build_override(
 
     override: dict[str, Any] = {
         "testmode": False,
+        "execution": {
+            "cash_cost_exempt": bool(model.get("cash_cost_exempt", False)),
+            "cash_cost_exempt_reason": str(
+                model.get("cash_cost_exempt_reason", "") or ""
+            ),
+        },
         "wandb": {
             "entity": TAIWAN_WANDB_ENTITY,
             "project": TAIWAN_WANDB_PROJECT,

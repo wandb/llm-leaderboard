@@ -7,6 +7,8 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TOOLS_DIR = REPO_ROOT / "scripts" / "tools"
@@ -48,6 +50,155 @@ def test_normalize_run_eval_base_config_arg_preserves_config_dir_relative_name(
     assert (
         module.normalize_run_eval_base_config_arg("base_config_taiwan.yaml")
         == "base_config_taiwan.yaml"
+    )
+
+
+def test_selected_config_binding_records_cash_cost_exemption(tmp_path):
+    module = load_module()
+    config = tmp_path / "wandb.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "model:",
+                "  pretrained_model_name_or_path: provider/model",
+                "execution:",
+                "  cash_cost_exempt: true",
+                "  cash_cost_exempt_reason: employee inference account",
+                "agentic_math:",
+                "  openclaw_model: wandb-inference/provider/model",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    [binding] = module.collect_selected_config_model_bindings(
+        [config],
+        phase="agentic",
+    )
+
+    assert binding["cash_cost_exempt"] is True
+    assert binding["cash_cost_exempt_reason"] == "employee inference account"
+    assert "wandb-inference/provider/model" in binding["identifiers"]
+
+
+def test_cash_cost_exemption_flag_rejects_non_exempt_model(
+    tmp_path, monkeypatch
+):
+    module = load_module()
+    manifest = tmp_path / "models.yaml"
+    manifest.write_text(
+        "\n".join(
+            [
+                "models:",
+                "  - slug: paid-model",
+                "    source_config: config-gpt-4.1-mini-2025-04-14.yaml",
+                "    run_name: paid-model",
+                "    openclaw_model: openai-direct/gpt-4.1-mini-2025-04-14",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    output_root = tmp_path / "outputs"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_taiwan_full_eval_batch.py",
+            "--manifest",
+            str(manifest),
+            "--model",
+            "paid-model",
+            "--prepare-only",
+            "--phase",
+            "agentic",
+            "--generated-config-dir",
+            str(tmp_path / "generated"),
+            "--output-root",
+            str(output_root),
+            "--allow-cash-cost-exempt-execution",
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="cash_cost_exempt"):
+        module.main()
+
+    review = json.loads(
+        (output_root / "agentic_paid_run_review.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert review["status"] == "cash_cost_exemption_invalid"
+    assert review["selected_configs_cash_cost_exempt"] is False
+
+
+def test_cash_cost_exempt_prepare_only_needs_no_budget_or_approval(
+    tmp_path, monkeypatch
+):
+    module = load_module()
+    manifest = tmp_path / "models.yaml"
+    manifest.write_text(
+        "\n".join(
+            [
+                "models:",
+                "  - slug: glm-wandb",
+                "    source_config: config-zai-glm-5_2-wandb-inference.yaml",
+                "    run_name: glm-wandb",
+                "    openclaw_model: wandb-inference/zai-org/GLM-5.2",
+                "    cash_cost_exempt: true",
+                "    cash_cost_exempt_reason: employee inference account",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    output_root = tmp_path / "outputs"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_taiwan_full_eval_batch.py",
+            "--manifest",
+            str(manifest),
+            "--model",
+            "glm-wandb",
+            "--prepare-only",
+            "--phase",
+            "agentic",
+            "--generated-config-dir",
+            str(tmp_path / "generated"),
+            "--output-root",
+            str(output_root),
+            "--allow-cash-cost-exempt-execution",
+        ],
+    )
+
+    module.main()
+
+    review = json.loads(
+        (output_root / "agentic_paid_run_review.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert review["status"] == "prepared"
+    assert review["selected_configs_cash_cost_exempt"] is True
+    assert review["cash_cost_exempt_execution"] is True
+    assert review["requires_paid_model_api"] is False
+    assert review["will_call_model_api"] is False
+    assert review["will_call_paid_model_api"] is False
+    requirements = review["completion_requirements"]
+    assert (
+        requirements["pre_run_budget_estimate"][
+            "required_before_paid_execution"
+        ]
+        is False
+    )
+    assert (
+        requirements["external_action_approval"][
+            "required_before_external_action"
+        ]
+        is False
     )
 
 
@@ -539,7 +690,7 @@ def test_wandb_verify_config_expectations_read_generated_config(tmp_path):
 def test_run_wandb_completion_verification_writes_payload(tmp_path, monkeypatch):
     module = load_module()
 
-    def fake_run(command, cwd, env, text, capture_output, check):
+    def fake_run(command, cwd, env, text, capture_output, check, timeout):
         return SimpleNamespace(
             returncode=0,
             stdout=json.dumps({"ok": True, "benchmark": "agentic_math", "checks": []}),
@@ -572,7 +723,7 @@ def test_run_wandb_completion_verification_writes_payload(tmp_path, monkeypatch)
 def test_run_wandb_completion_verification_requires_zero_returncode(tmp_path, monkeypatch):
     module = load_module()
 
-    def fake_run(command, cwd, env, text, capture_output, check):
+    def fake_run(command, cwd, env, text, capture_output, check, timeout):
         return SimpleNamespace(
             returncode=7,
             stdout=json.dumps({"ok": True, "benchmark": "agentic_math", "checks": []}),
@@ -599,6 +750,42 @@ def test_run_wandb_completion_verification_requires_zero_returncode(tmp_path, mo
     assert payload["returncode"] == 7
     written = json.loads(output_path.read_text(encoding="utf-8"))
     assert written["ok"] is False
+
+
+def test_run_wandb_completion_verification_records_timeout(
+    tmp_path, monkeypatch
+):
+    module = load_module()
+
+    def fake_run(command, **_kwargs):
+        raise module.subprocess.TimeoutExpired(
+            command,
+            timeout=12,
+            output=b"partial verifier output",
+            stderr=b"provider did not respond",
+        )
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    output_path = tmp_path / "completion.json"
+
+    payload = module.run_wandb_completion_verification(
+        python="python3",
+        run_id="run-1",
+        benchmark="agentic_math",
+        output_path=output_path,
+        env={"WANDB_API_KEY": "test"},
+        num_few_shots=2,
+        include_pending=False,
+        require_aggregate=True,
+        timeout_seconds=12,
+    )
+
+    assert payload["ok"] is False
+    assert payload["timeout"] is True
+    assert payload["returncode"] == 124
+    assert payload["stdout"] == "partial verifier output"
+    assert payload["stderr"] == "provider did not respond"
+    assert json.loads(output_path.read_text(encoding="utf-8"))["timeout"] is True
 
 
 def test_build_weave_agents_verify_command_adds_strict_trace_options():
@@ -755,7 +942,7 @@ def test_resolve_weave_conversation_id_contains_rejects_unscoped_template():
 def test_run_weave_agents_verification_writes_payload(tmp_path, monkeypatch):
     module = load_module()
 
-    def fake_run(command, cwd, env, text, capture_output, check):
+    def fake_run(command, cwd, env, text, capture_output, check, timeout):
         return SimpleNamespace(
             returncode=1,
             stdout=json.dumps({"ok": False, "agent_name": "nejumi-taiwan-openclaw", "checks": []}),
@@ -793,7 +980,7 @@ def test_run_weave_agents_verification_writes_payload(tmp_path, monkeypatch):
 def test_run_weave_agents_verification_requires_zero_returncode(tmp_path, monkeypatch):
     module = load_module()
 
-    def fake_run(command, cwd, env, text, capture_output, check):
+    def fake_run(command, cwd, env, text, capture_output, check, timeout):
         return SimpleNamespace(
             returncode=9,
             stdout=json.dumps({"ok": True, "agent_name": "nejumi-taiwan-openclaw", "checks": []}),
@@ -1524,11 +1711,40 @@ def test_prepare_only_review_records_completion_requirements(tmp_path, monkeypat
     preflights = review["run_eval_preflights"]
     assert len(preflights) == 1
     assert preflights[0]["required_before_run_eval"] is True
+    assert preflights[0]["executed"] is True
+    assert preflights[0]["returncode"] == 0
+    assert preflights[0]["ok"] is True
+    assert preflights[0]["status"] == "passed"
+    assert preflights[0]["phase_validation"]["ok"] is True
     assert preflights[0]["output_json"].endswith(
         "run_eval_preflight/agentic-gpt-4_1-mini-openai-direct-canary.json"
     )
     assert "--preflight" in preflights[0]["command"]
     assert "--preflight-json" in preflights[0]["command"]
+
+
+def test_run_eval_preflight_rejects_stale_success_json(tmp_path, monkeypatch):
+    module = load_module()
+    output_json = tmp_path / "preflight.json"
+    output_json.write_text(
+        json.dumps({"ok": True, "status": "passed"}) + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(module, "stream_run", lambda *_args, **_kwargs: 0)
+
+    result = module.execute_run_eval_preflight(
+        command=["python", "scripts/run_eval.py", "--preflight"],
+        output_json=output_json,
+        log_path=tmp_path / "preflight.log",
+        env={},
+        phase="agentic",
+    )
+
+    assert result["ok"] is False
+    assert result["returncode"] == 0
+    assert "does not exist" in result["status"]
+    assert output_json.exists() is False
 
 
 def test_prepare_only_can_require_nemoclaw_agentic_config(tmp_path, monkeypatch):
@@ -1544,6 +1760,7 @@ def test_prepare_only_can_require_nemoclaw_agentic_config(tmp_path, monkeypatch)
                 "    openclaw_model: 'openai-direct/gpt-4.1-mini-2025-04-14'",
                 "    agentic_thinking: 'off'",
                 "    swe_thinking: 'off'",
+                "    nemoclaw_sandbox: 'None'",
                 "    canary: true",
             ]
         )
@@ -1591,7 +1808,10 @@ def test_prepare_only_can_require_nemoclaw_agentic_config(tmp_path, monkeypatch)
     assert guard["required"] is True
     assert guard["enforced"] is True
     assert guard["ok"] is False
-    assert "agentic_math.nemoclaw_sandbox must be set" in guard["errors"][0]
+    assert (
+        "agentic_math.nemoclaw_sandbox must name an isolated sandbox"
+        in guard["errors"][0]
+    )
 
 
 def test_nemoclaw_agentic_config_guard_requires_remote_lookup_deny_policy(tmp_path):
@@ -1869,6 +2089,8 @@ def test_wandb_resume_policy_requires_explicit_matching_config(tmp_path):
         wandb_resume_config_json=None,
         wandb_run_id_prefix="twcanary-test",
         phase="agentic",
+        infrastructure_resume_attempts=0,
+        infrastructure_resume_base_seconds=30,
     )
 
     missing = module.build_wandb_resume_policy_record(args)
@@ -1896,6 +2118,179 @@ def test_wandb_resume_policy_requires_explicit_matching_config(tmp_path):
 
     assert valid["valid"] is True
     assert valid["status"] == "valid"
+
+
+def test_wandb_resume_policy_binds_infrastructure_attempts(tmp_path):
+    module = load_module()
+    resume_config = tmp_path / "resume.json"
+    resume_config.write_text(
+        json.dumps(
+            {
+                "allow_wandb_resume": True,
+                "wandb_run_id_prefix": "twfull-test",
+                "phase": "full",
+                "explicit_user_instruction": True,
+                "purpose": "recover reviewed transient infrastructure failures",
+                "infrastructure_recovery_attempts": 2,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    args = SimpleNamespace(
+        allow_wandb_resume=True,
+        wandb_resume_config_json=resume_config,
+        wandb_run_id_prefix="twfull-test",
+        phase="full",
+        infrastructure_resume_attempts=2,
+        infrastructure_resume_base_seconds=30,
+    )
+
+    valid = module.build_wandb_resume_policy_record(args)
+    args.infrastructure_resume_attempts = 1
+    invalid = module.build_wandb_resume_policy_record(args)
+
+    assert valid["valid"] is True
+    assert invalid["valid"] is False
+    assert any(
+        "infrastructure_recovery_attempts must match" in error
+        for error in invalid["errors"]
+    )
+
+    args.allow_wandb_resume = False
+    without_resume = module.build_wandb_resume_policy_record(args)
+    assert without_resume["valid"] is False
+    assert any(
+        "requires --allow-wandb-resume" in error
+        for error in without_resume["errors"]
+    )
+
+
+def test_process_recovery_resumes_only_checkpointed_infrastructure_failure(
+    tmp_path,
+    monkeypatch,
+):
+    module = load_module()
+    checkpoint_root = tmp_path / "benchmark_checkpoints"
+    checkpoint_root.mkdir()
+    responses = [9, 0]
+    sleeps = []
+
+    def fake_stream_run(command, log_path, env):
+        returncode = responses.pop(0)
+        if returncode:
+            (checkpoint_root / "bfcl.json").write_text(
+                json.dumps(
+                    {
+                        "run_id": "run-1",
+                        "benchmark": "bfcl",
+                        "status": "failed",
+                        "updated_at": module.time.time(),
+                        "error_type": "BFCLInfrastructureError",
+                        "error": "provider read timeout",
+                    }
+                ),
+                encoding="utf-8",
+            )
+        return returncode
+
+    monkeypatch.setattr(module, "stream_run", fake_stream_run)
+    monkeypatch.setattr(module.time, "sleep", sleeps.append)
+
+    returncode, attempts = module.run_eval_with_infrastructure_recovery(
+        ["python", "scripts/run_eval.py"],
+        log_path=tmp_path / "run.log",
+        env={},
+        checkpoint_root=checkpoint_root,
+        wandb_run_id="run-1",
+        max_resume_attempts=2,
+        base_delay_seconds=3,
+    )
+
+    assert returncode == 0
+    assert [attempt["action"] for attempt in attempts] == [
+        "resume_after_cooldown",
+        "completed",
+    ]
+    assert sleeps == [3.0]
+
+
+def test_process_recovery_stops_on_model_timeout(tmp_path, monkeypatch):
+    module = load_module()
+    checkpoint_root = tmp_path / "benchmark_checkpoints"
+    checkpoint_root.mkdir()
+    (checkpoint_root / "agentic_math.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run-1",
+                "benchmark": "agentic_math",
+                "status": "failed",
+                "updated_at": module.time.time(),
+                "error_type": "TimeoutError",
+                "error": "task exceeded benchmark wall timeout",
+            }
+        ),
+        encoding="utf-8",
+    )
+    calls = []
+    monkeypatch.setattr(
+        module,
+        "stream_run",
+        lambda command, log_path, env: calls.append(command) or 9,
+    )
+
+    returncode, attempts = module.run_eval_with_infrastructure_recovery(
+        ["python", "scripts/run_eval.py"],
+        log_path=tmp_path / "run.log",
+        env={},
+        checkpoint_root=checkpoint_root,
+        wandb_run_id="run-1",
+        max_resume_attempts=2,
+        base_delay_seconds=0,
+    )
+
+    assert returncode == 9
+    assert len(calls) == 1
+    assert attempts[0]["action"] == "stopped_non_infrastructure_failure"
+
+
+def test_process_recovery_ignores_stale_failed_checkpoint(tmp_path, monkeypatch):
+    module = load_module()
+    checkpoint_root = tmp_path / "benchmark_checkpoints"
+    checkpoint_root.mkdir()
+    (checkpoint_root / "bfcl.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run-1",
+                "benchmark": "bfcl",
+                "status": "failed",
+                "updated_at": 1,
+                "error_type": "BFCLInfrastructureError",
+                "error": "old provider timeout",
+            }
+        ),
+        encoding="utf-8",
+    )
+    calls = []
+    monkeypatch.setattr(
+        module,
+        "stream_run",
+        lambda command, log_path, env: calls.append(command) or 9,
+    )
+
+    returncode, attempts = module.run_eval_with_infrastructure_recovery(
+        ["python", "scripts/run_eval.py"],
+        log_path=tmp_path / "run.log",
+        env={},
+        checkpoint_root=checkpoint_root,
+        wandb_run_id="run-1",
+        max_resume_attempts=2,
+        base_delay_seconds=0,
+    )
+
+    assert returncode == 9
+    assert len(calls) == 1
+    assert attempts[0]["action"] == "stopped_no_failed_checkpoint"
 
 
 def test_paid_run_executes_run_eval_preflight_before_run_eval(tmp_path, monkeypatch):

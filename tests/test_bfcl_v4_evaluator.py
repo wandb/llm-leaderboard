@@ -290,6 +290,34 @@ def test_generation_recovery_reports_failures_after_bound(tmp_path):
     ]
 
 
+def test_generation_recovery_rejects_zero_case_noop(tmp_path):
+    result_dir = tmp_path / "result"
+
+    def fake_generation(_args):
+        _write_generation_result(
+            result_dir,
+            entry={
+                "id": "web_search_base_1",
+                "error": "web_search_backend_error",
+                "result": "Error during inference: backend unavailable",
+            },
+        )
+        return {"generated_case_count": 0}
+
+    with pytest.raises(
+        bfcl_v4.BFCLInfrastructureError,
+        match="selected zero cases",
+    ):
+        bfcl_v4._run_generation_with_recovery(
+            generation_main=fake_generation,
+            generation_args=bfcl_v4.SimpleNamespace(),
+            result_dir=result_dir,
+            model_registry_name="Configured/Model",
+            recovery_rounds=1,
+            recovery_base_seconds=0,
+        )
+
+
 def test_output_error_count_excludes_model_timeout(tmp_path, monkeypatch):
     result_dir = tmp_path / "result"
     score_dir = tmp_path / "score"
@@ -314,6 +342,15 @@ def test_output_error_count_excludes_model_timeout(tmp_path, monkeypatch):
                         "result": "Error during inference: backend unavailable",
                     }
                 ),
+                json.dumps(
+                    {
+                        "id": "simple_python_3",
+                        "error": "model_inference_error",
+                        "result": (
+                            "Error during inference: malformed tool arguments"
+                        ),
+                    }
+                ),
             ]
         )
         + "\n",
@@ -324,7 +361,7 @@ def test_output_error_count_excludes_model_timeout(tmp_path, monkeypatch):
         lambda entry_id: "simple_python",
     )
 
-    _rows, timeout_count, inference_error_count = (
+    _rows, timeout_count, inference_error_count, model_error_count = (
         bfcl_v4._collect_output_rows(
             result_dir,
             score_dir,
@@ -334,6 +371,7 @@ def test_output_error_count_excludes_model_timeout(tmp_path, monkeypatch):
 
     assert timeout_count == 1
     assert inference_error_count == 1
+    assert model_error_count == 1
 
 
 def test_score_alignment_follows_parallel_result_completion_order():
