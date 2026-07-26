@@ -12,6 +12,8 @@ set -euo pipefail
 
 repo_root="${TAIWAN_LB_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 launcher_python="${TAIWAN_EVAL_LAUNCHER_PYTHON:-$repo_root/.venv/bin/python}"
+user_bin="${TAIWAN_EVAL_USER_BIN:-$HOME/.local/bin}"
+export PATH="$user_bin:${PATH:-/usr/local/bin:/usr/bin:/bin}"
 cd "$repo_root"
 
 exec "$launcher_python" \

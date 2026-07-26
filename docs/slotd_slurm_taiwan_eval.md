@@ -115,6 +115,9 @@ resources for the target partition:
 `--python` selects both the array launcher interpreter and the interpreter used
 by the existing batch runner. The submitted job receives it through Slurm's
 standard `--export` mechanism, so no slotd-specific path lookup is required.
+The job also prepends `$HOME/.local/bin` to `PATH`, which covers the default
+NeMoClaw installation. Set `TAIWAN_EVAL_USER_BIN` through the scheduler export
+when command-line tools are installed elsewhere.
 
 The repository, `.venv`, evidence files, `.env`, and output root must be visible
 on the execution node at the same absolute paths. If the cluster uses a shared
