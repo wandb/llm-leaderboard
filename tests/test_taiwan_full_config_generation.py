@@ -580,6 +580,9 @@ def test_parallel_direct_models_generate_isolated_sandbox_configs(
     assert cfg.agentic_swe_assorted.nemoclaw_sandbox == sandbox
     assert cfg.agentic_math.thinking == thinking
     assert cfg.agentic_swe_assorted.thinking == thinking
+    if slug == "claude-sonnet-5-anthropic-direct-high":
+        assert cfg.agentic_swe_assorted.high_max_agent_turns == 180
+        assert cfg.agentic_swe_assorted.high_max_cumulative_input_tokens == 20_000_000
 
 
 def test_active_full_manifest_retains_suspended_openrouter_routes_safely():

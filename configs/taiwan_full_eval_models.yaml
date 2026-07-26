@@ -83,6 +83,8 @@ models:
     math_limit: 50
     math_openclaw_timeout: 900
     swe_subset: "leaderboard_compact_40"
+    agentic_swe_assorted_high_max_agent_turns: 180
+    agentic_swe_assorted_high_max_cumulative_input_tokens: 20000000
     nemoclaw_sandbox: nejumi-tw-sonnet5
     notes: "Anthropic-direct reference; isolated sandbox permits true model-level concurrency."
 
