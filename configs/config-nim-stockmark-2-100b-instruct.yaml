@@ -1,0 +1,68 @@
+wandb:
+  run_name: "nim-stockmark-2-100b-instruct"
+
+api: "openai-compatible"
+base_url: "https://integrate.api.nvidia.com/v1"
+batch_size: 4
+
+network:
+  http_timeout:
+    connect: 100.0
+    read: 3600.0
+    write: 3600.0
+    pool: 300.0
+
+model:
+  pretrained_model_name_or_path: "stockmark/stockmark-2-100b-instruct"
+  bfcl_model_id: OpenRouter-FC
+  size_category: "api"
+  base_model: "stockmark-2"
+  release_date: 09/25/2025 # format: MM/DD/YYYY
+
+generator:
+  max_tokens: 1024
+  temperature: 0.01
+  top_p: 1.0
+  stream: false
+
+jaster:
+  override_max_tokens: 128000 # if null, use value defined in task dataset files
+
+jbbq:
+  generator_config:
+    max_tokens: 128000
+
+toxicity:
+  generator_config:
+    max_tokens: 128000
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 128000
+
+swebench:
+  max_tokens: 128000
+  fc_enabled: false
+
+mtbench:
+  generator_config:
+    max_tokens: 128000
+
+bfcl:
+  generator_config:
+    max_tokens: 128000
+
+hallulens:
+  generator_config:
+    max_tokens: 128000
+
+hle:
+  generator_config:
+    max_tokens: 128000
+
+arc_agi:
+  max_output_tokens: 128000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 128000
