@@ -129,6 +129,9 @@ wandb_export_*.csv
 # evaluation outputs
 /generation*.jsonl
 /predictions/
+*.nejumi_*.json
+/wandb_tables_dump/
+nohup.out
 
 # local sandbox runtime data
 /volumes/sandbox/*
