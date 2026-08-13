@@ -306,6 +306,11 @@ def generate_predictions(samples: List[Dict], llm, generator_config, output_file
     """パッチ生成とJSONL保存（並列処理版）"""
     print(f"Generating patches for {len(samples)} samples...")
     
+    # パッチが1件も生成できない場合でも、後続処理が FileNotFoundError で
+    # 異常終了しないように空の predictions ファイルを先に作成しておく。
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.touch(exist_ok=True)
+
     # 全サンプルのプロンプトを事前に準備
     all_inputs = []
     sample_data = []

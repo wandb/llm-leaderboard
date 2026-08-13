@@ -672,13 +672,13 @@ class OpenAIClient:
             api_key=api_key,
             base_url=base_url,
             timeout=timeout,
-            max_retries=3
+            max_retries=0
         )
         self.client = openai.OpenAI(
             api_key=api_key,
             base_url=base_url,
             timeout=timeout,
-            max_retries=3
+            max_retries=0
         )
         self.model = model
         self.kwargs = kwargs

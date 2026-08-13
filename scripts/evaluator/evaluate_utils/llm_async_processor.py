@@ -2,10 +2,12 @@ import asyncio
 import functools
 import traceback
 import json
+import inspect
+import os
+import random
 from typing import Any, TypeAlias, List, Tuple, Optional
 
 import backoff
-from tqdm import tqdm
 from tqdm.asyncio import tqdm as atqdm
 import openai
 import pydantic_core
@@ -21,13 +23,43 @@ except ImportError:
     COHERE_AVAILABLE = False
 
 
-MAX_TRIES = 50  # リトライ回数を50回に削減（100回は多すぎる）
+# リトライ回数・時間は環境変数で上書き可能
+# デフォルトは5回（50回はエンドポイント死亡時に長時間ハングするため削減）
+MAX_TRIES = int(os.environ.get("LLM_ASYNC_MAX_TRIES", "5"))
+MAX_TIME = float(os.environ.get("LLM_ASYNC_MAX_TIME_SEC", "3600"))
+MIN_RETRY_WAIT = float(os.environ.get("LLM_ASYNC_MIN_RETRY_WAIT_SEC", "1.0"))
+
+# run:ai / knative の queue-proxy はリクエストを一定時間で切断するため、
+# クライアント側が先にタイムアウトして制御を取り戻す（デフォルトはMAX_TIMEに合わせる）
+PROXY_TIMEOUT_SEC = float(os.environ.get("RUNAI_PROXY_TIMEOUT_SEC", "3600"))
+REQUEST_TIMEOUT_SEC = float(
+    os.environ.get(
+        "LLM_REQUEST_TIMEOUT_SEC",
+        str(max(30.0, min(MAX_TIME, PROXY_TIMEOUT_SEC - 15.0))),
+    )
+)
 
 Messages: TypeAlias = List[dict[str, str]]
 Inputs: TypeAlias = List[Tuple[Messages, dict[str, Any]]]
 
 
+def _bounded_jitter(value: float) -> float:
+    """full jitter に最小待機時間の下限を設けたもの"""
+    return max(MIN_RETRY_WAIT, random.random() * float(value))
+
+
 def error_handler(func: callable) -> callable:
+    """同期・非同期両方の関数でtracebackを出力するデコレータ"""
+    if inspect.iscoroutinefunction(func):
+        @functools.wraps(func)
+        async def awrapper(*args, **kwargs):
+            try:
+                return await func(*args, **kwargs)
+            except Exception:
+                print(traceback.format_exc())
+                raise
+        return awrapper
+
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
@@ -48,7 +80,7 @@ class LLMAsyncProcessor:
     def __init__(
         self,
         llm: object,
-        inputs: Inputs = [],
+        inputs: Optional[Inputs] = None,
         batch_size: Optional[int] = None,
         inference_interval: Optional[float] = None,
         soft_fail_on_error: Optional[bool] = None,
@@ -56,7 +88,7 @@ class LLMAsyncProcessor:
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config
         self.llm = llm
-        self.inputs = inputs
+        self.inputs = inputs or []
         self.batch_size = batch_size or cfg.get("batch_size", 256)
         self.inference_interval = inference_interval or cfg.inference_interval
         self.semaphore = asyncio.Semaphore(self.batch_size)
@@ -86,15 +118,27 @@ class LLMAsyncProcessor:
             TimeoutError, ConnectionError
         ])),
         max_tries=MAX_TRIES,
-        max_time=1800,  # 最大30分でタイムアウト
-        jitter=backoff.full_jitter
+        max_time=MAX_TIME,
+        jitter=_bounded_jitter
     )
     async def _ainvoke(self, messages: Messages, **kwargs) -> Any:
         """非同期でLLMを呼び出す統一メソッド"""
         await asyncio.sleep(self.inference_interval)
         try:
             async with self.semaphore:
-                return await self.llm.ainvoke(messages, **kwargs)
+                # queue-proxy の切断より先にクライアント側でタイムアウトさせ、backoffリトライに制御を戻す
+                # 注: to_thread ベースのアダプタ（Bedrock/Mistral/Google等）はキャンセルしても
+                # バックグラウンドスレッドのリクエストが残るため、重複実行の可能性がある（上限はMAX_TRIES回）
+                try:
+                    return await asyncio.wait_for(
+                        self.llm.ainvoke(messages, **kwargs),
+                        timeout=REQUEST_TIMEOUT_SEC,
+                    )
+                except asyncio.TimeoutError as e:
+                    raise TimeoutError(
+                        f"client timeout before proxy cutoff: {REQUEST_TIMEOUT_SEC}s"
+                    ) from e
+
         except openai.PermissionDeniedError as e:
             # コンテンツポリシー違反は即座に失敗させる（リトライしない）
             print(f"Content policy violation occurred: {str(e)}")
@@ -185,25 +229,12 @@ class LLMAsyncProcessor:
     def set_batch_size(self, batch_size: int):
         """バッチサイズを設定"""
         self.batch_size = batch_size
+        # セマフォは設定変更に追従させる
+        self.semaphore = asyncio.Semaphore(self.batch_size)
 
     def set_inference_interval(self, interval: float):
         """推論間隔を設定"""
         self.inference_interval = interval
-
-    async def process_with_callback(self, callback_func=None) -> List[Any]:
-        """コールバック関数付きで処理"""
-        results = []
-        
-        for i in tqdm(range(0, len(self.inputs), self.batch_size), desc="Processing with callback"):
-            batch = self.inputs[i : i + self.batch_size]
-            batch_results = await self._process_batch(batch)
-            results.extend(batch_results)
-            
-            # コールバック関数が指定されている場合は実行
-            if callback_func:
-                await callback_func(batch_results, i // self.batch_size)
-        
-        return results
 
     def get_statistics(self) -> dict:
         """統計情報を取得"""

@@ -1,0 +1,72 @@
+wandb:
+  run_name: "nim-nemotron-3-nano-30b-a3b-fp8"
+
+api: "openai-compatible"
+base_url: "https://integrate.api.nvidia.com/v1"
+batch_size: 4
+inference_interval: 0.2
+
+network:
+  http_timeout:
+    connect: 100.0
+    read: 3600.0
+    write: 3600.0
+    pool: 300.0
+
+model:
+  pretrained_model_name_or_path: "nvidia/nemotron-3-nano"
+  bfcl_model_id: OpenRouter-FC
+  size_category: "api"
+  base_model: "nemotron-3"
+  release_date: 12/15/2025 # format: MM/DD/YYYY
+
+generator:
+  max_tokens: 4096
+  temperature: 0.01
+  top_p: 1.0
+  stream: false
+  extra_body:
+    chat_template_kwargs:
+      enable_thinking: true
+
+jaster:
+  override_max_tokens: 4096 # if null, use value defined in task dataset files
+
+jbbq:
+  generator_config:
+    max_tokens: 4096
+
+toxicity:
+  generator_config:
+    max_tokens: 4096
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 4096
+
+swebench:
+  max_tokens: 4096
+  fc_enabled: true
+
+mtbench:
+  generator_config:
+    max_tokens: 4096
+
+bfcl:
+  generator_config:
+    max_tokens: 4096
+
+hallulens:
+  generator_config:
+    max_tokens: 4096
+
+hle:
+  generator_config:
+    max_tokens: 4096
+
+arc_agi:
+  max_output_tokens: 4096
+
+m_ifeval:
+  generator_config:
+    max_tokens: 4096
